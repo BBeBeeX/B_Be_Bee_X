@@ -1,0 +1,22 @@
+{
+  "name": "@b_be_bee/logger",
+  "type": "module",
+  "sideEffects": false,
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "require": "./index.ts",
+      "import": "./index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "electron-log": "catalog:"
+  },
+  "devDependencies": {
+    "@b_be_bee/configs": "workspace:*"
+  }
+}

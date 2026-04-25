@@ -1,0 +1,21 @@
+{
+  "name": "@B_Be_Bee/mobile",
+  "private": true,
+  "version": "0.1.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "expo start --clear",
+    "build": "expo export --platform all --output-dir dist",
+    "lint": "node scripts/lint.mjs",
+    "typecheck": "node scripts/typecheck.mjs"
+  },
+  "dependencies": {
+    "expo": "^54.0.0",
+    "react": "19.1.0",
+    "react-native": "0.81.4"
+  },
+  "devDependencies": {
+    "babel-preset-expo": "^54.0.0"
+  },
+  "appName": "B_Be_Bee"
+}

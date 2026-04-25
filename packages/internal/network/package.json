@@ -1,0 +1,70 @@
+{
+  "name": "@b_be_bee/network",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "require": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./cache": {
+      "types": "./src/cache.ts",
+      "require": "./src/cache.ts",
+      "import": "./src/cache.ts"
+    },
+    "./client": {
+      "types": "./src/client.ts",
+      "require": "./src/client.ts",
+      "import": "./src/client.ts"
+    },
+    "./errors": {
+      "types": "./src/errors.ts",
+      "require": "./src/errors.ts",
+      "import": "./src/errors.ts"
+    },
+    "./logging": {
+      "types": "./src/logging.ts",
+      "require": "./src/logging.ts",
+      "import": "./src/logging.ts"
+    },
+    "./pluginValidation": {
+      "types": "./src/pluginValidation.ts",
+      "require": "./src/pluginValidation.ts",
+      "import": "./src/pluginValidation.ts"
+    },
+    "./proxy": {
+      "types": "./src/proxy.ts",
+      "require": "./src/proxy.ts",
+      "import": "./src/proxy.ts"
+    },
+    "./proxyPersistence": {
+      "types": "./src/proxyPersistence.ts",
+      "require": "./src/proxyPersistence.ts",
+      "import": "./src/proxyPersistence.ts"
+    },
+    "./retry": {
+      "types": "./src/retry.ts",
+      "require": "./src/retry.ts",
+      "import": "./src/retry.ts"
+    },
+    "./types": {
+      "types": "./src/types.ts",
+      "require": "./src/types.ts",
+      "import": "./src/types.ts"
+    }
+  },
+  "scripts": {
+    "test": "node scripts/test.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@b_be_bee/database": "workspace:*",
+    "@b_be_bee/logger": "workspace:*"
+  },
+  "devDependencies": {
+    "@b_be_bee/configs": "workspace:*"
+  }
+}

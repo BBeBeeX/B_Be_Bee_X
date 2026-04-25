@@ -1,0 +1,13 @@
+{
+  "extends": "@b_be_bee/configs/tsconfig.extend.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "jsx": "preserve",
+    "declaration": true,
+    "paths": {
+      "@b_be_bee/models/*": ["./src/*"],
+      "@pkg": ["../../package.json"]
+    }
+  },
+  "include": ["src/**/*"]
+}

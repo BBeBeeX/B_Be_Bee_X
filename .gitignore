@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+.expo
+.turbo
+pnpm-lock.yaml
+*.log
+.env
+.env.*
+.tmp
+.turbo
+.idea
+.codex
+openspec

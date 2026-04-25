@@ -1,0 +1,34 @@
+{
+  "name": "@b_be_bee/configs",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "exports": {
+    "./tailwindcss/web": "./tailwindcss/web.ts",
+    "./tsconfig.extend.json": "./tsconfig.extend.json"
+  },
+  "peerDependencies": {
+    "tailwindcss": ">=3 || <4"
+  },
+  "dependencies": {
+    "@egoist/tailwindcss-icons": "catalog:",
+    "@iconify-json/logos": "catalog:",
+    "@iconify-json/mingcute": "catalog:",
+    "@iconify-json/simple-icons": "catalog:",
+    "@iconify/tools": "catalog:",
+    "@iconify/utils": "catalog:",
+    "@tailwindcss/container-queries": "catalog:",
+    "@tailwindcss/typography": "catalog:",
+    "es-toolkit": "catalog:",
+    "tailwindcss-animate": "catalog:",
+    "tailwindcss-motion": "catalog:",
+    "tailwindcss-multi": "catalog:",
+    "tailwindcss-safe-area": "catalog:",
+    "tailwindcss-uikit-colors": "catalog:"
+  },
+  "devDependencies": {
+    "postcss": "catalog:",
+    "postcss-js": "catalog:",
+    "workspace-root": "catalog:"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "extends": "@b_be_bee/configs/tsconfig.extend.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "declaration": false,
+    "paths": {
+      "@b_be_bee/utils/*": ["./src/*"]
+    }
+  }
+}

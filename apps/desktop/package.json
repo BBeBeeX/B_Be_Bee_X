@@ -1,0 +1,16 @@
+{
+  "name": "@B_Be_Bee/Desktop",
+  "type": "module",
+  "private": true,
+  "version": "0.1.0",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "node scripts/build.mjs",
+    "lint": "node scripts/lint.mjs",
+    "typecheck": "node scripts/typecheck.mjs"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0"
+  }
+}

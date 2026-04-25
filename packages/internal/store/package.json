@@ -1,0 +1,71 @@
+{
+  "name": "@b_be_bee/store",
+  "type": "module",
+  "private": true,
+  "sideEffects": false,
+  "exports": {
+    "./hydrate": {
+      "types": "./src/hydrate.ts",
+      "require": "./src/hydrate.ts",
+      "import": "./src/hydrate.ts"
+    },
+    "./favorite/*": {
+      "types": "./src/modules/favorite/*.ts",
+      "require": "./src/modules/favorite/*.ts",
+      "import": "./src/modules/favorite/*.ts"
+    },
+    "./image/*": {
+      "types": "./src/modules/image/*.ts",
+      "require": "./src/modules/image/*.ts",
+      "import": "./src/modules/image/*.ts"
+    },
+    "./lyric/*": {
+      "types": "./src/modules/lyric/*.ts",
+      "require": "./src/modules/lyric/*.ts",
+      "import": "./src/modules/lyric/*.ts"
+    },
+    "./playlist/*": {
+      "types": "./src/modules/playlist/*.ts",
+      "require": "./src/modules/playlist/*.ts",
+      "import": "./src/modules/playlist/*.ts"
+    },
+    "./playStatistics/*": {
+      "types": "./src/modules/playStatistics/*.ts",
+      "require": "./src/modules/playStatistics/*.ts",
+      "import": "./src/modules/playStatistics/*.ts"
+    },
+    "./pluginCredential/*": {
+      "types": "./src/modules/pluginCredential/*.ts",
+      "require": "./src/modules/pluginCredential/*.ts",
+      "import": "./src/modules/pluginCredential/*.ts"
+    },
+    "./reset": {
+      "types": "./src/reset.ts",
+      "require": "./src/reset.ts",
+      "import": "./src/reset.ts"
+    },
+    "./song/*": {
+      "types": "./src/modules/song/*.ts",
+      "require": "./src/modules/song/*.ts",
+      "import": "./src/modules/song/*.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "19.2.0"
+  },
+  "dependencies": {
+    "@b_be_bee/configs": "workspace:*",
+    "@b_be_bee/database": "workspace:*",
+    "@b_be_bee/logger": "workspace:*",
+    "@b_be_bee/models": "workspace:*",
+    "@b_be_bee/tracker": "workspace:*",
+    "@b_be_bee/utils": "workspace:*",
+    "@tanstack/react-query": "5.90.21",
+    "es-toolkit": "1.44.0",
+    "immer": "11.1.4",
+    "zustand": "5.0.11"
+  }
+}

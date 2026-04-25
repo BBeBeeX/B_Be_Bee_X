@@ -1,0 +1,45 @@
+{
+  "name": "@b_be_bee/database",
+  "type": "module",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "sideEffects": false,
+  "exports": {
+    "./*": {
+      "types": "./src/*.ts",
+      "require": "./src/*.ts",
+      "import": "./src/*.ts"
+    },
+    "./schemas/*": {
+      "types": "./src/schemas/*.ts",
+      "require": "./src/schemas/*.ts",
+      "import": "./src/schemas/*.ts"
+    },
+    "./services/*": {
+      "types": "./src/services/*.ts",
+      "require": "./src/services/*.ts",
+      "import": "./src/services/*.ts"
+    }
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@b_be_bee/logger": "workspace:*",
+    "@b_be_bee/models": "workspace:*",
+    "ai": "6.0.85",
+    "drizzle-orm": "0.45.1",
+    "expo-sqlite": "16.0.10",
+    "sqlocal": "npm:@hyoban/sqlocal@0.14.1-fork.4",
+    "wa-sqlite": "git+https://github.com/rhashimoto/wa-sqlite.git#v1.1.0"
+  },
+  "devDependencies": {
+    "@b_be_bee/configs": "workspace:*",
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.4.1",
+    "drizzle-kit": "0.31.9",
+    "vitest": "^3.2.4"
+  }
+}
