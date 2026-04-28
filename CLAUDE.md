@@ -151,6 +151,5 @@ These classes map to the UIKit color variables (see  `apps/desktop/AGENTS.md`).
 
 - `packages/CLAUDE.md` explains the package workspace layout.
 - `packages/configs/CLAUDE.md` covers shared build and Tailwind config exports.
-- `packages/plugin/CLAUDE.md` covers the legacy plugin compatibility facade.
-- `packages/CLAUDE.md` maps the split plugin packages: `plugin-sdk`, `plugin-loader`, `plugin-host`, and `plugin-runtime`.
+- `packages/plugin/CLAUDE.md` covers the plugin package group: `plugin-sdk`, `plugin-loader`, `plugin-host`, and `plugin-runtime`.
 - `packages/internal/CLAUDE.md` covers the shared runtime packages under `packages/internal/`.

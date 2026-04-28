@@ -1,1 +1,0 @@
-export * from "@b_be_bee/plugin-runtime/registry"

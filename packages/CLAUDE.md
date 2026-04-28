@@ -9,11 +9,11 @@
 
 - `configs/` - shared build config exports, especially Tailwind and TypeScript presets.
 - `internal/` - cross-platform runtime packages such as database, store, network, and utilities.
-- `plugin-sdk/` - plugin-author-facing stable API contracts and type exports; must not depend on database.
-- `plugin-loader/` - plugin package parsing, manifest validation, integrity/signature checks, permission checks, and static source policy scans; must not depend on database.
-- `plugin-host/` - host API construction for network/auth/logger access; must not depend on database.
-- `plugin-runtime/` - runtime orchestration, sandbox execution, lifecycle transitions, and registry/database integration.
-- `plugin/` - compatibility facade that re-exports the split plugin packages through the legacy `@b_be_bee/plugin` entrypoints.
+- `plugin/` - plugin package group.
+  - `plugin/plugin-sdk/` - plugin-author-facing stable API contracts and type exports; must not depend on database.
+  - `plugin/plugin-loader/` - plugin package parsing, manifest validation, integrity/signature checks, permission checks, and static source policy scans; must not depend on database.
+  - `plugin/plugin-host/` - host API construction for network/auth/logger access; must not depend on database.
+  - `plugin/plugin-runtime/` - runtime orchestration, sandbox execution, lifecycle transitions, and registry/database integration.
 
 ## Key Exports
 
