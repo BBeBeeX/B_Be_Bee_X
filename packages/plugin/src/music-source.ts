@@ -1,61 +1,27 @@
 import type {
-  AudioPlayInfo,
-  AudioQuality,
-  Collection,
-  LyricInfo,
-  PageParams,
-  PageResult,
-  PluginSession,
-  Track,
+  AudioInfo,
+  AuthSession,
+  LyricResult,
+  MusicSourceCapabilities,
+  MusicSourceContract,
+  MusicSourcePluginMeta,
+  Playlist,
+  PluginErrorCode,
+  PluginPlatform,
 } from "@b_be_bee/models"
 import type { NetworkRequest, NetworkResponse } from "@b_be_bee/network/types"
 
 import type { PluginHostApi, PluginManifest, PluginModule } from "./manifest"
 
-export type AuthSession = PluginSession
-export type Playlist = Collection
-export type PluginPlatform = "android" | "ios" | "windows" | "macos" | "linux" | "web"
-
-export interface MusicSourceCapabilities {
-  auth: boolean
-  search: boolean
-  hotTracks: boolean
-  userLibrary: boolean
-  playlist: boolean
-  lyrics: boolean
-  audioSource: boolean
-  qualitySelect: boolean
-  cookieAuth: boolean
-}
-
-export interface MusicSourcePluginMeta {
-  id: string
-  name: string
-  version: string
-  author?: string
-  description?: string
-  homepage?: string
-  pluginTypes: ["music-source"]
-  supportedPlatforms?: PluginPlatform[]
-}
-
-export interface AudioInfo {
-  id: string
-  trackId: string
-  source: string
-  sourceId: string
-  sourceSubId?: string | null
-  title?: string | null
-  quality?: AudioQuality
-  raw?: unknown
-}
-
-export interface LyricResult {
-  raw?: string
-  lrc?: string
-  translatedLrc?: string
-  language?: string
-  info?: LyricInfo
+export type {
+  AudioInfo,
+  AuthSession,
+  LyricResult,
+  MusicSourceCapabilities,
+  MusicSourcePluginMeta,
+  Playlist,
+  PluginErrorCode,
+  PluginPlatform,
 }
 
 export interface PluginNetworkRequest extends NetworkRequest {
@@ -89,46 +55,13 @@ export interface PluginContext {
   host: PluginHostApi
 }
 
-export interface MusicSourcePlugin extends PluginModule {
+export interface MusicSourcePlugin extends PluginModule, MusicSourceContract {
   meta: MusicSourcePluginMeta
   capabilities: MusicSourceCapabilities
 
   init(context: PluginContext): Promise<void>
   dispose?(): Promise<void>
-
-  login(): Promise<AuthSession>
-  logout(): Promise<void>
-  getSession(): Promise<AuthSession | null>
-  refreshSession?(): Promise<AuthSession>
-
-  getHotTracks(params?: PageParams): Promise<PageResult<Track> | PageResult<AudioInfo>>
-  searchTracks?(keyword: string, params?: PageParams): Promise<PageResult<Track>>
-
-  getUserLibrary(params?: PageParams): Promise<PageResult<Track>>
-  getUserPlaylists?(params?: PageParams): Promise<PageResult<Playlist>>
-  getPlaylistTracks?(playlistId: string, params?: PageParams): Promise<PageResult<Track>>
-
-  trackToAudioInfo(track: Track): Promise<AudioInfo>
-  tracksToAudioInfos?(tracks: Track[]): Promise<AudioInfo[]>
-
-  getAvailableQualities?(audio: AudioInfo): Promise<AudioQuality[]>
-  getAudioPlayInfo(audio: AudioInfo, quality?: AudioQuality): Promise<AudioPlayInfo>
-
-  getLyrics?(audio: AudioInfo): Promise<LyricResult | null>
 }
-
-export type PluginErrorCode =
-  | "AUTH_REQUIRED"
-  | "AUTH_EXPIRED"
-  | "NETWORK_ERROR"
-  | "RATE_LIMITED"
-  | "REGION_BLOCKED"
-  | "COPYRIGHT_RESTRICTED"
-  | "TRACK_NOT_FOUND"
-  | "SOURCE_UNAVAILABLE"
-  | "PLUGIN_API_CHANGED"
-  | "INVALID_RESPONSE"
-  | "UNKNOWN"
 
 export class PluginError extends Error {
   readonly code: PluginErrorCode

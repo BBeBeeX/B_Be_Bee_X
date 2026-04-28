@@ -8,7 +8,27 @@ import type {
   LyricInfo,
   LyricTranslation,
   Person,
+  PluginErrorRecord,
+  PluginExecutionModel,
+  PluginManifest,
+  PluginSignatureStatus,
   PluginSession,
+  PluginSourceKind,
+  PluginState,
+  PluginType,
+} from "@b_be_bee/models"
+
+export type {
+  InstalledPluginMetadata,
+  PluginErrorRecord,
+  PluginExecutionModel,
+  PluginLifecyclePhase,
+  PluginManifest,
+  PluginManifestPermissions,
+  PluginSignatureStatus,
+  PluginSourceKind,
+  PluginState,
+  PluginType,
 } from "@b_be_bee/models"
 
 import type { ImageColorsResult } from "./types"
@@ -472,69 +492,11 @@ export const networkPluginProxySettingsTable = sqliteTable("network_plugin_proxy
   updatedAt: integer("updated_at").notNull(),
 })
 
-export type PluginType = "music-source" | "ui-extension" | "service"
-export type PluginExecutionModel = "isolated-vm" | "worker" | "bridge"
-export type PluginState = "installed" | "enabled" | "loaded" | "running" | "error" | "disabled"
-export type PluginSignatureStatus = "verified" | "unverified" | "blocked"
-
-export interface PluginManifestPermissions {
-  network: string[]
-  storage: string[]
-  auth: boolean
-  proxy: boolean
-}
-
-export interface PluginManifest {
-  id: string
-  name: string
-  version: string
-  apiVersion: string
-  minAppVersion: string
-  type: PluginType
-  executionModel: PluginExecutionModel
-  capabilities: string[]
-  scopes: string[]
-  permissions: PluginManifestPermissions
-  checksum: string
-  signature: string
-}
-
-export interface PluginErrorRecord {
-  message: string
-  phase: PluginLifecyclePhase
-  occurredAt: number
-}
-
-export type PluginLifecyclePhase =
-  | "install"
-  | "enable"
-  | "load"
-  | "run"
-  | "api-call"
-  | "event"
-  | "disable"
-  | "uninstall"
-  | "update"
-
-export interface InstalledPluginMetadata {
-  id: string
-  manifest: PluginManifest
-  state: PluginState
-  sourceKind: "zip" | "single-file"
-  codeAssetId: string
-  checksum: string
-  signature: string
-  signatureStatus: PluginSignatureStatus
-  installedAt: number
-  updatedAt: number
-  lastError?: PluginErrorRecord | null
-}
-
 export const pluginRegistryTable = sqliteTable("plugin_registry", {
   id: text("id").primaryKey(),
   manifest: text("manifest", { mode: "json" }).$type<PluginManifest>().notNull(),
   state: text("state").$type<PluginState>().notNull(),
-  sourceKind: text("source_kind").$type<"zip" | "single-file">().notNull(),
+  sourceKind: text("source_kind").$type<PluginSourceKind>().notNull(),
   pluginType: text("plugin_type").$type<PluginType>().notNull(),
   executionModel: text("execution_model").$type<PluginExecutionModel>().notNull(),
   codeAssetId: text("code_asset_id").notNull(),

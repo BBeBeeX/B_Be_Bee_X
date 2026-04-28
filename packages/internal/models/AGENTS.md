@@ -5,6 +5,7 @@
 Applies to `@b_be_bee/models`.
 
 This package only defines shared TypeScript models, enums, constants, DTOs, and type contracts for B_Be_Bee.
+Plugin manifest metadata, installed-plugin metadata, and music-source DTO contracts live here; plugin runtime validation and host APIs live in `@b_be_bee/plugin`.
 
 Do not add UI, network, storage, database, player, plugin runtime, or platform-specific logic here.
 
@@ -34,7 +35,7 @@ models/
 ├─ music.ts
 ├─ lyric.ts
 ├─ statistics.ts
-├─ plugin.ts
+├─ plugin.ts        # plugin session, manifest, installed metadata, and music-source contracts
 └─ index.ts
 ````
 
@@ -255,5 +256,4 @@ Do not add:
 * source-specific required fields such as `biliCid` or `neteaseFee`
 
 Use `raw?: unknown` for source-specific data.
-
 

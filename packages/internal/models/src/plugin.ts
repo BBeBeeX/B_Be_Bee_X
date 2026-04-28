@@ -1,4 +1,7 @@
-import {Person} from "./common";
+import type { AudioPlayInfo, Collection, Track } from "./music"
+import type { AudioQuality } from "./enum"
+import type { LyricInfo } from "./lyric"
+import type { PageParams, PageResult, Person } from "./common"
 
 export interface PluginSessionCredentials {
     cookie?: string;
@@ -16,4 +19,149 @@ export interface PluginSession {
     credentials?: PluginSessionCredentials;
     user?: Person  | null;
     updatedAt: number;
+}
+
+export const pluginTypes = ["music-source", "ui-extension", "service"] as const
+export const pluginExecutionModels = ["isolated-vm", "worker", "bridge"] as const
+export const pluginStates = ["installed", "enabled", "loaded", "running", "error", "disabled"] as const
+export const pluginSignatureStatuses = ["verified", "unverified", "blocked"] as const
+
+export type PluginType = (typeof pluginTypes)[number]
+export type PluginExecutionModel = (typeof pluginExecutionModels)[number]
+export type PluginState = (typeof pluginStates)[number]
+export type PluginSourceKind = "zip" | "single-file"
+export type PluginSignatureStatus = (typeof pluginSignatureStatuses)[number]
+
+export interface PluginManifestPermissions {
+  network: string[]
+  storage: string[]
+  auth: boolean
+  proxy: boolean
+}
+
+export interface PluginManifest {
+  id: string
+  name: string
+  version: string
+  apiVersion: string
+  minAppVersion: string
+  type: PluginType
+  executionModel: PluginExecutionModel
+  capabilities: string[]
+  scopes: string[]
+  permissions: PluginManifestPermissions
+  checksum: string
+  signature: string
+}
+
+export type PluginLifecyclePhase =
+  | "install"
+  | "enable"
+  | "load"
+  | "run"
+  | "api-call"
+  | "event"
+  | "disable"
+  | "uninstall"
+  | "update"
+
+export interface PluginErrorRecord {
+  message: string
+  phase: PluginLifecyclePhase
+  occurredAt: number
+}
+
+export interface InstalledPluginMetadata {
+  id: string
+  manifest: PluginManifest
+  state: PluginState
+  sourceKind: PluginSourceKind
+  codeAssetId: string
+  checksum: string
+  signature: string
+  signatureStatus: PluginSignatureStatus
+  installedAt: number
+  updatedAt: number
+  lastError?: PluginErrorRecord | null
+}
+
+export type AuthSession = PluginSession
+export type Playlist = Collection
+export type PluginPlatform = "android" | "ios" | "windows" | "macos" | "linux" | "web"
+
+export interface MusicSourceCapabilities {
+  auth: boolean
+  search: boolean
+  hotTracks: boolean
+  userLibrary: boolean
+  playlist: boolean
+  lyrics: boolean
+  audioSource: boolean
+  qualitySelect: boolean
+  cookieAuth: boolean
+}
+
+export interface MusicSourcePluginMeta {
+  id: string
+  name: string
+  version: string
+  author?: string
+  description?: string
+  homepage?: string
+  pluginTypes: ["music-source"]
+  supportedPlatforms?: PluginPlatform[]
+}
+
+export interface AudioInfo {
+  id: string
+  trackId: string
+  source: string
+  sourceId: string
+  sourceSubId?: string | null
+  title?: string | null
+  quality?: AudioQuality
+  raw?: unknown
+}
+
+export interface LyricResult {
+  raw?: string
+  lrc?: string
+  translatedLrc?: string
+  language?: string
+  info?: LyricInfo
+}
+
+export type PluginErrorCode =
+  | "AUTH_REQUIRED"
+  | "AUTH_EXPIRED"
+  | "NETWORK_ERROR"
+  | "RATE_LIMITED"
+  | "REGION_BLOCKED"
+  | "COPYRIGHT_RESTRICTED"
+  | "TRACK_NOT_FOUND"
+  | "SOURCE_UNAVAILABLE"
+  | "PLUGIN_API_CHANGED"
+  | "INVALID_RESPONSE"
+  | "UNKNOWN"
+
+export interface MusicSourceContract {
+  login(): Promise<AuthSession>
+  logout(): Promise<void>
+  getSession(): Promise<AuthSession | null>
+  refreshSession?(): Promise<AuthSession>
+
+  getHotTracks(params?: PageParams): Promise<PageResult<Track> | PageResult<AudioInfo>>
+  searchTracks?(keyword: string, params?: PageParams): Promise<PageResult<Track>>
+
+  getUserLibrary(params?: PageParams): Promise<PageResult<Track>>
+  getUserPlaylists?(params?: PageParams): Promise<PageResult<Playlist>>
+  getPlaylistTracks?(playlistId: string, params?: PageParams): Promise<PageResult<Track>>
+
+  trackToAudioInfo(track: Track): Promise<AudioInfo>
+  tracksToAudioInfos?(tracks: Track[]): Promise<AudioInfo[]>
+
+  getAvailableQualities?(audio: AudioInfo): Promise<AudioQuality[]>
+  getAudioPlayInfo(audio: AudioInfo, quality?: AudioQuality): Promise<AudioPlayInfo>
+
+  getLyrics?(audio: AudioInfo): Promise<LyricResult | null>
 }

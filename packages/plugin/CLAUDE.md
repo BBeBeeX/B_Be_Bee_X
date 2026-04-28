@@ -7,8 +7,8 @@
 
 ## File Inventory
 
-- `src/manifest.ts` - shared plugin manifest, lifecycle, state, host API, and installed metadata types.
-- `src/music-source.ts` - `music-source` plugin interfaces, capabilities, auth/session-facing types, error codes, and runtime shape validation.
+- `src/manifest.ts` - plugin manifest/model re-exports from `@b_be_bee/models`, plus host API and runtime callback types.
+- `src/music-source.ts` - `music-source` plugin runtime interfaces, host context, error class, and runtime shape validation.
 - `src/host.ts`, `src/host-api.ts` - host API implementation and public host-facing type exports.
 - `src/runtime.ts`, `src/sandbox.ts`, `src/lifecycle.ts` - runtime orchestration, sandbox execution boundary, and lifecycle state transitions.
 - `src/package.ts`, `src/validation.ts` - plugin package parsing, manifest validation, and static source policy checks.
@@ -37,6 +37,7 @@
 
 - `packages/plugin` orchestrates plugin runtime behavior but does not own persistence tables, model definitions, network transport internals, store state, or encrypted credential storage.
 - Installed plugin metadata belongs to `PluginRegistryService`; source accounts, plugin sessions, and encrypted credentials remain separate database concerns.
+- Pure plugin models, manifest metadata, installed metadata, music-source DTOs, and session-facing contracts belong to `@b_be_bee/models`; `packages/plugin` may re-export them for compatibility.
 - Host auth/session APIs must use typed session-facing contracts from `@b_be_bee/models`.
 - Keep imports on stable public package entrypoints such as `@b_be_bee/database/services/*`, `@b_be_bee/database/schemas/*`, `@b_be_bee/models`, and `@b_be_bee/network/*`.
 - Do not import from database/store internals or duplicate persistence logic in this package.
@@ -47,7 +48,7 @@
 - `meta.pluginTypes` must be exactly `["music-source"]`; `meta.id` and `meta.version` must match the loaded manifest.
 - Required methods are `init`, `login`, `logout`, `getSession`, `getHotTracks`, `getUserLibrary`, `trackToAudioInfo`, and `getAudioPlayInfo`.
 - If a capability is `true`, the matching optional method group must be implemented. For example, `search` requires `searchTracks`, `lyrics` requires `getLyrics`, and `qualitySelect` requires `getAvailableQualities`.
-- Use `Track`, `AudioPlayInfo`, `AudioQuality`, `PageParams`, `PageResult`, `PluginSession`, and related model types from `@b_be_bee/models`.
+- Use `Track`, `AudioPlayInfo`, `AudioQuality`, `PageParams`, `PageResult`, `PluginSession`, `MusicSourceContract`, and related model types from `@b_be_bee/models`.
 
 ## Host API Rules
 

@@ -1,57 +1,35 @@
-import type { InstalledPluginMetadata } from "@b_be_bee/database/schemas/index"
-import type { PluginSession } from "@b_be_bee/models"
+import {
+  pluginExecutionModels,
+  pluginStates,
+  pluginTypes,
+  type InstalledPluginMetadata,
+  type PluginErrorRecord,
+  type PluginExecutionModel,
+  type PluginLifecyclePhase,
+  type PluginManifest,
+  type PluginManifestPermissions,
+  type PluginSession,
+  type PluginSignatureStatus,
+  type PluginSourceKind,
+  type PluginState,
+  type PluginType,
+} from "@b_be_bee/models"
 import type { PluginNetworkRequest } from "./music-source"
 
-export const pluginTypes = ["music-source", "ui-extension", "service"] as const
-export const pluginExecutionModels = ["isolated-vm", "worker", "bridge"] as const
-export const pluginStates = ["installed", "enabled", "loaded", "running", "error", "disabled"] as const
+export { pluginExecutionModels, pluginStates, pluginTypes }
 
-export type PluginType = (typeof pluginTypes)[number]
-export type PluginExecutionModel = (typeof pluginExecutionModels)[number]
-export type PluginState = (typeof pluginStates)[number]
-export type PluginSourceKind = "zip" | "single-file"
-export type PluginSignatureStatus = "verified" | "unverified" | "blocked"
-
-export interface PluginManifestPermissions {
-  network: string[]
-  storage: string[]
-  auth: boolean
-  proxy: boolean
+export type {
+  InstalledPluginMetadata,
+  PluginErrorRecord,
+  PluginExecutionModel,
+  PluginLifecyclePhase,
+  PluginManifest,
+  PluginManifestPermissions,
+  PluginSignatureStatus,
+  PluginSourceKind,
+  PluginState,
+  PluginType,
 }
-
-export interface PluginManifest {
-  id: string
-  name: string
-  version: string
-  apiVersion: string
-  minAppVersion: string
-  type: PluginType
-  executionModel: PluginExecutionModel
-  capabilities: string[]
-  scopes: string[]
-  permissions: PluginManifestPermissions
-  checksum: string
-  signature: string
-}
-
-export interface PluginErrorRecord {
-  message: string
-  phase: PluginLifecyclePhase
-  occurredAt: number
-}
-
-export type PluginLifecyclePhase =
-  | "install"
-  | "enable"
-  | "load"
-  | "run"
-  | "api-call"
-  | "event"
-  | "disable"
-  | "uninstall"
-  | "update"
-
-export type { InstalledPluginMetadata }
 
 export interface PluginErrorContext {
   pluginId: string
