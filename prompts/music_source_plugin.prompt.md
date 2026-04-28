@@ -6,7 +6,7 @@ Implement a TypeScript music source plugin for B_Be_Bee. The plugin type must be
 pluginTypes: ["music-source"]
 ```
 
-The plugin provides network music data, login state, user library data, playable audio sources, lyrics, playlists, and standardized errors.
+The plugin provides network music data, login state, user library data, playable audio sources, lyrics, collections, people-related assets, and standardized errors.
 
 ## Required Capabilities
 
@@ -16,12 +16,14 @@ The plugin must declare:
 interface MusicSourceCapabilities {
   auth: boolean
   search: boolean
-  hotTracks: boolean
+  hots: boolean
   userLibrary: boolean
-  playlist: boolean
+  collectionDetail: boolean
+  collectionTracks: boolean
   lyrics: boolean
-  audioSource: boolean
+  audioPlayInfo: boolean
   qualitySelect: boolean
+  personAudioAssets: boolean
   cookieAuth: boolean
 }
 ```
@@ -43,22 +45,23 @@ interface MusicSourcePlugin {
   login(): Promise<AuthSession>
   logout(): Promise<void>
   getSession(): Promise<AuthSession | null>
+  getCurrentUser(): Promise<Person>
   refreshSession?(): Promise<AuthSession>
 
-  getHotTracks(params?: PageParams): Promise<PageResult<Track> | PageResult<AudioInfo>>
-  searchTracks?(keyword: string, params?: PageParams): Promise<PageResult<Track>>
+  getHots(params?: PageParams): Promise<AudioAssets>
+  search(keyword: string, type?: "track" | "album" | "artist" | "all", params?: PageParams): Promise<AudioAssets>
 
-  getUserLibrary(params?: PageParams): Promise<PageResult<Track>>
-  getUserPlaylists?(params?: PageParams): Promise<PageResult<Playlist>>
-  getPlaylistTracks?(playlistId: string, params?: PageParams): Promise<PageResult<Track>>
+  getUserLibrary(params?: PageParams): Promise<PageResult<Collection>>
 
-  trackToAudioInfo(track: Track): Promise<AudioInfo>
-  tracksToAudioInfos?(tracks: Track[]): Promise<AudioInfo[]>
+  getCollectionDetail?(id: string): Promise<Collection>
+  getCollectionTracks?(collection: Collection, params?: PageParams): Promise<PageResult<Track>>
+  trackToAudioPlayInfos(track: Track): Promise<AudioPlayInfo>
+  getPersonAudioAsserts(personId: string): Promise<AudioAssets>
 
-  getAvailableQualities?(audio: AudioInfo): Promise<AudioQuality[]>
-  getAudioPlayInfo(audio: AudioInfo, quality?: AudioQuality): Promise<AudioPlayInfo>
+  getAvailableQualities?(track: Track): Promise<AudioQuality[]>
+  getAudioPlayInfo(track: Track, quality?: AudioQuality): Promise<AudioPlayInfo>
 
-  getLyrics?(audio: AudioInfo): Promise<LyricResult | null>
+  getLyrics?(track: Track): Promise<LyricResult | null>
 }
 ```
 
@@ -85,7 +88,7 @@ interface MusicSourcePluginMeta {
 
 The host passes `PluginContext` to `init(context)`.
 
-All network requests must use `context.http`. All persistence must use `context.storage`. Logs must use `context.logger`. Do not directly access the file system, process globals, global cookies, undeclared network domains, or host internals.
+All network requests must use `context.http`. Logs must use `context.logger`. Plugins do not receive a host storage API; session persistence is handled by the host. Do not directly access the file system, process globals, global cookies, undeclared network domains, or host internals.
 
 ## Login, Cookie, And Token Handling
 
@@ -95,23 +98,30 @@ The plugin must implement:
 login(): Promise<AuthSession>
 logout(): Promise<void>
 getSession(): Promise<AuthSession | null>
+getCurrentUser(): Promise<Person>
 ```
 
-Login must save Cookie or Token in `context.storage`. `getSession()` must restore the saved session on the next startup. If a session is expired and `refreshSession()` exists, try to refresh it. Logout must remove Cookie, Token, and user-related cache. After logout, user-only methods must throw `AUTH_REQUIRED`.
+Login must return an `AuthSession` with Cookie or Token credentials when available. `getSession()` must return the current host-managed session state. `getCurrentUser()` must return the logged-in user as a `Person`. If a session is expired and `refreshSession()` exists, try to refresh it. After logout, user-only methods must throw `AUTH_REQUIRED`.
 
 Requests that require login must call `context.http.request({ ..., useAuth: true })`. The host injects the current plugin session Cookie or Token into authenticated requests. Never log Cookie, Token, passwords, or authorization headers.
 
 ## Required Music APIs
 
-`getHotTracks(params?)` returns a paginated hot music list as `Track` or `AudioInfo` items.
+`getHots(params?)` returns hot music assets as `AudioAssets`, where `tracks` is a paginated `Track` result and `audioInfos` is a paginated `Collection` result.
 
-`getUserLibrary(params?)` returns the logged-in user's favorite/library `Track` list. It must throw `AUTH_REQUIRED` when not logged in and `AUTH_EXPIRED` when the session is invalid.
+`search(keyword, type?, params?)` returns matching assets as `AudioAssets`. `type` may be `"track"`, `"album"`, `"artist"`, or `"all"`.
 
-`trackToAudioInfo(track)` converts a model `Track` into plugin-specific `AudioInfo`.
+`getUserLibrary(params?)` returns the logged-in user's favorite/library `Collection` list. It must throw `AUTH_REQUIRED` when not logged in and `AUTH_EXPIRED` when the session is invalid.
 
-`getAudioPlayInfo(audio, quality?)` returns `AudioPlayInfo`. If play URLs require headers, include `headers`. If play URLs expire, include `expiresAt`. If the source is blocked by region or copyright, throw `REGION_BLOCKED` or `COPYRIGHT_RESTRICTED`.
+`getCollectionDetail(id)` returns a complete `Collection` when the source supports collection detail loading. `getCollectionTracks(collection, params?)` returns paginated tracks for a collection.
 
-Optional APIs include `searchTracks`, `getUserPlaylists`, `getPlaylistTracks`, `tracksToAudioInfos`, `getAvailableQualities`, and `getLyrics`.
+`trackToAudioPlayInfos(track)` returns playable `AudioPlayInfo` for a `Track`.
+
+`getPersonAudioAsserts(personId)` returns assets related to a person or artist as `AudioAssets`.
+
+`getAudioPlayInfo(track, quality?)` returns `AudioPlayInfo`. If play URLs require headers, include `headers`. If play URLs expire, include `expiresAt`. If the source is blocked by region or copyright, throw `REGION_BLOCKED` or `COPYRIGHT_RESTRICTED`.
+
+Optional APIs include `getCollectionDetail`, `getCollectionTracks`, `getAvailableQualities`, and `getLyrics`.
 
 ## Pagination
 
@@ -145,7 +155,6 @@ Do not throw raw upstream errors to the host UI. Convert network failures, inval
 - Do not access the file system directly.
 - Do not execute dynamic remote code.
 - Do not mutate host app configuration.
-- Do not access another plugin's storage.
 - Do not bypass the host HTTP client.
 - Do not open external browsers without user confirmation.
 - Do not keep using old Cookie or Token after logout.
@@ -154,13 +163,12 @@ Do not throw raw upstream errors to the host UI. Convert network failures, inval
 
 - `meta.pluginTypes` is exactly `["music-source"]`.
 - `capabilities` is complete.
-- `init(context)`, `login()`, `logout()`, and `getSession()` are implemented.
-- Login saves Cookie or Token.
-- Startup restores login state.
-- Logout clears Cookie, Token, and user cache.
+- `init(context)`, `login()`, `logout()`, `getSession()`, and `getCurrentUser()` are implemented.
+- Login returns Cookie or Token credentials when available.
+- `getSession()` returns the current host-managed session state.
 - All network requests use `context.http`.
 - Authenticated requests use `useAuth: true`.
-- `getHotTracks()`, `getUserLibrary()`, `trackToAudioInfo()`, and `getAudioPlayInfo()` are implemented.
+- `getHots()`, `search()`, `getUserLibrary()`, `trackToAudioPlayInfos()`, `getPersonAudioAsserts()`, and `getAudioPlayInfo()` are implemented.
 - List APIs support pagination.
 - Play links include `headers` and `expiresAt` when required.
 - Errors use `PluginError`.

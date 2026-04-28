@@ -2,7 +2,7 @@
 
 Implement a TypeScript music source plugin with `pluginTypes = ["music-source"]`.
 
-The plugin must default-export an object compatible with `MusicSourcePlugin` from `@b_be_bee/plugin/music-source`.
+The plugin must default-export an object compatible with `MusicSourcePlugin` from `@b_be_bee/plugin-sdk/music-source`.
 
 Required shape:
 
@@ -17,37 +17,41 @@ interface MusicSourcePlugin {
   login(): Promise<AuthSession>
   logout(): Promise<void>
   getSession(): Promise<AuthSession | null>
+  getCurrentUser(): Promise<Person>
   refreshSession?(): Promise<AuthSession>
 
-  getHotTracks(params?: PageParams): Promise<PageResult<Track> | PageResult<AudioInfo>>
-  searchTracks?(keyword: string, params?: PageParams): Promise<PageResult<Track>>
+  getHots(params?: PageParams): Promise<AudioAssets>
+  search(keyword: string, type?: "track" | "album" | "artist" | "all", params?: PageParams): Promise<AudioAssets>
 
-  getUserLibrary(params?: PageParams): Promise<PageResult<Track>>
-  getUserPlaylists?(params?: PageParams): Promise<PageResult<Playlist>>
-  getPlaylistTracks?(playlistId: string, params?: PageParams): Promise<PageResult<Track>>
+  getUserLibrary(params?: PageParams): Promise<PageResult<Collection>>
 
-  trackToAudioInfo(track: Track): Promise<AudioInfo>
-  tracksToAudioInfos?(tracks: Track[]): Promise<AudioInfo[]>
+  getCollectionDetail?(id: string): Promise<Collection>
+  getCollectionTracks?(collection: Collection, params?: PageParams): Promise<PageResult<Track>>
+  trackToAudioPlayInfos(track: Track): Promise<AudioPlayInfo>
+  getPersonAudioAsserts(personId: string): Promise<AudioAssets>
 
-  getAvailableQualities?(audio: AudioInfo): Promise<AudioQuality[]>
-  getAudioPlayInfo(audio: AudioInfo, quality?: AudioQuality): Promise<AudioPlayInfo>
+  getAvailableQualities?(track: Track): Promise<AudioQuality[]>
+  getAudioPlayInfo(track: Track, quality?: AudioQuality): Promise<AudioPlayInfo>
 
-  getLyrics?(audio: AudioInfo): Promise<LyricResult | null>
+  getLyrics?(track: Track): Promise<LyricResult | null>
 }
 ```
 
 Core rules:
 
 - All network requests must go through `context.http`.
-- All local persistence must go through `context.storage`.
-- Save Cookie or Token after login.
-- Restore login state through `getSession()` on the next startup.
+- Plugins do not receive a host storage API.
+- Return Cookie or Token credentials from `login()` when available.
+- Return the current host-managed session through `getSession()`.
+- Return the logged-in user from `getCurrentUser()`.
 - Requests that need login must use `useAuth: true`.
-- Logout must remove Cookie, Token, and user-related cache.
-- `getHotTracks()` returns hot music as `Track` or `AudioInfo` page results.
-- `getUserLibrary()` returns the logged-in user's favorite/library `Track` list.
-- `trackToAudioInfo()` converts a `Track` to `AudioInfo`.
-- `getAudioPlayInfo()` returns playable `AudioPlayInfo` for an `AudioInfo`.
+- `getHots()` returns hot music assets as `AudioAssets`.
+- `search()` returns matching `AudioAssets` for `"track"`, `"album"`, `"artist"`, or `"all"`.
+- `getUserLibrary()` returns the logged-in user's favorite/library `Collection` list.
+- `getCollectionTracks()` returns tracks for a collection when `collectionTracks` capability is enabled.
+- `trackToAudioPlayInfos()` returns playable `AudioPlayInfo` for a `Track`.
+- `getPersonAudioAsserts()` returns assets related to a person or artist.
+- `getAudioPlayInfo()` returns playable `AudioPlayInfo` for a `Track`.
 - Play URLs that need headers must return `headers`.
 - Expiring play URLs must return `expiresAt`.
 - List APIs must support pagination.

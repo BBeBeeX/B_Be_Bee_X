@@ -91,12 +91,14 @@ const requiredMusicSourceMethods = [
 ] as const satisfies readonly (keyof MusicSourcePlugin)[]
 
 const capabilityMethods = {
-  audioSource: ["trackToAudioPlayInfos", "getAudioPlayInfo"],
+  audioPlayInfo: ["trackToAudioPlayInfos", "getAudioPlayInfo"],
   auth: ["login", "logout", "getSession", "getCurrentUser"],
+  collectionDetail: ["getCollectionDetail"],
+  collectionTracks: ["getCollectionTracks"],
   cookieAuth: ["login", "logout", "getSession", "getCurrentUser"],
-  hotTracks: ["getHots"],
+  hots: ["getHots"],
   lyrics: ["getLyrics"],
-  playlist: ["getUserLibrary", "getCollectionDetail", "getCollectionTracks"],
+  personAudioAssets: ["getPersonAudioAsserts"],
   qualitySelect: ["getAvailableQualities"],
   search: ["search"],
   userLibrary: ["getUserLibrary"],

@@ -91,12 +91,14 @@ export type PluginPlatform = "android" | "ios" | "windows" | "macos" | "linux" |
 export interface MusicSourceCapabilities {
   auth: boolean
   search: boolean
-  hotTracks: boolean
+  hots: boolean
   userLibrary: boolean
-  playlist: boolean
+  collectionDetail: boolean
+  collectionTracks: boolean
   lyrics: boolean
-  audioSource: boolean
+  audioPlayInfo: boolean
   qualitySelect: boolean
+  personAudioAssets: boolean
   cookieAuth: boolean
 }
 
