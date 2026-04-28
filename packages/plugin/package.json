@@ -81,10 +81,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@b_be_bee/database": "workspace:*",
-    "@b_be_bee/logger": "workspace:*",
     "@b_be_bee/models": "workspace:*",
-    "@b_be_bee/network": "workspace:*"
+    "@b_be_bee/plugin-host": "workspace:*",
+    "@b_be_bee/plugin-loader": "workspace:*",
+    "@b_be_bee/plugin-runtime": "workspace:*",
+    "@b_be_bee/plugin-sdk": "workspace:*"
   },
   "devDependencies": {
     "@b_be_bee/configs": "workspace:*"

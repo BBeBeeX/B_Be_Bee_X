@@ -3,18 +3,11 @@
 
 ## Purpose
 
-`packages/plugin/` owns the shared plugin contract for B_Be_Bee. It provides manifest parsing, package validation, integrity/signature checks, lifecycle and runtime orchestration, sandbox adapters, host API composition, permission enforcement, plugin registry helpers, and the `music-source` plugin contract.
+`packages/plugin/` is the compatibility facade for the split plugin packages. It preserves the legacy `@b_be_bee/plugin` export surface while implementation lives in `@b_be_bee/plugin-sdk`, `@b_be_bee/plugin-loader`, `@b_be_bee/plugin-host`, and `@b_be_bee/plugin-runtime`.
 
 ## File Inventory
 
-- `src/manifest.ts` - plugin manifest/model re-exports from `@b_be_bee/models`, plus host API and runtime callback types.
-- `src/music-source.ts` - `music-source` plugin runtime interfaces, host context, error class, and runtime shape validation.
-- `src/host.ts`, `src/host-api.ts` - host API implementation and public host-facing type exports.
-- `src/runtime.ts`, `src/sandbox.ts`, `src/lifecycle.ts` - runtime orchestration, sandbox execution boundary, and lifecycle state transitions.
-- `src/package.ts`, `src/validation.ts` - plugin package parsing, manifest validation, and static source policy checks.
-- `src/registry.ts` - orchestration over `PluginRegistryService` for installed plugin metadata only.
-- `src/permissions.ts` - manifest permission checks for network, auth/session, and proxy behavior.
-- `src/integrity.ts`, `src/signature.ts` - checksum and signature validation helpers.
+- `src/*.ts` - compatibility re-exports to the split plugin packages.
 - `scripts/test.mjs` - package source validation entrypoint.
 - `package.json` - export map, dependencies, and package scripts.
 - `tsconfig.json` - package TypeScript configuration.
@@ -30,15 +23,17 @@
 
 ## Dependencies
 
-- Depends on: `@b_be_bee/database`, `@b_be_bee/models`, `@b_be_bee/logger`, `@b_be_bee/network`, and shared config from `@b_be_bee/configs`.
+- Depends on: `@b_be_bee/plugin-sdk`, `@b_be_bee/plugin-loader`, `@b_be_bee/plugin-host`, `@b_be_bee/plugin-runtime`, `@b_be_bee/models`, and shared config from `@b_be_bee/configs`.
 - Depended on by: desktop/mobile plugin host integrations and any package that validates, installs, or executes plugins.
 
 ## Runtime Boundaries
 
-- `packages/plugin` orchestrates plugin runtime behavior but does not own persistence tables, model definitions, network transport internals, store state, or encrypted credential storage.
+- `packages/plugin` must stay a facade and should not regain implementation logic.
+- `packages/plugin-runtime` orchestrates plugin runtime behavior but does not own persistence tables, model definitions, network transport internals, store state, or encrypted credential storage.
 - Installed plugin metadata belongs to `PluginRegistryService`; source accounts, plugin sessions, and encrypted credentials remain separate database concerns.
 - Pure plugin models, manifest metadata, installed metadata, music-source DTOs, and session-facing contracts belong to `@b_be_bee/models`; `packages/plugin` may re-export them for compatibility.
 - Host auth/session APIs must use typed session-facing contracts from `@b_be_bee/models`.
+- `@b_be_bee/plugin-sdk`, `@b_be_bee/plugin-loader`, and `@b_be_bee/plugin-host` must not depend on `@b_be_bee/database`.
 - Keep imports on stable public package entrypoints such as `@b_be_bee/database/services/*`, `@b_be_bee/database/schemas/*`, `@b_be_bee/models`, and `@b_be_bee/network/*`.
 - Do not import from database/store internals or duplicate persistence logic in this package.
 

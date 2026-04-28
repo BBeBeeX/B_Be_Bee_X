@@ -1,0 +1,45 @@
+{
+  "name": "@b_be_bee/plugin-runtime",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "require": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./lifecycle": {
+      "types": "./src/lifecycle.ts",
+      "require": "./src/lifecycle.ts",
+      "import": "./src/lifecycle.ts"
+    },
+    "./registry": {
+      "types": "./src/registry.ts",
+      "require": "./src/registry.ts",
+      "import": "./src/registry.ts"
+    },
+    "./runtime": {
+      "types": "./src/runtime.ts",
+      "require": "./src/runtime.ts",
+      "import": "./src/runtime.ts"
+    },
+    "./sandbox": {
+      "types": "./src/sandbox.ts",
+      "require": "./src/sandbox.ts",
+      "import": "./src/sandbox.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@b_be_bee/database": "workspace:*",
+    "@b_be_bee/plugin-host": "workspace:*",
+    "@b_be_bee/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@b_be_bee/configs": "workspace:*"
+  }
+}

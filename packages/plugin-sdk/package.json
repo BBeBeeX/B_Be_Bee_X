@@ -1,0 +1,39 @@
+{
+  "name": "@b_be_bee/plugin-sdk",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "require": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./host-api": {
+      "types": "./src/host-api.ts",
+      "require": "./src/host-api.ts",
+      "import": "./src/host-api.ts"
+    },
+    "./manifest": {
+      "types": "./src/manifest.ts",
+      "require": "./src/manifest.ts",
+      "import": "./src/manifest.ts"
+    },
+    "./music-source": {
+      "types": "./src/music-source.ts",
+      "require": "./src/music-source.ts",
+      "import": "./src/music-source.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@b_be_bee/models": "workspace:*",
+    "@b_be_bee/network": "workspace:*"
+  },
+  "devDependencies": {
+    "@b_be_bee/configs": "workspace:*"
+  }
+}

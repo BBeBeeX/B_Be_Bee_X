@@ -1,0 +1,32 @@
+{
+  "name": "@b_be_bee/plugin-host",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "require": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./host": {
+      "types": "./src/host.ts",
+      "require": "./src/host.ts",
+      "import": "./src/host.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@b_be_bee/logger": "workspace:*",
+    "@b_be_bee/models": "workspace:*",
+    "@b_be_bee/network": "workspace:*",
+    "@b_be_bee/plugin-loader": "workspace:*",
+    "@b_be_bee/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@b_be_bee/configs": "workspace:*"
+  }
+}

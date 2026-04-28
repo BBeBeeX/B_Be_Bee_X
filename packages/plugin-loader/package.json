@@ -1,0 +1,50 @@
+{
+  "name": "@b_be_bee/plugin-loader",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "require": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./integrity": {
+      "types": "./src/integrity.ts",
+      "require": "./src/integrity.ts",
+      "import": "./src/integrity.ts"
+    },
+    "./package": {
+      "types": "./src/package.ts",
+      "require": "./src/package.ts",
+      "import": "./src/package.ts"
+    },
+    "./permissions": {
+      "types": "./src/permissions.ts",
+      "require": "./src/permissions.ts",
+      "import": "./src/permissions.ts"
+    },
+    "./signature": {
+      "types": "./src/signature.ts",
+      "require": "./src/signature.ts",
+      "import": "./src/signature.ts"
+    },
+    "./validation": {
+      "types": "./src/validation.ts",
+      "require": "./src/validation.ts",
+      "import": "./src/validation.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@b_be_bee/models": "workspace:*",
+    "@b_be_bee/network": "workspace:*",
+    "@b_be_bee/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@b_be_bee/configs": "workspace:*"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "extends": "@b_be_bee/configs/tsconfig.extend.json",
+  "compilerOptions": {
+    "declaration": false
+  },
+  "include": ["src/**/*"]
+}
