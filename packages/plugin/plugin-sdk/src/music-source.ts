@@ -1,4 +1,5 @@
 import type {
+  AudioAssets,
   AudioInfo,
   AuthSession,
   LyricResult,
@@ -14,6 +15,7 @@ import type { NetworkRequest, NetworkResponse } from "@b_be_bee/network/types"
 import type { PluginHostApi, PluginManifest, PluginModule } from "./manifest"
 
 export type {
+  AudioAssets,
   AudioInfo,
   AuthSession,
   LyricResult,
@@ -81,21 +83,24 @@ const requiredMusicSourceMethods = [
   "login",
   "logout",
   "getSession",
-  "getHotTracks",
+  "getCurrentUser",
+  "getHots",
   "getUserLibrary",
-  "trackToAudioInfo",
+  "collectionToTracks",
+  "trackToAudioPlayInfos",
+  "getPersonAudioAsserts",
   "getAudioPlayInfo",
 ] as const satisfies readonly (keyof MusicSourcePlugin)[]
 
 const capabilityMethods = {
-  audioSource: ["trackToAudioInfo", "getAudioPlayInfo"],
-  auth: ["login", "logout", "getSession"],
-  cookieAuth: ["login", "logout", "getSession"],
-  hotTracks: ["getHotTracks"],
+  audioSource: ["collectionToTracks", "trackToAudioPlayInfos", "getAudioPlayInfo"],
+  auth: ["login", "logout", "getSession", "getCurrentUser"],
+  cookieAuth: ["login", "logout", "getSession", "getCurrentUser"],
+  hotTracks: ["getHots"],
   lyrics: ["getLyrics"],
-  playlist: ["getUserPlaylists", "getPlaylistTracks"],
+  playlist: ["getUserLibrary", "collectionToTracks"],
   qualitySelect: ["getAvailableQualities"],
-  search: ["searchTracks"],
+  search: ["searchs"],
   userLibrary: ["getUserLibrary"],
 } as const satisfies Record<keyof MusicSourceCapabilities, readonly (keyof MusicSourcePlugin)[]>
 

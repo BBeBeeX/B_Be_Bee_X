@@ -130,6 +130,11 @@ export interface LyricResult {
   info?: LyricInfo
 }
 
+export interface AudioAssets {
+  tracks: PageResult<Track>
+  audioInfos: PageResult<Collection>
+}
+
 export type PluginErrorCode =
   | "AUTH_REQUIRED"
   | "AUTH_EXPIRED"
@@ -147,17 +152,17 @@ export interface MusicSourceContract {
   login(): Promise<AuthSession>
   logout(): Promise<void>
   getSession(): Promise<AuthSession | null>
+  getCurrentUser(): Promise<Person>
   refreshSession?(): Promise<AuthSession>
 
-  getHotTracks(params?: PageParams): Promise<PageResult<Track> | PageResult<AudioInfo>>
-  searchTracks?(keyword: string, params?: PageParams): Promise<PageResult<Track>>
+  getHots(params?: PageParams): Promise<AudioAssets>
+  searchs?(keyword: string, params?: PageParams): Promise<AudioAssets>
 
-  getUserLibrary(params?: PageParams): Promise<PageResult<Track>>
-  getUserPlaylists?(params?: PageParams): Promise<PageResult<Playlist>>
-  getPlaylistTracks?(playlistId: string, params?: PageParams): Promise<PageResult<Track>>
+  getUserLibrary(params?: PageParams): Promise<PageResult<Collection>>
 
-  trackToAudioInfo(track: Track): Promise<AudioInfo>
-  tracksToAudioInfos?(tracks: Track[]): Promise<AudioInfo[]>
+  collectionToTracks(collection: Collection): Promise<PageResult<Track>>
+  trackToAudioPlayInfos(track: Track): Promise<AudioPlayInfo>
+  getPersonAudioAsserts(personId: string): Promise<AudioAssets>
 
   getAvailableQualities?(audio: AudioInfo): Promise<AudioQuality[]>
   getAudioPlayInfo(audio: AudioInfo, quality?: AudioQuality): Promise<AudioPlayInfo>

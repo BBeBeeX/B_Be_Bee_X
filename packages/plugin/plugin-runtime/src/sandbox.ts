@@ -14,7 +14,7 @@ export interface PluginSandboxContext {
 
 export interface PluginSandboxAdapter {
   execute: (context: PluginSandboxContext) => Promise<PluginModule>
-  platform: "electron" | "expo"
+  platform: "electron" | "expo" | "web"
   supportedExecutionModels: PluginExecutionModel[]
 }
 
