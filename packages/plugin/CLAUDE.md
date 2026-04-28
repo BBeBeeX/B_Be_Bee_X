@@ -13,7 +13,7 @@
 - `src/runtime.ts`, `src/sandbox.ts`, `src/lifecycle.ts` - runtime orchestration, sandbox execution boundary, and lifecycle state transitions.
 - `src/package.ts`, `src/validation.ts` - plugin package parsing, manifest validation, and static source policy checks.
 - `src/registry.ts` - orchestration over `PluginRegistryService` for installed plugin metadata only.
-- `src/permissions.ts` - manifest permission checks for network, storage, auth/session, and proxy behavior.
+- `src/permissions.ts` - manifest permission checks for network, auth/session, and proxy behavior.
 - `src/integrity.ts`, `src/signature.ts` - checksum and signature validation helpers.
 - `scripts/test.mjs` - package source validation entrypoint.
 - `package.json` - export map, dependencies, and package scripts.
@@ -55,7 +55,7 @@
 - Plugins must perform network requests through the host API. Do not allow plugin code to call `fetch`, `XMLHttpRequest`, native HTTP modules, or internal network packages directly.
 - Authenticated plugin network requests should use `useAuth: true`; the host API injects the current plugin session cookie/token from the typed auth provider.
 - Network requests must pass manifest domain checks before reaching `@b_be_bee/network`.
-- Storage access is namespace-scoped by manifest permissions and must not leak data across plugins.
+- Plugins do not receive host storage APIs; persisted plugin data belongs to database/service packages.
 - Auth/session access is allowed only when `manifest.permissions.auth` is true.
 - Proxy selection is allowed only when `manifest.permissions.proxy` is true.
 

@@ -25,12 +25,6 @@ export const assertProxyAllowed = (manifest: PluginManifest, proxy?: ProxyPrefer
   }
 }
 
-export const assertStorageAllowed = (manifest: PluginManifest, namespace: string) => {
-  if (!manifest.permissions.storage.includes(namespace)) {
-    throw new Error(`Plugin ${manifest.id} cannot access storage namespace ${namespace}.`)
-  }
-}
-
 export const assertAuthAllowed = (manifest: PluginManifest) => {
   if (!manifest.permissions.auth) {
     throw new Error(`Plugin ${manifest.id} cannot access auth/session APIs.`)

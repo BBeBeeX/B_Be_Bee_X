@@ -34,7 +34,6 @@ export type PluginSignatureStatus = (typeof pluginSignatureStatuses)[number]
 
 export interface PluginManifestPermissions {
   network: string[]
-  storage: string[]
   auth: boolean
   proxy: boolean
 }

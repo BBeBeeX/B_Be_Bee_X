@@ -55,7 +55,6 @@ assert.match(runtime, /assertPluginStateTransition/)
 
 const host = read("src/host.ts")
 assert.match(host, /assertNetworkAllowed/)
-assert.match(host, /assertStorageAllowed/)
 assert.match(host, /assertAuthAllowed/)
 assert.match(host, /assertProxyAllowed/)
 assert.match(host, /useAuth/)

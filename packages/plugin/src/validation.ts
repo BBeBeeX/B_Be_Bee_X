@@ -38,7 +38,6 @@ export const isPluginManifest = (value: unknown): value is PluginManifest => {
     isStringArray(manifest.scopes) &&
     Boolean(manifest.permissions) &&
     isStringArray(manifest.permissions?.network) &&
-    isStringArray(manifest.permissions?.storage) &&
     typeof manifest.permissions?.auth === "boolean" &&
     typeof manifest.permissions?.proxy === "boolean"
   )

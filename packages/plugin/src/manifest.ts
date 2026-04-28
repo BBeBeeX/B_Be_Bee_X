@@ -58,8 +58,4 @@ export interface PluginHostApi {
   network: {
     request: <TData = unknown>(input: PluginNetworkRequest) => Promise<TData>
   }
-  storage: {
-    get: (namespace: string, key: string) => Promise<unknown>
-    set: (namespace: string, key: string, value: unknown) => Promise<void>
-  }
 }

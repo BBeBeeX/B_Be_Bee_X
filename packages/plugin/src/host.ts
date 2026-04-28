@@ -9,19 +9,16 @@ import {
   assertAuthAllowed,
   assertNetworkAllowed,
   assertProxyAllowed,
-  assertStorageAllowed,
 } from "./permissions"
 
 export interface PluginHostApiOptions {
   authProvider?: () => Promise<PluginSession | undefined>
-  storage?: Map<string, unknown>
 }
 
 export const createPluginHostApi = (
   manifest: PluginManifest,
   options: PluginHostApiOptions = {},
 ): PluginHostApi => {
-  const storage = options.storage || new Map<string, unknown>()
   const networkClient = createPluginNetworkClient(manifest.id, {
     policy: {
       allowedDomains: manifest.permissions.network,
@@ -68,16 +65,6 @@ export const createPluginHostApi = (
           headers,
         })
         return response.data
-      },
-    },
-    storage: {
-      get: async (namespace, key) => {
-        assertStorageAllowed(manifest, namespace)
-        return storage.get(`${manifest.id}:${namespace}:${key}`)
-      },
-      set: async (namespace, key, value) => {
-        assertStorageAllowed(manifest, namespace)
-        storage.set(`${manifest.id}:${namespace}:${key}`, value)
       },
     },
   }

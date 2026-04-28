@@ -28,13 +28,6 @@ export interface PluginNetworkRequest extends NetworkRequest {
   useAuth?: boolean
 }
 
-export interface PluginStorage {
-  get(key: string): Promise<string | null>
-  set(key: string, value: string): Promise<void>
-  remove(key: string): Promise<void>
-  clear(): Promise<void>
-}
-
 export interface PluginHttpClient {
   request<TData = unknown>(options: PluginNetworkRequest): Promise<NetworkResponse<TData>>
 }
@@ -47,7 +40,6 @@ export interface PluginLogger {
 }
 
 export interface PluginContext {
-  storage: PluginStorage
   http: PluginHttpClient
   logger: PluginLogger
   platform: PluginPlatform

@@ -338,7 +338,6 @@ export function createPluginRegistryMetadata(
         auth: true,
         network: ["https://example.com"],
         proxy: false,
-        storage: [],
       },
       checksum: "checksum",
       signature: "signature",
