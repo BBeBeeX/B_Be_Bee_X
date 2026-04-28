@@ -1,6 +1,5 @@
 import type {
   AudioAssets,
-  AudioInfo,
   AuthSession,
   LyricResult,
   MusicSourceCapabilities,
@@ -16,7 +15,6 @@ import type { PluginHostApi, PluginManifest, PluginModule } from "./manifest"
 
 export type {
   AudioAssets,
-  AudioInfo,
   AuthSession,
   LyricResult,
   MusicSourceCapabilities,
@@ -86,21 +84,21 @@ const requiredMusicSourceMethods = [
   "getCurrentUser",
   "getHots",
   "getUserLibrary",
-  "collectionToTracks",
+  "search",
   "trackToAudioPlayInfos",
   "getPersonAudioAsserts",
   "getAudioPlayInfo",
 ] as const satisfies readonly (keyof MusicSourcePlugin)[]
 
 const capabilityMethods = {
-  audioSource: ["collectionToTracks", "trackToAudioPlayInfos", "getAudioPlayInfo"],
+  audioSource: ["trackToAudioPlayInfos", "getAudioPlayInfo"],
   auth: ["login", "logout", "getSession", "getCurrentUser"],
   cookieAuth: ["login", "logout", "getSession", "getCurrentUser"],
   hotTracks: ["getHots"],
   lyrics: ["getLyrics"],
-  playlist: ["getUserLibrary", "collectionToTracks"],
+  playlist: ["getUserLibrary", "getCollectionDetail", "getCollectionTracks"],
   qualitySelect: ["getAvailableQualities"],
-  search: ["searchs"],
+  search: ["search"],
   userLibrary: ["getUserLibrary"],
 } as const satisfies Record<keyof MusicSourceCapabilities, readonly (keyof MusicSourcePlugin)[]>
 

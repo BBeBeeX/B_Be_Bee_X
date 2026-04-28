@@ -111,17 +111,6 @@ export interface MusicSourcePluginMeta {
   supportedPlatforms?: PluginPlatform[]
 }
 
-export interface AudioInfo {
-  id: string
-  trackId: string
-  source: string
-  sourceId: string
-  sourceSubId?: string | null
-  title?: string | null
-  quality?: AudioQuality
-  raw?: unknown
-}
-
 export interface LyricResult {
   raw?: string
   lrc?: string
@@ -156,16 +145,17 @@ export interface MusicSourceContract {
   refreshSession?(): Promise<AuthSession>
 
   getHots(params?: PageParams): Promise<AudioAssets>
-  searchs?(keyword: string, params?: PageParams): Promise<AudioAssets>
+  search(keyword: string, type?: "track" | "album" | "artist" | "all", params?: PageParams): Promise<AudioAssets>
 
   getUserLibrary(params?: PageParams): Promise<PageResult<Collection>>
 
-  collectionToTracks(collection: Collection): Promise<PageResult<Track>>
+  getCollectionDetail?(id: string): Promise<Collection>
+  getCollectionTracks?(collection: Collection, params?: PageParams): Promise<PageResult<Track>>
   trackToAudioPlayInfos(track: Track): Promise<AudioPlayInfo>
   getPersonAudioAsserts(personId: string): Promise<AudioAssets>
 
-  getAvailableQualities?(audio: AudioInfo): Promise<AudioQuality[]>
-  getAudioPlayInfo(audio: AudioInfo, quality?: AudioQuality): Promise<AudioPlayInfo>
+  getAvailableQualities?(track: Track): Promise<AudioQuality[]>
+  getAudioPlayInfo(track: Track, quality?: AudioQuality): Promise<AudioPlayInfo>
 
-  getLyrics?(audio: AudioInfo): Promise<LyricResult | null>
+  getLyrics?(track: Track): Promise<LyricResult | null>
 }
