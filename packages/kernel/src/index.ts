@@ -40,6 +40,9 @@ export {
   assertWsHost,
   assertGranted,
   assertDb,
+  assertDbForCaller,
+  assertOwnNamespace,
+  ownNamespaceOf,
   tablesReferenced,
   storageNamespace,
 } from './capability.js'

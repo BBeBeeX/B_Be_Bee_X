@@ -11,7 +11,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
-import { scopeContext, tablesReferenced } from '@BBeBee/kernel'
+import { nsPrefix, scopeContext, tablesReferenced } from '@BBeBee/kernel'
+import { dbScopeConformance } from '@BBeBee/protocol/conformance'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '../src/index.js'
@@ -89,4 +90,21 @@ describe('db:own', () => {
     const { admin } = await gated(['db:own'])
     await expect(admin.query('SELECT * FROM tracks')).resolves.toEqual([])
   })
+})
+
+describe('core-db-node db-scope conformance', () => {
+  for (const check of dbScopeConformance.checks) {
+    it(`${check.name} — ${check.because}`, async () => {
+      const instanceId = '@BBeBee/plugin-demo'
+      const { admin, db } = await gated(['db:own'], instanceId)
+      const { db: plus } = await gated(['db:own', 'db:read:core'], instanceId)
+      await check.run({
+        admin,
+        instanceId,
+        ownPrefix: nsPrefix(`plugin:${instanceId}`),
+        own: db,
+        ownPlusCoreReads: plus,
+      })
+    })
+  }
 })

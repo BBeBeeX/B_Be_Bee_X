@@ -12,8 +12,12 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
-import { CORE_MIGRATIONS, MigrationRunner, assertDb, capabilityConfigOf, nsPrefix } from '@BBeBee/kernel'
-import { CapabilityError } from '@BBeBee/protocol'
+import {
+  CORE_MIGRATIONS,
+  MigrationRunner,
+  assertDbForCaller,
+  assertOwnNamespace,
+} from '@BBeBee/kernel'
 import type { MigrationDb, MigrationTx } from '@BBeBee/kernel'
 import type { DbService, Migration, SqlValue } from '@BBeBee/protocol'
 
@@ -112,10 +116,7 @@ export class DbNode extends Service implements DbService {
    * `DROP TABLE providers` — docs/07 §6 claimed otherwise.
    */
   private guard(sql: string): void {
-    const config = this[Service.resolveConfig]()
-    const gate = capabilityConfigOf(config)
-    if (!gate) return
-    assertDb(config, sql, nsPrefix(`plugin:${gate.instanceId}`))
+    assertDbForCaller(this[Service.resolveConfig](), sql)
   }
 
   /* Unqueued primitives. Only the transaction view and `run` may call these. */
@@ -238,15 +239,29 @@ export class DbNode extends Service implements DbService {
    * transaction and lose their writes to its rollback.
    */
   private txView(): DbService {
+    // Gated like the shared instance: a transaction is not a way around the
+    // capability gate. Missing this left `db:own` enforced on the direct path
+    // and unenforced inside any transaction.
     const view: DbService = {
-      query: async <T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []) =>
-        this.queryNow<T>(sql, params),
-      get: async <T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []) =>
-        this.getNow<T>(sql, params),
-      exec: async (sql: string, params: SqlValue[] = []) => this.execNow(sql, params),
+      query: async <T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []) => {
+        this.guard(sql)
+        return this.queryNow<T>(sql, params)
+      },
+      get: async <T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []) => {
+        this.guard(sql)
+        return this.getNow<T>(sql, params)
+      },
+      exec: async (sql: string, params: SqlValue[] = []) => {
+        this.guard(sql)
+        return this.execNow(sql, params)
+      },
       transaction: <U>(inner: (tx: DbService) => Promise<U>) => inner(view),
-      defineSchema: (namespace, migrations) =>
-        new MigrationRunner(asMigrationDb(view)).apply(namespace, migrations).then(() => undefined),
+      defineSchema: (namespace, migrations) => {
+        assertOwnNamespace(this[Service.resolveConfig](), namespace)
+        return new MigrationRunner(asMigrationDb(view))
+          .apply(namespace, migrations)
+          .then(() => undefined)
+      },
     }
     return view
   }
@@ -254,17 +269,7 @@ export class DbNode extends Service implements DbService {
   async defineSchema(namespace: string, migrations: Migration[]): Promise<void> {
     // A gated plugin may only define its own namespace. Otherwise `db:own`
     // means nothing: a plugin could claim `core` and own the catalogue.
-    const gate = capabilityConfigOf(this[Service.resolveConfig]())
-    if (gate) {
-      const mine = `plugin:${gate.instanceId}`
-      if (namespace !== mine) {
-        throw new CapabilityError(
-          'db:own',
-          `${gate.pluginId} may only define schema for ${JSON.stringify(mine)}, not ` +
-            JSON.stringify(namespace),
-        )
-      }
-    }
+    assertOwnNamespace(this[Service.resolveConfig](), namespace)
     await new MigrationRunner(this).apply(namespace, migrations)
   }
 }

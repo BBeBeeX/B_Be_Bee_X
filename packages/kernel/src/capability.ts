@@ -14,6 +14,7 @@
  */
 
 import type { Context } from 'cordis'
+import { nsPrefix as nsPrefixOf } from './migrations/runner.js'
 import {
   CapabilityError,
   MEDIATED_SERVICES,
@@ -211,6 +212,44 @@ const KERNEL_TABLES = new Set([
  * ordinary mistake and the casual overreach, not a determined author who
  * shares the runtime anyway (docs/03 §7).
  */
+/**
+ * The table prefix a caller owns, derived from its instance id.
+ *
+ * Every `ctx.db` implementation must derive it the same way, or the gate means
+ * different things on different platforms — which is exactly how the desktop
+ * path ended up with no gate at all while the in-process one had one.
+ */
+export function ownNamespaceOf(gate: CapabilityConfig): string {
+  return `plugin:${gate.instanceId}`
+}
+
+/**
+ * Gate a statement for whoever is calling. The entry point every `DbService`
+ * implementation uses, so none of them has to re-derive the prefix.
+ */
+export function assertDbForCaller(config: unknown, sql: string): void {
+  const gate = capabilityConfigOf(config)
+  if (!gate) return
+  assertDb(config, sql, nsPrefixOf(ownNamespaceOf(gate)))
+}
+
+/**
+ * A plugin may only define schema for its own namespace — otherwise it could
+ * claim `core` and own the catalogue.
+ */
+export function assertOwnNamespace(config: unknown, namespace: string): void {
+  const gate = capabilityConfigOf(config)
+  if (!gate) return
+  const mine = ownNamespaceOf(gate)
+  if (namespace !== mine) {
+    throw new CapabilityError(
+      'db:own',
+      `${gate.pluginId} may only define schema for ${JSON.stringify(mine)}, not ` +
+        JSON.stringify(namespace),
+    )
+  }
+}
+
 export function assertDb(config: unknown, sql: string, ownPrefix: string): void {
   const gate = capabilityConfigOf(config)
   if (!gate) return

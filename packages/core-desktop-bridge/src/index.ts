@@ -14,7 +14,12 @@
 
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
-import { assertFs, capabilityConfigOf } from '@BBeBee/kernel'
+import {
+  assertDbForCaller,
+  assertFs,
+  assertOwnNamespace,
+  capabilityConfigOf,
+} from '@BBeBee/kernel'
 import type { CapabilityConfig } from '@BBeBee/kernel'
 import { pluginDirName as pluginDirNameLocal, uriContains } from '@BBeBee/protocol'
 import type {
@@ -297,16 +302,37 @@ export class DbBridge extends Service implements DbService {
     return this.bridge.call('db', method, args, token) as Promise<T>
   }
 
+  /**
+   * Enforce `db:own` before the statement leaves the renderer.
+   *
+   * Main cannot do this: it has one database context serving every caller and
+   * no way to tell which plugin a bridge call came from. So the per-plugin
+   * half of the gate has to run here — the same shape `core-db-node` uses in
+   * process, via the same helper, so the two cannot drift.
+   *
+   * ⚠️ Renderer-side means a plugin that bypasses `ctx.db` and calls
+   * `window.BBeBeeBridge` directly is not stopped by this. Main's own limits
+   * (statement allowlist, ATTACH refusal) are what hold there.
+   * See docs/03-plugin-system.md, "Where the gate actually runs".
+   */
+  private guard(sql: string): void {
+    assertDbForCaller(this[Service.resolveConfig](), sql)
+  }
+
   async query<T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []) {
+    this.guard(sql)
     return this.call<T[]>('query', [sql, params])
   }
   async get<T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []) {
+    this.guard(sql)
     return this.call<T | undefined>('get', [sql, params])
   }
   async exec(sql: string, params: SqlValue[] = []) {
+    this.guard(sql)
     return this.call<{ changes: number; lastInsertRowid: number }>('exec', [sql, params])
   }
   async defineSchema(namespace: string, migrations: Migration[]) {
+    assertOwnNamespace(this[Service.resolveConfig](), namespace)
     await this.call('defineSchema', [namespace, migrations])
   }
 
@@ -320,11 +346,13 @@ export class DbBridge extends Service implements DbService {
    */
   async transaction<T>(fn: (tx: DbService) => Promise<T>): Promise<T> {
     const token = await this.bridge.txBegin()
+    // Gated too: a transaction is not a way around the gate.
     const view: DbService = {
-      query: (sql, params = []) => this.call('query', [sql, params], token),
-      get: (sql, params = []) => this.call('get', [sql, params], token),
-      exec: (sql, params = []) => this.call('exec', [sql, params], token),
+      query: (sql, params = []) => (this.guard(sql), this.call('query', [sql, params], token)),
+      get: (sql, params = []) => (this.guard(sql), this.call('get', [sql, params], token)),
+      exec: (sql, params = []) => (this.guard(sql), this.call('exec', [sql, params], token)),
       defineSchema: async (ns, migrations) => {
+        assertOwnNamespace(this[Service.resolveConfig](), ns)
         await this.call('defineSchema', [ns, migrations], token)
       },
       transaction: <U>(inner: (tx: DbService) => Promise<U>) => inner(view),

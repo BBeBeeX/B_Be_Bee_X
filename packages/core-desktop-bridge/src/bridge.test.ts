@@ -13,7 +13,12 @@ import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
-import { dbConformance, fsConformance, pathsConformance } from '@BBeBee/protocol/conformance'
+import {
+  dbConformance,
+  dbScopeConformance,
+  fsConformance,
+  pathsConformance,
+} from '@BBeBee/protocol/conformance'
 import { createHost, type IpcHost } from './main.js'
 import { DbBridge, FsBridge, PathsBridge, fetchPaths } from './index.js'
 import type { BridgeApi } from './protocol.js'
@@ -116,6 +121,29 @@ describe('db over the bridge', () => {
       // The core schema is applied by the host, so these run against a live
       // database rather than an empty one — the checks create their own tables.
       await check.run({ db: ctx.db, reset: async () => undefined })
+    })
+  }
+})
+
+describe('db capability scopes over the bridge', () => {
+  // The same suite `core-db-node` runs. It exists because `db:own` was
+  // enforced in-process and completely absent here — the gate held in tests
+  // and evaporated on the path the desktop app actually uses.
+  for (const check of dbScopeConformance.checks) {
+    it(`${check.name} — ${check.because}`, async () => {
+      const { ctx } = await makeBridge(await mkdtemp(join(root, 'dbscope-')))
+      const { nsPrefix, scopeContext } = await import('@BBeBee/kernel')
+      const instanceId = '@BBeBee/plugin-demo'
+      const gated = (grants: string[]) =>
+        scopeContext(ctx, { pluginId: instanceId, instanceId, requested: grants as never }).db
+
+      await check.run({
+        admin: ctx.db,
+        instanceId,
+        ownPrefix: nsPrefix(`plugin:${instanceId}`),
+        own: gated(['db:own']),
+        ownPlusCoreReads: gated(['db:own', 'db:read:core']),
+      })
     })
   }
 })
