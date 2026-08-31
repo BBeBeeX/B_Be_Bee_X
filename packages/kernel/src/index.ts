@@ -39,6 +39,8 @@ export {
   assertHost,
   assertWsHost,
   assertGranted,
+  assertDb,
+  tablesReferenced,
   storageNamespace,
 } from './capability.js'
 export type { CapabilityConfig, GrantOptions } from './capability.js'

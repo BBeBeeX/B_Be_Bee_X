@@ -16,6 +16,23 @@ import { dirname, join } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
+/**
+ * Only web URLs may be handed to the OS.
+ *
+ * `shell.openExternal` launches whatever handler the OS has registered, so
+ * `file://`, `smb://` and custom protocol handlers become an execution
+ * primitive for anything that can reach this call. Electron's own security
+ * guidance is to allow http(s) and nothing else.
+ */
+function isWebUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'https:' || protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1180,
@@ -43,7 +60,7 @@ function createWindow(): BrowserWindow {
   // External links open in the user's browser, never in an app window — an
   // app-window navigation would run untrusted content beside the preload.
   window.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    if (isWebUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
 
@@ -68,7 +85,10 @@ function registerHandlers(): void {
     }
   })
 
-  ipcMain.handle('shell:openExternal', (_event, url: string) => shell.openExternal(url))
+  ipcMain.handle('shell:openExternal', async (_event, url: string) => {
+    if (!isWebUrl(url)) throw new Error(`refusing to open a non-web url: ${url}`)
+    await shell.openExternal(url)
+  })
 
   ipcMain.handle('dialog:pickDirectory', async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender)

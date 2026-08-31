@@ -507,6 +507,32 @@ This matters because the failure mode is silent: a host that simply forgot to pa
 would otherwise hand every third-party plugin exactly what it declared for itself — including
 `net:host/*` — turning install-time approval into a no-op.
 
+### Where the gate actually runs
+
+On mobile the gate and the services it guards are in one process, so a plugin reaches `ctx.fs`
+only through its intercepted context.
+
+**On desktop they are not.** ADR-3 puts the kernel in the renderer while the real `fs` and `db`
+live in `main`, so the gate runs *renderer-side* and the bridge that carries calls across is
+reachable by anything in the renderer — `window.BBeBeeBridge.call('fs', 'writeFile', …)` skips it
+in one line. The per-plugin gate therefore constrains a **cooperating** plugin on desktop, not one
+that declines to cooperate.
+
+What `main` enforces regardless, because it does not require knowing who is calling:
+
+| Limit | Effect |
+|---|---|
+| Method allowlist | Only the named service methods are reachable; `constructor` and inherited members are not |
+| Path containment | Every `fs` operand must lie inside an application directory — the bridge cannot reach `/etc` or the user's home at large |
+| `ATTACH`/`DETACH` refused | Otherwise the database handle is an arbitrary-file read/write primitive, and containment above is moot |
+| Bounded stream handles | A loop of `streamOpen` cannot exhaust `main`'s file descriptors |
+| Transaction lifecycle | An abandoned transaction is rolled back on renderer teardown and on an idle timeout, so a reload cannot wedge the database |
+
+Closing the per-plugin gap properly requires plugins to stop sharing the renderer's realm — the
+same prerequisite as real sandboxing, below. **This must be resolved before M5** ships
+runtime-loaded third-party plugins on desktop; until then the gate's per-plugin half is a
+first-party discipline, not a boundary.
+
 ### What this is not
 
 > ⚠️ **This is defense in depth, not a sandbox.** Runtime-loaded plugins execute in the same JS

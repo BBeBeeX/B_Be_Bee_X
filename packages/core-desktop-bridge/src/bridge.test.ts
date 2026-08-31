@@ -10,7 +10,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { dbConformance, fsConformance, pathsConformance } from '@BBeBee/protocol/conformance'
@@ -97,7 +97,13 @@ describe('fs over the bridge', () => {
     it(`${check.name} — ${check.because}`, async () => {
       const dir = await mkdtemp(join(root, 'fs-'))
       const { ctx } = await makeBridge(dir)
-      const scratch = pathToFileURL(await mkdtemp(join(dir, 'scratch-'))).href.replace(/\/$/, '')
+      // Inside the app's cache root: main refuses any path outside the
+      // application's own directories, which is the point of the containment
+      // check — a scratch dir elsewhere would be rejected, correctly.
+      const cache = await ctx.fs.dir('cache')
+      const scratch = pathToFileURL(
+        await mkdtemp(join(fileURLToPath(cache!), 'scratch-')),
+      ).href.replace(/\/$/, '')
       await check.run({ fs: ctx.fs, scratch })
     })
   }
@@ -118,7 +124,10 @@ describe('bridge specifics', () => {
   it('reads a large file in chunks rather than one message', async () => {
     const dir = await mkdtemp(join(root, 'chunk-'))
     const { ctx } = await makeBridge(dir)
-    const scratch = pathToFileURL(await mkdtemp(join(dir, 'big-'))).href.replace(/\/$/, '')
+    const cache = await ctx.fs.dir('cache')
+    const scratch = pathToFileURL(
+      await mkdtemp(join(fileURLToPath(cache!), 'big-')),
+    ).href.replace(/\/$/, '')
     const uri = ctx.fs.join(scratch, 'big.bin')
 
     const payload = new Uint8Array(200_000).map((_, i) => i % 251)

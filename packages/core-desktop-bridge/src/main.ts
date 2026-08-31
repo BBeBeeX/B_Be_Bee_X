@@ -6,11 +6,20 @@
  * reimplementing the operations here is what keeps a single home for the
  * behaviour — `main` stays a dispatcher.
  *
+ * ⚠️ **The renderer is one security domain.** Anything running there can call
+ * this bridge directly (`window.BBeBeeBridge.call(...)`), so the per-plugin
+ * capability gate in `FsBridge`/`DbBridge` is *advisory within the renderer*:
+ * it constrains a cooperating plugin, not code that chooses to bypass it. The
+ * limits enforced here are therefore the ones that do not depend on knowing
+ * which plugin is calling — a method allowlist, containment to the app's own
+ * directories, and a refusal to let SQL reach other files. See
+ * docs/02-architecture.md §2 and docs/03-plugin-system.md §7.
+ *
  * Imported only by `apps/desktop/main`, never by the renderer.
  */
 
 import { Context } from 'cordis'
-import type { DbService, FsService, PathsService } from '@BBeBee/protocol'
+import { uriContains, type DbService, type FsService, type PathsService } from '@BBeBee/protocol'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
@@ -30,11 +39,23 @@ export interface IpcHost {
   removeHandler(channel: string): void
 }
 
+/** What the host can learn about a caller, when Electron provides it. */
+interface CallerLike {
+  sender?: {
+    id?: number
+    once?(event: string, listener: () => void): void
+  }
+}
+
 export interface HostOptions {
   appName?: string
   /** Electron's `app.getPath`, so the OS answers win over XDG guesswork. */
   resolvePath?: (kind: string) => string | undefined
   databaseFileName?: string
+  /** Concurrent chunked reads allowed. Bounds file-descriptor use. */
+  maxOpenStreams?: number
+  /** How long a renderer-driven transaction may stay open before rollback. */
+  transactionIdleMs?: number
 }
 
 export interface Host {
@@ -43,12 +64,42 @@ export interface Host {
 }
 
 /**
- * Stand up the services and wire them to IPC.
+ * Methods reachable over the bridge, per service.
  *
- * Every handler is a dispatch. The security boundary is the *service list*:
- * only `fs`, `db` and `paths` are reachable, and only by their own methods.
+ * An allowlist, not a denylist: without it, `call('fs', 'constructor', …)` and
+ * every inherited `Object.prototype` member are reachable, and the surface
+ * main exposes silently grows with any method added to a service.
  */
+const ALLOWED: Record<BridgedService, ReadonlySet<string>> = {
+  fs: new Set([
+    'dir', 'exists', 'stat', 'list', 'mkdir', 'remove', 'move', 'copy',
+    'readFile', 'readBytes', 'writeFile', 'freeSpace', 'toPlayableUri', 'pickDirectory',
+  ]),
+  db: new Set(['query', 'get', 'exec', 'defineSchema']),
+  paths: new Set([
+    'appData', 'cache', 'temp', 'logs', 'downloads', 'music', 'pluginData', 'get',
+  ]),
+}
+
+/** fs methods whose leading arguments are Uris that must stay inside the app. */
+const URI_ARGS: Record<string, number[]> = {
+  exists: [0], stat: [0], list: [0], mkdir: [0], remove: [0],
+  move: [0, 1], copy: [0, 1], readFile: [0], readBytes: [0], writeFile: [0],
+  freeSpace: [0], toPlayableUri: [0],
+}
+
+/**
+ * SQL the bridge refuses outright.
+ *
+ * `ATTACH` turns the database handle into an arbitrary-file read/write
+ * primitive, which would make every other containment check here pointless.
+ */
+const FORBIDDEN_SQL = /^\s*(ATTACH|DETACH)\b/i
+
 export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promise<Host> {
+  const maxOpenStreams = options.maxOpenStreams ?? 64
+  const transactionIdleMs = options.transactionIdleMs ?? 30_000
+
   const ctx = new Context()
   await ctx.plugin(PathsNode, {
     appName: options.appName ?? 'BBeBee',
@@ -63,9 +114,35 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     paths: () => ctx.paths,
   }
 
+  /**
+   * Every location the app is allowed to touch.
+   *
+   * Not a per-plugin gate — main cannot tell one renderer caller from another —
+   * but it does bound the blast radius to the app's own storage, so a bridge
+   * call cannot reach `/etc/passwd` or the user's home directory at large.
+   */
+  const roots = (): string[] =>
+    [
+      ctx.paths.appData,
+      ctx.paths.cache,
+      ctx.paths.temp,
+      ctx.paths.logs,
+      ctx.paths.downloads,
+      ctx.paths.music,
+    ].filter((r): r is string => typeof r === 'string' && r.length > 0)
+
+  function assertContained(uri: unknown): void {
+    if (typeof uri !== 'string') throw new TypeError('bridge: expected a uri')
+    // SAF content:// uris are opaque and are granted by the user picking them.
+    if (uri.startsWith('content://')) return
+    if (!roots().some((root) => uriContains(root, uri))) {
+      throw new Error(`bridge: ${uri} is outside every application directory`)
+    }
+  }
+
   /* ── Generic method dispatch ──────────────────────────────────────── */
 
-  ipc.handle(CH.call, async (_event, ...rest) => {
+  ipc.handle(CH.call, async (event: CallerLike, ...rest) => {
     const [service, method, args, token] = rest as unknown as [
       BridgedService,
       string,
@@ -74,6 +151,17 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     ]
     const target = services[service]?.()
     if (!target) throw new Error(`bridge: unknown service "${service}"`)
+    if (!ALLOWED[service].has(method)) {
+      throw new Error(`bridge: ${service}.${method} is not callable over the bridge`)
+    }
+
+    const callArgs = Array.isArray(args) ? args : []
+    if (service === 'fs') {
+      for (const index of URI_ARGS[method] ?? []) assertContained(callArgs[index])
+    }
+    if (service === 'db' && typeof callArgs[0] === 'string' && FORBIDDEN_SQL.test(callArgs[0])) {
+      throw new Error('bridge: ATTACH/DETACH is not permitted over the bridge')
+    }
 
     // A call carrying a transaction token is routed into that transaction's
     // view rather than the shared service, so it participates in the
@@ -81,21 +169,23 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     if (token) {
       const open = transactions.get(token)
       if (!open) throw new Error(`bridge: unknown transaction "${token}"`)
+      open.touch()
       const fn = (open.tx as unknown as Record<string, (...a: unknown[]) => unknown>)[method]
       if (typeof fn !== 'function') throw new Error(`bridge: db has no method "${method}"`)
-      return fn.apply(open.tx, args)
+      return fn.apply(open.tx, callArgs)
     }
 
     // `paths` is a bag of getters, not methods: a bare property read is the
     // only sensible call shape for it.
-    if (service === 'paths' && args.length === 0) {
+    if (service === 'paths' && callArgs.length === 0) {
       const value = (target as unknown as Record<string, unknown>)[method]
       if (typeof value !== 'function') return value
     }
 
     const fn = (target as unknown as Record<string, (...a: unknown[]) => unknown>)[method]
     if (typeof fn !== 'function') throw new Error(`bridge: ${service} has no method "${method}"`)
-    return fn.apply(target, args)
+    void event
+    return fn.apply(target, callArgs)
   })
 
   /* ── Chunked reads ────────────────────────────────────────────────── */
@@ -105,6 +195,12 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
 
   ipc.handle(CH.streamOpen, async (_event, ...rest) => {
     const [uri, range] = rest as unknown as [string, { start: number; end?: number } | undefined]
+    assertContained(uri)
+    if (readers.size >= maxOpenStreams) {
+      // Each open reader holds a file descriptor. A renderer looping
+      // streamOpen would otherwise exhaust main's descriptors.
+      throw new Error(`bridge: too many open streams (${maxOpenStreams}); close some first`)
+    }
     const handle = nextHandle++
     readers.set(handle, ctx.fs.createReadStream(uri, range).getReader())
     return handle
@@ -132,16 +228,35 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
 
   interface OpenTx {
     tx: DbService
+    sessionId: number | undefined
     finish(commit: boolean): void
+    touch(): void
   }
   const transactions = new Map<string, OpenTx>()
 
-  ipc.handle(CH.txBegin, async () => {
+  /** Roll back and forget every transaction belonging to one renderer. */
+  function abortSession(sessionId: number | undefined): void {
+    for (const [token, open] of transactions) {
+      if (open.sessionId === sessionId) {
+        open.finish(false)
+        transactions.delete(token)
+      }
+    }
+  }
+
+  ipc.handle(CH.txBegin, async (event: CallerLike) => {
+    const sessionId = event?.sender?.id
+
+    // Fail fast rather than deadlock: a second concurrent transaction would
+    // queue behind the first, so `started` would never resolve and the
+    // renderer would await forever.
+    for (const open of transactions.values()) {
+      if (open.sessionId === sessionId) {
+        throw new Error('bridge: a transaction is already open for this session')
+      }
+    }
+
     const token = `tx${nextHandle++}`
-    // The renderer drives the transaction body, so main holds it open and
-    // waits for an explicit end. `started` resolves once BEGIN has run, so
-    // the renderer never issues a tagged call into a transaction that is not
-    // yet open.
     let started!: () => void
     const ready = new Promise<void>((resolve) => {
       started = resolve
@@ -151,15 +266,40 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
       .transaction(
         (tx) =>
           new Promise<void>((resolve, reject) => {
+            const finish = (commit: boolean) => {
+              clearTimeout(idle)
+              if (commit) resolve()
+              else reject(new Error('rollback'))
+            }
+            // ⚠️ The transaction is held open by the *renderer*, which may
+            // reload, crash, or simply never call txEnd. Main's db queue would
+            // then be blocked forever and the app would be unusable until
+            // restart — so an unfinished transaction is rolled back.
+            let idle = setTimeout(() => {
+              transactions.delete(token)
+              finish(false)
+            }, transactionIdleMs)
+
             transactions.set(token, {
               tx,
-              finish: (commit) => (commit ? resolve() : reject(new Error('rollback'))),
+              sessionId,
+              finish,
+              touch: () => {
+                clearTimeout(idle)
+                idle = setTimeout(() => {
+                  transactions.delete(token)
+                  finish(false)
+                }, transactionIdleMs)
+              },
             })
             started()
           }),
       )
       .catch(() => undefined)
       .finally(() => transactions.delete(token))
+
+    // A renderer reload destroys its WebContents without ever sending txEnd.
+    event?.sender?.once?.('destroyed', () => abortSession(sessionId))
 
     await ready
     return token
@@ -169,6 +309,7 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     const [token, commit] = rest as unknown as [string, boolean]
     const open = transactions.get(token)
     if (!open) throw new Error(`bridge: unknown transaction "${token}"`)
+    transactions.delete(token)
     open.finish(commit)
   })
 

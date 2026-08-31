@@ -157,3 +157,85 @@ export function assertGranted(config: unknown, capability: MediatedService | str
 export function storageNamespace(config: unknown): string | undefined {
   return capabilityConfigOf(config)?.instanceId
 }
+
+/* ── db ─────────────────────────────────────────────────────────────────── */
+
+/** Table names a plugin may reach with `db:own`, given its namespace prefix. */
+function ownTablePattern(prefix: string): RegExp {
+  return new RegExp(`^${prefix}_`, 'i')
+}
+
+/**
+ * Identifiers a SQL statement touches.
+ *
+ * Deliberately crude — a regex over the shapes SQLite actually uses, not a
+ * parser. It exists to make `db:own` mean something rather than nothing, and
+ * it fails *closed*: anything it cannot confidently attribute is treated as a
+ * foreign table and refused.
+ */
+export function tablesReferenced(sql: string): string[] {
+  const names = new Set<string>()
+  const pattern =
+    /\b(?:FROM|JOIN|INTO|UPDATE|TABLE(?:\s+IF\s+NOT\s+EXISTS)?|INDEX(?:\s+IF\s+NOT\s+EXISTS)?\s+\w+\s+ON)\s+["'`[]?([A-Za-z_][\w$]*)/gi
+  for (const match of sql.matchAll(pattern)) {
+    if (match[1]) names.add(match[1])
+  }
+  return [...names]
+}
+
+/** Statements a plugin may never issue, whatever it was granted. */
+const DB_FORBIDDEN = /^\s*(ATTACH|DETACH|VACUUM\s+INTO)\b/i
+
+/**
+ * Bookkeeping the kernel touches *on a plugin's behalf*.
+ *
+ * `defineSchema` records applied versions and prefix ownership, and reads
+ * `sqlite_master` to enumerate a namespace's tables. Gating these would break
+ * the very mechanism that gives a plugin its own schema. A plugin can only
+ * corrupt its own migration record this way, which harms nobody else.
+ */
+const KERNEL_TABLES = new Set([
+  'schema_migrations',
+  'schema_namespaces',
+  'sqlite_master',
+  'sqlite_sequence',
+])
+
+/**
+ * Enforce `db:own` — a plugin may only touch its own namespaced tables.
+ *
+ * `db:read:<ns>` additionally permits reads of another namespace, and
+ * `db:read:core` is how a feature plugin reaches the catalogue.
+ *
+ * ⚠️ Regex-based, so this is a guard rail rather than a parser: it stops the
+ * ordinary mistake and the casual overreach, not a determined author who
+ * shares the runtime anyway (docs/03 §7).
+ */
+export function assertDb(config: unknown, sql: string, ownPrefix: string): void {
+  const gate = capabilityConfigOf(config)
+  if (!gate) return
+
+  if (DB_FORBIDDEN.test(sql)) {
+    throw new CapabilityError('db', `${gate.pluginId} may not issue ${sql.trim().split(/\s+/)[0]}`)
+  }
+
+  const readable = new Set<string>()
+  for (const grant of gate.granted) {
+    if (grant.startsWith('db:read:')) readable.add(grant.slice('db:read:'.length).toLowerCase())
+  }
+  const hasOwn = gate.granted.includes('db:own')
+  const own = ownTablePattern(ownPrefix)
+
+  for (const table of tablesReferenced(sql)) {
+    if (KERNEL_TABLES.has(table.toLowerCase())) continue
+    if (hasOwn && own.test(table)) continue
+    // `db:read:<ns>` names a namespace; its tables carry that prefix.
+    if ([...readable].some((ns) => table.toLowerCase().startsWith(`${ns}_`) || table.toLowerCase() === ns))
+      continue
+    if (readable.has('core') && !table.startsWith('plugin_')) continue
+    throw new CapabilityError(
+      'db:own',
+      `${gate.pluginId} may not touch table "${table}" — it is outside its own namespace`,
+    )
+  }
+}

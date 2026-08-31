@@ -12,7 +12,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
-import { CORE_MIGRATIONS, MigrationRunner } from '@BBeBee/kernel'
+import { CORE_MIGRATIONS, MigrationRunner, assertDb, capabilityConfigOf, nsPrefix } from '@BBeBee/kernel'
+import { CapabilityError } from '@BBeBee/protocol'
 import type { MigrationDb, MigrationTx } from '@BBeBee/kernel'
 import type { DbService, Migration, SqlValue } from '@BBeBee/protocol'
 
@@ -102,6 +103,21 @@ export class DbNode extends Service implements DbService {
     return next
   }
 
+  /**
+   * Enforce `db:own` before a statement reaches SQLite.
+   *
+   * Ungated callers (the kernel, core services, tests) pass through; a plugin
+   * is confined to tables carrying its own namespace prefix. Without this,
+   * `db:own` was a manifest string with no meaning and any plugin could
+   * `DROP TABLE providers` — docs/07 §6 claimed otherwise.
+   */
+  private guard(sql: string): void {
+    const config = this[Service.resolveConfig]()
+    const gate = capabilityConfigOf(config)
+    if (!gate) return
+    assertDb(config, sql, nsPrefix(`plugin:${gate.instanceId}`))
+  }
+
   /* Unqueued primitives. Only the transaction view and `run` may call these. */
 
   private queryNow<T>(sql: string, params: SqlValue[]): T[] {
@@ -118,6 +134,7 @@ export class DbNode extends Service implements DbService {
   }
 
   async query<T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []): Promise<T[]> {
+    this.guard(sql)
     return this.run(() => this.queryNow<T>(sql, params))
   }
 
@@ -125,6 +142,7 @@ export class DbNode extends Service implements DbService {
     sql: string,
     params: SqlValue[] = [],
   ): Promise<T | undefined> {
+    this.guard(sql)
     return this.run(() => this.getNow<T>(sql, params))
   }
 
@@ -132,6 +150,7 @@ export class DbNode extends Service implements DbService {
     sql: string,
     params: SqlValue[] = [],
   ): Promise<{ changes: number; lastInsertRowid: number }> {
+    this.guard(sql)
     return this.run(() => this.execNow(sql, params))
   }
 
@@ -233,6 +252,19 @@ export class DbNode extends Service implements DbService {
   }
 
   async defineSchema(namespace: string, migrations: Migration[]): Promise<void> {
+    // A gated plugin may only define its own namespace. Otherwise `db:own`
+    // means nothing: a plugin could claim `core` and own the catalogue.
+    const gate = capabilityConfigOf(this[Service.resolveConfig]())
+    if (gate) {
+      const mine = `plugin:${gate.instanceId}`
+      if (namespace !== mine) {
+        throw new CapabilityError(
+          'db:own',
+          `${gate.pluginId} may only define schema for ${JSON.stringify(mine)}, not ` +
+            JSON.stringify(namespace),
+        )
+      }
+    }
     await new MigrationRunner(this).apply(namespace, migrations)
   }
 }

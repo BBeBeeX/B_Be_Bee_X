@@ -821,8 +821,14 @@ Rules:
   `plugin:a.b` both yield `plugin_a_b`. Uniqueness is therefore enforced separately: a
   `schema_namespaces` table records which namespace owns each prefix, and a second namespace
   claiming it is refused with `NamespaceCollisionError` rather than silently sharing tables.
-- A plugin may only write its own tables. Reading core catalogue tables requires
-  `db:read:core`; the capability gate rejects statements referencing other namespaces' prefixes.
+- A plugin may only write its own tables, and may only `defineSchema` for
+  `plugin:<its own instance id>` — otherwise it could claim `core` and own the catalogue.
+  Reading core tables requires `db:read:core`. `ATTACH`/`DETACH` are refused outright, since
+  they would turn the database handle into an arbitrary-file primitive.
+- ⚠️ The check is a **regex over table identifiers, not a SQL parser**. It fails closed — an
+  identifier it cannot attribute is treated as foreign — and it stops the ordinary mistake and the
+  casual overreach. It is not a boundary against an author who is trying, who shares the runtime
+  anyway ([03 §7](./03-plugin-system.md#where-the-gate-actually-runs)).
 - Migrations run inside `ctx.plugin()`, so a failing migration fails that plugin only.
 - **Uninstall** offers "remove data" — drops the namespace's tables and its `schema_migrations`
   rows — or "keep data", leaving them dormant so a reinstall resumes where it left off. Defaulting

@@ -12,6 +12,7 @@
 
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
+import { nsPrefix } from '@BBeBee/kernel'
 // Pulls the service augmentations (`ctx.db`, `ctx.ui`, …) into this program.
 // Without it a consumer compiling this package in isolation sees a bare Context.
 import type {} from '@BBeBee/protocol'
@@ -41,11 +42,17 @@ export class Hello extends Service {
     platformNote: '',
   }
 
+  private readonly instanceId: string
+  /** Own table name, derived from the namespace the gate expects. */
+  private readonly table: string
+
   constructor(
     ctx: Context,
-    private readonly config: HelloConfig = {},
+    private readonly config: HelloConfig & { instanceId?: string } = {},
   ) {
     super(ctx, 'hello')
+    this.instanceId = config.instanceId ?? '@BBeBee/plugin-hello'
+    this.table = `${nsPrefix(`plugin:${this.instanceId}`)}_notes`
   }
 
   static inject = ['db', 'store', 'ui', 'device']
@@ -53,7 +60,7 @@ export class Hello extends Service {
   async [Service.init]() {
     // A plugin-owned table, created through the namespaced migration API —
     // the platform's promise that a plugin can own schema (docs/07 §6).
-    await this.ctx.db.defineSchema('plugin:hello', [
+    await this.ctx.db.defineSchema(`plugin:${this.instanceId}`, [
       {
         version: 1,
         up: `CREATE TABLE {{ns}}_notes (
@@ -106,7 +113,7 @@ export class Hello extends Service {
   }
 
   async addNote(text: string): Promise<void> {
-    await this.ctx.db.exec('INSERT INTO plugin_hello_notes (text, at) VALUES (?, ?)', [
+    await this.ctx.db.exec(`INSERT INTO ${this.table} (text, at) VALUES (?, ?)`, [
       text,
       Date.now(),
     ])
@@ -116,7 +123,7 @@ export class Hello extends Service {
 
   private async countNotes(): Promise<number> {
     const row = await this.ctx.db.get<{ n: number }>(
-      'SELECT count(*) AS n FROM plugin_hello_notes',
+      `SELECT count(*) AS n FROM ${this.table}`,
     )
     return Number(row?.n ?? 0)
   }
