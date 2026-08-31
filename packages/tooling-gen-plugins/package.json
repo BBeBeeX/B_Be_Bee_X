@@ -1,0 +1,39 @@
+{
+  "name": "@BBeBee/tooling-gen-plugins",
+  "version": "0.0.0",
+  "description": "Codegen for the static plugin registry (Metro-safe).",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "echo 'run directly via node --experimental-strip-types'",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@BBeBee/protocol": "workspace:*"
+  },
+  "bin": {
+    "gen-plugins": "./src/cli.ts"
+  },
+  "devDependencies": {
+    "@BBeBee/kernel": "workspace:*"
+  }
+}

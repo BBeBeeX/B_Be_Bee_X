@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Strict CSP. `BBeBee-plugin:` is listed ahead of M5's dynamic loader
+         (docs/03 §6.2) so the policy does not have to change to enable it. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' BBeBee-plugin:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'"
+    />
+    <title>BBeBee</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; background: #0B0B0F; color: #F5F5F7; font-family: system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

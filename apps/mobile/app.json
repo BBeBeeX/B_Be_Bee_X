@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "BBeBee",
+    "slug": "bbebee",
+    "scheme": "bbebee",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": true, "bundleIdentifier": "org.bbebee.app" },
+    "android": { "package": "org.bbebee.app" },
+    "plugins": ["expo-dev-client"]
+  }
+}

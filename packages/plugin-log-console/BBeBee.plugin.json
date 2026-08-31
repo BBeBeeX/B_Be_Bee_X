@@ -1,0 +1,10 @@
+{
+  "id": "@BBeBee/plugin-log-console",
+  "version": "0.0.0",
+  "displayName": "Console Logs",
+  "description": "Development console transport.",
+  "engines": { "BBeBee": "^0.1.0" },
+  "entry": { "main": "./dist/index.js" },
+  "capabilities": [],
+  "instantiable": false
+}

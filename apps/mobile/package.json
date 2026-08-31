@@ -1,0 +1,37 @@
+{
+  "name": "@BBeBee/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@BBeBee/kernel": "workspace:*",
+    "@BBeBee/protocol": "workspace:*",
+    "@BBeBee/core-paths-expo": "workspace:*",
+    "@BBeBee/core-fs-expo": "workspace:*",
+    "@BBeBee/core-store-fs": "workspace:*",
+    "@BBeBee/core-db-expo": "workspace:*",
+    "@BBeBee/plugin-ui": "workspace:*",
+    "@BBeBee/plugin-inspector": "workspace:*",
+    "@BBeBee/plugin-hello": "workspace:*",
+    "@BBeBee/plugin-hello-ui-mobile": "workspace:*",
+    "@BBeBee/plugin-log-console": "workspace:*",
+    "@BBeBee/plugin-log-buffer": "workspace:*",
+    "@BBeBee/plugin-log-file": "workspace:*",
+    "cordis": "4.0.0-rc.9",
+    "expo": "~57.0.18",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "expo-dev-client": "~57.0.16"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "babel-preset-expo": "~54.0.0",
+    "@babel/plugin-proposal-decorators": "^7.25.0"
+  }
+}

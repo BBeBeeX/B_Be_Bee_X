@@ -1,0 +1,10 @@
+{
+  "id": "@BBeBee/plugin-ui",
+  "version": "0.0.0",
+  "displayName": "UI Registry",
+  "description": "The ctx.ui contribution registry.",
+  "engines": { "BBeBee": "^0.1.0" },
+  "entry": { "main": "./dist/index.js" },
+  "capabilities": [],
+  "instantiable": false
+}

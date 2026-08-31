@@ -1,0 +1,33 @@
+{
+  "name": "@BBeBee/kernel",
+  "version": "0.0.0",
+  "description": "Cordis bootstrap for BBeBee: app lifecycle, config, plugin loading, the capability gate, and core migrations.",
+  "type": "module",
+  "license": "MIT",
+  "//": "Exports point at source so typecheck, vitest, and both bundlers resolve without a build step. publishConfig swaps to dist on publish.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts",
+    "./package.json": "./package.json"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "publishConfig": {
+    "exports": {
+      ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+      "./testing": { "types": "./dist/testing.d.ts", "default": "./dist/testing.js" },
+      "./package.json": "./package.json"
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@BBeBee/protocol": "workspace:*",
+    "cordis": "4.0.0-rc.9"
+  }
+}

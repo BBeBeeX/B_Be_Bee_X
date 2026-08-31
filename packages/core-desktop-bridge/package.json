@@ -1,0 +1,29 @@
+{
+  "name": "@BBeBee/core-desktop-bridge",
+  "version": "0.0.0",
+  "description": "Renderer-side fs/db services over the Electron IPC bridge, and the main-side host.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./main": "./src/main.ts",
+    "./package.json": "./package.json"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@BBeBee/protocol": "workspace:*",
+    "@BBeBee/kernel": "workspace:*",
+    "cordis": "4.0.0-rc.9"
+  },
+  "devDependencies": {
+    "@BBeBee/core-paths-node": "workspace:*",
+    "@BBeBee/core-fs-node": "workspace:*",
+    "@BBeBee/core-db-node": "workspace:*"
+  }
+}

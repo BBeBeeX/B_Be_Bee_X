@@ -1,0 +1,40 @@
+{
+  "name": "@BBeBee/plugin-hello-ui-desktop",
+  "version": "0.0.0",
+  "description": "React DOM views for plugin-hello.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./package.json": "./package.json"
+  },
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@BBeBee/protocol": "workspace:*",
+    "@BBeBee/kernel": "workspace:*",
+    "cordis": "4.0.0-rc.9",
+    "react": "19.2.3"
+  },
+  "devDependencies": {
+    "@BBeBee/plugin-hello": "workspace:*",
+    "@types/react": "^19.2.0"
+  }
+}

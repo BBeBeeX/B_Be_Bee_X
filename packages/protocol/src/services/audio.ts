@@ -1,0 +1,187 @@
+/**
+ * `ctx.audio`, `ctx.player`, `ctx.dsp`.
+ * See docs/05-audio-playback.md.
+ *
+ * The `ctx.audio` contract *is* the Web Audio API — `react-native-audio-api`
+ * satisfies it on iOS and Android, and its web build (or the browser's own
+ * implementation) satisfies it in the Electron renderer. That is what makes a
+ * single DSP chain run on all three targets.
+ */
+
+
+// Pulls `cordis` into the program so the `declare module` augmentation below
+// resolves. Erased at build time; this adds no runtime import.
+import type {} from 'cordis'
+import type { Disposable, Uri } from '../common.js'
+import type { QueueItem, QueueSourceContext, RepeatMode, TransportState } from '../entities/playback.js'
+
+/* ── ctx.audio ──────────────────────────────────────────────────────────── */
+
+export interface AudioSourceHandle {
+  readonly node: AudioNode
+  readonly durationMs: number
+  play(atMs?: number): void
+  pause(): void
+  stop(): void
+  readonly positionMs: number
+  /** Fires when the source reaches its natural end. */
+  onEnded(cb: () => void): Disposable
+  dispose(): void
+}
+
+export interface LoadOptions {
+  /** Streaming keeps memory flat; buffered enables sample-accurate gapless. */
+  strategy: 'stream' | 'buffer'
+  headers?: Record<string, string>
+  signal?: AbortSignal
+  onBuffered?: (seconds: number) => void
+}
+
+export interface OutputDevice {
+  id: string
+  label: string
+  isDefault: boolean
+}
+
+export interface InterruptionEvent {
+  type: 'began' | 'ended'
+  shouldResume: boolean
+}
+
+export interface RouteChangeEvent {
+  reason: 'device-removed' | 'device-added' | 'override'
+}
+
+export interface AudioService {
+  readonly context: BaseAudioContext
+  readonly destination: AudioNode
+  readonly sampleRate: number
+  readonly outputLatencyMs: number
+
+  load(src: string | Uri, opts: LoadOptions): Promise<AudioSourceHandle>
+
+  /**
+   * Where `ctx.dsp` splices its chain. Sources connect here, never to
+   * `destination`, so sources and effects have independent lifetimes.
+   */
+  readonly chainInput: AudioNode
+
+  /** 0..1, applied post-chain. */
+  setVolume(v: number): void
+  setMuted(m: boolean): void
+
+  listOutputDevices(): Promise<OutputDevice[]>
+  setOutputDevice(id: string): Promise<void>
+
+  onInterruption(cb: (e: InterruptionEvent) => void): Disposable
+  onRouteChange(cb: (e: RouteChangeEvent) => void): Disposable
+}
+
+/* ── ctx.player ─────────────────────────────────────────────────────────── */
+
+export interface PlayNowOptions {
+  startIndex?: number
+  context?: QueueSourceContext
+}
+
+export interface PlayerService {
+  readonly state: Readonly<TransportState>
+
+  play(): Promise<void>
+  pause(): void
+  togglePlay(): void
+  stop(): void
+  seek(positionMs: number): Promise<void>
+  next(): Promise<void>
+  /** Restarts the current track if position is past the threshold. */
+  previous(): Promise<void>
+
+  setVolume(v: number): void
+  setMuted(m: boolean): void
+  setRepeat(m: RepeatMode): void
+  setShuffle(on: boolean): void
+
+  readonly queue: readonly QueueItem[]
+  playNow(urns: string[], opts?: PlayNowOptions): Promise<void>
+  enqueueNext(urns: string[]): void
+  enqueueLast(urns: string[]): void
+  removeItems(ids: string[]): void
+  moveItem(id: string, toIndex: number): void
+  clearQueue(): void
+}
+
+/* ── ctx.dsp ────────────────────────────────────────────────────────────── */
+
+export type EffectParamValue = number | string | boolean
+
+/** One effect's contribution to the chain: a sub-graph with an in and an out. */
+export interface EffectSegment {
+  input: AudioNode
+  output: AudioNode
+  /** Called when a persisted parameter changes. Must be allocation-free. */
+  setParam(name: string, value: EffectParamValue): void
+  /** Added to the reported chain latency, for A/V sync and visualiser alignment. */
+  latencyMs?: number
+  dispose(): void
+}
+
+export interface EffectPreset<P = Record<string, unknown>> {
+  name: string
+  params: P
+  builtin?: boolean
+}
+
+/**
+ * Minimal schema shape, structurally compatible with Standard Schema.
+ *
+ * Declared locally rather than importing `@standard-schema/spec` so that
+ * `@BBeBee/protocol` keeps zero runtime dependencies.
+ */
+export interface ParamSchema<Out = unknown> {
+  readonly '~standard': {
+    readonly version: 1
+    readonly vendor: string
+    readonly validate: (
+      value: unknown,
+    ) => { value: Out } | { issues: readonly { message: string }[] } | PromiseLike<unknown>
+  }
+}
+
+export interface EffectDefinition<P = Record<string, unknown>> {
+  id: string
+  displayName: string
+  /** Lower runs earlier. Users may override. */
+  defaultOrder: number
+  Params: ParamSchema<P>
+  presets?: EffectPreset<P>[]
+  build(ctx: BaseAudioContext, params: P): EffectSegment
+}
+
+export interface ChainEntry {
+  effectId: string
+  enabled: boolean
+  ordinal: number
+}
+
+export interface DspService {
+  register(def: EffectDefinition<never>): Disposable
+  readonly definitions: readonly EffectDefinition<never>[]
+
+  readonly chain: readonly ChainEntry[]
+  setEnabled(effectId: string, on: boolean): Promise<void>
+  setOrder(effectId: string, ordinal: number): Promise<void>
+  /** Never rebuilds the graph — a rebuild on every slider drag is audible. */
+  setParam(effectId: string, name: string, value: EffectParamValue): Promise<void>
+  applyPreset(effectId: string, presetName: string): Promise<void>
+
+  /** Total added latency, so the visualiser and lyrics can compensate. */
+  readonly latencyMs: number
+}
+
+declare module 'cordis' {
+  interface Context {
+    audio: AudioService
+    player: PlayerService
+    dsp: DspService
+  }
+}

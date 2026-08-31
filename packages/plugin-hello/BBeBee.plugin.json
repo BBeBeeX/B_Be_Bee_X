@@ -1,0 +1,10 @@
+{
+  "id": "@BBeBee/plugin-hello",
+  "version": "0.0.0",
+  "displayName": "Hello",
+  "description": "M0 demonstration plugin.",
+  "engines": { "BBeBee": "^0.1.0" },
+  "entry": { "main": "./dist/index.js", "ui": { "desktop": "./dist/index.js", "mobile": "./dist/index.js" } },
+  "capabilities": ["db:own", "secrets:own"],
+  "instantiable": false
+}
