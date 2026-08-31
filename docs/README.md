@@ -14,6 +14,23 @@ of a core service is loaded, not by branching inside feature code.
 
 ---
 
+## Getting started
+
+```bash
+pnpm install     # pnpm 11+, Node 22.12+
+pnpm check       # typecheck + lint + test — green on a clean checkout
+pnpm dev:desktop # Electron, with HMR across main, preload and renderer
+```
+
+`pnpm check` is the gate; if it passes, CI passes. The full command list, the plugin scaffolder,
+what each gate catches, and a troubleshooting table are in
+[09 §7 — Developer workflow](./09-project-structure.md#7-developer-workflow).
+
+> Mobile needs a **custom dev build**, not Expo Go — several dependencies contain native code.
+> See [09 §7](./09-project-structure.md#running-the-apps).
+
+---
+
 ## Reading order
 
 Read `01` and `02` first — they establish the vocabulary every other document uses.

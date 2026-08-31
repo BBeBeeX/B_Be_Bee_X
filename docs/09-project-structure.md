@@ -62,22 +62,25 @@ B_Be_Bee/
 │  ├─ plugin-log-buffer/   ✅       │
 │  └─ plugin-…                      ┘
 │
+│  ├─ plugin-ui/           ✅       the ctx.ui contribution registry
+│  ├─ plugin-inspector/    ✅       fiber tree + labelled effects (M0 exit criterion)
+│  ├─ plugin-hello/        ✅       the M0 demonstration plugin
+│  ├─ core-desktop-bridge/ ✅       renderer↔main IPC clients + the main-side host
+│
 │  ├─ ui-tokens/                    design tokens as plain data (08 §6)
 │  ├─ ui-core/                      framework-agnostic React hooks
 │  ├─ ui-kit-mobile/                React Native components
 │  ├─ ui-kit-desktop/               React DOM components
-│  ├─ plugin-player-ui-mobile/      ┐ per-target view packages
-│  ├─ plugin-player-ui-desktop/     ┘
+│  ├─ plugin-hello-ui-desktop/ ✅   ┐ per-target view packages
+│  ├─ plugin-hello-ui-mobile/  ✅   ┘
 │  │
-│  └─ tooling/
-│     ├─ eslint-config/             including the platform-SDK import ban
-│     ├─ tsconfig/
-│     ├─ gen-plugins/               the static manifest codegen
-│     └─ create-plugin/             scaffolder: pnpm new:plugin
+│  ├─ tooling-gen-plugins/  ✅      the static registry codegen (pnpm gen:plugins)
+│  └─ tooling-create-plugin/ ✅     the scaffolder (pnpm new:plugin)
 │
 ├─ docs/                            these documents
+├─ eslint.config.js                 flat config; the architectural rules live here
+├─ vitest.config.ts
 ├─ pnpm-workspace.yaml
-├─ turbo.json
 └─ package.json
 ```
 
@@ -124,45 +127,65 @@ Enforced by ESLint with `overrides` scoped by path, not by review. Each of these
 the config explaining which document section it protects.
 
 ```js
-// packages/tooling/eslint-config/index.js — the rules that matter
+// eslint.config.js — the rules that matter
 const PLATFORM_SDKS = [
-  'expo*', 'react-native', 'react-native/*', 'electron', 'node:*',
-  'fs', 'path', 'crypto', 'child_process', 'better-sqlite3', 'music-metadata',
+  'expo', 'expo-*', 'expo/*', 'react-native', 'react-native/*', 'react-native-*',
+  'electron', 'electron/*', 'node:*', 'fs', 'fs/promises', 'path', 'os', 'crypto',
+  'child_process', 'better-sqlite3', 'music-metadata', 'ws',
 ]
 
-module.exports = {
-  overrides: [
-    {
-      // 02 §1 — the invariant. Nothing outside core-* touches a platform SDK.
-      files: ['packages/plugin-*/**', 'packages/ui-*/**', 'packages/protocol/**'],
-      excludedFiles: ['packages/plugin-*-ui-*/**'],
-      rules: { 'no-restricted-imports': ['error', { patterns: PLATFORM_SDKS }] },
+export default tseslint.config(
+  {
+    // 02 §1 — the invariant. Nothing outside core-* touches a platform SDK.
+    files: ['packages/plugin-*/**/*.ts', 'packages/ui-*/**/*.ts', 'packages/protocol/**/*.ts'],
+    ignores: ['packages/plugin-*-ui-*/**/*.ts'],
+    rules: { 'no-restricted-imports': ['error', { patterns: PLATFORM_SDKS }] },
+  },
+  {
+    // 08 §1 — UI packages may render, but may not reach the platform.
+    files: ['packages/plugin-*-ui-mobile/**/*.ts', 'packages/ui-kit-mobile/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: PLATFORM_SDKS.filter((p) => !p.startsWith('react-native')) },
+      ],
     },
-    {
-      // 08 §1 — UI packages may render, but may not reach the platform.
-      files: ['packages/plugin-*-ui-mobile/**', 'packages/ui-kit-mobile/**'],
-      rules: { 'no-restricted-imports': ['error', {
-        patterns: PLATFORM_SDKS.filter((p) => p !== 'react-native' && p !== 'react-native/*'),
-      }] },
+  },
+  {
+    // @BBeBee/protocol must stay runtime-free so it is safe to import anywhere.
+    // `^[^.]` matches bare specifiers only, leaving relative imports alone.
+    files: ['packages/protocol/src/**/*.ts'],
+    ignores: ['packages/protocol/src/conformance/**/*.ts', '**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [{ regex: '^[^.]', allowTypeImports: true }] },
+      ],
     },
-    {
-      // @BBeBee/protocol must stay runtime-free so it can be imported anywhere.
-      files: ['packages/protocol/src/**'],
-      excludedFiles: ['packages/protocol/src/conformance/**'],
-      rules: { '@typescript-eslint/no-restricted-imports': ['error', { patterns: ['*'] }] },
-    },
-    {
-      // 02 §2 — main is an IPC host. Domain logic there breaks platform symmetry.
-      files: ['apps/desktop/main/**'],
-      rules: { 'no-restricted-imports': ['error', { patterns: ['@BBeBee/plugin-*'] }] },
-    },
-  ],
-}
+  },
+  {
+    // 02 §2 — main is an IPC host. Domain logic there breaks platform symmetry.
+    files: ['apps/desktop/main/**/*.ts'],
+    rules: { 'no-restricted-imports': ['error', { patterns: ['@BBeBee/plugin-*'] }] },
+  },
+  {
+    // Tests are not shipped, so the SDK ban does not apply: a conformance
+    // harness legitimately needs `node:fs` to build a scratch directory.
+    files: ['**/*.test.ts'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+)
 ```
 
-A fifth rule is worth adding once the codebase exists: a check that no `plugin-*-ui-*` package
-imports a *value* from its headless sibling, only types. `eslint-plugin-import`'s
-`no-restricted-paths` with a type-only exception covers it.
+Two rules deliberately live in **tests** rather than ESLint, because a lint rule whose selector
+cannot be verified is worse than none: `conventions.test.ts` scans for un-awaited `ctx.plugin()`
+(with a self-test proving the detector fires), and the `*-scope` conformance suites check the
+capability gates. See [§6](#6-testing-strategy).
+
+Still to add: a check that no `plugin-*-ui-*` package imports a *value* from its headless sibling,
+only types. `eslint-plugin-import`'s `no-restricted-paths` with a type-only exception covers it.
+The scaffolder already emits the right shape — the headless package is a `devDependency` of its
+view packages — but nothing yet enforces it.
 
 ---
 
@@ -187,9 +210,10 @@ imports a *value* from its headless sibling, only types. `eslint-plugin-import`'
 }
 ```
 
-Codegen (`packages/tooling/gen-plugins`) runs before every mobile build and in dev watch mode,
-writing `apps/mobile/generated/plugins.ts`. Its output is **committed**, so a clean checkout builds
-without a pre-step and CI can verify the file is up to date rather than regenerating it.
+Codegen (`packages/tooling-gen-plugins`, run as `pnpm gen:plugins`) writes
+`apps/{mobile,desktop}/generated/plugins.ts`. Its output is **committed**, so a clean checkout
+builds without a pre-step and CI verifies the file is current rather than regenerating it — run it
+whenever a plugin package is added or removed.
 
 Turborepo orchestrates: `build` depends on `^build`, `typecheck` and `lint` run in parallel,
 `test` depends on `build` for packages with conformance suites.
@@ -296,30 +320,105 @@ The first is run parameterised over **every** plugin in the workspace. A plugin 
 
 ## 7. Developer workflow
 
+### First run
+
 ```bash
-pnpm install
-pnpm gen:plugins            # refresh the static plugin manifest
-
-pnpm dev:desktop            # electron-vite dev server, HMR on both processes
-pnpm dev:mobile             # expo start --dev-client
-
-pnpm new:plugin             # scaffolder: name, kind, targets → a working package
-pnpm typecheck && pnpm lint && pnpm test
-pnpm build:desktop          # electron-builder → dmg / nsis / AppImage
-pnpm build:mobile           # eas build
+pnpm install                 # pnpm 11+, Node 22.12+
+pnpm check                   # typecheck + lint + test — should be green on a clean checkout
 ```
 
+`pnpm check` is the whole gate. If it passes, CI passes. Run it before pushing; nothing else in
+this section is required reading until something goes wrong.
+
+### Everyday commands
+
+| Command | What it does |
+|---|---|
+| `pnpm check` | `typecheck` + `lint` + `test`. The one command before a PR |
+| `pnpm test` | Vitest once over every package |
+| `pnpm test:watch` | Vitest in watch mode — what to leave running while working |
+| `pnpm typecheck` | `tsc --noEmit` in every package **and** both apps |
+| `pnpm lint` / `pnpm lint:fix` | ESLint, including the architectural rules in [§3](#3-dependency-rules) |
+| `pnpm build` | Emit `dist/` for every package |
+| `pnpm clean` | Remove `dist/`, `out/`, and build info |
+
+Run a single package's tests by path — `pnpm test packages/core-fs-node` — or a single file.
+
+### Running the apps
+
+| Command | What it does | What it needs |
+|---|---|---|
+| `pnpm dev:desktop` | `electron-vite dev` — HMR across main, preload and renderer | The Electron binary (fetched by `pnpm install`; needs network on first install) |
+| `pnpm build:desktop` | Production bundles into `apps/desktop/out/` | — |
+| `pnpm dev:mobile` | `expo start --dev-client` | A **custom dev build** on a device or emulator — see below |
+
+> ⚠️ **Mobile needs a custom dev build, not Expo Go.** `react-native-audio-api`, `expo-sqlite` and
+> `expo-file-system` all contain native code, so Expo Go cannot host this app. Build the dev client
+> once per native-dependency change (`pnpm --filter @BBeBee/mobile exec expo run:android`), then
+> `pnpm dev:mobile` attaches to it.
+
+> ⚠️ **Packaging is not set up yet.** `build:desktop` produces bundles, not an installer;
+> `electron-builder` (dmg / nsis / AppImage) and `eas build` for mobile arrive with the first
+> release, not M0.
+
+### Adding a plugin
+
+```bash
+pnpm new:plugin --name scrobble --kind feature --ui desktop --capabilities db:own
+pnpm install                 # link the new workspace package
+pnpm gen:plugins             # add it to both shells' static registries
+pnpm check                   # already green — the template ships passing tests
+```
+
+| Flag | Values | Effect |
+|---|---|---|
+| `--name` | lowercase, hyphenated | `scrobble` → `@BBeBee/plugin-scrobble` |
+| `--kind` | `feature` (default), `source`, `effect` | Sets the package prefix; `source` is marked `instantiable` ([06 §2](./06-music-sources.md#2-provider-plugins-vs-provider-instances)) |
+| `--ui` | `none` (default), `desktop`, `mobile`, `both` | Emits the per-target view packages of [08 §1](./08-ui-architecture.md#1-the-three-package-convention) |
+| `--capabilities` | comma-separated | Written into `BBeBee.plugin.json` ([03 §7](./03-plugin-system.md#7-capability-model)) |
+
 The scaffolder is not a nicety. With a three-package convention, a manifest format, a capability
-list, and a conformance suite to wire up, hand-rolling a plugin means getting one of them wrong.
-`pnpm new:plugin` emits the headless package, optional UI packages, a valid
-`BBeBee.plugin.json`, a passing smoke test, and the docs stub.
+list, and a leak test to wire up, hand-rolling a plugin means getting one of them wrong — usually
+the one that fails *silently*. The template ships the correct `await ctx.plugin(...)` form and a
+leak test, both of which cost a debugging session to discover the hard way.
+
+**After adding or removing a plugin, run `pnpm gen:plugins`.** Metro cannot resolve a runtime path,
+so both shells read a generated registry of static imports ([§4](#4-build-pipelines)). The output
+is committed; CI checks it is current rather than regenerating it.
+
+### What each gate actually catches
+
+Worth knowing, because a failure in one of these usually means an architectural mistake rather
+than a typo:
+
+| Gate | Catches |
+|---|---|
+| `no-restricted-imports` | A plugin reaching for a platform SDK instead of a `ctx.*` service ([02 §1](./02-architecture.md#the-invariant)) |
+| Conformance suites | Two implementations of one service drifting apart — the thing they exist for |
+| `*-scope` suites | A capability gate that holds on one platform and not the other |
+| Leak test (`diffSnapshots`) | A plugin that does not unload cleanly ([§6](#6-testing-strategy)) |
+| `conventions.test.ts` | An un-awaited `ctx.plugin()`, which silently fails to propagate readiness |
+
+### When something goes wrong
+
+| Symptom | Cause |
+|---|---|
+| Metro: *cannot resolve `cordis`* | `unstable_enablePackageExports` missing from `metro.config.js` — Cordis is ESM-only with an `exports` map ([04 §17](./04-core-services.md#17-runtime-compatibility-checklist)) |
+| `@Inject` fails at runtime, compiles fine | Legacy decorators. Babel needs `{ version: '2023-11' }`; `tsconfig` must not set `experimentalDecorators` |
+| A plugin sits in `pending` forever | An injected service never became ACTIVE. `ctx.inspector.render()` prints the tree and names what each fiber waits for |
+| `app.start()` resolves but a service is not ready | An un-awaited `ctx.plugin()` somewhere. `pnpm test packages/kernel` will name the file |
+| `CapabilityError: … may not …` | The manifest is missing a capability, or the path/table is genuinely out of scope. Widen the manifest, never the gate |
+| Renderer: *preload bridge is missing* | The renderer loaded without `preload/index.cjs` — rebuild, since preload must be CJS |
+| Electron will not launch on a headless machine | Expected. It needs `libgtk-3`, `libnss3` and a display; the bundles still build |
 
 ### Local checklist before opening a PR
 
-- [ ] `pnpm typecheck lint test` clean.
-- [ ] New plugin passes the leak test in §6.
-- [ ] New core service implementation passes its conformance suite **on both platforms**.
-- [ ] No new import that the §3 rules would have to be widened to permit.
+- [ ] `pnpm check` clean.
+- [ ] `pnpm gen:plugins` produces no diff.
+- [ ] New plugin passes the leak test in [§6](#6-testing-strategy).
+- [ ] New core service implementation passes its conformance suite — **and its `*-scope` suite, on
+      every implementation of that service**, not only the one you changed.
+- [ ] No new import that the [§3](#3-dependency-rules) rules would have to be widened to permit.
 - [ ] Version matrix updated if a dependency moved.
 
 ---

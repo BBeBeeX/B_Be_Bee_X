@@ -1,0 +1,15 @@
+{
+  "name": "@BBeBee/tooling-create-plugin",
+  "version": "0.0.0",
+  "description": "Scaffolder for a new BBeBee plugin package (and its per-target view packages).",
+  "type": "module",
+  "license": "MIT",
+  "exports": { ".": "./src/index.ts", "./package.json": "./package.json" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "echo 'run directly via node --experimental-strip-types'",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": { "@BBeBee/protocol": "workspace:*" }
+}
