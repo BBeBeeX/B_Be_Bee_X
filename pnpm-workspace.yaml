@@ -2,6 +2,7 @@ packages:
   - 'packages/*'
   - 'apps/*'
 allowBuilds:
+  electron: false
   esbuild: true
 minimumReleaseAgeExclude:
   - cordis@4.0.0-rc.9
