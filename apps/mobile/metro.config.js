@@ -19,7 +19,27 @@ config.resolver.nodeModulesPaths = [
 ]
 config.resolver.unstable_enablePackageExports = true
 config.resolver.unstable_conditionNames = ['react-native', 'import', 'require', 'default']
-// pnpm's store is symlinked; Metro must follow rather than duplicate.
-config.resolver.disableHierarchicalLookup = true
+// The workspace is ESM TypeScript: a relative `./foo.js` specifier means
+// `./foo.ts` on disk. Vite and vitest apply that rewrite themselves; Metro
+// does not, so `@BBeBee/*` sources do not resolve without it. Tried only
+// after normal resolution fails, so nothing that already resolves changes.
+const defaultResolveRequest = config.resolver.resolveRequest
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  const resolve = defaultResolveRequest ?? context.resolveRequest
+  try {
+    return resolve(context, moduleName, platform)
+  } catch (error) {
+    if (moduleName.startsWith('.') && moduleName.endsWith('.js')) {
+      return resolve(context, moduleName.slice(0, -'.js'.length), platform)
+    }
+    throw error
+  }
+}
+
+// Hierarchical lookup stays **on**, which is the opposite of the usual monorepo
+// advice: pnpm gives each package its own `.pnpm/<pkg>/node_modules` holding
+// that package's dependencies, and walking up from a resolved real path is the
+// only way to reach them. `nodeModulesPaths` above covers the app's own
+// imports; without the walk-up, `expo` cannot resolve `expo-modules-core`.
 
 module.exports = config

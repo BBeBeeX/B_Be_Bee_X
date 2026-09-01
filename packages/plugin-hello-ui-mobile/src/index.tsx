@@ -60,7 +60,10 @@ export function createPlugin(rn: NativeElements) {
     name,
     inject,
     apply(ctx: Context) {
-      return ctx.ui.registerView(HELLO_VIEW, HelloPanel)
+      // Bound to *this plugin's* context, not the one the shell renders with.
+      // The shell knows nothing about any feature, so it injects `ui` and
+      // nothing else; reading `ctx.hello` through it is what `inject` forbids.
+      return ctx.ui.registerView(HELLO_VIEW, () => h(HelloPanel, { ctx }))
     },
   }
 }

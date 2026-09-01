@@ -7,6 +7,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "platforms": ["ios", "android"],
     "ios": { "supportsTablet": true, "bundleIdentifier": "org.bbebee.app" },
     "android": { "package": "org.bbebee.app" },
     "plugins": ["expo-dev-client"]
