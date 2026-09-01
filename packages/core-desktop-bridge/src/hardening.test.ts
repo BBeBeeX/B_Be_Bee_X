@@ -8,6 +8,7 @@
  * against a bypass.
  */
 
+import { existsSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -129,8 +130,21 @@ describe('sql limits', () => {
     const { call, dir } = await harness()
     await expect(
       call('exec', [`ATTACH DATABASE '${join(dir, 'evil.db')}' AS evil`], 'db'),
-    ).rejects.toThrow(/ATTACH\/DETACH is not permitted/)
-    await expect(call('exec', ['DETACH DATABASE evil'], 'db')).rejects.toThrow(/not permitted/)
+    ).rejects.toThrow(/may not issue ATTACH/)
+    await expect(call('exec', ['DETACH DATABASE evil'], 'db')).rejects.toThrow(/may not issue/)
+  })
+
+  it('refuses VACUUM INTO, which is the same primitive by another name', async () => {
+    // The bridge kept its own list of forbidden SQL, and it had drifted: the
+    // kernel's carried VACUUM INTO and the bridge's did not, so one call from
+    // the renderer wrote a database file to any path the process could reach.
+    // Both paths now share `assertSqlAllowed`.
+    const { call, dir } = await harness()
+    const target = join(dir, 'exfil.db')
+    await expect(call('exec', [`VACUUM INTO '${target}'`], 'db')).rejects.toThrow(
+      /may not issue VACUUM INTO/,
+    )
+    expect(existsSync(target), 'VACUUM INTO must not have written a file').toBe(false)
   })
 })
 

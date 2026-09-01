@@ -15,6 +15,7 @@
 
 import type { Context } from 'cordis'
 import { nsPrefix as nsPrefixOf } from './migrations/runner.js'
+import { assertSqlAllowed, sanitizeSql, statementsOf } from './sql.js'
 import {
   CapabilityError,
   MEDIATED_SERVICES,
@@ -167,25 +168,63 @@ function ownTablePattern(prefix: string): RegExp {
 }
 
 /**
- * Identifiers a SQL statement touches.
+ * `PRAGMA`s a gated caller may issue.
  *
- * Deliberately crude — a regex over the shapes SQLite actually uses, not a
+ * Everything else is refused, because a pragma is not scoped to the caller:
+ * `foreign_keys = OFF` or `journal_mode` reconfigures the one connection every
+ * plugin shares, and on desktop that connection lives in `main`. The
+ * exceptions are the per-transaction one the migration runner needs, and
+ * read-only introspection — for which `sqlite_master` is available anyway.
+ */
+const PRAGMA_ALLOWED = new Set([
+  'defer_foreign_keys',
+  'table_info',
+  'table_xinfo',
+  'index_info',
+  'index_xinfo',
+  'index_list',
+  'foreign_key_list',
+])
+
+const PRAGMA_STATEMENT = /^PRAGMA\s+(?:\w+\s*\.\s*)?(\w+)/i
+
+/**
+ * Identifiers a SQL statement touches — tables, and the indexes, triggers and
+ * views that live in the same namespace.
+ *
+ * Deliberately crude: a regex over the shapes SQLite actually uses, not a
  * parser. It exists to make `db:own` mean something rather than nothing, and
- * it fails *closed*: anything it cannot confidently attribute is treated as a
- * foreign table and refused.
+ * it fails *closed* — anything it cannot confidently attribute is treated as
+ * foreign and refused, including a schema-qualified `main.x`, which is
+ * returned with its qualifier attached precisely so that nothing can match it.
  */
 export function tablesReferenced(sql: string): string[] {
+  // `name`, `"name"`, `[name]`, or a qualified `main.name`.
+  const IDENT = String.raw`["'\`\[]?(?:(\w+)\s*\.\s*)?["'\`\[]?([A-Za-z_][\w$]*)`
+  const clauses = [
+    // The row-level statements.
+    String.raw`(?:FROM|JOIN|INTO|UPDATE(?:\s+OR\s+\w+)?)`,
+    // CREATE / ALTER / DROP TABLE.
+    String.raw`TABLE(?:\s+IF\s+(?:NOT\s+)?EXISTS)?`,
+    // The *named object* of CREATE/DROP INDEX|TRIGGER|VIEW. Without this, a
+    // bare `DROP INDEX idx_tracks_album` names no table and sails through.
+    String.raw`(?:INDEX|TRIGGER|VIEW)(?:\s+IF\s+(?:NOT\s+)?EXISTS)?`,
+    String.raw`(?:REINDEX|ANALYZE)`,
+    // The table an index is built on. Restricted to the INDEX form because a
+    // bare `ON` is also a join predicate, where the next token is a column.
+    String.raw`INDEX(?:\s+IF\s+NOT\s+EXISTS)?\s+\S+\s+ON`,
+  ]
+
   const names = new Set<string>()
-  const pattern =
-    /\b(?:FROM|JOIN|INTO|UPDATE|TABLE(?:\s+IF\s+NOT\s+EXISTS)?|INDEX(?:\s+IF\s+NOT\s+EXISTS)?\s+\w+\s+ON)\s+["'`[]?([A-Za-z_][\w$]*)/gi
-  for (const match of sql.matchAll(pattern)) {
-    if (match[1]) names.add(match[1])
+  const sanitized = sanitizeSql(sql)
+  for (const clause of clauses) {
+    for (const match of sanitized.matchAll(new RegExp(String.raw`\b${clause}\s+${IDENT}`, 'gi'))) {
+      const [, qualifier, name] = match
+      if (name) names.add(qualifier ? `${qualifier}.${name}` : name)
+    }
   }
   return [...names]
 }
-
-/** Statements a plugin may never issue, whatever it was granted. */
-const DB_FORBIDDEN = /^\s*(ATTACH|DETACH|VACUUM\s+INTO)\b/i
 
 /**
  * Bookkeeping the kernel touches *on a plugin's behalf*.
@@ -219,6 +258,15 @@ const ACCESS_BY_KEYWORD: Record<string, DbAccess> = {
   select: 'read',
   explain: 'read',
   values: 'read',
+  // Transaction control touches no data. It is classified rather than left
+  // unrecognised because an unrecognised statement fails closed, and the
+  // migration runner's own `BEGIN` would then be refused.
+  begin: 'read',
+  commit: 'read',
+  end: 'read',
+  rollback: 'read',
+  savepoint: 'read',
+  release: 'read',
   insert: 'write',
   replace: 'write',
   update: 'write',
@@ -234,31 +282,23 @@ const ACCESS_BY_KEYWORD: Record<string, DbAccess> = {
 
 const ACCESS_RANK: Record<DbAccess, number> = { read: 0, write: 1, schema: 2 }
 
-/** Strip comments so the leading keyword is the first thing we see. */
-function withoutComments(sql: string): string {
-  return sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ')
-}
-
 /**
  * Classify what a statement asks for, taking the most demanding class in the
  * string when several statements are separated by `;`.
  *
  * Like `tablesReferenced`, this is a regex over the shapes SQLite uses rather
- * than a parser, and it fails *closed* in both directions that matter:
+ * than a parser, and it fails *closed*:
  *
  *  - `SELECT 1; DROP TABLE tracks` is classified `schema`, not `read`, so a
  *    second statement cannot ride in on the first one's grant.
- *  - A string containing what looks like a statement boundary
- *    (`INSERT INTO t VALUES ('a; DROP TABLE x')`) is classified by the more
- *    demanding half. That refuses a legitimate statement rather than
- *    permitting an illegitimate one, which is the right direction to be wrong
- *    in — and parameter binding means such literals are rare in practice.
+ *  - Statement boundaries inside a literal are not boundaries, because
+ *    `sanitizeSql` has already blanked the literal out.
  *  - Nothing recognisable at all is `schema`, the most demanding class.
  */
 export function classifyDbAccess(sql: string): DbAccess {
   let rank = -1
-  for (const fragment of withoutComments(sql).split(';')) {
-    const keyword = /^\s*([A-Za-z]+)/.exec(fragment)?.[1]?.toLowerCase()
+  for (const fragment of statementsOf(sql)) {
+    const keyword = /^([A-Za-z]+)/.exec(fragment)?.[1]?.toLowerCase()
     if (!keyword) continue
     // A CTE may front any of SELECT / INSERT / UPDATE / DELETE.
     const access =
@@ -311,16 +351,32 @@ function parseDbGrants(granted: readonly string[]): Map<string, Set<DbAccess>> {
 }
 
 /**
+ * Schema names, which are never table names.
+ *
+ * `SELECT * FROM main.plugin_other_secrets` used to be attributed to the table
+ * `main` — which, carrying no `plugin_` prefix, fell through to the `core`
+ * fallback and was permitted by `db:read:core`. That is ordinary-looking SQL,
+ * not a determined bypass, so both halves are closed: the qualifier is
+ * returned attached to the name (and a dotted name matches nothing), and a
+ * bare qualifier is refused here.
+ */
+const SCHEMA_QUALIFIERS = new Set(['main', 'temp', 'sqlite_temp_master'])
+
+/**
  * Which grant, if any, covers a table.
  *
  * `core` is the fallback rather than a prefix match: the catalogue's tables
  * carry no prefix, so anything that is not a `plugin_` table belongs to it.
+ * The fallback therefore applies only to bare, unqualified names.
  */
 function grantFor(
   table: string,
   grants: Map<string, Set<DbAccess>>,
 ): { ns: string; allowed: Set<DbAccess> } | undefined {
   const lower = table.toLowerCase()
+  // A qualified name is attributable only by trusting the qualifier, and no
+  // plugin needs the form. A bare qualifier is not a table at all.
+  if (lower.includes('.') || SCHEMA_QUALIFIERS.has(lower)) return undefined
   for (const [ns, allowed] of grants) {
     if (ns === 'core') continue
     if (lower === ns || lower.startsWith(`${ns}_`)) return { ns, allowed }
@@ -395,16 +451,49 @@ export function assertDb(config: unknown, sql: string, ownPrefix: string): void 
   const gate = capabilityConfigOf(config)
   if (!gate) return
 
-  if (DB_FORBIDDEN.test(sql)) {
-    throw new CapabilityError('db', `${gate.pluginId} may not issue ${sql.trim().split(/\s+/)[0]}`)
+  assertSqlAllowed(sql, gate.pluginId)
+
+  const statements = statementsOf(sql)
+  let pragmasOnly = statements.length > 0
+  for (const statement of statements) {
+    const pragma = PRAGMA_STATEMENT.exec(statement)?.[1]?.toLowerCase()
+    if (!pragma) {
+      pragmasOnly = false
+      continue
+    }
+    if (!PRAGMA_ALLOWED.has(pragma)) {
+      throw new CapabilityError(
+        'db',
+        `${gate.pluginId} may not issue PRAGMA ${pragma} — a pragma reconfigures the one ` +
+          'connection every plugin shares',
+      )
+    }
   }
+  // An allow-listed pragma names no table by design, so it is exempt from the
+  // attribution rule below rather than tripped up by it — the migration runner
+  // issues `PRAGMA defer_foreign_keys` on this very path.
+  if (pragmasOnly) return
 
   const grants = parseDbGrants(gate.granted)
   const access = classifyDbAccess(sql)
   const hasOwn = gate.granted.includes('db:own')
   const own = ownTablePattern(ownPrefix)
+  const referenced = tablesReferenced(sql)
 
-  for (const table of tablesReferenced(sql)) {
+  // The per-table checks below are the whole gate, so a statement naming no
+  // table the matcher can see would otherwise pass unexamined — which is how
+  // `DROP INDEX idx_tracks_album`, `VACUUM` and `ANALYZE` used to sail
+  // through. Reads are exempt: `SELECT 1` and transaction control name nothing
+  // and change nothing.
+  if (access !== 'read' && referenced.length === 0) {
+    throw new CapabilityError(
+      `db:${access}`,
+      `${gate.pluginId} may not issue this statement — the gate cannot attribute what it ` +
+        `changes, and an unattributable ${access} change is refused rather than guessed at`,
+    )
+  }
+
+  for (const table of referenced) {
     if (KERNEL_TABLES.has(table.toLowerCase())) continue
     if (hasOwn && own.test(table)) continue
 

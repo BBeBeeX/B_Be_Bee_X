@@ -47,6 +47,13 @@ export {
   classifyDbAccess,
   storageNamespace,
 } from './capability.js'
+export {
+  sanitizeSql,
+  statementsOf,
+  isMultiStatement,
+  assertSingleStatement,
+  assertSqlAllowed,
+} from './sql.js'
 export type { CapabilityConfig, DbAccess, GrantOptions } from './capability.js'
 
 export {

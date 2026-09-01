@@ -461,8 +461,25 @@ kernel mediates.
 |---|---|
 | `fs:read:<scope>` / `fs:write:<scope>` | Filesystem access within a named scope: `own`, `media`, `cache`, `downloads`, or `all` |
 | `net:host/<pattern>` | Outbound HTTP **and WebSocket** to hosts matching a glob — one grant governs both `ctx.http` and `ctx.ws`. `net:host/*` is a broad grant and is labelled as such in the prompt. Includes a **persisted cookie jar scoped to this plugin instance** ([04 §2.1](./04-core-services.md#21-cookie-jars)) — the core service owns the storage, so no `db` or `secrets` grant is needed for it. Matching is on hostname only, lowercased; a port cannot be granted separately |
-| `db:own` | Its own namespaced tables, outright — read, write, and schema |
+| `db:own` | Its own namespaced tables, outright — read, write, and schema. Indexes, triggers and views count: they are attributed by name, so a plugin's index is `{{ns}}_…` like its tables |
 | `db:read:<ns>` / `db:write:<ns>` / `db:*:<ns>` | Access to another namespace, by verb: `read` is `SELECT`, `write` is `INSERT`/`UPDATE`/`DELETE`, `*` is both plus `CREATE`/`DROP`/`ALTER`. The verbs do **not** nest — a plugin that reads and writes the catalogue declares `db:read:core` *and* `db:write:core`, so an install-time prompt can name exactly what it is asking for. Statements are classified by the most demanding thing they do, so a `DROP` cannot ride in behind a `SELECT` |
+
+Three refusals apply whatever was granted, because each was a way past the table above:
+
+- **A change the gate cannot attribute.** The per-table checks *are* the gate, so a statement
+  naming no table it can see — `DROP INDEX idx_tracks_album`, `VACUUM`, `ANALYZE` — used to pass
+  unexamined. Anything above `read` that cannot be attributed is refused rather than guessed at.
+- **Schema-qualified names.** `SELECT * FROM main.plugin_other_secrets` was read as a table called
+  `main`, which carries no `plugin_` prefix and so fell through to the `core` fallback — ordinary
+  SQL that read and wrote another plugin's rows. Qualified names are refused outright.
+- **`PRAGMA`.** A pragma is not scoped to its caller: `foreign_keys = OFF` reconfigures the one
+  connection every plugin shares, and on desktop that connection lives in `main`. Only
+  `defer_foreign_keys` (which the migration runner needs) and the read-only introspection pragmas
+  are permitted; `sqlite_master` remains readable for the rest.
+
+⚠️ All of this is regex over the shapes SQLite uses, not a parser. It fails closed — an identifier
+it cannot attribute is treated as foreign — and it is a guard rail against the ordinary mistake
+and the casual overreach, not against an author who is trying, who shares the runtime anyway.
 | `secrets:own` | Its own credential namespace. There is no `secrets:all`. A plugin that only needs its login to persist does not need this — the cookie jar under `net:` already covers it |
 | `audio` | May contribute nodes to the audio graph |
 | `mediaSession` | May publish now-playing metadata and receive transport commands |
@@ -525,7 +542,8 @@ What `main` enforces regardless, because it does not require knowing who is call
 |---|---|
 | Method allowlist | Only the named service methods are reachable; `constructor` and inherited members are not |
 | Path containment | Every `fs` operand must lie inside an application directory — the bridge cannot reach `/etc` or the user's home at large |
-| `ATTACH`/`DETACH` refused | Otherwise the database handle is an arbitrary-file read/write primitive, and containment above is moot |
+| `ATTACH`/`DETACH`/`VACUUM INTO` refused | Otherwise the database handle is an arbitrary-file read/write primitive and the containment above is moot. All three come from one shared `assertSqlAllowed` in the kernel, used by the gated path and by `main`: the bridge previously kept its own list, which had drifted to `ATTACH`/`DETACH` only, so `VACUUM INTO '/any/path'` wrote a file straight past this table |
+| One statement per call | A driver compiles the first statement of a string and discards the rest silently, so `SELECT 1; DROP …` neither runs nor half-runs — it is refused ([04 §5](./04-core-services.md#5-ctxdb--sql)) |
 | Bounded stream handles | A loop of `streamOpen` cannot exhaust `main`'s file descriptors |
 | Transaction lifecycle | An abandoned transaction is rolled back on renderer teardown and on an idle timeout, so a reload cannot wedge the database |
 

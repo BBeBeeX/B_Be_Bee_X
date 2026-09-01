@@ -825,7 +825,10 @@ Rules:
   `plugin:<its own instance id>` — otherwise it could claim `core` and own the catalogue.
   Reading core tables requires `db:read:core`, and changing their rows requires `db:write:core` —
   a separate grant, not one implied by the first ([03 §7](./03-plugin-system.md#capability-grammar)).
-  `ATTACH`/`DETACH` are refused outright, since
+  Each `up` entry is **one statement**: a driver runs the first and discards the rest in silence,
+  so a multi-statement string is refused before anything executes rather than half-applied with
+  its version recorded ([04 §5](./04-core-services.md#5-ctxdb--sql)). That is what the array form
+  is for. `ATTACH`/`DETACH` are refused outright, since
   they would turn the database handle into an arbitrary-file primitive.
 - ⚠️ The check is a **regex over table identifiers, not a SQL parser**. It fails closed — an
   identifier it cannot attribute is treated as foreign — and it stops the ordinary mistake and the

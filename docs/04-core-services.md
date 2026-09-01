@@ -331,6 +331,20 @@ export interface Migration {
 | WAL | ✅ Enabled | ✅ Enabled |
 | Concurrency | Serialized through the `main` host | Serialized in the native module |
 | FTS5 | ✅ Available | ✅ Available |
+| Capability gate | ✅ | ✅ |
+
+> ⚠️ **One statement per call.** `query`, `get` and `exec` take a single statement and refuse a
+> string holding more than one. This is a contract, not a limitation of one driver: `prepare()`
+> compiles the *first* statement and discards the rest **silently**, so
+> `exec('CREATE TABLE a; CREATE TABLE b')` used to create `a`, resolve successfully, and leave no
+> trace that `b` never happened — and a migration written that way recorded its version as applied
+> and drifted the schema permanently, with no error to investigate. Pass statements separately, or
+> use `up: string[]` in a migration. Semicolons inside string literals are not boundaries.
+>
+> The gate is on **both** implementations. `core-db-expo` had none at all for a while — `db:own`
+> was enforced on desktop and unenforced on mobile — which is precisely the drift the conformance
+> suites in §18 exist to catch, and why the `db-scope` suite must run on device and not only in
+> Node.
 
 Choosing `node:sqlite` removes the single most annoying maintenance burden in Electron projects —
 recompiling `better-sqlite3` against Electron headers on every version bump. Both platforms expose

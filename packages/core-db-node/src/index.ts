@@ -17,6 +17,7 @@ import {
   MigrationRunner,
   assertDbForCaller,
   assertOwnNamespace,
+  assertSingleStatement,
 } from '@BBeBee/kernel'
 import type { MigrationDb, MigrationTx } from '@BBeBee/kernel'
 import type { DbService, Migration, SqlValue } from '@BBeBee/protocol'
@@ -121,15 +122,25 @@ export class DbNode extends Service implements DbService {
 
   /* Unqueued primitives. Only the transaction view and `run` may call these. */
 
+  /**
+   * `prepare()` compiles the **first** statement and silently discards the
+   * rest: `exec('CREATE TABLE a; CREATE TABLE b')` creates `a`, resolves
+   * successfully, and leaves no trace that `b` never happened. A migration
+   * written that way records its version as applied and drifts the schema
+   * permanently, with no error to investigate. Refuse the shape instead.
+   */
   private queryNow<T>(sql: string, params: SqlValue[]): T[] {
+    assertSingleStatement(sql)
     return this.db.prepare(sql).all(...(params as never[])) as T[]
   }
 
   private getNow<T>(sql: string, params: SqlValue[]): T | undefined {
+    assertSingleStatement(sql)
     return (this.db.prepare(sql).get(...(params as never[])) as T) ?? undefined
   }
 
   private execNow(sql: string, params: SqlValue[]): { changes: number; lastInsertRowid: number } {
+    assertSingleStatement(sql)
     const result = this.db.prepare(sql).run(...(params as never[]))
     return { changes: Number(result.changes), lastInsertRowid: Number(result.lastInsertRowid) }
   }

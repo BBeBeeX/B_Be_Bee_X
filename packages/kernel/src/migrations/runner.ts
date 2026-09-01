@@ -8,6 +8,7 @@
  */
 
 import type { Migration, SqlValue } from '@BBeBee/protocol'
+import { assertSingleStatement } from '../sql.js'
 
 /** The slice of `DbService` a migration needs. Avoids a circular dependency. */
 export interface MigrationTx {
@@ -178,6 +179,17 @@ export class MigrationRunner {
       const statements = (Array.isArray(migration.up) ? migration.up : [migration.up]).map((s) =>
         expandNs(s, namespace),
       )
+
+      // A driver compiles one statement per call and discards the rest in
+      // silence, so `up: 'CREATE TABLE a; CREATE TABLE b'` would create `a`,
+      // record the version as applied, and leave the schema permanently short
+      // of `b` with nothing to investigate. Refuse before anything runs —
+      // `up` accepts an array precisely so several statements are expressible.
+      try {
+        for (const sql of statements) assertSingleStatement(sql)
+      } catch (cause) {
+        throw new MigrationError(namespace, migration.version, cause)
+      }
 
       try {
         await this.db.transaction(async (tx) => {

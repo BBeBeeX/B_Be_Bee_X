@@ -11,7 +11,13 @@ import { openDatabaseAsync } from 'expo-sqlite'
 import type { SQLiteDatabase } from 'expo-sqlite'
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
-import { CORE_MIGRATIONS, MigrationRunner } from '@BBeBee/kernel'
+import {
+  CORE_MIGRATIONS,
+  MigrationRunner,
+  assertDbForCaller,
+  assertOwnNamespace,
+  assertSingleStatement,
+} from '@BBeBee/kernel'
 import type { MigrationDb, MigrationTx } from '@BBeBee/kernel'
 import type { DbService, Migration, SqlValue } from '@BBeBee/protocol'
 
@@ -77,11 +83,30 @@ export class DbExpo extends Service implements DbService {
 
   /* Unqueued primitives. Only the transaction view and `run` may call these. */
 
+  /**
+   * Enforce the `db:` grants before a statement reaches SQLite.
+   *
+   * The same gate `core-db-node` applies, and it belongs here for the same
+   * reason the `*-scope` conformance suites exist: this implementation had
+   * none at all, so `db:own` meant something on desktop and nothing on mobile
+   * — one platform enforcing an invariant the other ignored, which is the
+   * drift docs/04 §18 is written to prevent.
+   */
+  private guard(sql: string): void {
+    assertDbForCaller(this[Service.resolveConfig](), sql)
+  }
+
+  /**
+   * Drivers execute one statement per call and discard the rest in silence,
+   * so a multi-statement string is refused rather than half-run.
+   */
   private queryNow<T>(sql: string, params: SqlValue[]): Promise<T[]> {
+    assertSingleStatement(sql)
     return this.db.getAllAsync<T>(sql, params as never)
   }
 
   private async getNow<T>(sql: string, params: SqlValue[]): Promise<T | undefined> {
+    assertSingleStatement(sql)
     return (await this.db.getFirstAsync<T>(sql, params as never)) ?? undefined
   }
 
@@ -89,11 +114,13 @@ export class DbExpo extends Service implements DbService {
     sql: string,
     params: SqlValue[],
   ): Promise<{ changes: number; lastInsertRowid: number }> {
+    assertSingleStatement(sql)
     const result = await this.db.runAsync(sql, params as never)
     return { changes: result.changes, lastInsertRowid: result.lastInsertRowId }
   }
 
   async query<T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []): Promise<T[]> {
+    this.guard(sql)
     return this.run(() => this.queryNow<T>(sql, params))
   }
 
@@ -101,6 +128,7 @@ export class DbExpo extends Service implements DbService {
     sql: string,
     params: SqlValue[] = [],
   ): Promise<T | undefined> {
+    this.guard(sql)
     return this.run(() => this.getNow<T>(sql, params))
   }
 
@@ -108,6 +136,7 @@ export class DbExpo extends Service implements DbService {
     sql: string,
     params: SqlValue[] = [],
   ): Promise<{ changes: number; lastInsertRowid: number }> {
+    this.guard(sql)
     return this.run(() => this.execNow(sql, params))
   }
 
@@ -180,20 +209,36 @@ export class DbExpo extends Service implements DbService {
    * re-enters the queue that `this` holds for the transaction's duration.
    */
   private txView(): DbService {
+    // Gated like the shared instance: a transaction is not a way around the
+    // capability gate.
     const view: DbService = {
-      query: <T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []) =>
-        this.queryNow<T>(sql, params),
-      get: <T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []) =>
-        this.getNow<T>(sql, params),
-      exec: (sql: string, params: SqlValue[] = []) => this.execNow(sql, params),
+      query: async <T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []) => {
+        this.guard(sql)
+        return this.queryNow<T>(sql, params)
+      },
+      get: async <T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []) => {
+        this.guard(sql)
+        return this.getNow<T>(sql, params)
+      },
+      exec: async (sql: string, params: SqlValue[] = []) => {
+        this.guard(sql)
+        return this.execNow(sql, params)
+      },
       transaction: <U>(inner: (tx: DbService) => Promise<U>) => inner(view),
-      defineSchema: (namespace, migrations) =>
-        new MigrationRunner(asMigrationDb(view)).apply(namespace, migrations).then(() => undefined),
+      defineSchema: (namespace, migrations) => {
+        assertOwnNamespace(this[Service.resolveConfig](), namespace)
+        return new MigrationRunner(asMigrationDb(view))
+          .apply(namespace, migrations)
+          .then(() => undefined)
+      },
     }
     return view
   }
 
   async defineSchema(namespace: string, migrations: Migration[]): Promise<void> {
+    // A gated plugin may only define its own namespace. Otherwise `db:own`
+    // means nothing: a plugin could claim `core` and own the catalogue.
+    assertOwnNamespace(this[Service.resolveConfig](), namespace)
     await new MigrationRunner(this).apply(namespace, migrations)
   }
 }

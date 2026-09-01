@@ -178,6 +178,65 @@ export const dbScopeConformance: ConformanceSuite<DbScopeSubject> = {
       },
     },
     {
+      name: 'a schema qualifier does not launder another namespace',
+      because: 'main.plugin_other_secrets used to be attributed to a table called "main"',
+      async run({ admin, ownPlusCoreAll }) {
+        await admin.exec('CREATE TABLE plugin_other_secrets (v TEXT)')
+        await admin.exec("INSERT INTO plugin_other_secrets VALUES ('shh')")
+
+        await assertRejects(
+          () => ownPlusCoreAll.query('SELECT v FROM main.plugin_other_secrets'),
+          'qualified cross-plugin read',
+          denied,
+        )
+        await assertRejects(
+          () => ownPlusCoreAll.exec("UPDATE main.plugin_other_secrets SET v='clobbered'"),
+          'qualified cross-plugin write',
+          denied,
+        )
+
+        const row = await admin.get<{ v: string }>('SELECT v FROM plugin_other_secrets')
+        assert(row?.v === 'shh', "another plugin's row was overwritten through a qualifier")
+      },
+    },
+    {
+      name: 'a change the gate cannot attribute is refused',
+      because: 'the per-table checks are the gate, so a statement naming no table skipped it',
+      async run({ own }) {
+        for (const sql of ['DROP INDEX IF EXISTS idx_tracks_album', 'VACUUM', 'ANALYZE']) {
+          await assertRejects(() => own.exec(sql), sql, denied)
+        }
+      },
+    },
+    {
+      name: 'PRAGMA is refused except for the introspection and per-transaction ones',
+      because: 'one connection serves every plugin, and on desktop it lives in main',
+      async run({ ownPlusCoreAll }) {
+        await assertRejects(
+          () => ownPlusCoreAll.exec('PRAGMA foreign_keys = OFF'),
+          'disabling foreign keys for everyone',
+          /may not issue PRAGMA/,
+        )
+        // Still available: the migration runner needs it on this same path.
+        await ownPlusCoreAll.exec('PRAGMA defer_foreign_keys = ON')
+      },
+    },
+    {
+      name: 'multi-statement SQL is refused rather than silently truncated',
+      because: 'the drivers compile the first statement and discard the rest without an error',
+      async run({ admin }) {
+        await assertRejects(
+          () => admin.exec('CREATE TABLE probe_a (x TEXT); CREATE TABLE probe_b (x TEXT)'),
+          'a two-statement string',
+          /multi-statement/,
+        )
+        const tables = await admin.query<{ name: string }>(
+          `SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'probe_%'`,
+        )
+        assert(tables.length === 0, 'a refused statement must not have half-run')
+      },
+    },
+    {
       name: 'ATTACH and DETACH are refused whatever the grants',
       because: 'ATTACH turns the database handle into an arbitrary-file primitive',
       async run({ ownPlusCoreReads }) {

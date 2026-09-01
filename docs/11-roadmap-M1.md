@@ -115,9 +115,18 @@ thing they do, so a `DROP` cannot ride in behind a `SELECT`. `plugin-sources`,
 *Why.* `db:read:core` used to let any statement through, `INSERT` included. M1 is the first
 milestone whose plugins write core tables, so it was the last cheap moment to fix the name —
 before an install-time prompt in M5 says "read" while granting write.
-*Where.* `classifyDbAccess` and the grant parser in `packages/kernel/src/capability.ts`; four new
-cases in the `db-scope` conformance suite, which both `core-db-node` and the desktop bridge run;
-the grammar row in [03 §7](./03-plugin-system.md#capability-grammar).
+*Where.* `classifyDbAccess` and the grant parser in `packages/kernel/src/capability.ts`, the
+shared SQL reader in `packages/kernel/src/sql.ts`, and cases in the `db-scope` suite that both
+`core-db-node` and the desktop bridge run; the grammar rows in
+[03 §7](./03-plugin-system.md#capability-grammar).
+*Also closed while in there*, each of which made the verbs meaningless on its own: a
+schema-qualified `main.plugin_other_secrets` was attributed to a table called `main` and permitted
+by the `core` fallback; a statement naming no visible table (`DROP INDEX`, `VACUUM`, `PRAGMA
+foreign_keys = OFF`) skipped the gate entirely, since the per-table loop *is* the gate; the desktop
+bridge kept a second list of forbidden SQL that had drifted, so `VACUUM INTO '/any/path'` wrote a
+file past its containment checks; `core-db-expo` had no gate at all, so `db:own` meant one thing on
+desktop and nothing on mobile; and both drivers silently executed only the first statement of a
+multi-statement string, which would have let a migration record a version it had half-applied.
 
 **MD-5 — Gapless, prefetch and crossfade are all in M1.**
 The full [05 §2](./05-audio-playback.md#gapless-and-crossfade) behaviour: prefetch beginning at

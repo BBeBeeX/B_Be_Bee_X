@@ -19,6 +19,7 @@
  */
 
 import { Context } from 'cordis'
+import { assertSqlAllowed } from '@BBeBee/kernel'
 import { uriContains, type DbService, type FsService, type PathsService } from '@BBeBee/protocol'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
@@ -88,13 +89,17 @@ const URI_ARGS: Record<string, number[]> = {
   freeSpace: [0], toPlayableUri: [0],
 }
 
-/**
- * SQL the bridge refuses outright.
+/*
+ * SQL the bridge refuses outright is defined **once**, in the kernel's
+ * `assertSqlAllowed`, and shared with the gated path.
  *
- * `ATTACH` turns the database handle into an arbitrary-file read/write
- * primitive, which would make every other containment check here pointless.
+ * It used to be a second regex here listing only ATTACH and DETACH, while the
+ * kernel's list also carried `VACUUM INTO` — which writes a database file to
+ * any path the process can reach. The renderer could call
+ * `call('db', 'exec', ["VACUUM INTO '/tmp/x.db'"])` and get exactly the
+ * arbitrary-file write that the containment checks here exist to prevent. Two
+ * lists drift; one does not.
  */
-const FORBIDDEN_SQL = /^\s*(ATTACH|DETACH)\b/i
 
 export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promise<Host> {
   const maxOpenStreams = options.maxOpenStreams ?? 64
@@ -159,8 +164,8 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     if (service === 'fs') {
       for (const index of URI_ARGS[method] ?? []) assertContained(callArgs[index])
     }
-    if (service === 'db' && typeof callArgs[0] === 'string' && FORBIDDEN_SQL.test(callArgs[0])) {
-      throw new Error('bridge: ATTACH/DETACH is not permitted over the bridge')
+    if (service === 'db' && typeof callArgs[0] === 'string') {
+      assertSqlAllowed(callArgs[0], 'the bridge')
     }
 
     // A call carrying a transaction token is routed into that transaction's

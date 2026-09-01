@@ -143,6 +143,30 @@ describe('MigrationRunner', () => {
     expect(await runner.appliedVersions('plugin:demo')).toEqual([1])
   })
 
+  it('refuses a multi-statement `up` instead of applying half of it', async () => {
+    // The driver compiles the first statement and discards the rest in
+    // silence, so this migration would create `_a`, record version 1 as
+    // applied, and leave the schema permanently short of `_b` with no error
+    // to investigate. `up` takes an array precisely so this is expressible.
+    await expect(
+      runner.apply('plugin:demo', [
+        { version: 1, up: 'CREATE TABLE {{ns}}_a (id TEXT); CREATE TABLE {{ns}}_b (id TEXT)' },
+      ]),
+    ).rejects.toThrow(MigrationError)
+
+    expect(await runner.appliedVersions('plugin:demo')).toEqual([])
+    const tables = await harness.query<{ name: string }>(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'plugin_demo_%'`,
+    )
+    expect(tables, 'nothing may have run').toEqual([])
+
+    // The same statements as an array apply normally.
+    await runner.apply('plugin:demo', [
+      { version: 1, up: ['CREATE TABLE {{ns}}_a (id TEXT)', 'CREATE TABLE {{ns}}_b (id TEXT)'] },
+    ])
+    expect(await runner.appliedVersions('plugin:demo')).toEqual([1])
+  })
+
   it('rolls back a partially-applied migration so the next boot can retry', async () => {
     // THE regression test for the worst failure mode: without a transaction,
     // statement 1 committed and the bookkeeping row did not, so every

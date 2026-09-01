@@ -198,4 +198,75 @@ describe('assertDb verbs', () => {
       /outside its own namespace/,
     )
   })
+
+  it('does not let a schema qualifier launder another namespace', () => {
+    // `main.plugin_other_secrets` was attributed to a table called `main`,
+    // which carries no `plugin_` prefix and so fell through to the core
+    // fallback — ordinary-looking SQL that read and wrote another plugin's
+    // rows under db:read:core / db:write:core.
+    const g = gate(['db:own', 'db:read:core', 'db:write:core'])
+    expect(() => assertDb(g, 'SELECT * FROM main.plugin_other_secrets', own)).toThrow(
+      /outside its own namespace/,
+    )
+    expect(() => assertDb(g, "UPDATE main.plugin_other_secrets SET v='x'", own)).toThrow(
+      /outside its own namespace/,
+    )
+    // Even the plugin's own tables must be named plainly.
+    expect(() => assertDb(g, 'SELECT * FROM main.plugin_p_items', own)).toThrow(CapabilityError)
+    expect(() => assertDb(g, 'SELECT * FROM temp.plugin_other_secrets', own)).toThrow(
+      CapabilityError,
+    )
+  })
+
+  it('refuses a change it cannot attribute to any table', () => {
+    // The per-table loop is the gate, so a statement naming no table it can
+    // see used to pass unexamined: DROP INDEX, DROP TRIGGER, VACUUM, ANALYZE.
+    const g = gate(['db:own'])
+    for (const sql of [
+      'DROP INDEX IF EXISTS idx_tracks_album',
+      'DROP TRIGGER core_trig',
+      'DROP VIEW core_view',
+      'VACUUM',
+      'ANALYZE',
+    ]) {
+      expect(() => assertDb(g, sql, own), sql).toThrow(CapabilityError)
+    }
+  })
+
+  it('attributes named schema objects to their namespace', () => {
+    const g = gate(['db:own'])
+    expect(() => assertDb(g, 'DROP INDEX plugin_p_items_status', own)).not.toThrow()
+    expect(() => assertDb(g, 'CREATE INDEX plugin_p_x ON plugin_p_items(a)', own)).not.toThrow()
+    // The index name is attributed too, so a plugin cannot create an object
+    // outside its own namespace on a table inside it.
+    expect(() => assertDb(g, 'CREATE INDEX idx_loose ON plugin_p_items(a)', own)).toThrow(
+      CapabilityError,
+    )
+  })
+
+  it('refuses a PRAGMA that reconfigures the shared connection', () => {
+    // One connection serves every plugin, and on desktop it lives in main.
+    const g = gate(['db:own', 'db:*:core'])
+    expect(() => assertDb(g, 'PRAGMA foreign_keys = OFF', own)).toThrow(/may not issue PRAGMA/)
+    expect(() => assertDb(g, 'PRAGMA journal_mode = DELETE', own)).toThrow(/may not issue PRAGMA/)
+    expect(() => assertDb(g, 'PRAGMA main.foreign_keys = OFF', own)).toThrow(/may not issue PRAGMA/)
+    // The per-transaction one the migration runner needs still works.
+    expect(() => assertDb(g, 'PRAGMA defer_foreign_keys = ON', own)).not.toThrow()
+    expect(() => assertDb(g, 'PRAGMA table_info(plugin_p_items)', own)).not.toThrow()
+  })
+
+  it('leaves transaction control alone', () => {
+    // Classified as reads: they name nothing and change nothing, and the
+    // migration runner issues them on the gated path.
+    const g = gate(['db:own'])
+    for (const sql of ['BEGIN IMMEDIATE', 'COMMIT', 'ROLLBACK', 'SAVEPOINT s', 'RELEASE s']) {
+      expect(() => assertDb(g, sql, own), sql).not.toThrow()
+    }
+  })
+
+  it('refuses the arbitrary-file primitives whatever the grants', () => {
+    const g = gate(['db:own', 'db:*:core'])
+    expect(() => assertDb(g, "ATTACH DATABASE '/tmp/x.db' AS x", own)).toThrow(/may not issue/)
+    expect(() => assertDb(g, "VACUUM INTO '/tmp/x.db'", own)).toThrow(/may not issue VACUUM INTO/)
+  })
 })
