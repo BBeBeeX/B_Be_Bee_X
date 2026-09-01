@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { Context, Service } from 'cordis'
 import { CapabilityError, type Capability } from '@BBeBee/protocol'
 import {
+  assertDb,
   assertFs,
   assertGranted,
   assertHost,
   capabilityConfigOf,
+  classifyDbAccess,
   scopeContext,
 } from './capability.js'
 import { tick } from './testing.js'
@@ -111,5 +113,89 @@ describe('assertions', () => {
       expect((e as CapabilityError).capability).toBe('net:host/music.example.org')
       expect((e as CapabilityError).message).toContain('p')
     }
+  })
+})
+
+describe('classifyDbAccess', () => {
+  it('classifies the ordinary statements', () => {
+    expect(classifyDbAccess('SELECT * FROM tracks')).toBe('read')
+    expect(classifyDbAccess('  select 1')).toBe('read')
+    expect(classifyDbAccess('INSERT INTO tracks (urn) VALUES (?)')).toBe('write')
+    expect(classifyDbAccess("UPDATE tracks SET title = 'x'")).toBe('write')
+    expect(classifyDbAccess('DELETE FROM tracks')).toBe('write')
+    expect(classifyDbAccess('DROP TABLE tracks')).toBe('schema')
+    expect(classifyDbAccess('CREATE INDEX idx ON tracks(urn)')).toBe('schema')
+  })
+
+  it('looks past a CTE to what the statement actually does', () => {
+    expect(classifyDbAccess('WITH t AS (SELECT 1) SELECT * FROM t')).toBe('read')
+    expect(classifyDbAccess('WITH t AS (SELECT 1) DELETE FROM tracks WHERE urn IN t')).toBe('write')
+  })
+
+  it('takes the most demanding statement in a multi-statement string', () => {
+    // Otherwise a DROP rides in behind a SELECT on a read grant.
+    expect(classifyDbAccess('SELECT 1; DROP TABLE tracks')).toBe('schema')
+    expect(classifyDbAccess('SELECT 1; UPDATE tracks SET title = ?')).toBe('write')
+  })
+
+  it('fails closed on comments and on anything it cannot read', () => {
+    expect(classifyDbAccess('-- SELECT 1\nDROP TABLE tracks')).toBe('schema')
+    expect(classifyDbAccess('/* hi */ SELECT 1')).toBe('read')
+    expect(classifyDbAccess('kaboom FROM tracks')).toBe('schema')
+  })
+})
+
+describe('assertDb verbs', () => {
+  const gate = (granted: string[]) => ({ pluginId: 'p', instanceId: 'p', granted })
+  const own = 'plugin_p'
+
+  it('db:read:core permits SELECT and refuses mutation', () => {
+    const g = gate(['db:own', 'db:read:core'])
+    expect(() => assertDb(g, 'SELECT * FROM tracks', own)).not.toThrow()
+    expect(() => assertDb(g, "UPDATE tracks SET title='x'", own)).toThrow(CapabilityError)
+    expect(() => assertDb(g, 'DELETE FROM tracks', own)).toThrow(CapabilityError)
+  })
+
+  it('db:write:core permits mutation and refuses reads and schema changes', () => {
+    const g = gate(['db:own', 'db:write:core'])
+    expect(() => assertDb(g, 'INSERT INTO tracks (urn) VALUES (?)', own)).not.toThrow()
+    expect(() => assertDb(g, 'SELECT * FROM tracks', own)).toThrow(CapabilityError)
+    expect(() => assertDb(g, 'DROP TABLE tracks', own)).toThrow(CapabilityError)
+  })
+
+  it('db:*:core permits everything in that namespace', () => {
+    const g = gate(['db:own', 'db:*:core'])
+    expect(() => assertDb(g, 'SELECT * FROM tracks', own)).not.toThrow()
+    expect(() => assertDb(g, 'INSERT INTO tracks (urn) VALUES (?)', own)).not.toThrow()
+    expect(() => assertDb(g, 'DROP TABLE tracks', own)).not.toThrow()
+  })
+
+  it('leaves a plugin its own tables outright', () => {
+    const g = gate(['db:own'])
+    expect(() => assertDb(g, 'DROP TABLE plugin_p_items', own)).not.toThrow()
+    expect(() => assertDb(g, 'SELECT * FROM tracks', own)).toThrow(/outside its own namespace/)
+  })
+
+  it('names the grant a refused statement would have needed', () => {
+    try {
+      assertDb(gate(['db:own', 'db:read:core']), 'INSERT INTO tracks (urn) VALUES (?)', own)
+      expect.unreachable()
+    } catch (e) {
+      expect((e as CapabilityError).capability).toBe('db:write:core')
+      expect((e as CapabilityError).message).toContain('tracks')
+    }
+    try {
+      assertDb(gate(['db:own', 'db:write:core']), 'DROP TABLE tracks', own)
+      expect.unreachable()
+    } catch (e) {
+      expect((e as CapabilityError).capability).toBe('db:*:core')
+    }
+  })
+
+  it('still refuses a namespace with no grant at all', () => {
+    const g = gate(['db:own', 'db:*:core'])
+    expect(() => assertDb(g, 'SELECT * FROM plugin_other_notes', own)).toThrow(
+      /outside its own namespace/,
+    )
   })
 })

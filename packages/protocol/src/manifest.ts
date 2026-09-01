@@ -23,9 +23,18 @@ export type FsScope = 'own' | 'media' | 'cache' | 'downloads' | 'logs' | 'all'
  *   fs:read:<scope> | fs:write:<scope>   filesystem within a named scope
  *   net:host/<glob>                      outbound HTTP/WS, plus a persisted
  *                                        cookie jar scoped to this instance
- *   db:own | db:read:<ns>                own namespaced tables; explicit reads
+ *   db:own                               its own namespaced tables, outright
+ *   db:read:<ns>                         SELECT within another namespace
+ *   db:write:<ns>                        INSERT / UPDATE / DELETE there
+ *   db:*:<ns>                            both, plus schema changes
  *   secrets:own                          own credential namespace (no `all`)
  *   audio | mediaSession | notify | shell | background
+ *
+ * The `db` verbs are deliberately separate rather than nested: `db:write:core`
+ * does not imply `db:read:core`, so a plugin that does both says so, and an
+ * install-time prompt can name exactly what it is asking for. `db:*:<ns>` is
+ * the only grant that permits `CREATE`, `DROP` or `ALTER` on someone else's
+ * tables.
  */
 export type Capability =
   | `fs:read:${FsScope}`
@@ -33,6 +42,8 @@ export type Capability =
   | `net:host/${string}`
   | 'db:own'
   | `db:read:${string}`
+  | `db:write:${string}`
+  | `db:*:${string}`
   | 'secrets:own'
   | 'audio'
   | 'mediaSession'

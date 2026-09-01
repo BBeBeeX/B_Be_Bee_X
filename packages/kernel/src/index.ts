@@ -44,9 +44,10 @@ export {
   assertOwnNamespace,
   ownNamespaceOf,
   tablesReferenced,
+  classifyDbAccess,
   storageNamespace,
 } from './capability.js'
-export type { CapabilityConfig, GrantOptions } from './capability.js'
+export type { CapabilityConfig, DbAccess, GrantOptions } from './capability.js'
 
 export {
   MigrationRunner,

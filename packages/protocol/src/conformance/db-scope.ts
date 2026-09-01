@@ -25,6 +25,13 @@ export interface DbScopeSubject {
   own: DbService
   /** `db` as seen by a plugin granted `db:own` plus `db:read:core`. */
   ownPlusCoreReads: DbService
+  /**
+   * `db` as seen by a plugin granted `db:own` plus `db:write:core` — and
+   * deliberately *not* `db:read:core`, so the two verbs are tested apart.
+   */
+  ownPlusCoreWrites: DbService
+  /** `db` as seen by a plugin granted `db:own` plus `db:*:core`. */
+  ownPlusCoreAll: DbService
 }
 
 const denied = /outside its own namespace|may not/i
@@ -69,6 +76,68 @@ export const dbScopeConformance: ConformanceSuite<DbScopeSubject> = {
       async run({ ownPlusCoreReads }) {
         const rows = await ownPlusCoreReads.query('SELECT * FROM tracks')
         assert(Array.isArray(rows), 'granted read should succeed')
+      },
+    },
+    {
+      name: 'db:read:core does not carry a write',
+      because: 'a grant named "read" that permits INSERT makes the install prompt a lie',
+      async run({ ownPlusCoreReads }) {
+        await assertRejects(
+          () => ownPlusCoreReads.exec("UPDATE tracks SET title = 'x' WHERE urn = 'nope'"),
+          'catalogue update under a read grant',
+          denied,
+        )
+        await assertRejects(
+          () => ownPlusCoreReads.exec("DELETE FROM tracks WHERE urn = 'nope'"),
+          'catalogue delete under a read grant',
+          denied,
+        )
+      },
+    },
+    {
+      name: 'a second statement cannot ride in on the first one’s grant',
+      because: 'classification takes the most demanding statement in the string, not the first',
+      async run({ ownPlusCoreReads }) {
+        await assertRejects(
+          () => ownPlusCoreReads.exec('SELECT 1; DROP TABLE tracks'),
+          'a DROP smuggled behind a SELECT',
+          denied,
+        )
+      },
+    },
+    {
+      name: 'db:write:core permits row changes and nothing more',
+      because: 'writing the catalogue is what the scanner and the player actually need',
+      async run({ ownPlusCoreWrites }) {
+        // No rows are matched; the point is that the statement is not refused.
+        const updated = await ownPlusCoreWrites.exec(
+          "UPDATE tracks SET title = 'x' WHERE urn = 'nope'",
+        )
+        assert(updated.changes === 0, 'granted write should reach the database')
+        await ownPlusCoreWrites.exec("DELETE FROM tracks WHERE urn = 'nope'")
+
+        // Write is not read: the verbs are separate grants on purpose.
+        await assertRejects(
+          () => ownPlusCoreWrites.query('SELECT * FROM tracks'),
+          'catalogue read under a write-only grant',
+          denied,
+        )
+        // Nor is write a schema grant.
+        await assertRejects(
+          () => ownPlusCoreWrites.exec('DROP TABLE tracks'),
+          'DROP under a write grant',
+          denied,
+        )
+      },
+    },
+    {
+      name: 'db:*:core covers reads, writes and schema changes',
+      because: 'the wildcard is the only grant that may reshape someone else’s tables',
+      async run({ ownPlusCoreAll }) {
+        const rows = await ownPlusCoreAll.query('SELECT * FROM tracks')
+        assert(Array.isArray(rows), 'wildcard read should succeed')
+        await ownPlusCoreAll.exec("UPDATE tracks SET title = 'x' WHERE urn = 'nope'")
+        await ownPlusCoreAll.exec('CREATE TABLE core_scratch_wildcard (a TEXT)')
       },
     },
     {

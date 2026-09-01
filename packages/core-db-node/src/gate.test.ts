@@ -97,13 +97,17 @@ describe('core-db-node db-scope conformance', () => {
     it(`${check.name} — ${check.because}`, async () => {
       const instanceId = '@BBeBee/plugin-demo'
       const { admin, db } = await gated(['db:own'], instanceId)
-      const { db: plus } = await gated(['db:own', 'db:read:core'], instanceId)
+      const { db: reads } = await gated(['db:own', 'db:read:core'], instanceId)
+      const { db: writes } = await gated(['db:own', 'db:write:core'], instanceId)
+      const { db: all } = await gated(['db:own', 'db:*:core'], instanceId)
       await check.run({
         admin,
         instanceId,
         ownPrefix: nsPrefix(`plugin:${instanceId}`),
         own: db,
-        ownPlusCoreReads: plus,
+        ownPlusCoreReads: reads,
+        ownPlusCoreWrites: writes,
+        ownPlusCoreAll: all,
       })
     })
   }

@@ -203,15 +203,144 @@ const KERNEL_TABLES = new Set([
 ])
 
 /**
- * Enforce `db:own` — a plugin may only touch its own namespaced tables.
+ * How much a statement asks of a table.
  *
- * `db:read:<ns>` additionally permits reads of another namespace, and
- * `db:read:core` is how a feature plugin reaches the catalogue.
+ *   read    SELECT and friends
+ *   write   INSERT / UPDATE / DELETE / REPLACE — the rows change
+ *   schema  CREATE / DROP / ALTER — the table itself changes
  *
- * ⚠️ Regex-based, so this is a guard rail rather than a parser: it stops the
- * ordinary mistake and the casual overreach, not a determined author who
- * shares the runtime anyway (docs/03 §7).
+ * `schema` is its own class rather than a kind of `write` because dropping the
+ * catalogue and updating a row in it are not the same request, and a grant
+ * that cannot tell them apart cannot be prompted for honestly at install time.
  */
+export type DbAccess = 'read' | 'write' | 'schema'
+
+const ACCESS_BY_KEYWORD: Record<string, DbAccess> = {
+  select: 'read',
+  explain: 'read',
+  values: 'read',
+  insert: 'write',
+  replace: 'write',
+  update: 'write',
+  delete: 'write',
+  create: 'schema',
+  drop: 'schema',
+  alter: 'schema',
+  reindex: 'schema',
+  analyze: 'schema',
+  vacuum: 'schema',
+  pragma: 'schema',
+}
+
+const ACCESS_RANK: Record<DbAccess, number> = { read: 0, write: 1, schema: 2 }
+
+/** Strip comments so the leading keyword is the first thing we see. */
+function withoutComments(sql: string): string {
+  return sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ')
+}
+
+/**
+ * Classify what a statement asks for, taking the most demanding class in the
+ * string when several statements are separated by `;`.
+ *
+ * Like `tablesReferenced`, this is a regex over the shapes SQLite uses rather
+ * than a parser, and it fails *closed* in both directions that matter:
+ *
+ *  - `SELECT 1; DROP TABLE tracks` is classified `schema`, not `read`, so a
+ *    second statement cannot ride in on the first one's grant.
+ *  - A string containing what looks like a statement boundary
+ *    (`INSERT INTO t VALUES ('a; DROP TABLE x')`) is classified by the more
+ *    demanding half. That refuses a legitimate statement rather than
+ *    permitting an illegitimate one, which is the right direction to be wrong
+ *    in — and parameter binding means such literals are rare in practice.
+ *  - Nothing recognisable at all is `schema`, the most demanding class.
+ */
+export function classifyDbAccess(sql: string): DbAccess {
+  let rank = -1
+  for (const fragment of withoutComments(sql).split(';')) {
+    const keyword = /^\s*([A-Za-z]+)/.exec(fragment)?.[1]?.toLowerCase()
+    if (!keyword) continue
+    // A CTE may front any of SELECT / INSERT / UPDATE / DELETE.
+    const access =
+      keyword === 'with'
+        ? /\b(?:INSERT|UPDATE|DELETE|REPLACE)\b/i.test(fragment)
+          ? 'write'
+          : 'read'
+        : ACCESS_BY_KEYWORD[keyword]
+    if (!access) continue
+    rank = Math.max(rank, ACCESS_RANK[access])
+  }
+  if (rank < 0) return 'schema'
+  return (['read', 'write', 'schema'] as const)[rank]!
+}
+
+/**
+ * The namespaces a grant set opens, and what may be done in each.
+ *
+ *   db:read:<ns>    SELECT
+ *   db:write:<ns>   INSERT / UPDATE / DELETE
+ *   db:*:<ns>       everything, schema changes included
+ *
+ * `write` deliberately does **not** imply `read`: a plugin that both reads and
+ * writes the catalogue declares both, which keeps `db:*:<ns>` meaningful and
+ * keeps the install-time prompt specific. `db:own` is separate and total —
+ * a plugin owns its own tables outright.
+ */
+function parseDbGrants(granted: readonly string[]): Map<string, Set<DbAccess>> {
+  const namespaces = new Map<string, Set<DbAccess>>()
+  for (const grant of granted) {
+    if (!grant.startsWith('db:') || grant === 'db:own') continue
+    const rest = grant.slice('db:'.length)
+    const sep = rest.indexOf(':')
+    if (sep <= 0) continue
+    const verb = rest.slice(0, sep).toLowerCase()
+    const ns = rest.slice(sep + 1).toLowerCase()
+    if (!ns) continue
+
+    const allowed = namespaces.get(ns) ?? new Set<DbAccess>()
+    if (verb === 'read') allowed.add('read')
+    else if (verb === 'write') allowed.add('write')
+    else if (verb === '*') {
+      allowed.add('read')
+      allowed.add('write')
+      allowed.add('schema')
+    } else continue // an unknown verb grants nothing
+    namespaces.set(ns, allowed)
+  }
+  return namespaces
+}
+
+/**
+ * Which grant, if any, covers a table.
+ *
+ * `core` is the fallback rather than a prefix match: the catalogue's tables
+ * carry no prefix, so anything that is not a `plugin_` table belongs to it.
+ */
+function grantFor(
+  table: string,
+  grants: Map<string, Set<DbAccess>>,
+): { ns: string; allowed: Set<DbAccess> } | undefined {
+  const lower = table.toLowerCase()
+  for (const [ns, allowed] of grants) {
+    if (ns === 'core') continue
+    if (lower === ns || lower.startsWith(`${ns}_`)) return { ns, allowed }
+  }
+  const core = grants.get('core')
+  if (core && !lower.startsWith('plugin_')) return { ns: 'core', allowed: core }
+  return undefined
+}
+
+/** The capability a refused statement would have needed. */
+function capabilityFor(access: DbAccess, ns: string): string {
+  return access === 'schema' ? `db:*:${ns}` : `db:${access}:${ns}`
+}
+
+const ACCESS_VERB: Record<DbAccess, string> = {
+  read: 'read',
+  write: 'write to',
+  schema: 'change the schema of',
+}
+
 /**
  * The table prefix a caller owns, derived from its instance id.
  *
@@ -250,6 +379,18 @@ export function assertOwnNamespace(config: unknown, namespace: string): void {
   }
 }
 
+/**
+ * Enforce the `db:` grants against one statement.
+ *
+ * A plugin may always use its own namespaced tables (`db:own`). Every other
+ * table needs a grant naming its namespace *and* covering what the statement
+ * does — `db:read:core` no longer carries an `INSERT`, which is the whole
+ * point of separating the verbs.
+ *
+ * ⚠️ Regex-based, so this is a guard rail rather than a parser: it stops the
+ * ordinary mistake and the casual overreach, not a determined author who
+ * shares the runtime anyway (docs/03 §7).
+ */
 export function assertDb(config: unknown, sql: string, ownPrefix: string): void {
   const gate = capabilityConfigOf(config)
   if (!gate) return
@@ -258,23 +399,28 @@ export function assertDb(config: unknown, sql: string, ownPrefix: string): void 
     throw new CapabilityError('db', `${gate.pluginId} may not issue ${sql.trim().split(/\s+/)[0]}`)
   }
 
-  const readable = new Set<string>()
-  for (const grant of gate.granted) {
-    if (grant.startsWith('db:read:')) readable.add(grant.slice('db:read:'.length).toLowerCase())
-  }
+  const grants = parseDbGrants(gate.granted)
+  const access = classifyDbAccess(sql)
   const hasOwn = gate.granted.includes('db:own')
   const own = ownTablePattern(ownPrefix)
 
   for (const table of tablesReferenced(sql)) {
     if (KERNEL_TABLES.has(table.toLowerCase())) continue
     if (hasOwn && own.test(table)) continue
-    // `db:read:<ns>` names a namespace; its tables carry that prefix.
-    if ([...readable].some((ns) => table.toLowerCase().startsWith(`${ns}_`) || table.toLowerCase() === ns))
-      continue
-    if (readable.has('core') && !table.startsWith('plugin_')) continue
-    throw new CapabilityError(
-      'db:own',
-      `${gate.pluginId} may not touch table "${table}" — it is outside its own namespace`,
-    )
+
+    const grant = grantFor(table, grants)
+    if (!grant) {
+      throw new CapabilityError(
+        'db:own',
+        `${gate.pluginId} may not touch table "${table}" — it is outside its own namespace`,
+      )
+    }
+    if (!grant.allowed.has(access)) {
+      throw new CapabilityError(
+        capabilityFor(access, grant.ns),
+        `${gate.pluginId} may not ${ACCESS_VERB[access]} table "${table}" — ` +
+          `${capabilityFor(access, grant.ns)} is not granted`,
+      )
+    }
   }
 }

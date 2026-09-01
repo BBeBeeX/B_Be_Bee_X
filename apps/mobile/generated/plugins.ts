@@ -8,6 +8,7 @@ import pluginInspector from '@BBeBee/plugin-inspector'
 import pluginLogBuffer from '@BBeBee/plugin-log-buffer'
 import pluginLogConsole from '@BBeBee/plugin-log-console'
 import pluginLogFile from '@BBeBee/plugin-log-file'
+import pluginSources from '@BBeBee/plugin-sources'
 import pluginUi from '@BBeBee/plugin-ui'
 
 export const bundled: PluginRegistry = {
@@ -39,6 +40,11 @@ export const bundled: PluginRegistry = {
   "@BBeBee/plugin-log-file": {
     plugin: pluginLogFile,
     manifest: {"id":"@BBeBee/plugin-log-file","version":"0.0.0","displayName":"Log File","description":"Rotating NDJSON log file.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:write:logs","fs:read:logs"],"instantiable":false},
+    builtin: true,
+  },
+  "@BBeBee/plugin-sources": {
+    plugin: pluginSources,
+    manifest: {"id":"@BBeBee/plugin-sources","version":"0.0.0","displayName":"Sources","description":"ctx.sources — provider registration, lookup, and cross-source search.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["sources"]},"instantiable":false},
     builtin: true,
   },
   "@BBeBee/plugin-ui": {

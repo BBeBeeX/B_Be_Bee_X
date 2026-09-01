@@ -143,6 +143,8 @@ describe('db capability scopes over the bridge', () => {
         ownPrefix: nsPrefix(`plugin:${instanceId}`),
         own: gated(['db:own']),
         ownPlusCoreReads: gated(['db:own', 'db:read:core']),
+        ownPlusCoreWrites: gated(['db:own', 'db:write:core']),
+        ownPlusCoreAll: gated(['db:own', 'db:*:core']),
       })
     })
   }

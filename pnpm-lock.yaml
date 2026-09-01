@@ -479,6 +479,18 @@ importers:
         specifier: workspace:*
         version: link:../plugin-log-buffer
 
+  packages/plugin-sources:
+    dependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../kernel
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+
   packages/plugin-ui:
     dependencies:
       '@BBeBee/kernel':
