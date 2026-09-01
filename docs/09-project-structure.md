@@ -63,6 +63,7 @@ B_Be_Bee/
 │  └─ plugin-…                      ┘
 │
 │  ├─ plugin-ui/           ✅       the ctx.ui contribution registry
+│  ├─ plugin-sources/      ✅       the ctx.sources provider registry (06 §2)
 │  ├─ plugin-inspector/    ✅       fiber tree + labelled effects (M0 exit criterion)
 │  ├─ plugin-hello/        ✅       the M0 demonstration plugin
 │  ├─ core-desktop-bridge/ ✅       renderer↔main IPC clients + the main-side host

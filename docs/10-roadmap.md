@@ -38,6 +38,9 @@ that surfaces, while backing out is still cheap.
 `core-audio-webaudio`, `plugin-player`, `plugin-source-local`, `plugin-local-scanner`, plus enough
 UI in both shells to browse a library and control playback. Media session integration.
 
+> **Detailed plan** — [11 — M1 Execution Plan](./11-roadmap-M1.md): the package set, the build
+> order, the milestone-level decisions, and the check behind each criterion below.
+
 **Exit criteria**
 - Scan a folder of ≥ 5,000 files; incremental rescan of an unchanged library costs stat calls only.
 - Play, pause, seek, next, previous, queue reorder — on all three platforms.
