@@ -7,7 +7,9 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron'
-import { CH } from '@BBeBee/core-desktop-bridge'
+// The channel names only — the package root pulls in cordis, and a sandboxed
+// preload has no `require` for anything but Electron's own modules.
+import { CH } from '@BBeBee/core-desktop-bridge/protocol'
 
 const api = {
   paths: {

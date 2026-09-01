@@ -23,6 +23,9 @@ import type { Context } from 'cordis'
 import { storageNamespace } from '@BBeBee/kernel'
 import type { FsService, StoreService, Uri } from '@BBeBee/protocol'
 
+/** See the note on the field below — this key must not be a string. */
+const OWN_FS = Symbol('BBeBee.store.ownFs')
+
 export interface StoreConfig {
   /** File name under the app data directory. */
   fileName?: string
@@ -50,8 +53,14 @@ export class StoreFs extends Service implements StoreService {
    * through that caller's interception, so a plugin granted only `db:own`
    * would have its unrelated settings write refused — and the store would
    * silently stop persisting. See docs/03 §4, "The one exception".
+   *
+   * ⚠️ Keyed by symbol, and that is load-bearing. Cordis hands a service back
+   * re-bound to whoever is *reading* it: a plain `this[OWN_FS]`, read while a
+   * gated plugin is on the stack, returns that plugin's intercepted `fs` and
+   * throws the capture away. Its proxy passes symbol keys straight through,
+   * so this one property comes back as captured.
    */
-  private ownFs!: FsService
+  private [OWN_FS]!: FsService
   private flushTimer: ReturnType<typeof setTimeout> | undefined
   private pending: Promise<void> | undefined
   private loading: Promise<void> | undefined
@@ -64,7 +73,7 @@ export class StoreFs extends Service implements StoreService {
   }
 
   async [Service.init]() {
-    this.ownFs = this.ctx.fs
+    this[OWN_FS] = this.ctx.fs
     await this.load()
     return async () => {
       if (this.flushTimer) {
@@ -129,9 +138,9 @@ export class StoreFs extends Service implements StoreService {
   /* ── Persistence ────────────────────────────────────────────────────── */
 
   private async fileUri(): Promise<Uri> {
-    const dir = await this.ownFs.dir('data')
+    const dir = await this[OWN_FS].dir('data')
     if (!dir) throw new Error('store: no data directory available')
-    return this.ownFs.join(dir, this.fileName)
+    return this[OWN_FS].join(dir, this.fileName)
   }
 
   private async load(): Promise<void> {
@@ -148,15 +157,15 @@ export class StoreFs extends Service implements StoreService {
     if (this.doc.loaded) return
     const uri = await this.fileUri()
     try {
-      if (await this.ownFs.exists(uri)) {
-        this.doc.data = JSON.parse(await this.ownFs.readFile(uri)) as Record<string, unknown>
+      if (await this[OWN_FS].exists(uri)) {
+        this.doc.data = JSON.parse(await this[OWN_FS].readFile(uri)) as Record<string, unknown>
       }
     } catch (error) {
       // A corrupt store must not brick the app: settings are recoverable,
       // an unbootable app is not. Keep the bad file for diagnosis.
       this.ctx.logger.error(`store: could not read ${uri}, starting empty: ${String(error)}`)
       try {
-        await this.ownFs.move(uri, `${uri}.corrupt-${Date.now()}`)
+        await this[OWN_FS].move(uri, `${uri}.corrupt-${Date.now()}`)
       } catch {
         /* best effort */
       }
@@ -201,14 +210,14 @@ export class StoreFs extends Service implements StoreService {
     const tmp = `${uri}.tmp`
     const payload = JSON.stringify(this.doc.data, null, 2)
     try {
-      await this.ownFs.writeFile(tmp, payload)
+      await this[OWN_FS].writeFile(tmp, payload)
       // A rename is atomic on both platforms, so a crash mid-write leaves the
       // previous store intact rather than a truncated one.
-      await this.ownFs.move(tmp, uri)
+      await this[OWN_FS].move(tmp, uri)
     } catch (error) {
       this.ctx.logger.error(`store: flush failed: ${String(error)}`)
       // Do not leave a half-written temp file behind to confuse the next boot.
-      await this.ownFs.remove(tmp).catch(() => undefined)
+      await this[OWN_FS].remove(tmp).catch(() => undefined)
     }
   }
 }

@@ -54,9 +54,10 @@ export const name = 'plugin-hello-ui-desktop'
 export const inject = ['ui', 'hello']
 
 export function apply(ctx: Context) {
-  return ctx.ui.registerView(HELLO_VIEW, ({ ctx: viewCtx }: { ctx: Context }) =>
-    h(HelloPanel, { ctx: viewCtx }),
-  )
+  // Bound to *this plugin's* context, not to the one the shell renders with.
+  // The shell knows nothing about any feature, so it injects `ui` and nothing
+  // else; reading `ctx.hello` through it is what `inject` above forbids.
+  return ctx.ui.registerView(HELLO_VIEW, () => h(HelloPanel, { ctx }))
 }
 
 export default { name, inject, apply }
