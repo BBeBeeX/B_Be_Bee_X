@@ -60,22 +60,26 @@ B_Be_Bee/
 │  ├─ plugin-log-buffer/   ✅       │
 │  └─ plugin-…                      ┘
 │
+│  ├─ plugin-ui/            ✅       the ctx.ui contribution registry
+│  ├─ plugin-sources/       ✅       the ctx.sources provider registry (06 §2)
+│  ├─ plugin-inspector/     ✅       fiber tree + labelled effects (M0 exit criterion)
+│  ├─ plugin-hello/         ✅       the M0 demonstration plugin
+│  ├─ core-desktop-bridge/  ✅       renderer↔main IPC clients + the main-side host
+│
 │  ├─ ui-tokens/                    design tokens as plain data (08 §6)
 │  ├─ ui-core/                      framework-agnostic React hooks
 │  ├─ ui-kit-mobile/                React Native components
 │  ├─ ui-kit-desktop/               React DOM components
-│  ├─ plugin-player-ui-mobile/      ┐ per-target view packages
-│  ├─ plugin-player-ui-desktop/     ┘
+│  ├─ plugin-hello-ui-desktop/ ✅   ┐ per-target view packages
+│  ├─ plugin-hello-ui-mobile/  ✅   ┘
 │  │
-│  └─ tooling/
-│     ├─ eslint-config/             including the platform-SDK import ban
-│     ├─ tsconfig/
-│     ├─ gen-plugins/               the static manifest codegen
-│     └─ create-plugin/             scaffolder: pnpm new:plugin
+│  ├─ tooling-gen-plugins/  ✅      the static registry codegen (pnpm gen:plugins)
+│  └─ tooling-create-plugin/ ✅     the scaffolder (pnpm new:plugin)
 │
 ├─ docs/                            these documents
+├─ eslint.config.js                 flat config; the architectural rules live here
+├─ vitest.config.ts
 ├─ pnpm-workspace.yaml
-├─ turbo.json
 └─ package.json
 ```
 
@@ -120,43 +124,59 @@ flowchart TD
 这些规则由 ESLint 的 `overrides` 按路径限定来机械执行，而不是靠评审把关。每条规则在配置中都有注释，说明它守护的是哪一节文档。
 
 ```js
-// packages/tooling/eslint-config/index.js — the rules that matter
+// eslint.config.js — the rules that matter
 const PLATFORM_SDKS = [
-  'expo*', 'react-native', 'react-native/*', 'electron', 'node:*',
-  'fs', 'path', 'crypto', 'child_process', 'better-sqlite3', 'music-metadata',
+  'expo', 'expo-*', 'expo/*', 'react-native', 'react-native/*', 'react-native-*',
+  'electron', 'electron/*', 'node:*', 'fs', 'fs/promises', 'path', 'os', 'crypto',
+  'child_process', 'better-sqlite3', 'music-metadata', 'ws',
 ]
 
-module.exports = {
-  overrides: [
-    {
-      // 02 §1 — the invariant. Nothing outside core-* touches a platform SDK.
-      files: ['packages/plugin-*/**', 'packages/ui-*/**', 'packages/protocol/**'],
-      excludedFiles: ['packages/plugin-*-ui-*/**'],
-      rules: { 'no-restricted-imports': ['error', { patterns: PLATFORM_SDKS }] },
+export default tseslint.config(
+  {
+    // 02 §1 — the invariant. Nothing outside core-* touches a platform SDK.
+    files: ['packages/plugin-*/**/*.ts', 'packages/ui-*/**/*.ts', 'packages/protocol/**/*.ts'],
+    ignores: ['packages/plugin-*-ui-*/**/*.ts'],
+    rules: { 'no-restricted-imports': ['error', { patterns: PLATFORM_SDKS }] },
+  },
+  {
+    // 08 §1 — UI packages may render, but may not reach the platform.
+    files: ['packages/plugin-*-ui-mobile/**/*.ts', 'packages/ui-kit-mobile/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: PLATFORM_SDKS.filter((p) => !p.startsWith('react-native')) },
+      ],
     },
-    {
-      // 08 §1 — UI packages may render, but may not reach the platform.
-      files: ['packages/plugin-*-ui-mobile/**', 'packages/ui-kit-mobile/**'],
-      rules: { 'no-restricted-imports': ['error', {
-        patterns: PLATFORM_SDKS.filter((p) => p !== 'react-native' && p !== 'react-native/*'),
-      }] },
+  },
+  {
+    // @BBeBee/protocol must stay runtime-free so it is safe to import anywhere.
+    // `^[^.]` matches bare specifiers only, leaving relative imports alone.
+    files: ['packages/protocol/src/**/*.ts'],
+    ignores: ['packages/protocol/src/conformance/**/*.ts', '**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [{ regex: '^[^.]', allowTypeImports: true }] },
+      ],
     },
-    {
-      // @BBeBee/protocol must stay runtime-free so it can be imported anywhere.
-      files: ['packages/protocol/src/**'],
-      excludedFiles: ['packages/protocol/src/conformance/**'],
-      rules: { '@typescript-eslint/no-restricted-imports': ['error', { patterns: ['*'] }] },
-    },
-    {
-      // 02 §2 — main is an IPC host. Domain logic there breaks platform symmetry.
-      files: ['apps/desktop/main/**'],
-      rules: { 'no-restricted-imports': ['error', { patterns: ['@BBeBee/plugin-*'] }] },
-    },
-  ],
-}
+  },
+  {
+    // 02 §2 — main is an IPC host. Domain logic there breaks platform symmetry.
+    files: ['apps/desktop/main/**/*.ts'],
+    rules: { 'no-restricted-imports': ['error', { patterns: ['@BBeBee/plugin-*'] }] },
+  },
+  {
+    // Tests are not shipped, so the SDK ban does not apply: a conformance
+    // harness legitimately needs `node:fs` to build a scratch directory.
+    files: ['**/*.test.ts'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+)
 ```
 
-等代码库真正成形后，第五条规则值得补上：检查任何 `plugin-*-ui-*` 包都不从其对应的无 UI 插件导入*值*，只允许导入类型。用 `eslint-plugin-import` 的 `no-restricted-paths` 加上仅类型例外即可覆盖。
+有两条规则刻意放在**测试**里而不是 ESLint 里 —— 一条连自身选择器都无法验证的 lint 规则，比没有更糟：`conventions.test.ts` 扫描未等待的 `ctx.plugin()`（自带一个证明检测器确实会触发的自测），各 `*-scope` 契约套件则检查能力门。见 [§6](#6-测试策略)。
+
+仍待补上：检查任何 `plugin-*-ui-*` 包都不从其对应的无 UI 插件导入*值*，只允许导入类型。用 `eslint-plugin-import` 的 `no-restricted-paths` 加上仅类型例外即可覆盖。脚手架已经产出正确的形状 —— 无 UI 包是其视图包的 `devDependency` —— 但还没有任何机制强制它。
 
 ---
 
@@ -181,7 +201,7 @@ module.exports = {
 }
 ```
 
-代码生成（`packages/tooling/gen-plugins`）在每次移动端构建之前以及开发监视模式下运行，写出 `apps/mobile/generated/plugins.ts`。其产物**提交进仓库**，因此全新检出无需任何前置步骤即可构建，CI 也只需校验该文件是否为最新，而不必重新生成。
+代码生成（`packages/tooling-gen-plugins`，以 `pnpm gen:plugins` 运行）写出 `apps/{mobile,desktop}/generated/plugins.ts`。其产物**提交进仓库**，因此全新检出无需任何前置步骤即可构建，CI 也只需校验该文件是否为最新，而不必重新生成 —— 每当新增或移除插件包时都要跑一次。
 
 由 Turborepo 编排：`build` 依赖 `^build`，`typecheck` 与 `lint` 并行执行，含有契约测试套件的包其 `test` 依赖 `build`。
 
@@ -273,27 +293,92 @@ it('plays the same track with and without plugin-download', async () => {
 
 ## 7. 开发工作流
 
+### 首次运行
+
 ```bash
-pnpm install
-pnpm gen:plugins            # refresh the static plugin manifest
-
-pnpm dev:desktop            # electron-vite dev server, HMR on both processes
-pnpm dev:mobile             # expo start --dev-client
-
-pnpm new:plugin             # scaffolder: name, kind, targets → a working package
-pnpm typecheck && pnpm lint && pnpm test
-pnpm build:desktop          # electron-builder → dmg / nsis / AppImage
-pnpm build:mobile           # eas build
+pnpm install                 # pnpm 11+, Node 22.12+
+pnpm check                   # typecheck + lint + test —— 全新检出上应当全绿
 ```
 
-脚手架并非可有可无的点缀。三包约定、清单格式、能力列表、契约测试套件都要接对，手工搭一个插件意味着总会在其中一环出错。`pnpm new:plugin` 会生成无 UI 包、可选的 UI 包、一份合法的 `BBeBee.plugin.json`、一个可通过的冒烟测试，以及文档占位文件。
+`pnpm check` 是整道闸门。它通过，CI 就通过。推送之前先跑它；本节其余内容在出问题之前都并非必读。
+
+### 日常命令
+
+| 命令 | 作用 |
+|---|---|
+| `pnpm check` | `typecheck` + `lint` + `test`。提 PR 前的那一条命令 |
+| `pnpm test` | Vitest 对所有包跑一遍 |
+| `pnpm test:watch` | Vitest 监视模式 —— 干活时让它一直开着 |
+| `pnpm typecheck` | 每个包**及两个 app** 都跑 `tsc --noEmit` |
+| `pnpm lint` / `pnpm lint:fix` | ESLint，含 [§3](#3-依赖规则) 的架构规则 |
+| `pnpm build` | 为每个包产出 `dist/` |
+| `pnpm clean` | 移除 `dist/`、`out/` 与构建信息 |
+
+按路径跑单个包的测试 —— `pnpm test packages/core-fs-node` —— 或单个文件。
+
+### 运行应用
+
+| 命令 | 作用 | 需要什么 |
+|---|---|---|
+| `pnpm dev:desktop` | `electron-vite dev` —— main、preload 与 renderer 三处 HMR | Electron 二进制（由 `pnpm install` 抓取；首次安装需要网络） |
+| `pnpm build:desktop` | 产出生产包到 `apps/desktop/out/` | — |
+| `pnpm dev:mobile` | `expo start --dev-client` | 设备或模拟器上的**自定义 dev 构建** —— 见下 |
+
+> ⚠️ **移动端需要自定义 dev 构建，不能用 Expo Go。** `react-native-audio-api`、`expo-sqlite` 与 `expo-file-system` 都含原生代码，Expo Go 无法承载本应用。每变更一次原生依赖就构建一次 dev client（`pnpm --filter @BBeBee/mobile exec expo run:android`），之后 `pnpm dev:mobile` 会附着到它。
+
+> ⚠️ **打包尚未配置。** `build:desktop` 产出的是 bundle，不是安装器；`electron-builder`（dmg / nsis / AppImage）与移动端的 `eas build` 要到首个发布版本才到位，不属于 M0。
+
+### 新增插件
+
+```bash
+pnpm new:plugin --name scrobble --kind feature --ui desktop --capabilities db:own
+pnpm install                 # 把新工作区包链接进来
+pnpm gen:plugins             # 把它加进两个外壳的静态注册表
+pnpm check                   # 本来就是绿的 —— 模板自带可通过的测试
+```
+
+| 标志 | 取值 | 效果 |
+|---|---|---|
+| `--name` | 小写、连字符分隔 | `scrobble` → `@BBeBee/plugin-scrobble` |
+| `--kind` | `feature`（默认）、`source`、`effect` | 决定包前缀；`source` 会标记为 `instantiable`（[06 §2](./06-music-sources.md#2-provider-plugins-vs-provider-instances)） |
+| `--ui` | `none`（默认）、`desktop`、`mobile`、`both` | 生成 [08 §1](./08-ui-architecture.md#1-the-three-package-convention) 所述的按目标视图包 |
+| `--capabilities` | 逗号分隔 | 写入 `BBeBee.plugin.json`（[03 §7](./03-plugin-system.md#7-能力模型)） |
+
+脚手架并非可有可无的点缀。三包约定、清单格式、能力列表、泄漏测试都要接对，手工搭一个插件意味着总会在其中一环出错 —— 而且往往是*无声*失败的那一环。模板自带正确的 `await ctx.plugin(...)` 形态与泄漏测试，这两样若靠踩坑领悟，各要付出一整个调试会话的代价。
+
+**新增或移除插件之后，运行 `pnpm gen:plugins`。** Metro 无法解析运行期路径，因此两个外壳读取的都是一份生成的静态导入注册表（[§4](#4-构建流水线)）。产物随仓库提交；CI 校验其是否为最新，而不是重新生成。
+
+### 各道门各自能抓住什么
+
+值得了解，因为这里的失败通常意味着架构层面的错误，而不是拼写错误：
+
+| 门 | 能抓住的问题 |
+|---|---|
+| `no-restricted-imports` | 插件伸手去够平台 SDK，而不是 `ctx.*` 服务（[02 §1](./02-architecture.md#the-invariant)） |
+| 契约测试套件 | 同一服务的两份实现渐行渐远 —— 这正是套件存在的理由 |
+| `*-scope` 套件 | 能力门在某一平台成立、在另一平台失效 |
+| 泄漏测试（`diffSnapshots`） | 卸载不干净的插件（[§6](#6-测试策略)） |
+| `conventions.test.ts` | 未等待的 `ctx.plugin()`，会无声地使就绪状态无法传播 |
+
+### 出问题时
+
+| 症状 | 原因 |
+|---|---|
+| Metro：*无法解析 `cordis`* | `metro.config.js` 缺少 `unstable_enablePackageExports` —— Cordis 是纯 ESM，带 `exports` 映射（[04 §17](./04-core-services.md#17-runtime-compatibility-checklist)） |
+| `@Inject` 运行时失败、编译却通过 | 用了旧式装饰器。Babel 需要 `{ version: '2023-11' }`；`tsconfig` 不得设置 `experimentalDecorators` |
+| 插件永远停在 `pending` | �个被注入的服务始终没有 ACTIVE。`ctx.inspector.render()` 会打印纤维树并注明每个 fiber 在等什么 |
+| `app.start()` 已 resolve 但某个服务尚未就绪 | 某处有未等待的 `ctx.plugin()`。`pnpm test packages/kernel` 会点名文件 |
+| `CapabilityError: … may not …` | manifest 缺少某项能力，或路径/表确实越界。要放宽的是 manifest，永远不要放宽门 |
+| 渲染进程：*preload bridge 缺失* | 渲染进程加载时没有拿到 `preload/index.cjs` —— 重新构建，preload 必须是 CJS |
+| Electron 在无头机器上无法启动 | 预期行为。它需要 `libgtk-3`、`libnss3` 与显示器；产物本身仍可构建 |
 
 ### 提 PR 前的本地检查清单
 
-- [ ] `pnpm typecheck lint test` 全部通过。
-- [ ] 新插件通过 §6 的泄漏测试。
-- [ ] 新的核心服务实现在**两个平台上**都通过其契约测试套件。
-- [ ] 没有必须放宽 §3 规则才能允许的新导入。
+- [ ] `pnpm check` 全部通过。
+- [ ] `pnpm gen:plugins` 不产生任何差异。
+- [ ] 新插件通过 [§6](#6-测试策略) 的泄漏测试。
+- [ ] 新的核心服务实现通过其契约测试套件 —— **以及它的 `*-scope` 套件，在该服务的每一份实现上**，而不只是你改动的那一份。
+- [ ] 没有必须放宽 [§3](#3-依赖规则) 规则才能允许的新导入。
 - [ ] 若有依赖变动，版本矩阵已同步更新。
 
 ---

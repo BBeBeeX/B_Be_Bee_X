@@ -766,7 +766,15 @@ await ctx.db.defineSchema('plugin:@BBeBee/plugin-scrobble', [
   `plugin_a_b`。因此唯一性由另一道机制保证：`schema_namespaces` 表记录每个前缀的归属
   命名空间，第二个命名空间来认领同一前缀时会以 `NamespaceCollisionError` 拒绝，
   而不是悄悄共享表。
-- 插件只能写自己的表。读取核心目录表需要 `db:read:core`；能力门控会拒绝引用其他命名空间前缀的语句。
+- 插件只能写自己的表，并且只能为 `plugin:<自己的 instance id>` 调用 `defineSchema` ——
+  否则它就能认领 `core`、霸占目录。读取核心表需要 `db:read:core`，改写核心表的行需要
+  `db:write:core` —— 这是另一项独立授权，不会随前者附带
+  （[03 §7](./03-plugin-system.md#能力语法)）。`ATTACH`/`DETACH` 一律拒绝，因为它们会把
+  数据库句柄变成任意文件读写原语。
+- ⚠️ 这项检查是**对表标识符的正则匹配，不是 SQL 解析器**。它按"失败即拒绝"（fail closed）
+  设计 —— 无法明确归属的标识符一律当作外来表处理 —— 它拦得住寻常失误与顺手越界，却拦不住
+  蓄意为之的作者，反正后者与运行时同处一室
+  （[03 §7](./03-plugin-system.md#门实际运行的位置)）。
 - 迁移在 `ctx.plugin()` 内部运行，因此迁移失败只影响该插件。
 - **卸载**时提供"删除数据" —— 丢弃该命名空间的表及对应的 `schema_migrations` 行 —— 或"保留数据"，让它们休眠，以便重装后从上次中断处继续。默认保留是更安全的选择。
 

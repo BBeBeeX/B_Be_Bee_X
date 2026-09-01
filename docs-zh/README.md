@@ -6,6 +6,21 @@ BBeBee 是一款跨平台音乐播放器，面向桌面端（Electron）与移�
 
 ---
 
+## 快速上手
+
+```bash
+pnpm install     # pnpm 11+, Node 22.12+
+pnpm check       # typecheck + lint + test —— 全新检出上应当全绿
+pnpm dev:desktop # Electron，main、preload 与 renderer 三处 HMR
+```
+
+`pnpm check` 是那道闸门；它通过，CI 就通过。完整的命令清单、插件脚手架、每道门各自能抓住什么，以及排障表，见 [09 §7 —— 开发工作流](./09-project-structure.md#7-开发工作流)。
+
+> 移动端需要**自定义 dev 构建**，不能用 Expo Go —— 若干依赖含原生代码。
+> 见 [09 §7](./09-project-structure.md#运行应用)。
+
+---
+
 ## 阅读顺序
 
 先读 `01` 和 `02` —— 它们确立了其余所有文档共用的词汇。
@@ -22,6 +37,7 @@ BBeBee 是一款跨平台音乐播放器，面向桌面端（Electron）与移�
 | 08 | [UI 架构](./08-ui-architecture.md) | 一个插件如何向两个截然不同的外壳贡献 UI |
 | 09 | [项目结构](./09-project-structure.md) | Monorepo 布局、构建流水线、版本矩阵、测试策略 |
 | 10 | [路线图与风险](./10-roadmap.md) | 带完成标准的里程碑，以及可能出问题的地方 |
+| 11 | [M1 执行计划](./11-roadmap-M1.md) | 当前里程碑的细节：工作包、构建顺序，以及每条 M1 完成标准如何被验证 |
 
 ---
 

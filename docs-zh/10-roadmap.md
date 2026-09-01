@@ -26,6 +26,8 @@
 
 `core-audio-webaudio`、`plugin-player`、`plugin-source-local`、`plugin-local-scanner`，外加两个外壳中足以浏览曲库、控制播放的 UI。媒体会话（media session）集成。
 
+> **详细计划** —— [11 —— M1 执行计划](./11-roadmap-M1.md)：包集合、构建顺序、里程碑级的决策，以及下文每一条完成标准背后的验证方式。
+
 **完成标准**
 - 扫描一个 ≥ 5,000 个文件的文件夹；对未变化的曲库做增量重扫，只消耗 stat 调用。
 - 播放、暂停、进度跳转、上一曲、下一曲、队列重排——三个平台全部支持。
