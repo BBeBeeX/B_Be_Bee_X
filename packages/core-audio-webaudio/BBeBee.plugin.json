@@ -1,0 +1,21 @@
+{
+  "id": "@BBeBee/core-audio-webaudio",
+  "version": "0.0.0",
+  "displayName": "Audio",
+  "description": "ctx.audio — the Web Audio graph, shared by every target.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "audio"
+  ],
+  "contributes": {
+    "services": [
+      "audio"
+    ]
+  },
+  "instantiable": false
+}

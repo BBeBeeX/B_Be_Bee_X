@@ -1,0 +1,22 @@
+{
+  "id": "@BBeBee/core-http-node",
+  "version": "0.0.0",
+  "displayName": "HTTP",
+  "description": "ctx.http — outbound HTTP, the M1 slice.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "net:host/*",
+    "fs:write:downloads"
+  ],
+  "contributes": {
+    "services": [
+      "http"
+    ]
+  },
+  "instantiable": false
+}

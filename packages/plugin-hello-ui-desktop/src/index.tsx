@@ -53,7 +53,16 @@ export function HelloPanel({ ctx }: { ctx: Context }) {
 export const name = 'plugin-hello-ui-desktop'
 export const inject = ['ui', 'hello']
 
-export function apply(ctx: Context) {
+/**
+ * ⚠️ `async` is load-bearing, not decoration.
+ *
+ * Cordis decides "is this a class?" with `!!func.prototype`. A plain
+ * `function apply(…)` has one, so it is `new`-ed as if it were a service and
+ * the disposer it returns is discarded — the plugin loads, works, and never
+ * unloads. An async function has no prototype. `conventions.test.ts` fails the
+ * build on the other shape (docs/03 §2).
+ */
+export async function apply(ctx: Context) {
   // Bound to *this plugin's* context, not to the one the shell renders with.
   // The shell knows nothing about any feature, so it injects `ui` and nothing
   // else; reading `ctx.hello` through it is what `inject` above forbids.

@@ -20,6 +20,9 @@
  */
 
 export * from './harness.js'
+export { audioConformance, type AudioSubject } from './audio.js'
+export { createMockAudio, type MockAudio, type MockSource } from './mock-audio.js'
+export { codecConformance, type CodecSubject, type CodecSample } from './codec.js'
 export { dbConformance, type DbSubject } from './db.js'
 export { dbScopeConformance, type DbScopeSubject } from './db-scope.js'
 export { fsConformance, type FsSubject } from './fs.js'

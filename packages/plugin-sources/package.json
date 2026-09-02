@@ -1,7 +1,7 @@
 {
   "name": "@BBeBee/plugin-sources",
   "version": "0.0.0",
-  "description": "ctx.sources — provider registration, lookup, and cross-source search.",
+  "description": "ctx.sources — provider registration, discovery, and the catalogue cache.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -31,5 +31,10 @@
     "@BBeBee/protocol": "workspace:*",
     "@BBeBee/kernel": "workspace:*",
     "cordis": "4.0.0-rc.9"
+  },
+  "devDependencies": {
+    "@BBeBee/core-db-node": "workspace:*",
+    "@BBeBee/core-fs-node": "workspace:*",
+    "@BBeBee/core-paths-node": "workspace:*"
   }
 }

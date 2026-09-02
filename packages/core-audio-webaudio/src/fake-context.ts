@@ -1,0 +1,157 @@
+/**
+ * A fake Web Audio engine, for running the audio conformance suite in Node.
+ *
+ * Not a mock of `ctx.audio` — that would test nothing. This is a fake of the
+ * *engine underneath it*: `createGain`, `createBufferSource`, `decodeAudioData`
+ * and a clock the test drives. The service under test is the real one, so the
+ * graph wiring, the offset arithmetic and the one-shot source lifecycle are
+ * all genuinely exercised; only the sound card is absent.
+ *
+ * Exported from the package (not the test file) because the desktop shell's
+ * smoke tests want it too, and because a second copy would drift.
+ */
+
+export interface FakeClock {
+  /** Advance the audio clock, firing anything scheduled in that window. */
+  advance(ms: number): Promise<void>
+  now(): number
+}
+
+class FakeParam {
+  constructor(public value: number) {}
+  setTargetAtTime(target: number): void {
+    this.value = target
+  }
+}
+
+class FakeNode {
+  readonly outputs = new Set<FakeNode>()
+  connectCount = 0
+  disconnectCount = 0
+
+  connect(destination: FakeNode): FakeNode {
+    this.outputs.add(destination)
+    this.connectCount++
+    return destination
+  }
+
+  disconnect(): void {
+    this.outputs.clear()
+    this.disconnectCount++
+  }
+}
+
+class FakeGain extends FakeNode {
+  readonly gain = new FakeParam(1)
+}
+
+class FakeBufferSource extends FakeNode {
+  buffer: FakeAudioBuffer | null = null
+  onended: (() => void) | null = null
+  started = false
+  stopped = false
+  startOffset = 0
+  startedAt = 0
+
+  constructor(private readonly context: FakeAudioContext) {
+    super()
+  }
+
+  start(_when = 0, offset = 0): void {
+    if (this.started) throw new Error('cannot start a source twice')
+    this.started = true
+    this.startOffset = offset
+    this.startedAt = this.context.currentTime
+    if (this.buffer) {
+      this.context.schedule(this.buffer.duration - offset, () => {
+        if (this.stopped) return
+        this.stopped = true
+        this.onended?.()
+      })
+    }
+  }
+
+  stop(): void {
+    if (!this.started) throw new Error('cannot stop a source that never started')
+    if (this.stopped) throw new Error('cannot stop a source twice')
+    this.stopped = true
+  }
+}
+
+class FakeAudioBuffer {
+  constructor(
+    readonly duration: number,
+    readonly sampleRate: number,
+  ) {}
+  readonly numberOfChannels = 2
+  get length(): number {
+    return Math.round(this.duration * this.sampleRate)
+  }
+}
+
+interface Scheduled {
+  at: number
+  run(): void
+}
+
+/**
+ * The fake context.
+ *
+ * `currentTime` only moves when the test moves it, which is what makes the
+ * position assertions deterministic rather than flaky.
+ */
+export class FakeAudioContext {
+  readonly sampleRate = 48_000
+  readonly baseLatency = 0.01
+  readonly destination = new FakeNode()
+  currentTime = 0
+  closed = false
+
+  /** Duration `decodeAudioData` reports, in seconds. */
+  decodedDuration = 2
+
+  private readonly scheduled: Scheduled[] = []
+
+  createGain(): FakeGain {
+    return new FakeGain()
+  }
+
+  createBufferSource(): FakeBufferSource {
+    return new FakeBufferSource(this)
+  }
+
+  async decodeAudioData(_data: ArrayBuffer): Promise<FakeAudioBuffer> {
+    return new FakeAudioBuffer(this.decodedDuration, this.sampleRate)
+  }
+
+  async close(): Promise<void> {
+    this.closed = true
+  }
+
+  /** Called by fake sources; not part of the Web Audio API. */
+  schedule(afterSeconds: number, run: () => void): void {
+    this.scheduled.push({ at: this.currentTime + Math.max(0, afterSeconds), run })
+  }
+
+  async advance(ms: number): Promise<void> {
+    const target = this.currentTime + ms / 1000
+    for (;;) {
+      const next = this.scheduled
+        .filter((s) => s.at <= target)
+        .sort((a, b) => a.at - b.at)
+        .shift()
+      if (!next) break
+      this.scheduled.splice(this.scheduled.indexOf(next), 1)
+      this.currentTime = next.at
+      next.run()
+      // Let any promise the callback started settle before the next event.
+      await Promise.resolve()
+    }
+    this.currentTime = target
+    await Promise.resolve()
+  }
+}
+
+export function createFakeAudioContext(): FakeAudioContext {
+  return new FakeAudioContext()
+}

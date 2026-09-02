@@ -755,6 +755,10 @@ declare module 'cordis' {
 }
 ```
 
+> ⚠️ A waterfall listener's `next` is closed over the original arguments and **ignores anything
+> passed to it**. Rewrite by mutating the argument in place, or short-circuit by returning without
+> calling `next`. The signatures above are written `next: () => …` for that reason.
+
 | Event group | Mode | Why |
 |---|---|---|
 | `player/before-resolve`, `player/before-enqueue`, `http/request`, `dsp/build-chain` | **waterfall** | Listeners transform the value and control whether the chain continues. The composition mechanism of [02 §5](./02-architecture.md#5-composition-how-features-reach-each-other) |

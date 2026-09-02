@@ -153,10 +153,10 @@ defers UI.
 `✅` exists from M0 · `+` new in M1 · `~` existing, extended.
 
 ```
-core-audio-webaudio         +   ctx.audio — shared implementation, all three targets
-core-codec-node             +   ctx.codec — music-metadata in main, decodeAudioData in renderer
+core-audio-webaudio         ✅  ctx.audio — shared implementation, all three targets
+core-codec-node             ✅  ctx.codec — music-metadata over ctx.fs, bounded head read
 core-codec-rn               +   ctx.codec — AudioDecoder plus a native tag reader
-core-http-node              +   ctx.http (M1 slice) — Electron net, in main
+core-http-node              ✅  ctx.http (M1 slice) — fetch-shaped, transport is a seam
 core-http-rn                +   ctx.http (M1 slice) — RN fetch / XHR
 core-media-session-electron +   ctx.mediaSession — navigator.mediaSession + MPRIS/SMTC/Now Playing
 core-media-session-rn       +   ctx.mediaSession — lock screen and media notification
@@ -168,11 +168,11 @@ core-desktop-bridge         ~   hosts for codec, http, media session, device; pr
 core-fs-node / -expo        ✅  toPlayableUri and canWatch get their first real consumer
 core-db-node / -expo        ~   the db:write:core verb check (MD-4)
 
-plugin-sources              ✅  ctx.sources — registry, discovery; catalogue cache + FTS to come
-plugin-source-local         +   MediaProvider over the filesystem, instance id 'local'
-plugin-source-http-url      +   MediaProvider implementing the required core and nothing else
-plugin-local-scanner        +   ctx.scanner — roots, incremental walk, tag and artwork import
-plugin-player               +   ctx.player — transport, queue, resolution, history, persistence
+plugin-sources              ✅  ctx.sources — registry, discovery, catalogue cache, FTS index
+plugin-source-local         ✅  MediaProvider over the filesystem, instance id 'local'
+plugin-source-http-url      ✅  MediaProvider implementing the required core and nothing else
+plugin-local-scanner        ✅  ctx.scanner — roots, incremental walk, tag and artwork import
+plugin-player               ✅  ctx.player — transport, queue, resolution, history, persistence
 plugin-ui                   ✅  gets its first non-trivial contributions
 plugin-inspector            ✅  used to verify the M1 fiber tree unloads clean
 
@@ -184,7 +184,8 @@ plugin-player-ui-*          +   now playing, mini player, transport, queue
 plugin-sources-ui-*         +   library, album detail
 plugin-local-scanner-ui-*   +   settings: scan roots and URL sources
 
-protocol                    ~   services/library.ts, services/scanner.ts, the fractional index
+protocol                    ✅  catalogue reads on ctx.sources, ctx.scanner, the fractional index,
+                                the audio/codec conformance suites, the mock AudioService
 kernel                      ~   db:write:core, bootstrap sets for the new core services
 tooling-fixtures            +   dev-only: the 5,000-file corpus generator (§7)
 ```

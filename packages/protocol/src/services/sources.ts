@@ -218,6 +218,31 @@ export interface AggregatedSearch {
   byProvider: AggregatedSearchEntry[]
 }
 
+/* ── The catalogue cache ────────────────────────────────────────────────── */
+
+export type TrackSort =
+  | 'title'
+  | 'artist'
+  | 'album'
+  | 'addedAt'
+  | 'year'
+  | 'duration'
+  | 'playCount'
+
+export interface CatalogQuery {
+  sort?: TrackSort
+  desc?: boolean
+  /** Restrict to given provider instances. Absent means every instance. */
+  instanceIds?: string[]
+  page?: PageRequest
+}
+
+export interface CatalogCounts {
+  tracks: number
+  albums: number
+  artists: number
+}
+
 export interface SourcesService {
   register(p: MediaProvider): Disposable
   readonly providers: readonly MediaProvider[]
@@ -234,6 +259,30 @@ export interface SourcesService {
     q: SearchQuery,
     opts?: { instanceIds?: string[]; timeoutMs?: number },
   ): Promise<AggregatedSearch>
+
+  /*
+   * Reads over rows already stored, from any provider.
+   *
+   * The catalogue lives here because this is where it is written: a provider
+   * answers questions and returns plain data, and `ctx.sources` caches those
+   * answers into the catalogue tables (§1). Reads belong beside the writes
+   * rather than in a second service that would have to agree with them.
+   * Playlists, favourites and collections are `ctx.library`'s, not these.
+   */
+  listTracks(q?: CatalogQuery): Promise<Paged<Track>>
+  listAlbums(q?: CatalogQuery): Promise<Paged<Album>>
+  listArtists(q?: CatalogQuery): Promise<Paged<Artist>>
+  getAlbum(urn: string): Promise<AlbumDetail | undefined>
+  getArtist(urn: string): Promise<ArtistDetail | undefined>
+
+  /**
+   * FTS5 over the stored catalogue. Instant and available offline — the
+   * opposite of `searchAll`, which asks the backends and may be slow, partial
+   * or unreachable. Both exist; they answer different questions.
+   */
+  searchLocal(text: string, opts?: { limit?: number; instanceIds?: string[] }): Promise<SearchResult>
+
+  counts(): Promise<CatalogCounts>
 }
 
 declare module 'cordis' {

@@ -1,5 +1,11 @@
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
+import { PathsNode } from '@BBeBee/core-paths-node'
+import { FsNode } from '@BBeBee/core-fs-node'
+import { DbNode } from '@BBeBee/core-db-node'
 import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
 import { NetworkError } from '@BBeBee/protocol'
 import type { Capabilities, MediaProvider, SearchResult, Track } from '@BBeBee/protocol'
@@ -50,8 +56,15 @@ function searchingProvider(
   }
 }
 
+/**
+ * A context with the catalogue's dependencies: `ctx.sources` owns SQL now, so
+ * it needs a real database rather than a fake — the queries are the behaviour.
+ */
 async function withSources(): Promise<{ ctx: Context; sources: Sources }> {
   const ctx = new Context()
+  await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-sources-')) })
+  await ctx.plugin(FsNode)
+  await ctx.plugin(DbNode, { fileName: ':memory:' })
   await ctx.plugin(plugin, {})
   await tick()
   return { ctx, sources: ctx.sources as Sources }
@@ -66,6 +79,9 @@ describe('plugin-sources', () => {
   it('leaves nothing behind when unloaded', async () => {
     // The architecture's central claim, applied to this plugin (docs/09 §6).
     const ctx = new Context()
+    await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-leak-')) })
+    await ctx.plugin(FsNode)
+    await ctx.plugin(DbNode, { fileName: ':memory:' })
     await tick()
     const before = snapshotContext(ctx)
 

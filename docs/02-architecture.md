@@ -266,6 +266,13 @@ another feature's behaviour without either knowing about the other". That is wha
 A waterfall hook is middleware: each listener receives the arguments plus a `next` continuation,
 and may transform inputs, short-circuit, or post-process the result.
 
+> ⚠️ **`next` takes no arguments.** Cordis closes it over the *original* argument list, so
+> `next(somethingElse)` is silently identical to `next()`. A listener therefore has two moves:
+> **mutate the argument in place** — rewrite `req.headers`, splice the array — and call `next()`,
+> or **short-circuit** by returning a value and never calling `next` at all. The signatures in
+> [07 §5](./07-data-model.md#5-the-event-map) say so, and the kernel's `cordis-assumptions.test.ts`
+> pins it, because a header that silently vanishes is a miserable thing to debug.
+
 The three load-bearing waterfalls:
 
 | Hook | Purpose | Who hooks it |

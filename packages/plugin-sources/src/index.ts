@@ -24,11 +24,21 @@ import { ProviderError, SourceError, tryParseUrn } from '@BBeBee/protocol'
 import type {
   AggregatedSearch,
   AggregatedSearchEntry,
+  Album,
+  AlbumDetail,
+  Artist,
+  ArtistDetail,
+  CatalogCounts,
+  CatalogQuery,
   Disposable,
   MediaProvider,
+  Paged,
   SearchQuery,
+  SearchResult,
   SourcesService,
+  Track,
 } from '@BBeBee/protocol'
+import { Catalog } from './catalog.js'
 
 export interface SourcesConfig {
   /**
@@ -66,19 +76,32 @@ function asSourceError(error: unknown, instanceId: string): SourceError {
 }
 
 export class Sources extends Service implements SourcesService {
-  // Nothing: the registry is pure bookkeeping. Providers bring their own
-  // dependencies, and injecting `db` here would block registration on a
-  // database this service never touches.
-  static inject = []
+  // The catalogue cache is half of what this service is (docs/11 MD-3), and
+  // it is stored in SQL.
+  static inject = ['db']
 
   /** Insertion-ordered, which is the order `searchAll` reports in. */
   private readonly registry = new Map<string, MediaProvider>()
+  private catalog!: Catalog
 
   constructor(
     ctx: Context,
     private readonly config: SourcesConfig = {},
   ) {
     super(ctx, 'sources')
+  }
+
+  async [Service.init]() {
+    this.catalog = new Catalog(this.ctx.db)
+
+    // Any provider's rows get indexed without the writer knowing an index
+    // exists — the scanner emits this, and so will M2's caching path.
+    return this.ctx.on('library/changed', (kind, urns) => {
+      if (kind !== 'track') return
+      void this.catalog.index(urns).catch((error: unknown) => {
+        this.ctx.logger.warn(`sources: could not index ${urns.length} track(s): ${String(error)}`)
+      })
+    })
   }
 
   /**
@@ -189,7 +212,47 @@ export class Sources extends Service implements SourcesService {
       clearTimeout(timer)
     }
   }
+
+  /* ── the catalogue cache ───────────────────────────────────────────── */
+
+  listTracks(query?: CatalogQuery): Promise<Paged<Track>> {
+    return this.catalog.listTracks(query)
+  }
+
+  listAlbums(query?: CatalogQuery): Promise<Paged<Album>> {
+    return this.catalog.listAlbums(query)
+  }
+
+  listArtists(query?: CatalogQuery): Promise<Paged<Artist>> {
+    return this.catalog.listArtists(query)
+  }
+
+  getAlbum(urn: string): Promise<AlbumDetail | undefined> {
+    return this.catalog.getAlbum(urn)
+  }
+
+  getArtist(urn: string): Promise<ArtistDetail | undefined> {
+    return this.catalog.getArtist(urn)
+  }
+
+  searchLocal(
+    text: string,
+    opts?: { limit?: number; instanceIds?: string[] },
+  ): Promise<SearchResult> {
+    return this.catalog.searchLocal(text, opts)
+  }
+
+  counts(): Promise<CatalogCounts> {
+    return this.catalog.counts()
+  }
+
+  /** Re-index tracks directly. `library/changed` is the usual route. */
+  reindex(urns: string[]): Promise<void> {
+    return this.catalog.index(urns)
+  }
 }
+
+export { Catalog } from './catalog.js'
 
 export const name = 'plugin-sources'
 

@@ -42,6 +42,30 @@ export function findUnawaitedPlugin(source: string): { line: number; text: strin
   return hits
 }
 
+/**
+ * Find a plugin entry point declared as a plain (non-async) `function`.
+ *
+ * Cordis decides "is this a class?" with `!!func.prototype`, and a classic
+ * function declaration has one — so `export function apply(ctx) { … }` is
+ * `new`-ed as if it were a service, and **the disposer it returns is thrown
+ * away**. The plugin loads and works; it just never unloads, which is the one
+ * thing this architecture claims is impossible (docs/03 §2).
+ *
+ * `async function`, arrow functions and object-method shorthand all have no
+ * prototype and are safe. So is a class, which is meant to be constructed.
+ */
+export function findSyncFunctionApply(source: string): { line: number; text: string }[] {
+  const hits: { line: number; text: string }[] = []
+  source.split('\n').forEach((raw, index) => {
+    const line = raw.trim()
+    if (line.startsWith('//') || line.startsWith('*')) return
+    if (/^(export\s+)?function\s+apply\s*\(/.test(line)) {
+      hits.push({ line: index + 1, text: line })
+    }
+  })
+  return hits
+}
+
 async function sourceFiles(): Promise<string[]> {
   const packagesDir = join(workspaceRoot, 'packages')
   const out: string[] = []
@@ -84,7 +108,36 @@ describe('the detector itself', () => {
   })
 })
 
+describe('the apply-shape detector', () => {
+  it('flags the shape whose disposer is silently dropped', () => {
+    expect(findSyncFunctionApply('export function apply(ctx: Context) {')).toHaveLength(1)
+    expect(findSyncFunctionApply('function apply(ctx) {')).toHaveLength(1)
+  })
+
+  it('accepts the shapes cordis treats as functions', () => {
+    expect(findSyncFunctionApply('export async function apply(ctx: Context) {')).toEqual([])
+    expect(findSyncFunctionApply('export const apply = (ctx: Context) => {')).toEqual([])
+    expect(findSyncFunctionApply('  apply(ctx: Context) {')).toEqual([])
+  })
+})
+
 describe('workspace conventions', () => {
+  it('no plugin entry point is a plain function declaration', async () => {
+    // Cordis `new`s anything with a prototype, and drops what it returns.
+    const offenders: string[] = []
+    for (const file of await sourceFiles()) {
+      const source = await readFile(file, 'utf8')
+      for (const hit of findSyncFunctionApply(source)) {
+        offenders.push(`${relative(workspaceRoot, file)}:${hit.line}  ${hit.text}`)
+      }
+    }
+    expect(
+      offenders,
+      'a plain `function apply` is constructed by cordis and its disposer is discarded; ' +
+        `use \`async function\` or an arrow:\n  ${offenders.join('\n  ')}`,
+    ).toEqual([])
+  })
+
   it('no plugin spawns a child without awaiting it', async () => {
     const offenders: string[] = []
     for (const file of await sourceFiles()) {

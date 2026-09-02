@@ -267,6 +267,42 @@ describe('events', () => {
     expect(trail).toEqual(['outer-in', 'inner', 'outer-out'])
   })
 
+  it('ignores arguments passed to next', () => {
+    // Cordis closes `next` over the ORIGINAL argument list, so `next(x)` is
+    // the same as `next()`. The event map's signatures say so, and a listener
+    // that wants to change the input mutates it in place instead. If an
+    // upgrade ever makes `next(x)` meaningful, this fails and the waterfall
+    // signatures in @BBeBee/protocol can be widened deliberately.
+    const ctx = new Context()
+    ctx.on('test/args' as never, ((value: { n: number }, next: (v: unknown) => string) =>
+      next({ n: 99 })) as never)
+
+    const seen: unknown[] = []
+    const result = ctx.waterfall('test/args' as never, { n: 1 } as never, ((v: { n: number }) => {
+      seen.push(v)
+      return `saw:${v.n}`
+    }) as never)
+
+    expect(result).toBe('saw:1')
+    expect(seen).toEqual([{ n: 1 }])
+  })
+
+  it('carries a mutation of the argument through to the terminal', () => {
+    // The move that *does* work, and the one the event map documents.
+    const ctx = new Context()
+    ctx.on('test/mutate' as never, ((value: { headers: Record<string, string> }, next: () => string) => {
+      value.headers['x-added'] = 'yes'
+      return next()
+    }) as never)
+
+    const result = ctx.waterfall(
+      'test/mutate' as never,
+      { headers: {} } as never,
+      ((v: { headers: Record<string, string> }) => v.headers['x-added'] ?? 'missing') as never,
+    )
+    expect(result).toBe('yes')
+  })
+
   it('lets a waterfall listener short-circuit without calling next', () => {
     const ctx = new Context()
     const inner = vi.fn(() => 'never')

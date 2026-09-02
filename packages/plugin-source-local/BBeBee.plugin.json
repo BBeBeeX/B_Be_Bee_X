@@ -1,0 +1,23 @@
+{
+  "id": "@BBeBee/plugin-source-local",
+  "version": "0.0.0",
+  "displayName": "This device",
+  "description": "plugin-source-local — the files on this device, as a MediaProvider.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "fs:read:all",
+    "db:read:core",
+    "db:write:core"
+  ],
+  "contributes": {
+    "services": [
+      "sourceLocal"
+    ]
+  },
+  "instantiable": false
+}

@@ -9,6 +9,15 @@
  *   serial    ordered; the first non-nullish return short-circuits
  *   waterfall middleware — listeners transform the value and control `next`
  *
+ * ⚠️ **`next` takes no arguments.** Cordis closes it over the original
+ * argument list, so `next(somethingElse)` is silently the same as `next()`.
+ * A listener therefore has exactly two moves: **mutate the argument in place**
+ * (rewrite `req.headers`, splice the array) and call `next()`, or
+ * **short-circuit** by returning a value and never calling `next` at all.
+ * Pinned by `cordis-assumptions.test.ts`, because an upgrade that changed it
+ * would otherwise be found by a plugin author debugging a header that
+ * vanished.
+ *
  * The waterfall hooks are the composition mechanism of the whole architecture:
  * they are how `plugin-download` substitutes a local file for a stream URL
  * without `ctx.player` knowing downloads exist. See docs/02 §5, docs/07 §5.
@@ -50,7 +59,7 @@ declare module 'cordis' {
       prefs: StreamPrefs,
       next: () => Promise<StreamHandle>,
     ): Promise<StreamHandle>
-    'player/before-enqueue'(urns: string[], next: (u: string[]) => void): void
+    'player/before-enqueue'(urns: string[], next: () => void): void
 
     /* ── queue ──────────────────────────────────────── emit ── */
     'queue/changed'(items: readonly QueueItem[]): void
@@ -71,10 +80,7 @@ declare module 'cordis' {
 
     /* ── http ──────────────────────────────────── waterfall ── */
     /** Auth injection, retry, rate limiting, and caching all hook here. */
-    'http/request'(
-      req: HttpRequest,
-      next: (r: HttpRequest) => Promise<HttpResponse>,
-    ): Promise<HttpResponse>
+    'http/request'(req: HttpRequest, next: () => Promise<HttpResponse>): Promise<HttpResponse>
 
     /* ── downloads ──────────────────────────────────── emit ── */
     'download/queued'(taskId: string): void
@@ -92,10 +98,7 @@ declare module 'cordis' {
     ): void
 
     /* ── dsp ───────────────────────────────────── waterfall ── */
-    'dsp/build-chain'(
-      segments: EffectSegment[],
-      next: (s: EffectSegment[]) => EffectSegment[],
-    ): EffectSegment[]
+    'dsp/build-chain'(segments: EffectSegment[], next: () => EffectSegment[]): EffectSegment[]
     /* ── dsp ────────────────────────────────────────── emit ── */
     'dsp/chain-changed'(chain: readonly ChainEntry[]): void
 

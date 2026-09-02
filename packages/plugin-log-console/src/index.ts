@@ -17,7 +17,16 @@ export interface ConsoleLogConfig {
 
 export const name = 'plugin-log-console'
 
-export function apply(ctx: Context, config: ConsoleLogConfig = {}) {
+/**
+ * ⚠️ `async` is load-bearing, not decoration.
+ *
+ * Cordis decides "is this a class?" with `!!func.prototype`. A plain
+ * `function apply(…)` has one, so it is `new`-ed as if it were a service and
+ * the disposer it returns is discarded — the plugin loads, works, and never
+ * unloads. An async function has no prototype. `conventions.test.ts` fails the
+ * build on the other shape (docs/03 §2).
+ */
+export async function apply(ctx: Context, config: ConsoleLogConfig = {}) {
   const maxLevel = config.level ?? 2
 
   return ctx.logger.exporter({

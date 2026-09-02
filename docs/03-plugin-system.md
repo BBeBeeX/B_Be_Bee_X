@@ -16,13 +16,21 @@ A plugin is one of three things. Cordis accepts all three; BBeBee uses the first
 
 **A function.** For plugins that only register behaviour and provide no service.
 
+> ⚠️ **Make it `async`.** Cordis decides "is this a class?" with
+> `!!func.prototype`, and a plain `function apply(…)` has one — so it is `new`-ed as if it were a
+> service and **the disposer it returns is discarded**. The plugin loads, works, and never unloads:
+> exactly the failure this architecture claims is impossible, and invisible until something asks
+> why an unloaded plugin's provider is still registered. `async function`, arrow functions and
+> object-method shorthand have no prototype and are safe. `conventions.test.ts` fails the build on
+> the other shape.
+
 ```ts
 import type { Context } from '@BBeBee/protocol'
 
 export const name = 'plugin-media-keys'
 export const inject = ['player', 'device']
 
-export function apply(ctx: Context) {
+export async function apply(ctx: Context) {
   // Returning a function makes it the disposer for this plugin.
   return ctx.device.onMediaKey((key) => {
     if (key === 'play-pause') ctx.player.togglePlay()
@@ -112,14 +120,32 @@ source cleanly removes everything that source contributed, with no bespoke clean
 
 > Anything a plugin starts, it must register so the fiber can stop it.
 
+A second, subtler rule follows from how services are handed out: **wrap a disposer that came back
+through a service proxy** rather than returning it straight. Services are reached through Cordis's
+tracing proxy, and the function that comes back through it is not the one the fiber collects — so
+the obvious line leaves the registration in place after unload.
+
 ```ts
-export function apply(ctx: Context) {
+// ❌ Looks right; the provider is still registered after this plugin unloads.
+export async function apply(ctx: Context) {
+  return ctx.sources.register(provider)
+}
+
+// ✅ Wrapped in a local closure, which is what gets collected.
+export async function apply(ctx: Context) {
+  const off = ctx.sources.register(provider)
+  return () => off()
+}
+```
+
+```ts
+export async function apply(ctx: Context) {
   // ✅ Return a disposer.
   const conn = ctx.ws.connect(url)
   return () => conn.close()
 }
 
-export function apply(ctx: Context) {
+export async function apply(ctx: Context) {
   // ✅ Several disposables — use the generator form; they unwind in reverse.
   return ctx.effect(function* () {
     yield ctx.on('player/track-changed', onTrack)   // ctx.on returns its own disposer
@@ -150,7 +176,7 @@ let cache = new Map()
 For the last case, take a cancellation signal from the fiber and honour it:
 
 ```ts
-export function apply(ctx: Context) {
+export async function apply(ctx: Context) {
   const ac = new AbortController()
   void ctx.library.scan({ signal: ac.signal }).catch((e) => ctx.logger.error(e))
   return () => ac.abort()
@@ -197,7 +223,7 @@ plugin activates immediately, and only the inner block waits.
 ```ts
 export const inject = ['db']            // hard requirement
 
-export function apply(ctx: Context) {
+export async function apply(ctx: Context) {
   ctx.inject(['scrobbler'], (scoped) => {
     // Runs if and when ctx.scrobbler appears; torn down if it goes away.
     return scoped.on('player/track-completed', (p) => scoped.scrobbler.submit(p))
@@ -266,7 +292,7 @@ final work on shutdown — flushing a log buffer, checkpointing a download — *
 needs at load time**:
 
 ```ts
-export function apply(ctx: Context) {
+export async function apply(ctx: Context) {
   const fs = ctx.fs                     // captured deliberately, see below
   return async () => {
     try { await fs.writeFile(uri, tail) } catch { /* teardown is best-effort */ }

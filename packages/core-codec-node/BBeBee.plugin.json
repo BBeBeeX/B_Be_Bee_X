@@ -1,0 +1,21 @@
+{
+  "id": "@BBeBee/core-codec-node",
+  "version": "0.0.0",
+  "displayName": "Codec",
+  "description": "ctx.codec — tags, artwork and PCM, over music-metadata.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "fs:read:all"
+  ],
+  "contributes": {
+    "services": [
+      "codec"
+    ]
+  },
+  "instantiable": false
+}

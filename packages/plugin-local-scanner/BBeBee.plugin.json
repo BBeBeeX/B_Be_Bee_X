@@ -1,0 +1,25 @@
+{
+  "id": "@BBeBee/plugin-local-scanner",
+  "version": "0.0.0",
+  "displayName": "Local Scanner",
+  "description": "ctx.scanner — the local filesystem walk.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "fs:read:media",
+    "fs:read:all",
+    "db:read:core",
+    "db:write:core",
+    "background"
+  ],
+  "contributes": {
+    "services": [
+      "scanner"
+    ]
+  },
+  "instantiable": false
+}
