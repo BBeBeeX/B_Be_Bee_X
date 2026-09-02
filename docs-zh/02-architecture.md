@@ -17,7 +17,7 @@ flowchart TD
 
     subgraph L4["Feature plugins"]
         F1["player · queue · dsp"]
-        F2["sources · library · scanner"]
+        F2["source runtime · sources · library · scanner"]
         F3["download · lyrics · cache"]
         F4["ui registry · settings · log viewer"]
     end
@@ -30,7 +30,7 @@ flowchart TD
         C1["core-fs-node / core-fs-expo"]
         C2["core-http-node / core-http-rn"]
         C3["core-db-node / core-db-expo"]
-        C4["core-secrets-* · core-media-session-* · ..."]
+        C4["core-js-quickjs-* · core-secrets-* · core-media-session-* · ..."]
     end
 
     subgraph L1["@BBeBee/kernel"]
@@ -51,14 +51,14 @@ flowchart TD
 
 > **`packages/core-*` 之外的任何包都不得导入平台 SDK。**
 
-无论是 `expo-file-system`、`node:fs`、`electron`，还是 `react-native` 的原生模块，都不行。这条规则由一个按目录限定作用范围的 ESLint `no-restricted-imports` 规则机械地强制执行（[09 §3](./09-project-structure.md#3-dependency-rules)），因为它是整个设计赖以成立的不变量，而代码评审无法可靠地兜住它。
+无论是 `expo-file-system`、`node:fs`、`electron`，还是 `react-native` 的原生模块，都不行。这条规则由一个按目录限定作用范围的 ESLint `no-restricted-imports` 规则机械地强制执行（[09 §3](./09-project-structure.md#3-依赖规则)），因为它是整个设计赖以成立的不变量，而代码评审无法可靠地兜住它。
 
 有两处刻意留下的例外，范围都很窄：
 
 - **UI 包**分别导入 `react-native` 或 `react-dom`，因为 ADR-2 已经接受按目标平台划分的视图层。它们仍然不得触碰平台*能力*——移动端视图可以渲染 `<FlatList>`，但不可以调用 `FileSystem.readAsStringAsync`。
-- **宿主外壳**（`apps/*`）按定义就是平台特定的。它们负责选择注册哪些核心插件（§3），并拥有真正与平台绑定的窗口装饰——深链注册、安全区内边距、窗口控制（[08 §7](./08-ui-architecture.md#7-shell-responsibilities)）。其余一切都应属于插件。
+- **宿主外壳**（`apps/*`）按定义就是平台特定的。它们负责选择注册哪些核心插件（§3），并拥有真正与平台绑定的窗口装饰——深链注册、安全区内边距、窗口控制（[08 §7](./08-ui-architecture.md#7-外壳的职责)）。其余一切都应属于插件。
 
-因此，这条不变量约束的是 `packages/plugin-*`、`packages/ui-*` 与 `packages/protocol`——这恰好就是 [09 §3](./09-project-structure.md#3-dependency-rules) 中 lint 规则的覆盖范围。
+因此，这条不变量约束的是 `packages/plugin-*`、`packages/ui-*` 与 `packages/protocol`——这恰好就是 [09 §3](./09-project-structure.md#3-依赖规则) 中 lint 规则的覆盖范围。
 
 ---
 
@@ -112,8 +112,7 @@ flowchart LR
         H2["http host"]
         H3["sqlite host — node:sqlite"]
         H4["secrets host — safeStorage"]
-        H5["protocol: BBeBee-plugin://"]
-        H6["window · tray · autoupdate"]
+        H5["window · tray · autoupdate"]
     end
     CD -->|window.BBeBee.*| PRE
     PRE -->|ipcRenderer.invoke| Main
@@ -125,11 +124,11 @@ flowchart LR
 有两件事经由 `main` 中转，理由值得说明：
 
 - **HTTP。** 并不是因为渲染进程无法发起请求，而是渲染进程里的 `fetch` 受 CORS 约束，无法设置 `Origin`、`Referer`、`Cookie` 或自定义 `User-Agent`，而音乐后端几乎总是要求这四者。经由 `main` 还能获得真正的 cookie jar 与代理支持。
-- **插件加载。** 见 [03 §6](./03-plugin-system.md#6-loading-two-modes)——`main` 注册了一个自定义协议，让渲染进程可以在不禁用 CSP、不开启 `nodeIntegration` 的前提下 `import()` 第三方代码。
+- **仅此而已。** 插件在两个目标平台上都静态打包（[ADR-1](./01-overview.md#adr-1--插件在所有目标平台上都静态打包)），因此 `main` 不注册任何自定义协议，渲染进程也从不加载并非随应用一起发布的代码。为此所做的设计在 [03 §6.2](./03-plugin-system.md#62-桌面端的附加设计--plugin-loader-dynamic) 中束之高阁；并没有接线启用。用户提供的行为以**源字符串**的形式到达——它们是数据——并在 `ctx.js` 里运行，而不是在渲染进程的 realm 里（[06 §8](./06-music-sources.md#8-信任导入的源能做什么不能做什么)）。
 
 ### 桌面端的进程与安全姿态
 
-渲染进程采用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`。preload 只暴露一个冻结的 `window.BBeBee` 对象，其方法都带有能力（capability）标记；内核按插件逐一包装它们（[03 §7](./03-plugin-system.md#7-capability-model)）。应用源（origin）始终使用严格的 CSP，仅向 `BBeBee-plugin:` scheme 有所放宽。
+渲染进程采用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`。preload 只暴露一个冻结的 `window.BBeBee` 对象，其方法都带有能力（capability）标记；内核按插件逐一包装它们（[03 §7](./03-plugin-system.md#7-能力模型)）。应用源（origin）使用严格的 CSP，且**不做**任何放宽——不存在用于加载外来代码的 scheme，因为没有任何东西加载外来代码。
 
 ---
 
@@ -188,11 +187,12 @@ sequenceDiagram
 | `ctx.background` | `core-background-expo` | `core-background-electron` |
 | `ctx.device` | `core-device-expo` | `core-device-electron` |
 | `ctx.crypto` | `core-crypto-expo` | `core-crypto-node` |
+| `ctx.js` | `core-js-quickjs-rn` | `core-js-quickjs-node` |
 | `ctx.codec` | `core-codec-rn` | `core-codec-node` |
 | `ctx.shell` | `core-shell-expo` | `core-shell-electron` |
-| 插件加载 | `plugin-loader-static` | `plugin-loader-static` + `plugin-loader-dynamic` |
+| 插件加载 | `plugin-loader-static` | `plugin-loader-static` |
 
-注意桌面端注册了**两个**加载器：workspace 插件依然静态打包，动态加载器在其之上追加用户安装的插件。
+加载器这一行在两个目标平台上完全相同，这正是修订后的 [ADR-1](./01-overview.md#adr-1--插件在所有目标平台上都静态打包)：插件图在任何地方都在构建期固定下来，用户在运行时添加的东西是**源字符串**，由 `plugin-source-runtime` 从 `sources` 表加载，而不是由加载器加载（[06 §4.1](./06-music-sources.md#41-一个源的生命周期)）。
 
 ---
 
@@ -209,7 +209,7 @@ sequenceDiagram
 
 从这张表可以推出三条义务，对任何执行长任务的插件都不可妥协：
 
-1. **做检查点，不要只积累。** `download_tasks` 每写入一个分块就持久化一次 `bytesDone` 与续传令牌，因此传输中途被杀最多损失一个分块。见 [07 §4.7](./07-data-model.md#48-downloads)。
+1. **做检查点，不要只积累。** `download_tasks` 每写入一个分块就持久化一次 `bytesDone` 与续传令牌，因此传输中途被杀最多损失一个分块。见 [07 §4.7](./07-data-model.md#48-下载)。
 2. **启动时恢复，不要假设连续性。** 启动时，手头有任务在飞的插件会发现它处于 `state = 'running'`，必须将其视为"被中断"，而不是"进行中"。
 3. **先询问，绝不臆断。** `ctx.background.canRunInBackground()` 与 `ctx.device.formFactor` 的存在，就是为了让插件能够优雅降级而不是悄然失败。需要安排每小时刷新的插件应通过 `ctx.background` 注册，它在移动端映射到操作系统的调度器，在桌面端则映射为普通的 interval。
 
@@ -221,17 +221,19 @@ sequenceDiagram
 
 瀑布（waterfall）钩子就是中间件：每个监听器收到参数和一个 `next` 续延，可以变换输入、短路，或对结果做后处理。
 
+> ⚠️ **`next` 不接受任何参数。** Cordis 让它闭包捕获的是*原始*参数列表，因此 `next(somethingElse)` 与 `next()` 静默地完全等价。于是监听器只有两步棋可走：**就地修改参数**——改写 `req.headers`、直接增删数组元素——然后调用 `next()`；或者**短路**，返回一个值，根本不调用 `next`。[07 §5](./07-data-model.md#5-事件表) 中的签名就是这样声明的，内核的 `cordis-assumptions.test.ts` 也把它钉死了，因为一个悄悄消失的请求头是极难排查的东西。
+
 三个承重的瀑布钩子：
 
 | 钩子 | 用途 | 谁在上面挂钩 |
 |---|---|---|
-| `player/before-resolve` | 给定一个曲目 URN，决定实际播放什么 | `plugin-download` 在存在绑定时替换为本地文件；`plugin-source-failover` 在某个提供方不可用时改从另一个提供方重试链接的 URN |
-| `http/request` | 包裹每一个出站请求 | 音源插件注入认证头并刷新过期令牌；`plugin-cache` 命中并存储响应；限流器使其延迟；重试策略使其退避 |
+| `player/before-resolve` | 给定一个曲目 URN，决定实际播放什么 | `plugin-download` 在存在绑定时替换为本地文件；`plugin-failover` 在某个源不可用或其规则已经腐烂时，改在另一个源上重试链接的 URN |
+| `http/request` | 包裹每一个出站请求 | 源运行时注入每个源的请求头与 cookie，并刷新过期的会话；`plugin-cache` 命中并存储响应；限流器使其延迟；重试策略使其退避 |
 | `dsp/build-chain` | 组装音频节点链 | 每个效果插件在自己配置的位置插入自己的片段 |
 
 收益是具体的：**播放器完全没有"下载"这个概念。** 它只是请求一个可播放的句柄，下载插件——如果加载了——就悄悄用文件路径替代 URL 作答。卸载下载插件，播放照常工作，只是改为流式。`plugin-player` 里没有任何东西发生变化，甚至毫无察觉。
 
-每个事件的完整分发语义——包括各自使用 `emit` / `parallel` / `serial` / `bail` / `waterfall` 中的哪一种——都汇总在 [07 §5](./07-data-model.md#5-the-event-map)。
+每个事件的完整分发语义——包括各自使用 `emit` / `parallel` / `serial` / `bail` / `waterfall` 中的哪一种——都汇总在 [07 §5](./07-data-model.md#5-事件表)。
 
 ---
 
@@ -241,16 +243,17 @@ sequenceDiagram
 
 | 状态 | 所有者 | 其他方经由 |
 |---|---|---|
-| 曲库条目（曲目、专辑……） | `ctx.db`，由拥有它的音源插件写入 | 通过所属服务查询，绝不跨插件边界跑裸 SQL |
+| 曲库条目（曲目、专辑……） | `ctx.db`，由 `ctx.sources` 代拥有它的源写入 | 通过 `ctx.sources` 查询，绝不跨插件边界跑裸 SQL |
 | 播放控制状态（是否在播、位置） | `ctx.player` | `player/*` 事件；`ctx.player.state` 快照 |
 | 队列 | `ctx.player`（持久化到 `queue_items`） | `queue/changed` 事件 |
 | 音频图节点 | `ctx.audio` | 绝不直接触碰；效果通过 `dsp/build-chain` 贡献片段 |
 | 效果参数 | `ctx.dsp`（持久化到 `effect_nodes`） | `ctx.dsp.setParam()` |
-| 认证令牌 | `ctx.secrets`，按提供方实例为键 | 绝不离开拥有它的音源插件 |
+| 认证令牌与源变量 | `ctx.secrets`，按源 id 为键 | 绝不离开该源的隔离作用域；绝不随源字符串一起导出 |
 | UI 贡献 | `ctx.ui` | 由外壳只读 |
 | 插件配置 | 内核，持久化在 `plugin_records` | 以插件的 `config` 参数形式交付；变更会重载 fiber |
+| 源文档 | `ctx.sources`，持久化在 `sources` | 以字符串形式导入、编辑与导出；一次编辑恰好只重载该源的 fiber |
 
-React 不持有**任何业务状态**——只有视图状态（当前打开哪个标签、菜单是否展开）。强制执行的理由与钩子设计见 [08 §4](./08-ui-architecture.md#4-binding-services-to-react)。
+React 不持有**任何业务状态**——只有视图状态（当前打开哪个标签、菜单是否展开）。强制执行的理由与钩子设计见 [08 §4](./08-ui-architecture.md#4-把服务绑定到-react)。
 
 ---
 

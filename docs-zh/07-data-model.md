@@ -9,23 +9,25 @@
 ## 1. 身份标识：URN
 
 ```
-BBeBee:<providerInstance>:<kind>:<id>
-       │                  │       └── provider-local id, opaque, never parsed
-       │                  └────────── track | album | artist | playlist | genre
-       └───────────────────────────── instance id, not plugin id (06 §2)
+BBeBee:<sourceId>:<kind>:<id>
+       │          │       └── source-local id, opaque, never parsed
+       │          └────────── track | album | artist | playlist | genre
+       └───────────────────── source id, derived from sourceUrl (06 §1.2)
 ```
 
 示例：
 
 ```
 BBeBee:local:track:9f2c8a1e
-BBeBee:navidrome-home:album:41af02
-BBeBee:jellyfin-nas:playlist:7c11
+BBeBee:music-example-org-4f1a:album:41af02
+BBeBee:jelly-nas-7b02:playlist:7c11
 ```
 
-### 为什么是实例，而不是插件
+### 为什么是音源，而不是后端类型
 
-两台 Navidrome 服务器就是两个命名空间。如果 URN 以插件为键，用户添加第二台服务器的瞬间 id 就会冲突，而移除一台服务器会破坏另一台的行。
+两台 Navidrome 服务器就是两个命名空间，而在字符串模型下，它们不过是两份被导入的文档、两个 `sourceUrl`（[06 §1.2](./06-music-sources.md#12-身份源-id)）。如果 URN 以任何更粗的粒度为键 —— 某个协议、某个"插件" —— 用户添加第二台服务器的瞬间 id 就会冲突，而移除一台会破坏另一台的行。
+
+这一段从插件时代走到字符串时代原封未动，而这正是当初把它定义为"哪个命名空间拥有这个 id"而非"哪个包产出了它"的意义所在。
 
 ### 为什么同一首歌对应多行
 
@@ -35,23 +37,23 @@ Navidrome 服务器上的一个 FLAC 与磁盘上同一录音的一个 MP3 是**
 
 - 它们在真正重要的维度上确实不同 —— 比特率、可用性、精确到毫秒的时长、封面图、能否拖动进度（seek）。
 - 合并意味着要决定*哪一份*元数据胜出，而任何这类决定都会对某些用户是错的。
-- 一次错误的自动匹配之后再"拆开"，远比按需合并困难，而模糊匹配出错的频率足以保证坏匹配必然发生（[06 §7](./06-music-sources.md#7-cross-provider-identity-and-failover)）。
-- 一个从应用中移除的提供方，应当恰好带走它自己的那些行。
+- 一次错误的自动匹配之后再"拆开"，远比按需合并困难，而模糊匹配出错的频率足以保证坏匹配必然发生（[06 §11](./06-music-sources.md#11-跨源身份与故障转移)）。
+- 一个从应用中移除的音源，应当恰好带走它自己的那些行。
 
 统一曲库在*展示*时把互相关联的曲目呈现为同一个条目。存储层保持忠实。
 
 ### URN 辅助函数
 
 ```ts
-export interface Urn { instanceId: string; kind: UrnKind; id: string }
+export interface Urn { sourceId: string; kind: UrnKind; id: string }
 export type UrnKind = 'track' | 'album' | 'artist' | 'playlist' | 'genre'
 
 export function parseUrn(urn: string): Urn
 export function formatUrn(u: Urn): string
-export function instanceOf(urn: string): string
+export function sourceOf(urn: string): string
 ```
 
-`parseUrn` 只按前三个冒号切分，因此提供方本地的 id 中可以出现冒号。
+`parseUrn` 只按前三个冒号切分，因此音源本地的 id 中可以出现冒号。
 
 ---
 
@@ -59,11 +61,12 @@ export function instanceOf(urn: string): string
 
 ```mermaid
 erDiagram
-    providers ||--o{ accounts : "has"
-    providers ||--o{ tracks : "owns"
-    providers ||--o{ albums : "owns"
-    providers ||--o{ artists : "owns"
-    providers ||--o{ playlists : "owns"
+    sources ||--o{ accounts : "has"
+    sources ||--o{ source_vars : "remembers"
+    sources ||--o{ tracks : "owns"
+    sources ||--o{ albums : "owns"
+    sources ||--o{ artists : "owns"
+    sources ||--o{ playlists : "owns"
 
     albums ||--o{ tracks : "contains"
     tracks }o--o{ artists : "track_artists"
@@ -103,29 +106,53 @@ erDiagram
 - 布尔值用 `INTEGER` 0/1 表示。
 - JSON 列用 `TEXT` 存放 JSON，列名带 `_json` 后缀。
 - 每张镜像远端数据的表都带有 `fetched_at`，因此数据是否陈旧始终有据可查。
-- 指向目录（catalogue）行的外键是 URN `TEXT`，而不是整数 id —— 提供方给出的 id 一旦离开其实例便毫无意义，以 URN 作联结键让这类错误无从发生。
+- 指向目录（catalogue）行的外键是 URN `TEXT`，而不是整数 id —— 后端给出的 id 一旦离开它所属的音源便毫无意义，以 URN 作联结键让这类错误无从发生。
 - 子行无法脱离父行存在的地方使用 `ON DELETE CASCADE`；可以独立存在的地方则做显式清理。
 
 ---
 
 ## 4. 表
 
-### 4.1 提供方、账号与会话
+### 4.1 音源、账号与会话
+
+**音源文档就是表里那一行。** `doc_json` 原样保存被导入的字符串；其余每一列要么由它派生（因此可以重建），要么是应用维护的状态，在音源被分享时不应随之外流。
 
 ```sql
-CREATE TABLE providers (
-  instance_id   TEXT PRIMARY KEY,          -- 'navidrome-home'
-  plugin_id     TEXT NOT NULL,             -- '@BBeBee/plugin-source-subsonic'
-  display_name  TEXT NOT NULL,
+CREATE TABLE sources (
+  id            TEXT PRIMARY KEY,          -- 'music-example-org-4f1a', derived (06 §1.2)
+  source_url    TEXT NOT NULL UNIQUE,      -- the document's identity; dedup key on import
+  name          TEXT NOT NULL,             -- denormalised from doc_json for list rendering
+  source_group  TEXT,                      -- comma-separated, free text
+  source_type   TEXT NOT NULL DEFAULT 'music',  -- music|podcast|radio
+  doc_json      TEXT NOT NULL,             -- the SourceDocument, verbatim (06 §2.1)
+  doc_hash      TEXT NOT NULL,             -- sha256 of doc_json; drives the import diff
   enabled       INTEGER NOT NULL DEFAULT 1,
-  capabilities_json TEXT,                  -- last-known Capabilities (06 §1)
   sort_order    INTEGER NOT NULL DEFAULT 0,
-  created_at    INTEGER NOT NULL,
-  last_seen_at  INTEGER                    -- last successful ping()
+  capabilities_json TEXT,                  -- derived Capabilities, cached (06 §1.3)
+  allowed_hosts_json TEXT,                 -- the egress allowlist shown at import (06 §8)
+  locally_modified INTEGER NOT NULL DEFAULT 0,  -- edited in-app since import
+  origin_uri    TEXT,                      -- where it was imported from, if a URL
+  imported_at   INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL,
+  last_check_at INTEGER,                   -- last `check` run (06 §10)
+  last_error    TEXT,                      -- the failing rule, if any
+  fail_count    INTEGER NOT NULL DEFAULT 0,-- 3 consecutive RuleErrors → stale badge (06 §7)
+  respond_time_ms INTEGER
+);
+CREATE INDEX idx_sources_enabled ON sources(enabled, sort_order);
+
+-- Per-source persisted state written by rules via src.vars (06 §3.4).
+-- Credential-grade: never exported, cleared by signOut().
+CREATE TABLE source_vars (
+  source_id  TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  key        TEXT NOT NULL,
+  value      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (source_id, key)
 );
 
 CREATE TABLE accounts (
-  instance_id    TEXT PRIMARY KEY REFERENCES providers(instance_id) ON DELETE CASCADE,
+  source_id      TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
   remote_user_id TEXT,
   display_name   TEXT,
   status         TEXT NOT NULL,            -- anonymous|authenticated|expired|error
@@ -136,7 +163,7 @@ CREATE TABLE accounts (
 -- Mobile only. Desktop keeps cookies in Chromium's own persisted partition
 -- and never writes this table. See 04 §2.1.
 CREATE TABLE cookie_jars (
-  name        TEXT PRIMARY KEY,            -- the provider instance_id
+  name        TEXT PRIMARY KEY,            -- the source id
   ciphertext  BLOB NOT NULL,               -- AES-GCM over the serialised jar
   iv          BLOB NOT NULL,
   key_ref     TEXT NOT NULL,               -- ctx.secrets key holding the AES key
@@ -144,9 +171,15 @@ CREATE TABLE cookie_jars (
 );
 ```
 
-> **数据库中绝无可读凭据。** Token 与密码都在 `ctx.secrets` 中，位于 `namespace(instanceId)` 之下。Cookie 同样是凭据，但一个真实的会话 jar 会超出 `expo-secure-store` 的 2048 字节值上限，因此移动端对它采用**信封加密**：AES 密钥（很小）放 `ctx.secrets`，密文（不限大小）放 `cookie_jars`。不变式得以保住 —— 密钥与密文绝不同处一库，泄露的数据库文件什么都得不到（[04 §2.1](./04-core-services.md#21-cookie-jars)、[04 §6](./04-core-services.md#6-ctxsecrets--credential-storage)）。
+为什么 `doc_json` 要整体存储而不是拆散成列：这份文档是用户拥有的制品。让它在一个规范化的 schema 里走个来回，意味着导出产物会与导入内容有微妙差异 —— 键被重排、未知字段被丢弃、某条规则被重新排版 —— 而当用户编辑过的文档第一次导出后就变了样，他们就会不再信任导出。来自更新版文档的未知字段能在旧版应用中幸存，也是出于同样的原因。
+
+`doc_hash` 让重新导入成为一个三分判定，而不是掷硬币：未变化（哈希相同，跳过）、有更新（哈希不同，展示字段差异）、或冲突（哈希不同*且* `locally_modified`，要求确认）—— 见 [06 §9](./06-music-sources.md#9-导入更新与分享)。
+
+> **数据库中绝无可读凭据。** Token、密码与每个音源的变量都存放在 `ctx.secrets` 中，位于 `namespace(sourceId)` 之下；`source_vars` 只保存规则选择持久化的内容，并以同样的方式对待。Cookie 同样是凭据，但一个真实的会话 jar 会超出 `expo-secure-store` 的 2048 字节值上限，因此移动端对它采用**信封加密**：AES 密钥（很小）放 `ctx.secrets`，密文（不限大小）放 `cookie_jars`。不变式得以保住 —— 密钥与密文绝不同处一库，泄露的数据库文件什么都得不到（[04 §2.1](./04-core-services.md#21-cookie-罐)、[04 §6](./04-core-services.md#6-ctxsecrets--凭据存储)）。
 >
-> `accounts` 只记录"存在一个会话"以及它何时失效。删除提供方会级联删除 `accounts`；而 `signOut()` 单独负责清空 `cookie_jars` 与 secrets 命名空间，因为它们处在 SQLite 级联之外（[06 §4.1](./06-music-sources.md#41-session-persistence--cookies-survive-the-app)）。
+> ⚠️ **音源文档绝不能包含凭据**，而 `export()` 无法剥离它认不出的东西。因此才有上面的分离：凭据在构造上就位于 `doc_json` 之外，于是"分享这个音源"默认就是安全的，而不依赖分享者记得这么做（[06 §5](./06-music-sources.md#5-认证与会话)）。
+>
+> `accounts` 只记录"存在一个会话"以及它何时失效。删除音源会级联删除 `accounts` 与 `source_vars`；而 `signOut()` 单独负责清空 `cookie_jars` 与 secrets 命名空间，因为它们处在 SQLite 级联之外（[06 §5.1](./06-music-sources.md#51-会话持久化--cookie-在应用关闭后依然存活)）。
 
 ### 4.2 封面图
 
@@ -174,7 +207,7 @@ CREATE INDEX idx_artworks_local ON artworks(local_uri) WHERE local_uri IS NOT NU
 ```sql
 CREATE TABLE artists (
   urn          TEXT PRIMARY KEY,
-  instance_id  TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
+  source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
   remote_id    TEXT NOT NULL,
   name         TEXT NOT NULL,
   sort_name    TEXT,
@@ -183,12 +216,12 @@ CREATE TABLE artists (
   fetched_at   INTEGER NOT NULL,
   raw_json     TEXT
 );
-CREATE INDEX idx_artists_instance ON artists(instance_id);
+CREATE INDEX idx_artists_source ON artists(source_id);
 CREATE INDEX idx_artists_sort ON artists(sort_name);
 
 CREATE TABLE albums (
   urn           TEXT PRIMARY KEY,
-  instance_id   TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
+  source_id     TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
   remote_id     TEXT NOT NULL,
   title         TEXT NOT NULL,
   sort_title    TEXT,
@@ -202,12 +235,12 @@ CREATE TABLE albums (
   fetched_at    INTEGER NOT NULL,
   raw_json      TEXT
 );
-CREATE INDEX idx_albums_instance ON albums(instance_id);
+CREATE INDEX idx_albums_source ON albums(source_id);
 CREATE INDEX idx_albums_year ON albums(year);
 
 CREATE TABLE tracks (
   urn                TEXT PRIMARY KEY,
-  instance_id        TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
+  source_id          TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
   remote_id          TEXT NOT NULL,
   title              TEXT NOT NULL,
   sort_title         TEXT,
@@ -228,7 +261,7 @@ CREATE TABLE tracks (
   raw_json           TEXT
 );
 CREATE INDEX idx_tracks_album ON tracks(album_urn, disc_no, track_no);
-CREATE INDEX idx_tracks_instance ON tracks(instance_id);
+CREATE INDEX idx_tracks_source ON tracks(source_id);
 CREATE INDEX idx_tracks_title ON tracks(sort_title);
 
 CREATE TABLE track_artists (
@@ -340,7 +373,7 @@ CREATE INDEX idx_bindings_track ON media_bindings(track_urn);
 CREATE UNIQUE INDEX idx_bindings_uri ON media_bindings(uri);
 ```
 
-**所谓"已下载"，就是"存在一条绑定"。** 任何地方都没有 `is_downloaded` 这样的标志。`player/before-resolve` 瀑布（waterfall）钩子会询问是否存在绑定，存在就直接播放（[05 §2](./05-audio-playback.md#resolution-pipeline)）。一首曲目可以有多条绑定 —— 比如一份扫描到的本地副本和一份下载来的更高质量副本 —— 由解析器按质量挑选。
+**所谓"已下载"，就是"存在一条绑定"。** 任何地方都没有 `is_downloaded` 这样的标志。`player/before-resolve` 瀑布（waterfall）钩子会询问是否存在绑定，存在就直接播放（[05 §2](./05-audio-playback.md#解析流水线)）。一首曲目可以有多条绑定 —— 比如一份扫描到的本地副本和一份下载来的更高质量副本 —— 由解析器按质量挑选。
 
 之所以需要 `verified_at`，是因为文件会消失：SD 卡被拔出、同步工具删除了文件夹、iOS 清掉了某个文件。文件已丢失的绑定会被直接删除，而不是留到播放那一刻才失败。
 
@@ -369,14 +402,14 @@ CREATE TABLE scan_entries (
 CREATE INDEX idx_scan_entries_root ON scan_entries(root_id, status);
 ```
 
-`(size, mtime)` 这一对就是增量扫描的判据：文件没变就只花一次 `stat`，再无其他开销（[06 §8](./06-music-sources.md#the-local-scanner)）。
+`(size, mtime)` 这一对就是增量扫描的判据：文件没变就只花一次 `stat`，再无其他开销（[06 §12](./06-music-sources.md#本地扫描器)）。
 
 ### 4.6 播放列表与曲库
 
 ```sql
 CREATE TABLE playlists (
-  urn          TEXT PRIMARY KEY,             -- local ones use instance 'local'
-  instance_id  TEXT REFERENCES providers(instance_id) ON DELETE CASCADE,
+  urn          TEXT PRIMARY KEY,             -- local ones use source id 'local'
+  source_id    TEXT REFERENCES sources(id) ON DELETE CASCADE,
   remote_id    TEXT,
   name         TEXT NOT NULL,
   description  TEXT,
@@ -388,7 +421,7 @@ CREATE TABLE playlists (
   track_count  INTEGER,
   duration_ms  INTEGER,
   revision     INTEGER NOT NULL DEFAULT 0,   -- bumped on every local edit
-  remote_revision TEXT,                      -- provider's etag/version, for conflict detection
+  remote_revision TEXT,                      -- the source's etag/version, for conflict detection
   sync_state   TEXT NOT NULL DEFAULT 'clean',-- clean|dirty|conflict
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
@@ -419,7 +452,7 @@ export type SmartRule =
 export type SmartField =
   | 'title' | 'artist' | 'album' | 'genre' | 'year' | 'bpm' | 'durationMs'
   | 'playCount' | 'skipCount' | 'lastPlayedAt' | 'addedAt' | 'rating' | 'loved'
-  | 'hasBinding' | 'instanceId' | 'quality'
+  | 'hasBinding' | 'sourceId' | 'quality'
 
 export interface SmartPlaylist { rules: SmartRule; limit?: number; orderBy?: SmartField; desc?: boolean }
 ```
@@ -430,7 +463,7 @@ export interface SmartPlaylist { rules: SmartRule; limit?: number; orderBy?: Sma
 CREATE TABLE library_items (
   urn         TEXT PRIMARY KEY,
   kind        TEXT NOT NULL,                 -- track|album|artist|playlist
-  instance_id TEXT NOT NULL,
+  source_id   TEXT NOT NULL,
   added_at    INTEGER NOT NULL,
   pinned      INTEGER NOT NULL DEFAULT 0,
   sort_key    TEXT
@@ -546,7 +579,7 @@ CREATE TABLE download_policies (
 );
 ```
 
-`bytes_done` 与 `resume_token` 在**每个分块**写完后立即落盘，而不是等任务完成 —— 正是这一点让 [02 §4](./02-architecture.md#4-what-background-means) 中的移动端挂起模型变得可存活。启动时，被遗留在 `running` 状态的任务会重置为 `queued`；它们从 `bytes_done` 处用 `Range` 请求续传，并先校验 `etag`，这样远端文件一旦变化就干净地重新开始，而不是拼出一段损坏的数据。
+`bytes_done` 与 `resume_token` 在**每个分块**写完后立即落盘，而不是等任务完成 —— 正是这一点让 [02 §4](./02-architecture.md#4-后台意味着什么) 中的移动端挂起模型变得可存活。启动时，被遗留在 `running` 状态的任务会重置为 `queued`；它们从 `bytes_done` 处用 `Range` 请求续传，并先校验 `etag`，这样远端文件一旦变化就干净地重新开始，而不是拼出一段损坏的数据。
 
 这条部分唯一索引保证每首曲目至多有一个活动任务，又不妨碍日后的重新下载。
 
@@ -557,7 +590,7 @@ CREATE TABLE effect_chains (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL,
   is_active  INTEGER NOT NULL DEFAULT 0,
-  scope      TEXT NOT NULL DEFAULT 'global',  -- global|output:<id>|source:<instanceId>
+  scope      TEXT NOT NULL DEFAULT 'global',  -- global|output:<id>|source:<sourceId>
   created_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX idx_chain_active ON effect_chains(scope) WHERE is_active = 1;
@@ -622,7 +655,7 @@ CREATE TABLE capability_grants (
 ```sql
 CREATE TABLE lyrics (
   track_urn   TEXT NOT NULL,
-  instance_id TEXT NOT NULL,                  -- who provided them
+  source_id   TEXT NOT NULL,                  -- which source provided them
   format      TEXT NOT NULL,                  -- lrc|ttml|plain
   content     TEXT NOT NULL,
   synced      INTEGER NOT NULL DEFAULT 0,
@@ -630,7 +663,7 @@ CREATE TABLE lyrics (
   language    TEXT,
   is_preferred INTEGER NOT NULL DEFAULT 0,    -- user's pick when several exist
   fetched_at  INTEGER NOT NULL,
-  PRIMARY KEY (track_urn, instance_id, language)
+  PRIMARY KEY (track_urn, source_id, language)
 );
 
 CREATE TABLE cache_entries (
@@ -670,14 +703,22 @@ declare module 'cordis' {
     // queue — emit
     'queue/changed'(items: readonly QueueItem[]): void
 
-    // sources
-    'source/registered'(instanceId: string): void
-    'source/unregistered'(instanceId: string): void
-    'source/authenticated'(instanceId: string, status: AuthStatus): void
-    'source/auth-expired'(instanceId: string): void
-    'source/unreachable'(instanceId: string, error: SourceError): void
+    // sources — registration and session
+    'source/registered'(sourceId: string): void
+    'source/unregistered'(sourceId: string): void
+    'source/authenticated'(sourceId: string, status: AuthStatus): void
+    'source/auth-expired'(sourceId: string): void
+    'source/unreachable'(sourceId: string, error: SourceError): void
     /** Sign-out completed. Listeners purge anything derived from that session. */
-    'source/signed-out'(instanceId: string): void
+    'source/signed-out'(sourceId: string): void
+
+    // sources — the document itself (06 §9, §10)
+    'source/imported'(sourceIds: string[]): void
+    'source/changed'(sourceId: string, changedFields: string[]): void
+    'source/removed'(sourceId: string, forgotCatalogue: boolean): void
+    /** A rule produced nothing where something was required. Drives the stale badge. */
+    'source/rule-failed'(sourceId: string, rule: { block: string; field: string }): void
+    'source/checked'(sourceId: string, report: CheckReport): void
 
     // http — waterfall
     'http/request'(req: HttpRequest, next: (r: HttpRequest) => Promise<HttpResponse>): Promise<HttpResponse>
@@ -706,13 +747,17 @@ declare module 'cordis' {
 }
 ```
 
+> ⚠️ 瀑布式监听器收到的 `next` 闭包捕获的是最初传入的参数，并且**忽略任何传给它的东西**。要改写值，就原地修改参数；要短路，就不调用 `next` 直接返回。上面的签名正是因此才写成 `next: () => …`。
+
 | 事件组 | 模式 | 理由 |
 |---|---|---|
-| `player/before-resolve`、`player/before-enqueue`、`http/request`、`dsp/build-chain` | **waterfall** | 监听器变换传入的值，并决定链条是否继续。这正是 [02 §5](./02-architecture.md#5-composition-how-features-reach-each-other) 所述的组合机制 |
+| `player/before-resolve`、`player/before-enqueue`、`http/request`、`dsp/build-chain` | **waterfall** | 监听器变换传入的值，并决定链条是否继续。这正是 [02 §5](./02-architecture.md#5-组合功能之间如何触达彼此) 所述的组合机制 |
 | `*/changed`、`*/progress`、`player/*`、`plugin/*` | **emit** | 通知。监听器抛出的错误不得影响发出方 |
 | `player/track-completed` | **parallel** | scrobble、统计与历史记录全部执行；全部被 await；其中一个失败不阻塞其余 |
-| `source/auth-expired` | **serial** | 按序处理 —— 令牌刷新器拥有第一处理权，之后才轮到 UI 出面提示 |
+| `source/auth-expired` | **serial** | 按序处理 —— 会话刷新器拥有第一处理权，之后才轮到 UI 出面提示 |
 | `source/signed-out` | **parallel** | 每个清除会话派生状态的监听器都被 await，因此登出只有在清理真正完成之后才算结束 |
+| `source/imported`、`source/changed`、`source/removed` | **emit** | 通知。运行时重建受影响的 fiber；视图随之重渲染 |
+| `source/rule-failed` | **emit**，按音源合并 | 一个腐烂的音源能让一个队列里的每首曲目都各失败一次规则；徽标需要的是事实本身，而不是它的量 |
 | `player/position` | **emit**，节流到 1 Hz | 若按 60 Hz 派发，它会毫无收益地霸占事件总线；UI 在两次节拍之间自行插值 |
 
 ---
@@ -769,8 +814,10 @@ await ctx.db.defineSchema('plugin:@BBeBee/plugin-scrobble', [
 - 插件只能写自己的表，并且只能为 `plugin:<自己的 instance id>` 调用 `defineSchema` ——
   否则它就能认领 `core`、霸占目录。读取核心表需要 `db:read:core`，改写核心表的行需要
   `db:write:core` —— 这是另一项独立授权，不会随前者附带
-  （[03 §7](./03-plugin-system.md#能力语法)）。`ATTACH`/`DETACH` 一律拒绝，因为它们会把
-  数据库句柄变成任意文件读写原语。
+  （[03 §7](./03-plugin-system.md#能力语法)）。每条 `up` 都是**单条语句**：驱动会执行第一条
+  并默默丢弃其余的，因此多语句字符串会在任何东西执行之前就被拒绝，而不是执行到一半、
+  版本还被记了账（[04 §5](./04-core-services.md#5-ctxdb--sql)）。数组形式正是为此而设。
+  `ATTACH`/`DETACH` 一律拒绝，因为它们会把数据库句柄变成任意文件读写原语。
 - ⚠️ 这项检查是**对表标识符的正则匹配，不是 SQL 解析器**。它按"失败即拒绝"（fail closed）
   设计 —— 无法明确归属的标识符一律当作外来表处理 —— 它拦得住寻常失误与顺手越界，却拦不住
   蓄意为之的作者，反正后者与运行时同处一室
@@ -790,12 +837,13 @@ await ctx.db.defineSchema('plugin:@BBeBee/plugin-scrobble', [
 
 | 类型 | 定义于 | 为何留在内存中 |
 |---|---|---|
-| `StreamHandle` | [06 §5](./06-music-sources.md#5-stream-resolution) | 频繁过期；必须重新解析，绝不信任来自存储的副本 |
-| `TransportState` | [05 §2](./05-audio-playback.md#2-ctxplayer--transport-and-queue) | 活的；只有持久化的子集落入 `playback_state` |
-| `Capabilities` | [06 §1](./06-music-sources.md#capabilities) | 从活的提供方派生。缓存在 `providers.capabilities_json` 中，纯粹是为了在提供方连接之前 UI 也能渲染 |
-| `Paged<T>`、游标 | [06 §3](./06-music-sources.md#3-pagination-and-queries) | 不透明且归提供方所有；会话结束便无意义 |
-| `EffectSegment` | [05 §3](./05-audio-playback.md#3-ctxdsp--the-effect-chain) | 活的 `AudioNode`。只有 `params_json` 会持久化 |
-| `AuthStatus` | [06 §4](./06-music-sources.md#4-authentication) | 登录时重新计算；`accounts` 只保留持久摘要 |
+| `StreamHandle` | [06 §6](./06-music-sources.md#6-流解析) | 频繁过期；必须重新解析，绝不信任来自存储的副本 |
+| `TransportState` | [05 §2](./05-audio-playback.md#2-ctxplayer--播放控制与队列) | 活的；只有持久化的子集落入 `playback_state` |
+| `Capabilities` | [06 §1.3](./06-music-sources.md#13-能力是推导出来的不是声明出来的) | 由音源文档的规则块计算得出。缓存在 `sources.capabilities_json` 中，纯粹是为了在音源连接之前 UI 也能渲染 |
+| `Paged<T>`、游标 | [06 §4.3](./06-music-sources.md#43-分页限流与缓存) | 不透明且归音源所有；会话结束便无意义 |
+| `TraceEvent` | [06 §10](./06-music-sources.md#10-诊断一个坏掉的源) | 调试追踪记录的是对某个活后端的一次运行；把它存下来，等于把某个没人会问第二遍的问题的、已脱敏的答案永久保存 |
+| `EffectSegment` | [05 §3](./05-audio-playback.md#3-ctxdsp--效果链) | 活的 `AudioNode`。只有 `params_json` 会持久化 |
+| `AuthStatus` | [06 §5](./06-music-sources.md#5-认证与会话) | 登录时重新计算；`accounts` 只保留持久摘要 |
 
 ---
 

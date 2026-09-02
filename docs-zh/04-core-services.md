@@ -4,10 +4,16 @@
 > TypeScript 契约、它在各目标平台上的实现，以及两个平台真正存在差异的地方。
 
 这些是通向沙箱之外的唯一出口。如果某个功能需要这里未列出的东西，正确答案是新增一个核心服务 —— 而绝不是直接导入平台 SDK
-（[02 §1](./02-architecture.md#the-invariant)）。
+（[02 §1](./02-architecture.md#不变量)）。
 
 所有接口都位于 `packages/protocol/src/services/`，并通过模块扩充（module augmentation）应用到 Context 上。实现位于
 `packages/core-*`，它们是唯一持有平台依赖的代码。
+
+> §§1–16 是按读者遇见的顺序排列的服务。§§17–18 是横切的部分：每份实现都必须满足的运行时要求，
+> 以及让同一个键的两份实现保持诚实的一致性测试套件。**§19 —— `ctx.js`** 采用追加而非插入，
+> 因为它随
+> [ADR-5](./01-overview.md#adr-5--音源是导入的字符串由一个运行时解释)
+> 而来，而给一份被其他文档链接的文档重新编号，其代价高于一节顺序错乱。
 
 ---
 
@@ -117,7 +123,7 @@ export interface HttpRequest {
   signal?: AbortSignal
   timeoutMs?: number
   redirect?: 'follow' | 'manual' | 'error'
-  /** Named cookie jar. Provider instances get their own via ctx.isolate('http'). */
+  /** Named cookie jar. Each music source gets its own via ctx.isolate('http'). */
   jar?: string
   onProgress?: (loaded: number, total?: number) => void
 }
@@ -153,13 +159,13 @@ export interface HttpService {
 
 `ctx.http` 是标准的瀑布（waterfall）拦截点。鉴权注入、重试、限速与响应缓存，全都是挂接
 `http/request` 钩子的插件，而不是内建在客户端里的特性
-（[02 §5](./02-architecture.md#5-composition-how-features-reach-each-other)）。
+（[02 §5](./02-architecture.md#5-组合功能之间如何触达彼此)）。
 
 ### 2.1 Cookie 罐
 
 一个已登录的音源必须在应用重启后保持登录状态
-（[06 §4.1](./06-music-sources.md#41-session-persistence--cookies-survive-the-app)）。因此
-cookie 持久化是平台契约的一部分，而不是每个提供方各自重新实现的东西。
+（[06 §5.1](./06-music-sources.md#51-会话持久化--cookie-在应用关闭后依然存活)）。因此
+cookie 持久化是平台契约的一部分，而不是每份音源文档要在规则里自行表达的东西。
 
 ```ts
 export interface Cookie {
@@ -208,7 +214,7 @@ export interface CookieJarService {
 | | Electron (`core-http-node`) | Expo (`core-http-rn`) |
 |---|---|---|
 | 存储 | `session.fromPartition('persist:BBeBee-<name>')` —— Chromium 自带的 cookie 存储，直接落盘，过期/`Secure`/`SameSite` 处理白拿 | JS 实现的 RFC 6265 jar，序列化为 JSON |
-| 静态保护 | 存在系统钥匙串时，Chromium 用它加密存储 | **信封加密（envelope encryption）**：随机 AES 密钥放 `ctx.secrets`，密文放 `cookie_jars` 表（[07 §4.1](./07-data-model.md#41-providers-accounts-and-sessions)） |
+| 静态保护 | 存在系统钥匙串时，Chromium 用它加密存储 | **信封加密（envelope encryption）**：随机 AES 密钥放 `ctx.secrets`，密文放 `cookie_jars` 表（[07 §4.1](./07-data-model.md#41-音源账号与会话)） |
 | 清除 | `session.clearStorageData({ storages: ['cookies'] })` + 移除分区 | 删除该行，并从 `ctx.secrets` 删除密钥 |
 
 > ⚠️ **为什么移动端不直接把 jar 放进 `ctx.secrets`。** `expo-secure-store` 对单个值的上限是
@@ -218,7 +224,7 @@ export interface CookieJarService {
 
 > ⚠️ React Native 的 `fetch` 在两个平台上都用**应用全局共享**的原生 cookie 存储。这与按实例
 > 隔离的需求恰好相反，因此 `core-http-rn` 禁用了它，自行管理 `Cookie` / `Set-Cookie` 请求头。
-> 每次 RN 升级都要复核这一点：这里的默认行为一变，cookie 就会在提供方实例之间静默串漏，
+> 每次 RN 升级都要复核这一点：这里的默认行为一变，cookie 就会在音源之间静默串漏，
 > 一致性测试套件中的隔离测试正是为此而设。
 
 ---
@@ -270,7 +276,7 @@ export interface StoreService {
 两点：
 
 - **启动顺序。** `ctx.store` 比 `ctx.db` *先*就绪 —— 内核在数据库存在之前就要经 `fs` 和
-  `store` 读取配置（[02 §3](./02-architecture.md#3-boot-sequence)）。让移动端的 store 依赖
+  `store` 读取配置（[02 §3](./02-architecture.md#3-启动顺序)）。让移动端的 store 依赖
   `db` 会把这条顺序倒过来。
 - **平台特有的东西已经不剩什么了。** 一旦走 `ctx.fs`，两份实现就是同一份代码抄两遍，
   只会平白增加漂移面。
@@ -319,10 +325,21 @@ export interface Migration {
 | WAL | ✅ 已启用 | ✅ 已启用 |
 | 并发 | 经由 `main` 宿主串行化 | 在原生模块中串行化 |
 | FTS5 | ✅ 可用 | ✅ 可用 |
+| 能力门 | ✅ | ✅ |
+
+> ⚠️ **每次调用一条语句。** `query`、`get` 与 `exec` 只接受单条语句，并拒绝包含多条的字符串。
+> 这是契约，不是某个驱动的局限：`prepare()` 会编译*第一条*语句并**静默**丢弃其余的，因此
+> `exec('CREATE TABLE a; CREATE TABLE b')` 曾经创建了 `a`、成功 resolve、不留任何 `b` 从未
+> 发生的痕迹 —— 而一份如此编写的迁移把它的版本记为已应用，schema 从此永久漂移，也没有任何
+> 错误可查。请分开传语句，或在迁移中使用 `up: string[]`。字符串字面量内部的分号不是边界。
+>
+> 这道门在**两份**实现上都有。`core-db-expo` 曾有一段时间完全没有 —— `db:own` 在桌面端被
+> 强制、在移动端不设防 —— 这恰恰是 §18 的一致性测试套件要抓的漂移，也是 `db-scope` 套件必须
+> 在真机、而不仅是在 Node 里跑的原因。
 
 选择 `node:sqlite` 消除了 Electron 项目中最恼人的一项维护负担 ——
 每次版本升级都要针对 Electron 头文件重编译 `better-sqlite3`。两个平台都支持 FTS5，因此本地曲库搜索只需一份实现
-（[07 §4.3](./07-data-model.md#43-catalogue)）。
+（[07 §4.3](./07-data-model.md#43-目录catalogue)）。
 
 ---
 
@@ -345,9 +362,9 @@ Electron：`safeStorage.encryptString`（Keychain / DPAPI / libsecret），密�
 > ⚠️ 在没有运行密钥服务的 Linux 上，`safeStorage` 会退化为明文。
 > `isHardwareBacked` 会报告 `false`，UI 也会如实说明，而不是虚张声势。
 
-**令牌只存放在这里，别无他处。** 绝不进 `ctx.db`，绝不进配置文件，也绝不进任何一行日志。每个提供方实例拿到的是
-`ctx.secrets.namespace(instanceId)`，且能力语法中不存在 `secrets:all`
-（[03 §7](./03-plugin-system.md#7-capability-model)）。
+**令牌只存放在这里，别无他处。** 绝不进 `ctx.db`，绝不进配置文件，也绝不进任何一行日志。每个音源拿到的是
+`ctx.secrets.namespace(sourceId)`，且能力语法中不存在 `secrets:all`
+（[03 §7](./03-plugin-system.md#7-能力模型)）。
 
 ---
 
@@ -406,7 +423,7 @@ Electron 的 `Notification`（无需权限请求）对上 `expo-notifications`�
 
 ## 9. `ctx.background` —— 长时任务与唤醒锁
 
-让 [02 §4](./02-architecture.md#4-what-background-means) 落地的服务。
+让 [02 §4](./02-architecture.md#4-后台意味着什么) 落地的服务。
 
 ```ts
 export interface BackgroundService {
@@ -469,7 +486,7 @@ export interface DeviceService {
 ```
 
 `network().metered` 承载着关键逻辑：下载策略引擎
-（[07 §4.7](./07-data-model.md#48-downloads)）依靠它来拦停蜂窝网络下的传输。
+（[07 §4.7](./07-data-model.md#48-下载)）依靠它来拦停蜂窝网络下的传输。
 
 ---
 
@@ -538,8 +555,9 @@ export interface ShellService {
 }
 ```
 
-`openAuthSession` 让 OAuth PKCE 在 [06 §4](./06-music-sources.md#4-authentication)
-中的行为完全一致：移动端用 `expo-web-browser` 的 auth session，桌面端用一个带导航监听器的 `BrowserWindow`。
+`openAuthSession` 让 [06 §5](./06-music-sources.md#5-认证与会话) 的
+`webview` 登录流程行为完全一致：移动端用 `expo-web-browser` 的 auth session，桌面端用一个带导航监听器的 `BrowserWindow`。
+它收集的 cookie 落进该音源的 jar（§2.1），这正是全部意义所在。
 
 ---
 
@@ -588,7 +606,9 @@ export interface LogTransport {
 
 > ⚠️ **脱敏是强制的。** 传输端会对 `meta` 与 `message` 跑一个脱敏器，剔除键名为
 > `token`、`password`、`authorization`、`cookie` 或 `refresh_token` 的内容，并重写 URL
-> 上的查询字符串。音源插件动辄把凭据放进请求头；一份即将被用户发出去的日志文件绝不能包含它们。
+> 上的查询字符串。音源规则动辄把凭据放进请求头与查询字符串，而规则追踪器
+> （[06 §10](./06-music-sources.md#10-诊断一个坏掉的源)）存在的意义就是被复制进
+> 论坛帖子 —— 所以同一个脱敏器也跑在追踪记录上，而不只是日志上。
 
 ---
 
@@ -606,6 +626,7 @@ export interface LogTransport {
 | **Node 内建模块** | `cordis` 一个都不导入。如果某个*核心*插件的依赖导入了，那它应属于 `main` 而非渲染进程，且绝不进移动端 bundle |
 | **`ReadableStream` / `WritableStream`** | `ctx.fs` 与 `ctx.http` 会用到。渲染进程中可用；RN 0.86 上请验证是否存在，缺失时在移动端入口用 `web-streams-polyfill` 补齐 |
 | **`structuredClone`** | 桌面端 IPC 桥接会用到。Electron 中可用；移动端不需要 |
+| **第二个 JS 引擎** | `ctx.js`（§19）内嵌 QuickJS：渲染进程中是 WASM 构建，移动端是原生模块。它是原生依赖，因此它落地时移动端需要一次 dev-client 重建；且 WASM 资产必须打进包内而不是在线拉取 —— CSP 禁止拉取它 |
 
 ---
 
@@ -626,6 +647,80 @@ bug。这套套件就是本文档的可执行形式。
 
 ---
 
-## 19. 下一步阅读
+## 19. `ctx.js` —— 沙箱化求值器
+
+**用途。** 求值一段不受信任的 JavaScript 并拿回一个值，所在的 realm 与应用不共享任何东西。
+
+如今它恰好只有一个调用方：`plugin-source-runtime`，其规则出自陌生人之手
+（[06 §8](./06-music-sources.md#8-信任导入的源能做什么不能做什么)）。它是
+核心服务而不是那个插件的一部分，因为内嵌一个解释器意味着交付原生代码，而只有 `core-*` 可以
+这么做（[02 §1](./02-architecture.md#不变量)）。
+
+```ts
+export interface JsRealm {
+  /**
+   * Evaluate `code` with `scope` bound as globals. Resolves with the completion
+   * value, structured-cloned out of the realm — never a live reference into it.
+   */
+  eval<T = unknown>(code: string, scope?: Record<string, unknown>): Promise<T>
+  /** Install a host function callable from inside. Arguments arrive cloned. */
+  expose(name: string, fn: (...args: unknown[]) => unknown | Promise<unknown>): Disposable
+  /** Evaluate once at realm creation — the source document's `jsLib`. */
+  preload(code: string): Promise<void>
+  dispose(): void
+}
+
+export interface JsLimits {
+  /** Wall clock for one eval. Exceeding it throws JsTimeoutError and unwinds the realm. */
+  timeoutMs: number
+  /** Heap ceiling. Exceeding it throws JsMemoryError. */
+  memoryBytes: number
+  /** Cap on the size of a returned value, before cloning. */
+  maxResultBytes: number
+}
+
+export interface JsService {
+  /** A fresh realm with nothing in it but ECMAScript builtins. */
+  createRealm(limits: JsLimits): Promise<JsRealm>
+  readonly engine: { name: string; version: string }
+}
+
+export class JsTimeoutError extends Error {}
+export class JsMemoryError extends Error {}
+```
+
+| | Electron (`core-js-quickjs-node`) | Expo (`core-js-quickjs-rn`) |
+|---|---|---|
+| 底层实现 | 渲染进程中的 `quickjs-emscripten`（WASM） | 一个 QuickJS JSI 模块 |
+| 隔离 | 每个 realm 一个独立的 WASM 实例 | 每个 realm 一个独立的 `JSRuntime` |
+| 中断 | QuickJS 中断处理器，在向后跳转时检查 | 相同 |
+| 异步 | 宿主函数可以返回 promise；realm 的作业队列由宿主驱动 | 相同 |
+
+这份契约围绕以下规则建立，每一条都是天真的内嵌方式会搞错的：
+
+- **没有环境全局。** realm 启动时只有 ECMAScript 内建对象，别的什么都没有 —— 没有 `fetch`、
+  没有定时器、没有 `console`、没有模块加载器。调用方想让里面可用的每一样东西都必须按名
+  `expose`，这正是让
+  [06 §8](./06-music-sources.md#8-信任导入的源能做什么不能做什么) 的宿主面
+  成为一份穷尽清单而非摘要的原因。
+- **值靠克隆跨越，绝不靠引用。** realm 里的任何东西都无法保留来自宿主的活对象，因此它无法
+  遍历对象图去够到某个服务 —— 这正是让同 realm "沙箱"一文不值的那个失败点。
+- **限制由引擎强制执行，而不是靠约定。** `while (true)` 会被中断，而不是被等待。这正是要
+  第二个引擎而不是 `Worker` 的原因：worker 无法设置内存上限，只能被杀掉，诊断信息也随之
+  丢失。
+- **realm 是可释放且廉价的。** 每个音源一个，随该音源的 fiber 一起释放。泄漏一个 realm 就是
+  泄漏一个原生句柄，所以它和其他东西一样通过 `ctx.effect()` 注册。
+- **`engine` 会被上报**，规则可以据此分支，追踪也可以记录它。两个 QuickJS 构建并不相同，
+  一个在桌面端能跑、在移动端跑不了的音源，必须可调试而不是玄学。
+
+> ⚠️ **沙箱约束的是触达能力，不是意图。** realm 中的代码仍然看得见宿主传入的一切，并且可以
+> 把它送到宿主暴露的函数允许的任何地方 —— 这正是音源运行时把它与 `ctx.http` 上按音源的
+> **主机白名单**搭配使用的原因
+> （[03 §7](./03-plugin-system.md#能力语法)）。一个没有出口限制的求值器，就是一个
+> 中间开了洞的遏制故事。
+
+---
+
+## 20. 下一步阅读
 
 [05 —— 音频与播放](./05-audio-playback.md) 在这些服务之上构建播放引擎与 DSP 效果链。

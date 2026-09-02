@@ -19,7 +19,7 @@ flowchart LR
 
 ## 1. `ctx.audio` —— 引擎
 
-依据 [ADR-4](./01-overview.md#adr-4--react-native-audio-api-is-the-primary-playback-and-dsp-engine-on-every-target)，契约**就是** Web Audio API 本身。`react-native-audio-api` 在 iOS 与 Android 上实现了它，并为 Electron 渲染进程提供 web 构建，因此同一份音频图描述可以处处运行。
+依据 [ADR-4](./01-overview.md#adr-4--react-native-audio-api-是所有目标平台上首要的播放与-dsp-引擎)，契约**就是** Web Audio API 本身。`react-native-audio-api` 在 iOS 与 Android 上实现了它，并为 Electron 渲染进程提供 web 构建，因此同一份音频图描述可以处处运行。
 
 ```ts
 import type { Uri, Disposable } from '@BBeBee/protocol'
@@ -190,7 +190,7 @@ sequenceDiagram
         Note over DL: The player never learns downloads exist.
     else no local copy
         DL->>SRC: next()
-        SRC->>SRC: provider.resolveStream(ref, prefs)
+        SRC->>SRC: source.resolveStream(ref, prefs)
         SRC-->>Q: StreamHandle { url, headers, expiresAt }
     end
     Q->>A: load(target, { strategy })
@@ -199,7 +199,7 @@ sequenceDiagram
     Q->>A: handle.play()
 ```
 
-失败时，流水线会被重新进入而不是立刻把错误抛给用户：`UnavailableError` 会先触发一次 `track_links`（[07 §4.4](./07-data-model.md#44-identity-linking)）查询，寻找同一录音在其他提供方上的条目；只有这一步也一无所获，播放器才进入 `error`。
+失败时，流水线会被重新进入而不是立刻把错误抛给用户：`UnavailableError`——或来自某个规则已腐化的源的 `RuleError`（[06 §7](./06-music-sources.md#7-错误)）——会先触发一次 `track_links`（[07 §4.4](./07-data-model.md#44-身份关联)）查询，寻找同一录音在其他源上的条目；只有这一步也一无所获，播放器才进入 `error`。
 
 ### 无缝（gapless）与交叉淡入淡出
 
@@ -348,7 +348,7 @@ export function apply(ctx: Context) {
 
 ## 6. 播放与后台
 
-交叉参考 [02 §4](./02-architecture.md#4-what-background-means)。具体来说：
+交叉参考 [02 §4](./02-architecture.md#4-后台意味着什么)。具体来说：
 
 - **iOS** —— `UIBackgroundModes: ['audio']`，audio session 类别为 `playback`。播放可以无限持续；*非音频*的工作则不行。
 - **Android** —— 一个带媒体通知的前台服务，播放开始时启动，播放结束时停止。没有它，进程会在几分钟内被杀掉。

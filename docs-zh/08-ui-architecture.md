@@ -2,7 +2,7 @@
 
 > **本篇回答什么。** 一个插件如何向两个不共享任何组件代码的外壳贡献用户界面、视图如何在不拥有数据的前提下找到数据，以及"逻辑"与"视图"的边界画在哪里。
 
-依据 [ADR-2](./01-overview.md#adr-2--the-ui-is-split-react-native-on-mobile-react-dom-on-desktop)，共有两个视图层：移动端用 React Native，桌面端用 React DOM。这一选择的代价完全在本文所述之处支付，而本文要讲的正是如何把这份代价控制在一定范围内。
+依据 [ADR-2](./01-overview.md#adr-2--ui-拆分移动端-react-native桌面端-react-dom)，共有两个视图层：移动端用 React Native，桌面端用 React DOM。这一选择的代价完全在本文所述之处支付，而本文要讲的正是如何把这份代价控制在一定范围内。
 
 ---
 
@@ -122,8 +122,10 @@ export type SlotId =
   | 'album.context-menu'
   | 'library.sidebar'            // extra library sections
   | 'search.results-section'     // an extra results group
-  | 'settings.sources'
-  | 'source.browse'
+  | 'settings.sources'            // the source list: import, groups, enable, reorder
+  | 'source.browse'               // a source's explore tree
+  | 'source.editor'               // the document editor for one source
+  | 'source.debug'                // the rule tracer (06 §10)
   | 'status-bar'                 // desktop only; ignored on mobile
 ```
 
@@ -173,7 +175,7 @@ flowchart LR
 
 ## 4. 把服务绑定到 React
 
-来自 [02 §6](./02-architecture.md#6-state-ownership) 的规则：**React 不持有任何领域状态。** 状态由服务拥有，组件负责订阅。
+来自 [02 §6](./02-architecture.md#6-状态归属) 的规则：**React 不持有任何领域状态。** 状态由服务拥有，组件负责订阅。
 
 `ui-kit-mobile` 与 `ui-kit-desktop` 都构建在 `@BBeBee/ui-core` 中同一个共享的、与框架无关的 hook 层之上，它只依赖 `react` 和 `@BBeBee/protocol`：
 
@@ -215,8 +217,23 @@ export const usePosition = () =>
 - **领域操作不用 `useEffect`。** 任何抓取、写入或修改领域状态的 effect，都应属于组件所调用的某个服务方法。
 - **乐观更新放在服务中**，而不是组件里，这样两个外壳在写入失败并回滚时的行为完全一致。
 - **列表必须虚拟化。** 移动端用 `FlashList`，桌面端用 `@tanstack/react-virtual`。曲库可能容纳 10 万首曲目；在哪个平台上直接渲染这么多都撑不住。
-- **`player/position` 用插值，绝不轮询。** 该事件以 1 Hz 触发（[07 §5](./07-data-model.md#5-the-event-map)）；进度条在两次事件之间用 `requestAnimationFrame` 做动画，并在每个事件到来时重新对齐。
-- **封面图先渲染 `blurhash`**，再加载图片（[07 §4.2](./07-data-model.md#42-artwork)）。没有布局跳动，滚动时也没有灰色闪烁。
+- **`player/position` 用插值，绝不轮询。** 该事件以 1 Hz 触发（[07 §5](./07-data-model.md#5-事件表)）；进度条在两次事件之间用 `requestAnimationFrame` 做动画，并在每个事件到来时重新对齐。
+- **封面图先渲染 `blurhash`**，再加载图片（[07 §4.2](./07-data-model.md#42-封面图)）。没有布局跳动，滚动时也没有灰色闪烁。
+
+---
+
+### 音源相关界面
+
+有四个界面承载了整个源字符串模型，值得逐一点名，因为它们是这套 UI 中在传统播放器里没有对应物的部分。这四个界面全部由 `plugin-source-runtime-ui-{mobile,desktop}` 贡献，而且全部是普通描述符 —— 没有任何特殊待遇。
+
+| 界面 | 做什么 | 拆分上的说明 |
+|---|---|---|
+| **源列表** | 启用、禁用、重排、分组，并查看每个源的健康徽标 | 普通列表；对等性是免费的 |
+| **导入审核** | 在任何内容被写入之前，展示粘贴进来的源字符串里有什么 —— 新增 / 更新 / 拒绝，以及主机白名单（[06 §9](./06-music-sources.md#9-导入更新与分享)） | 唯一绝不可跳过的界面，因此它在两端都是模态路由，而不是槽位 |
+| **源编辑器** | 编辑文档的字段与规则 | ⚠️ 真正不同：桌面端是双栏 JSON/表单编辑器，移动端是分区表单。*校验*位于 headless 包中，因此两者不可能对"什么算合法"产生分歧 |
+| **规则追踪器** | 运行一步，并展示每条规则的输入、输出与耗时（[06 §10](./06-music-sources.md#10-诊断一个坏掉的源)） | 一份可以长距离滚动的日志，每一行都带一条可编辑的规则 —— 应用中最接近开发者工具的东西，也是用户能够自己修好一个源的原因 |
+
+让这件事保持低成本的正是 [§1](#1-三包约定) 的那条规则：解析、校验、diff、追踪与脱敏全部位于 headless 包。视图包要做的只是展示一个列表和一个文本框。
 
 ---
 
