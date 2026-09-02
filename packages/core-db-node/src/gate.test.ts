@@ -21,13 +21,13 @@ let root: string
 beforeAll(async () => { root = await mkdtemp(join(tmpdir(), 'bbebee-dbgate-')) })
 afterAll(async () => { await rm(root, { recursive: true, force: true }) })
 
-async function gated(grants: string[], instanceId = '@BBeBee/plugin-demo') {
+async function gated(grants: string[], scopeId = '@BBeBee/plugin-demo') {
   const ctx = new Context()
   await ctx.plugin(PathsNode, { root: await mkdtemp(join(root, 'c-')) })
   await ctx.plugin(FsNode)
   await ctx.plugin(DbNode, { fileName: ':memory:' })
   const scoped = scopeContext(ctx, {
-    pluginId: instanceId, instanceId, requested: grants as never,
+    pluginId: scopeId, scopeId, requested: grants as never,
   })
   return { admin: ctx.db, db: scoped.db, ctx }
 }
@@ -36,7 +36,7 @@ describe('tablesReferenced', () => {
   it('finds the tables a statement touches', () => {
     expect(tablesReferenced('SELECT * FROM tracks').sort()).toEqual(['tracks'])
     expect(tablesReferenced('INSERT INTO plugin_x_notes (a) VALUES (1)')).toEqual(['plugin_x_notes'])
-    expect(tablesReferenced('UPDATE providers SET a=1')).toEqual(['providers'])
+    expect(tablesReferenced('UPDATE sources SET a=1')).toEqual(['sources'])
     expect(tablesReferenced('SELECT * FROM a JOIN b ON a.id=b.id').sort()).toEqual(['a', 'b'])
     expect(tablesReferenced('CREATE TABLE IF NOT EXISTS z (a TEXT)')).toEqual(['z'])
   })
@@ -54,9 +54,9 @@ describe('db:own', () => {
   })
 
   it('refuses a core catalogue table', async () => {
-    // The concrete claim: a plugin cannot DROP TABLE providers.
+    // The concrete claim: a plugin cannot DROP TABLE sources.
     const { db } = await gated(['db:own'])
-    await expect(db.exec('DROP TABLE providers')).rejects.toThrow(/outside its own namespace/)
+    await expect(db.exec('DROP TABLE sources')).rejects.toThrow(/outside its own namespace/)
     await expect(db.query('SELECT * FROM tracks')).rejects.toThrow(/outside its own namespace/)
   })
 
@@ -95,15 +95,15 @@ describe('db:own', () => {
 describe('core-db-node db-scope conformance', () => {
   for (const check of dbScopeConformance.checks) {
     it(`${check.name} — ${check.because}`, async () => {
-      const instanceId = '@BBeBee/plugin-demo'
-      const { admin, db } = await gated(['db:own'], instanceId)
-      const { db: reads } = await gated(['db:own', 'db:read:core'], instanceId)
-      const { db: writes } = await gated(['db:own', 'db:write:core'], instanceId)
-      const { db: all } = await gated(['db:own', 'db:*:core'], instanceId)
+      const scopeId = '@BBeBee/plugin-demo'
+      const { admin, db } = await gated(['db:own'], scopeId)
+      const { db: reads } = await gated(['db:own', 'db:read:core'], scopeId)
+      const { db: writes } = await gated(['db:own', 'db:write:core'], scopeId)
+      const { db: all } = await gated(['db:own', 'db:*:core'], scopeId)
       await check.run({
         admin,
-        instanceId,
-        ownPrefix: nsPrefix(`plugin:${instanceId}`),
+        scopeId,
+        ownPrefix: nsPrefix(`plugin:${scopeId}`),
         own: db,
         ownPlusCoreReads: reads,
         ownPlusCoreWrites: writes,

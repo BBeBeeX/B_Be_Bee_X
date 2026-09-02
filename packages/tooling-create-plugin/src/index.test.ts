@@ -16,7 +16,6 @@ const fileNamed = (files: ReturnType<typeof render>, suffix: string) =>
 describe('naming', () => {
   it('prefixes by kind', () => {
     expect(packageNameFor('feature', 'scrobble')).toBe('plugin-scrobble')
-    expect(packageNameFor('source', 'subsonic')).toBe('plugin-source-subsonic')
     expect(packageNameFor('effect', 'eq10')).toBe('plugin-effect-eq10')
   })
 
@@ -72,14 +71,17 @@ describe('generated headless package', () => {
     ])
   })
 
-  it('marks a source plugin instantiable and a feature plugin not', () => {
-    const manifestOf = (kind: 'feature' | 'source') =>
-      JSON.parse(
+  it('marks nothing instantiable', () => {
+    // The scaffolder used to emit `plugin-source-<name>` with
+    // `instantiable: true`, because one source plugin served many servers.
+    // Both concepts are gone: a music backend is an imported document, and
+    // two servers are two documents (docs/06 §1.2, docs/09 §1).
+    for (const kind of ['feature', 'effect'] as const) {
+      const manifest = JSON.parse(
         fileNamed(render({ ...base, kind }), 'BBeBee.plugin.json').contents,
-      ) as { instantiable: boolean }
-    // One plugin, many servers (docs/06 §2).
-    expect(manifestOf('source').instantiable).toBe(true)
-    expect(manifestOf('feature').instantiable).toBe(false)
+      ) as Record<string, unknown>
+      expect(manifest.instantiable, kind).toBeUndefined()
+    }
   })
 })
 

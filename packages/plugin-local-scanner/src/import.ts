@@ -12,7 +12,7 @@ import type { AudioMetadata, DbService, SqlValue, Uri } from '@BBeBee/protocol'
 import { albumId, artistId, artworkId, trackId } from './ids.js'
 
 export interface ImportContext {
-  instanceId: string
+  sourceId: string
   /** Everything in one transaction; the caller owns it. */
   tx: Pick<DbService, 'exec' | 'get' | 'query'>
   now: number
@@ -34,7 +34,7 @@ export interface ImportResult {
   albumUrn?: string
 }
 
-const urn = (instance: string, kind: string, id: string) => `BBeBee:${instance}:${kind}:${id}`
+const urn = (source: string, kind: string, id: string) => `BBeBee:${source}:${kind}:${id}`
 
 /** A sort key that files "The Beatles" under B and drops leading punctuation. */
 export function sortKey(value: string | undefined): string | undefined {
@@ -65,7 +65,7 @@ export async function importTrack(
   ctx: ImportContext,
   input: ImportInput,
 ): Promise<ImportResult> {
-  const { tx, instanceId, now } = ctx
+  const { tx, sourceId, now } = ctx
   const meta = input.metadata
 
   const title = meta.title?.trim() || fileNameOf(input.uri)
@@ -93,9 +93,9 @@ export async function importTrack(
 
   let albumUrn: string | undefined
   if (meta.album) {
-    albumUrn = urn(instanceId, 'album', albumId(meta.album, albumArtist))
+    albumUrn = urn(sourceId, 'album', albumId(meta.album, albumArtist))
     await tx.exec(
-      `INSERT INTO albums (urn, instance_id, remote_id, title, sort_title, year, track_count,
+      `INSERT INTO albums (urn, source_id, remote_id, title, sort_title, year, track_count,
                            disc_count, artwork_id, is_various, fetched_at)
        VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, 0, ?)
        ON CONFLICT(urn) DO UPDATE SET
@@ -106,7 +106,7 @@ export async function importTrack(
          fetched_at = excluded.fetched_at`,
       [
         albumUrn,
-        instanceId,
+        sourceId,
         albumId(meta.album, albumArtist),
         meta.album,
         sortKey(meta.album) ?? null,
@@ -117,9 +117,9 @@ export async function importTrack(
     )
   }
 
-  const trackUrn = urn(instanceId, 'track', trackId(input.uri))
+  const trackUrn = urn(sourceId, 'track', trackId(input.uri))
   await tx.exec(
-    `INSERT INTO tracks (urn, instance_id, remote_id, title, sort_title, album_urn, track_no,
+    `INSERT INTO tracks (urn, source_id, remote_id, title, sort_title, album_urn, track_no,
                          disc_no, duration_ms, year, replay_gain_track, replay_gain_album,
                          available, artwork_id, fetched_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
@@ -138,7 +138,7 @@ export async function importTrack(
        fetched_at        = excluded.fetched_at`,
     [
       trackUrn,
-      instanceId,
+      sourceId,
       trackId(input.uri),
       title,
       sortKey(title) ?? null,
@@ -159,12 +159,12 @@ export async function importTrack(
   await tx.exec('DELETE FROM track_artists WHERE track_urn = ?', [trackUrn])
   for (const [ordinal, name] of artistNames.entries()) {
     const id = artistId(name)
-    const artistUrn = urn(instanceId, 'artist', id)
+    const artistUrn = urn(sourceId, 'artist', id)
     await tx.exec(
-      `INSERT INTO artists (urn, instance_id, remote_id, name, sort_name, fetched_at)
+      `INSERT INTO artists (urn, source_id, remote_id, name, sort_name, fetched_at)
        VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(urn) DO UPDATE SET name = excluded.name, fetched_at = excluded.fetched_at`,
-      [artistUrn, instanceId, id, name, sortKey(name) ?? null, now],
+      [artistUrn, sourceId, id, name, sortKey(name) ?? null, now],
     )
     await tx.exec(
       `INSERT INTO track_artists (track_urn, artist_urn, role, ordinal)
@@ -173,14 +173,14 @@ export async function importTrack(
       [trackUrn, artistUrn, ordinal],
     )
     if (albumUrn && ordinal === 0 && albumArtist) {
-      const albumArtistUrn = urn(instanceId, 'artist', artistId(albumArtist))
+      const albumArtistUrn = urn(sourceId, 'artist', artistId(albumArtist))
       await tx.exec(
-        `INSERT INTO artists (urn, instance_id, remote_id, name, sort_name, fetched_at)
+        `INSERT INTO artists (urn, source_id, remote_id, name, sort_name, fetched_at)
          VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(urn) DO UPDATE SET name = excluded.name`,
         [
           albumArtistUrn,
-          instanceId,
+          sourceId,
           artistId(albumArtist),
           albumArtist,
           sortKey(albumArtist) ?? null,

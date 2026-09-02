@@ -70,8 +70,9 @@ describe('capabilityConfigOf', () => {
   it('reads a well-formed config', () => {
     expect(capabilityConfigOf({ pluginId: 'p', granted: ['audio'] })).toEqual({
       pluginId: 'p',
-      // Defaults to pluginId when no instance was configured.
-      instanceId: 'p',
+      // Defaults to pluginId. The source runtime overrides it per source, so
+      // each imported source gets its own jar, secrets and vars.
+      scopeId: 'p',
       granted: ['audio'],
     })
   })
@@ -146,7 +147,7 @@ describe('classifyDbAccess', () => {
 })
 
 describe('assertDb verbs', () => {
-  const gate = (granted: string[]) => ({ pluginId: 'p', instanceId: 'p', granted })
+  const gate = (granted: string[]) => ({ pluginId: 'p', scopeId: 'p', granted })
   const own = 'plugin_p'
 
   it('db:read:core permits SELECT and refuses mutation', () => {
@@ -268,5 +269,45 @@ describe('assertDb verbs', () => {
     const g = gate(['db:own', 'db:*:core'])
     expect(() => assertDb(g, "ATTACH DATABASE '/tmp/x.db' AS x", own)).toThrow(/may not issue/)
     expect(() => assertDb(g, "VACUUM INTO '/tmp/x.db'", own)).toThrow(/may not issue VACUUM INTO/)
+  })
+})
+
+describe('per-source host narrowing', () => {
+  // plugin-source-runtime holds a broad `net:host/*` because the hosts are not
+  // known until a document is imported, and narrows it per source. Both lists
+  // must allow a request, or the broad grant would be the whole story and a
+  // rule could compute a URL to anywhere. See docs/06 §8.
+  const scoped = (allowedHosts: string[]) => ({
+    pluginId: '@BBeBee/plugin-source-runtime',
+    scopeId: 'music-example-org-4f1a',
+    granted: ['net:host/*'],
+    allowedHosts,
+  })
+
+  it('allows a declared host', () => {
+    expect(() => assertHost(scoped(['music.example.org']), 'https://music.example.org/x')).not.toThrow()
+  })
+
+  it('allows a subdomain of a declared host', () => {
+    expect(() => assertHost(scoped(['example.org']), 'https://cdn.example.org/x')).not.toThrow()
+  })
+
+  it('refuses an undeclared host even under net:host/*', () => {
+    expect(() => assertHost(scoped(['music.example.org']), 'https://evil.test/x')).toThrow(
+      CapabilityError,
+    )
+  })
+
+  it('refuses a bare suffix match', () => {
+    // `notexample.org` must not pass because `example.org` was declared.
+    expect(() => assertHost(scoped(['example.org']), 'https://notexample.org/x')).toThrow(
+      CapabilityError,
+    )
+  })
+
+  it('leaves plugins without a narrowing list governed by grants alone', () => {
+    expect(() =>
+      assertHost({ pluginId: 'p', granted: ['net:host/*'] }, 'https://anything.test/x'),
+    ).not.toThrow()
   })
 })

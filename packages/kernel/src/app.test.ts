@@ -106,26 +106,24 @@ describe('createApp', () => {
     await app.stop()
   })
 
-  it('passes instanceId into each plugin instance', async () => {
-    const seen: string[] = []
+  it('passes the configured config through to the plugin, untouched', async () => {
+    // The loader used to splice an `instanceId` into every plugin's config.
+    // Nothing needs one now: a plugin is activated once, and the only
+    // multi-instance thing in the system — a music source — is a row in
+    // `sources` that the runtime loads itself (docs/03 §6.4).
+    const seen: unknown[] = []
     const app = createApp({
       target: 'desktop',
       bootstrap: [],
       registry: {
-        src: bundled(
-          'src',
-          (_ctx: Context, config: { instanceId: string }) => void seen.push(config.instanceId),
-          { instantiable: true },
-        ),
+        src: bundled('src', (_ctx: Context, config: unknown) => void seen.push(config)),
       },
-      config: {
-        plugins: { src: { instances: [{ id: 'home' }, { id: 'work' }] } },
-      },
+      config: { plugins: { src: { config: { baseUrl: 'https://home' } } } },
     })
 
     await app.start()
     await tick()
-    expect(seen).toEqual(['home', 'work'])
+    expect(seen).toEqual([{ baseUrl: 'https://home' }])
     await app.stop()
   })
 
@@ -298,24 +296,26 @@ describe('capability grants', () => {
 })
 
 describe('quarantine', () => {
-  it('is keyed per instance, so one bad server does not disable its siblings', async () => {
-    // Keying on pluginId meant a misconfigured Navidrome URL took every
-    // configured server offline, with no visible reason.
-    const applied = vi.fn()
+  it('skips a repeatedly failing plugin without touching the others', async () => {
+    // A single bad plugin must not become an unrecoverable boot loop, and
+    // quarantining it must not take the rest of the graph with it.
+    const broken = vi.fn()
+    const healthy = vi.fn()
     const app = createApp({
       target: 'desktop',
       bootstrap: [],
-      registry: { src: bundled('src', applied, { instantiable: true }) },
-      config: { plugins: { src: { instances: [{ id: 'broken' }, { id: 'healthy' }] } } },
+      registry: { broken: bundled('broken', broken), healthy: bundled('healthy', healthy) },
+      config: { plugins: { broken: {}, healthy: {} } },
       load: { failCounts: { broken: 2 }, quarantineAfter: 2 },
     })
 
     await app.start()
     await tick()
 
-    const byId = Object.fromEntries(app.plugins.map((p) => [p.instanceId, p.state]))
+    const byId = Object.fromEntries(app.plugins.map((p) => [p.pluginId, p.state]))
     expect(byId).toEqual({ broken: 'quarantined', healthy: 'active' })
-    expect(applied).toHaveBeenCalledTimes(1)
+    expect(broken).not.toHaveBeenCalled()
+    expect(healthy).toHaveBeenCalledTimes(1)
     await app.stop()
   })
 })

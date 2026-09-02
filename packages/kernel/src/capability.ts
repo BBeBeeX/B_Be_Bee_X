@@ -7,10 +7,14 @@
  * Cordis's proxy, a plugin cannot walk the object graph to an unscoped
  * reference.
  *
- * ⚠️ This is defense in depth, NOT a sandbox. Runtime-loaded plugins execute
- * in the same JS realm as the app and can reach globals and patch prototypes.
- * The gate makes overreach *auditable and revocable*; it does not contain a
- * hostile plugin. See docs/03-plugin-system.md §7.
+ * ⚠️ This is defense in depth, NOT a sandbox. Plugins execute in the same JS
+ * realm as the app and can reach globals and patch prototypes. The gate makes
+ * overreach *auditable and revocable*; it does not contain a hostile plugin.
+ * It is not asked to: every plugin is first-party and ships in the build.
+ *
+ * The code that *is* untrusted — an imported music source's rules — is
+ * contained by a different and much stronger mechanism, `ctx.js`, whose realm
+ * shares nothing with the app. See docs/03 §7 and docs/06 §8.
  */
 
 import type { Context } from 'cordis'
@@ -33,17 +37,37 @@ import {
 export interface CapabilityConfig {
   pluginId: string
   /**
-   * The configured instance. Core services use it as the namespace for
-   * per-instance storage — the `store` prefix, the `secrets` namespace, and
-   * the cookie jar name all key on this. See docs/03 §5.
+   * The storage scope. Core services use it as the namespace for per-scope
+   * storage — the `store` prefix, the `secrets` namespace, and the cookie jar
+   * name all key on it.
+   *
+   * Usually the plugin id. The source runtime overrides it per source, which
+   * is what gives each imported source its own jar, its own secrets and its
+   * own vars without any of them knowing about the others. See docs/03 §5.
    */
-  instanceId: string
+  scopeId: string
   granted: readonly string[]
+  /**
+   * A second, narrower egress list, applied on top of the `net:host/…` grants.
+   *
+   * `plugin-source-runtime` holds a broad `net:host/*` because the hosts are
+   * not known until a document is imported. It then narrows per source: each
+   * source's isolated `ctx.http` scope carries that source's own hostnames,
+   * and both lists must allow a request. Without this the broad grant would be
+   * the whole story, and a rule could compute a URL to anywhere.
+   *
+   * Absent means "no extra narrowing" — the grants alone decide.
+   * See docs/03 §7 and docs/06 §8.
+   */
+  allowedHosts?: readonly string[]
 }
 
 export interface GrantOptions {
   pluginId: string
-  instanceId?: string
+  /** Defaults to `pluginId`. See `CapabilityConfig.scopeId`. */
+  scopeId?: string
+  /** See `CapabilityConfig.allowedHosts`. */
+  allowedHosts?: readonly string[]
   /** What the manifest asked for. */
   requested: readonly Capability[]
   /**
@@ -63,8 +87,9 @@ export interface GrantOptions {
 export function scopeContext(ctx: Context, opts: GrantOptions): Context {
   const config: CapabilityConfig = {
     pluginId: opts.pluginId,
-    instanceId: opts.instanceId ?? opts.pluginId,
+    scopeId: opts.scopeId ?? opts.pluginId,
     granted: normalizeGrants(opts.granted ?? opts.requested),
+    ...(opts.allowedHosts ? { allowedHosts: [...opts.allowedHosts] } : {}),
   }
 
   let scoped = ctx
@@ -93,8 +118,11 @@ export function capabilityConfigOf(config: unknown): CapabilityConfig | undefine
   if (typeof c.pluginId !== 'string' || !Array.isArray(c.granted)) return undefined
   return {
     pluginId: c.pluginId,
-    instanceId: typeof c.instanceId === 'string' ? c.instanceId : c.pluginId,
+    scopeId: typeof c.scopeId === 'string' ? c.scopeId : c.pluginId,
     granted: normalizeGrants(c.granted),
+    ...(Array.isArray(c.allowedHosts)
+      ? { allowedHosts: normalizeGrants(c.allowedHosts) }
+      : {}),
   }
 }
 
@@ -136,6 +164,24 @@ export function assertHost(config: unknown, url: string): void {
   if (!allowsHost(gate.granted, host)) {
     throw new CapabilityError(`net:host/${host}`, `${gate.pluginId} may not reach ${host}`)
   }
+
+  // The narrower list wins. A source that computes a URL to a host it did not
+  // declare is refused whether the URL was written literally or built at
+  // runtime — which is what turns the sandbox from a reach boundary into an
+  // egress one (docs/06 §8).
+  if (gate.allowedHosts && !gate.allowedHosts.some((allowed) => hostMatches(host, allowed))) {
+    throw new CapabilityError(
+      `net:host/${host}`,
+      `${gate.scopeId} did not declare ${host}; add it to allowedHosts and re-import`,
+    )
+  }
+}
+
+/** Exact hostname, or a subdomain of a declared one. Never a bare suffix match. */
+function hostMatches(host: string, allowed: string): boolean {
+  const a = allowed.trim().toLowerCase().replace(/\.$/, '')
+  if (!a) return false
+  return host === a || host.endsWith(`.${a}`)
 }
 
 /** WebSocket connections are governed by the same `net:host/` grants. */
@@ -157,7 +203,7 @@ export function assertGranted(config: unknown, capability: MediatedService | str
  * gets the same namespace across all three.
  */
 export function storageNamespace(config: unknown): string | undefined {
-  return capabilityConfigOf(config)?.instanceId
+  return capabilityConfigOf(config)?.scopeId
 }
 
 /* ── db ─────────────────────────────────────────────────────────────────── */
@@ -398,14 +444,14 @@ const ACCESS_VERB: Record<DbAccess, string> = {
 }
 
 /**
- * The table prefix a caller owns, derived from its instance id.
+ * The table prefix a caller owns, derived from its scope id.
  *
  * Every `ctx.db` implementation must derive it the same way, or the gate means
  * different things on different platforms — which is exactly how the desktop
  * path ended up with no gate at all while the in-process one had one.
  */
 export function ownNamespaceOf(gate: CapabilityConfig): string {
-  return `plugin:${gate.instanceId}`
+  return `plugin:${gate.scopeId}`
 }
 
 /**

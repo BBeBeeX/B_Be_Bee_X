@@ -16,6 +16,5 @@
     "services": [
       "audio"
     ]
-  },
-  "instantiable": false
+  }
 }

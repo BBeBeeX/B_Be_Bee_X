@@ -17,6 +17,5 @@
     "services": [
       "http"
     ]
-  },
-  "instantiable": false
+  }
 }

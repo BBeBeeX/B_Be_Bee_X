@@ -91,7 +91,7 @@ export class StoreFs extends Service implements StoreService {
   /**
    * The namespace a plugin's keys are confined to.
    *
-   * Derived from the capability gate's `instanceId`, so `ctx.store`,
+   * Derived from the capability gate's `scopeId`, so `ctx.store`,
    * `ctx.secrets`, and the cookie jar all agree — a plugin does not have to
    * remember to prefix anything. See docs/03-plugin-system.md §5.
    */

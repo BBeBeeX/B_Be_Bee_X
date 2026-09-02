@@ -42,17 +42,17 @@ export class Hello extends Service {
     platformNote: '',
   }
 
-  private readonly instanceId: string
+  private readonly scopeId: string
   /** Own table name, derived from the namespace the gate expects. */
   private readonly table: string
 
   constructor(
     ctx: Context,
-    private readonly config: HelloConfig & { instanceId?: string } = {},
+    private readonly config: HelloConfig & { scopeId?: string } = {},
   ) {
     super(ctx, 'hello')
-    this.instanceId = config.instanceId ?? '@BBeBee/plugin-hello'
-    this.table = `${nsPrefix(`plugin:${this.instanceId}`)}_notes`
+    this.scopeId = config.scopeId ?? '@BBeBee/plugin-hello'
+    this.table = `${nsPrefix(`plugin:${this.scopeId}`)}_notes`
   }
 
   static inject = ['db', 'store', 'ui', 'device']
@@ -60,7 +60,7 @@ export class Hello extends Service {
   async [Service.init]() {
     // A plugin-owned table, created through the namespaced migration API —
     // the platform's promise that a plugin can own schema (docs/07 §6).
-    await this.ctx.db.defineSchema(`plugin:${this.instanceId}`, [
+    await this.ctx.db.defineSchema(`plugin:${this.scopeId}`, [
       {
         version: 1,
         up: `CREATE TABLE {{ns}}_notes (

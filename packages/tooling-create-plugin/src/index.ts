@@ -13,7 +13,16 @@
 import { mkdir, writeFile, access } from 'node:fs/promises'
 import { join } from 'node:path'
 
-export type PluginKind = 'feature' | 'source' | 'effect'
+/**
+ * What kind of package to scaffold.
+ *
+ * There is deliberately no `source` kind. A music backend is a **source
+ * document** — a string the user imports, interpreted by
+ * `plugin-source-runtime` (docs/06) — not a package. A plugin is for
+ * behaviour the runtime cannot express: an effect, a scrobbler, a transport,
+ * a UI surface.
+ */
+export type PluginKind = 'feature' | 'effect'
 export type UiTarget = 'none' | 'desktop' | 'mobile' | 'both'
 
 export interface CreateOptions {
@@ -37,7 +46,7 @@ export interface CreatedFile {
 const SLUG = /^[a-z][a-z0-9-]*$/
 
 export function packageNameFor(kind: PluginKind, name: string): string {
-  return kind === 'source' ? `plugin-source-${name}` : kind === 'effect' ? `plugin-effect-${name}` : `plugin-${name}`
+  return kind === 'effect' ? `plugin-effect-${name}` : `plugin-${name}`
 }
 
 export function serviceNameFor(name: string): string {
@@ -136,7 +145,6 @@ export function render(options: CreateOptions): CreatedFile[] {
               : {}),
           },
           capabilities,
-          instantiable: options.kind === 'source',
         },
         null,
         2,

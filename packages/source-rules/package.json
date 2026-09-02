@@ -1,7 +1,7 @@
 {
-  "name": "@BBeBee/plugin-source-http-url",
+  "name": "@BBeBee/source-rules",
   "version": "0.0.0",
-  "description": "plugin-source-http-url — a plain audio URL, as a MediaProvider.",
+  "description": "source-rules — the rule language a source document is written in.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -28,15 +28,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@BBeBee/protocol": "workspace:*",
-    "@BBeBee/kernel": "workspace:*",
-    "cordis": "4.0.0-rc.9"
-  },
-  "devDependencies": {
-    "@BBeBee/core-http-node": "workspace:*",
-    "@BBeBee/core-fs-node": "workspace:*",
-    "@BBeBee/core-paths-node": "workspace:*",
-    "@BBeBee/core-db-node": "workspace:*",
-    "@BBeBee/plugin-sources": "workspace:*"
+    "@BBeBee/protocol": "workspace:*"
   }
 }

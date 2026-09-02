@@ -87,7 +87,7 @@ export class FsNode extends Service implements FsService {
     if (paths.music && uriContains(paths.music, uri)) return 'media'
 
     if (gate) {
-      const own = paths.pluginData(gate.instanceId)
+      const own = paths.pluginData(gate.scopeId)
       if (uriContains(own, uri)) return 'own'
       // Inside appData but NOT this plugin's directory: another plugin's data,
       // the settings store, or the secrets file. Not ours — deny.

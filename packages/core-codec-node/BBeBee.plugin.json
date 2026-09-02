@@ -16,6 +16,5 @@
     "services": [
       "codec"
     ]
-  },
-  "instantiable": false
+  }
 }

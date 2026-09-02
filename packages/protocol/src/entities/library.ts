@@ -5,7 +5,7 @@ import type { UrnKind } from '../urn.js'
 export interface LibraryEntry {
   urn: string
   kind: UrnKind
-  instanceId: string
+  sourceId: string
   addedAt: number
   pinned?: boolean
   sortKey?: string
@@ -26,7 +26,7 @@ export type SmartField =
   | 'rating'
   | 'loved'
   | 'hasBinding'
-  | 'instanceId'
+  | 'sourceId'
   | 'quality'
 
 export type SmartComparator =

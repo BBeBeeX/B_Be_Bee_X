@@ -95,18 +95,18 @@ describe('core-fs-node capability scopes', () => {
       await scopeCtx.plugin(PathsNode, { root: dir })
       await scopeCtx.plugin(FsNode)
 
-      const instanceId = '@BBeBee/plugin-under-test'
+      const scopeId = '@BBeBee/plugin-under-test'
       const gated = (granted: string[]) =>
         scopeContext(scopeCtx, {
-          pluginId: instanceId,
-          instanceId,
+          pluginId: scopeId,
+          scopeId,
           requested: granted as never,
         }).fs
 
       await check.run({
         admin: scopeCtx.fs,
         paths: scopeCtx.paths,
-        instanceId,
+        scopeId,
         own: gated(['fs:read:own', 'fs:write:own']),
         cacheOnly: gated(['fs:read:cache', 'fs:write:cache']),
         grantedWith: gated,

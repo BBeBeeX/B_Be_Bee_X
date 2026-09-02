@@ -10,7 +10,7 @@
 
 import { Context, type Fiber, type Plugin } from 'cordis'
 import { FiberState } from './fiber-state.js'
-import { resolveConfig, type AppConfig, type ResolvedInstance } from './config.js'
+import { resolveConfig, type AppConfig, type ResolvedPlugin } from './config.js'
 import { loadPlugins, type LoadOptions, type LoadedPlugin, type PluginRegistry } from './loader.js'
 
 export type Target = 'ios' | 'android' | 'desktop'
@@ -190,12 +190,12 @@ export function createApp(options: AppOptions): App {
         }
       }
 
-      const instances: ResolvedInstance[] = options.config ? resolveConfig(options.config) : []
+      const plugins: ResolvedPlugin[] = options.config ? resolveConfig(options.config) : []
 
       const results = await loadPlugins(
         ctx,
         options.registry ?? {},
-        instances,
+        plugins,
         options.load ?? {},
       )
       loaded.push(...results)
@@ -221,7 +221,7 @@ export function createApp(options: AppOptions): App {
       // Reverse order: feature plugins release their handles on core services
       // before those services go away.
       for (const p of [...loaded].reverse()) {
-        if (p.dispose) await safeDispose(p.dispose, p.instanceId)
+        if (p.dispose) await safeDispose(p.dispose, p.pluginId)
       }
       loaded.length = 0
       await unwindBootstrap()

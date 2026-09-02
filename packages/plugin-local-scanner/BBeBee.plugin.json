@@ -20,6 +20,5 @@
     "services": [
       "scanner"
     ]
-  },
-  "instantiable": false
+  }
 }

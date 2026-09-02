@@ -1,8 +1,10 @@
 /**
  * `BBeBee.plugin.json` — the manifest, and the capability grammar.
  *
- * One format serves both loaders: statically bundled on mobile, additionally
- * runtime-loadable on desktop. See docs/03-plugin-system.md §6–§7.
+ * One format, one loader: plugins are statically bundled on every target
+ * (ADR-1 as amended). What users add at runtime is a music **source string**,
+ * which is data interpreted by `plugin-source-runtime`, not code handed to
+ * `ctx.plugin()`. See docs/03-plugin-system.md §6–§7.
  */
 
 /* ── Capability grammar ─────────────────────────────────────────────────── */
@@ -28,6 +30,7 @@ export type FsScope = 'own' | 'media' | 'cache' | 'downloads' | 'logs' | 'all'
  *   db:write:<ns>                        INSERT / UPDATE / DELETE there
  *   db:*:<ns>                            both, plus schema changes
  *   secrets:own                          own credential namespace (no `all`)
+ *   js                                   may evaluate untrusted script
  *   audio | mediaSession | notify | shell | background
  *
  * The `db` verbs are deliberately separate rather than nested: `db:write:core`
@@ -45,6 +48,15 @@ export type Capability =
   | `db:write:${string}`
   | `db:*:${string}`
   | 'secrets:own'
+  /**
+   * May evaluate untrusted script in `ctx.js`. Held by
+   * `plugin-source-runtime` and nothing else.
+   *
+   * The grant does not widen what the evaluated code can reach — that is
+   * fixed by the host surface and the per-source egress allowlist. It makes
+   * *who is allowed to run it* auditable.
+   */
+  | 'js'
   | 'audio'
   | 'mediaSession'
   | 'notify'
@@ -65,6 +77,7 @@ export const MEDIATED_SERVICES = [
   'db',
   'store',
   'secrets',
+  'js',
   'audio',
   'mediaSession',
   'notify',
@@ -91,7 +104,7 @@ export interface PluginContributes {
 }
 
 export interface PluginManifest {
-  /** Package id, e.g. '@BBeBee/plugin-source-subsonic'. */
+  /** Package id, e.g. '@BBeBee/plugin-source-runtime'. */
   id: string
   version: string
   displayName: string
@@ -100,8 +113,6 @@ export interface PluginManifest {
   entry: PluginEntrypoints
   capabilities: Capability[]
   contributes?: PluginContributes
-  /** Whether the user may configure this plugin more than once. */
-  instantiable?: boolean
 }
 
 /* ── Capability matching ────────────────────────────────────────────────── */

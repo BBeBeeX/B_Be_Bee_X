@@ -5,7 +5,13 @@
  * message cannot be branched on. Every provider maps its backend's failures
  * onto these; a raw `Error` escaping a provider is a bug.
  *
- * See docs/06-music-sources.md §6.
+ * `rule` is the class the string-source model adds, and it is the one that
+ * earns its keep daily: a backend renaming a field is a *different* failure
+ * from a backend being down, and telling the user "this source needs
+ * updating" instead of "something went wrong" is the difference between a
+ * two-minute fix and a support request.
+ *
+ * See docs/06-music-sources.md §7.
  */
 
 export type SourceErrorCode =
@@ -15,6 +21,7 @@ export type SourceErrorCode =
   | 'not-found'
   | 'network'
   | 'provider'
+  | 'rule'
 
 export abstract class SourceError extends Error {
   abstract readonly code: SourceErrorCode
@@ -23,7 +30,7 @@ export abstract class SourceError extends Error {
 
   constructor(
     message: string,
-    readonly instanceId?: string,
+    readonly sourceId?: string,
     options?: { cause?: unknown },
   ) {
     super(message, options)
@@ -46,10 +53,10 @@ export class RateLimitError extends SourceError {
   constructor(
     message: string,
     readonly retryAfterMs: number,
-    instanceId?: string,
+    sourceId?: string,
     options?: { cause?: unknown },
   ) {
-    super(message, instanceId, options)
+    super(message, sourceId, options)
   }
 }
 
@@ -82,12 +89,56 @@ export class ProviderError extends SourceError {
 
   constructor(
     message: string,
-    instanceId?: string,
+    sourceId?: string,
     /** Raw payload, for the "copy details" action. Never logged verbatim. */
     readonly raw?: unknown,
     options?: { cause?: unknown },
   ) {
-    super(message, instanceId, options)
+    super(message, sourceId, options)
+  }
+}
+
+/**
+ * A rule produced nothing where something was required.
+ *
+ * The source document is valid; the backend answered; the rule no longer
+ * matches what came back. Not retryable, because retrying an identical
+ * request against an identical response gives an identical nothing — the fix
+ * is an edit, which is why this carries the exact rule that failed and why
+ * three of these in a row marks a source stale (docs/06 §7).
+ */
+export class RuleError extends SourceError {
+  override readonly name = 'RuleError'
+  override readonly code = 'rule' as const
+  override readonly retryable = false
+
+  constructor(
+    message: string,
+    /** Which rule. `block` is e.g. 'ruleSearch'; `field` e.g. 'trackId'. */
+    readonly rule: { block: string; field: string },
+    sourceId?: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, sourceId, options)
+  }
+}
+
+/**
+ * A string is not a valid source document.
+ *
+ * Import-time only, and deliberately *not* a `SourceError`: there is no source
+ * yet to attribute it to. Carries every issue rather than the first, because
+ * the import screen lists them all and fixing one at a time is miserable.
+ */
+export class SourceFormatError extends Error {
+  override readonly name = 'SourceFormatError'
+
+  constructor(
+    message: string,
+    readonly issues: readonly { path: string; message: string }[] = [],
+    options?: { cause?: unknown },
+  ) {
+    super(message, options)
   }
 }
 

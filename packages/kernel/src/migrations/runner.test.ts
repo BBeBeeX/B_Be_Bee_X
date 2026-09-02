@@ -17,6 +17,28 @@ import { CORE_MIGRATIONS } from './core.js'
  * so this is the same engine `core-db-node` will use in production, and these
  * tests genuinely validate the SQL rather than a mock's idea of it.
  */
+/**
+ * Insert a source row.
+ *
+ * A source is its document, so the row needs `doc_json` and `doc_hash` even in
+ * a test — which is the point: they are NOT NULL because a row without them
+ * could not be exported, and an export that cannot round-trip is the failure
+ * the whole storage shape exists to prevent (docs/07 §4.1).
+ */
+async function insertSource(
+  harness: { exec(sql: string, params?: SqlValue[]): Promise<unknown> },
+  id: string,
+  sourceUrl = `https://${id}.example.org`,
+) {
+  const doc = JSON.stringify({ sourceUrl, sourceName: id })
+  const now = Date.now()
+  return harness.exec(
+    `INSERT INTO sources (id, source_url, name, doc_json, doc_hash, imported_at, updated_at)
+     VALUES (?,?,?,?,?,?,?)`,
+    [id, sourceUrl, id, doc, `hash-${id}`, now, now],
+  )
+}
+
 function memoryDb() {
   const db = new DatabaseSync(':memory:')
   db.exec('PRAGMA foreign_keys = ON')
@@ -290,7 +312,7 @@ describe('CORE_MIGRATIONS', () => {
     const tables = new Set(rows.map((r) => r.name))
 
     for (const expected of [
-      'providers', 'accounts', 'cookie_jars', 'artworks',
+      'sources', 'source_vars', 'accounts', 'cookie_jars', 'artworks',
       'artists', 'albums', 'tracks', 'track_artists', 'album_artists',
       'genres', 'track_genres', 'external_ids', 'track_links',
       'media_bindings', 'scan_roots', 'scan_entries',
@@ -350,22 +372,39 @@ describe('CORE_MIGRATIONS', () => {
     await expect(insert('t3', 'queued')).resolves.toBeDefined()
   })
 
-  it('cascades provider deletion to its catalogue rows', async () => {
+  it('cascades source deletion to its catalogue rows and its vars', async () => {
+    // Removing a source must take exactly its own rows with it — that is what
+    // makes "remove this source and forget everything it stored" a real
+    // action rather than an aspiration (docs/07 §4.1).
     const harness = memoryDb()
     await new MigrationRunner(harness).apply('core', CORE_MIGRATIONS)
 
+    await insertSource(harness, 'nas')
     await harness.exec(
-      'INSERT INTO providers (instance_id, plugin_id, display_name, created_at) VALUES (?,?,?,?)',
-      ['nas', '@BBeBee/plugin-source-jellyfin', 'NAS', Date.now()],
-    )
-    await harness.exec(
-      `INSERT INTO tracks (urn, instance_id, remote_id, title, fetched_at) VALUES (?,?,?,?,?)`,
+      `INSERT INTO tracks (urn, source_id, remote_id, title, fetched_at) VALUES (?,?,?,?,?)`,
       ['BBeBee:nas:track:1', 'nas', '1', 'Song', Date.now()],
     )
-    await harness.exec('DELETE FROM providers WHERE instance_id = ?', ['nas'])
+    await harness.exec(
+      'INSERT INTO source_vars (source_id, key, value, updated_at) VALUES (?,?,?,?)',
+      ['nas', 'token', 'secret', Date.now()],
+    )
+    await harness.exec('DELETE FROM sources WHERE id = ?', ['nas'])
 
-    const left = await harness.query('SELECT urn FROM tracks')
-    expect(left).toHaveLength(0)
+    expect(await harness.query('SELECT urn FROM tracks')).toHaveLength(0)
+    expect(await harness.query('SELECT key FROM source_vars')).toHaveLength(0)
+  })
+
+  it('refuses two sources with the same sourceUrl', async () => {
+    // `sourceUrl` is the dedup key on import: two rows for one backend would
+    // make every URN in that namespace ambiguous, which is the one thing the
+    // URN scheme exists to prevent (docs/06 §1.2).
+    const harness = memoryDb()
+    await new MigrationRunner(harness).apply('core', CORE_MIGRATIONS)
+
+    await insertSource(harness, 'a', 'https://music.example.org')
+    await expect(insertSource(harness, 'b', 'https://music.example.org')).rejects.toThrow(
+      /UNIQUE/i,
+    )
   })
 
   it('supports diacritic-folded full-text search', async () => {
@@ -424,12 +463,9 @@ describe('CORE_MIGRATIONS', () => {
     const harness = memoryDb()
     await new MigrationRunner(harness).apply('core', CORE_MIGRATIONS)
 
+    await insertSource(harness, 'nas')
     await harness.exec(
-      'INSERT INTO providers (instance_id, plugin_id, display_name, created_at) VALUES (?,?,?,?)',
-      ['nas', 'p', 'NAS', Date.now()],
-    )
-    await harness.exec(
-      `INSERT INTO tracks (urn, instance_id, remote_id, title, fetched_at) VALUES (?,?,?,?,?)`,
+      `INSERT INTO tracks (urn, source_id, remote_id, title, fetched_at) VALUES (?,?,?,?,?)`,
       ['BBeBee:nas:track:1', 'nas', '1', 'Jóga', Date.now()],
     )
     const { lastInsertRowid } = await harness.exec(

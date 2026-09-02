@@ -1,7 +1,7 @@
 {
   "name": "@BBeBee/plugin-sources",
   "version": "0.0.0",
-  "description": "ctx.sources — provider registration, discovery, and the catalogue cache.",
+  "description": "ctx.sources — imported source documents, the registry, and the catalogue cache.",
   "type": "module",
   "license": "MIT",
   "exports": {

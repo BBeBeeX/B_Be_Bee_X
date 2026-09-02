@@ -1,15 +1,18 @@
 /**
  * URN — the stable identity of a catalogue entity.
  *
- *     BBeBee:<providerInstance>:<kind>:<id>
- *            │                  │       └── provider-local, opaque, may contain ':'
- *            │                  └────────── track | album | artist | playlist | genre
- *            └───────────────────────────── the *instance*, not the plugin
+ *     BBeBee:<sourceId>:<kind>:<id>
+ *            │          │       └── source-local, opaque, may contain ':'
+ *            │          └────────── track | album | artist | playlist | genre
+ *            └───────────────────── the *source*, derived from its sourceUrl
  *
- * Keying on the instance rather than the plugin is what lets a user configure
- * two Navidrome servers without their ids colliding.
+ * Keying on the source is what lets a user import two Navidrome servers
+ * without their ids colliding — and it is why the scheme survived music
+ * sources becoming imported strings rather than plugin packages: the segment
+ * always meant "whichever namespace owns this id", never "which package
+ * produced it".
  *
- * See docs/07-data-model.md §1.
+ * See docs/07-data-model.md §1 and docs/06-music-sources.md §1.2.
  */
 
 export const URN_SCHEME = 'BBeBee' as const
@@ -19,7 +22,7 @@ export type UrnKind = 'track' | 'album' | 'artist' | 'playlist' | 'genre'
 const URN_KINDS: readonly UrnKind[] = ['track', 'album', 'artist', 'playlist', 'genre']
 
 export interface Urn {
-  instanceId: string
+  sourceId: string
   kind: UrnKind
   id: string
 }
@@ -42,20 +45,20 @@ export function isUrnKind(value: string): value is UrnKind {
  * Parse a URN.
  *
  * Splits on the first three colons only — everything after the third belongs
- * to the provider-local id, which is allowed to contain colons because some
+ * to the source-local id, which is allowed to contain colons because some
  * backends use them in their own identifiers.
  */
 export function parseUrn(urn: string): Urn {
   const parts = splitN(urn, ':', 4)
   if (parts.length !== 4) throw new UrnError(urn, 'expected 4 segments')
 
-  const [scheme, instanceId, kind, id] = parts as [string, string, string, string]
+  const [scheme, sourceId, kind, id] = parts as [string, string, string, string]
   if (scheme !== URN_SCHEME) throw new UrnError(urn, `expected scheme "${URN_SCHEME}"`)
-  if (!instanceId) throw new UrnError(urn, 'empty instance id')
+  if (!sourceId) throw new UrnError(urn, 'empty source id')
   if (!isUrnKind(kind)) throw new UrnError(urn, `unknown kind "${kind}"`)
   if (!id) throw new UrnError(urn, 'empty id')
 
-  return { instanceId, kind, id }
+  return { sourceId, kind, id }
 }
 
 /** Parse without throwing. Returns `undefined` on any malformed input. */
@@ -68,15 +71,15 @@ export function tryParseUrn(urn: string): Urn | undefined {
 }
 
 export function formatUrn(urn: Urn): string {
-  if (!urn.instanceId) throw new UrnError('<object>', 'empty instance id')
-  if (urn.instanceId.includes(':')) throw new UrnError(urn.instanceId, 'instance id may not contain ":"')
+  if (!urn.sourceId) throw new UrnError('<object>', 'empty source id')
+  if (urn.sourceId.includes(':')) throw new UrnError(urn.sourceId, 'source id may not contain ":"')
   if (!urn.id) throw new UrnError('<object>', 'empty id')
-  return `${URN_SCHEME}:${urn.instanceId}:${urn.kind}:${urn.id}`
+  return `${URN_SCHEME}:${urn.sourceId}:${urn.kind}:${urn.id}`
 }
 
-/** The owning provider instance, without validating the rest. */
-export function instanceOf(urn: string): string {
-  return parseUrn(urn).instanceId
+/** The owning source, without validating the rest. */
+export function sourceOf(urn: string): string {
+  return parseUrn(urn).sourceId
 }
 
 export function kindOf(urn: string): UrnKind {

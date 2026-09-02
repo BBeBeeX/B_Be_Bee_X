@@ -133,14 +133,14 @@ describe('db capability scopes over the bridge', () => {
     it(`${check.name} — ${check.because}`, async () => {
       const { ctx } = await makeBridge(await mkdtemp(join(root, 'dbscope-')))
       const { nsPrefix, scopeContext } = await import('@BBeBee/kernel')
-      const instanceId = '@BBeBee/plugin-demo'
+      const scopeId = '@BBeBee/plugin-demo'
       const gated = (grants: string[]) =>
-        scopeContext(ctx, { pluginId: instanceId, instanceId, requested: grants as never }).db
+        scopeContext(ctx, { pluginId: scopeId, scopeId, requested: grants as never }).db
 
       await check.run({
         admin: ctx.db,
-        instanceId,
-        ownPrefix: nsPrefix(`plugin:${instanceId}`),
+        scopeId,
+        ownPrefix: nsPrefix(`plugin:${scopeId}`),
         own: gated(['db:own']),
         ownPlusCoreReads: gated(['db:own', 'db:read:core']),
         ownPlusCoreWrites: gated(['db:own', 'db:write:core']),
@@ -223,7 +223,7 @@ describe('bridge specifics', () => {
     const { scopeContext } = await import('@BBeBee/kernel')
     const gated = scopeContext(ctx, {
       pluginId: 'p',
-      instanceId: 'p',
+      scopeId: 'p',
       requested: ['fs:read:cache'],
     }).fs
     await expect(gated.readFile(ctx.fs.join(ctx.paths.appData, 'store.json'))).rejects.toThrow(

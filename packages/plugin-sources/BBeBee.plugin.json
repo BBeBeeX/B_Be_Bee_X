@@ -2,7 +2,7 @@
   "id": "@BBeBee/plugin-sources",
   "version": "0.0.0",
   "displayName": "Sources",
-  "description": "ctx.sources — provider registration, discovery, and the catalogue cache.",
+  "description": "ctx.sources — imported source documents, the registry, and the catalogue cache.",
   "engines": {
     "BBeBee": "^0.1.0"
   },
@@ -17,6 +17,5 @@
     "services": [
       "sources"
     ]
-  },
-  "instantiable": false
+  }
 }

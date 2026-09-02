@@ -37,8 +37,8 @@ import type {
 } from '@BBeBee/protocol'
 
 export interface SourceLocalConfig {
-  /** The instance these tracks belong to. Matches the scanner's. */
-  instanceId?: string
+  /** The source these tracks belong to. Matches the scanner's. */
+  sourceId?: string
   displayName?: string
 }
 
@@ -65,7 +65,7 @@ const CAPABILITIES: Capabilities = {
  * `flow: 'none'` auth.
  *
  * Nothing to sign in to, so `signIn` resolves and `signOut` clears what this
- * instance cached. Both are still implemented, because "remove this source and
+ * source cached. Both are still implemented, because "remove this source and
  * forget everything it stored" has to mean something uniformly (docs/06 §1.1).
  */
 class NoAuth implements ProviderAuth {
@@ -95,14 +95,14 @@ class NoAuth implements ProviderAuth {
 export class SourceLocal extends Service {
   static inject = ['db', 'fs', 'sources']
 
-  private readonly instanceId: string
+  private readonly sourceId: string
   private readonly displayName: string
   /** Held rather than re-injected per call — see the note in plugin-player. */
   private scannerCtx?: Context
 
   constructor(ctx: Context, config: SourceLocalConfig = {}) {
     super(ctx, 'sourceLocal')
-    this.instanceId = config.instanceId ?? 'local'
+    this.sourceId = config.sourceId ?? 'local'
     this.displayName = config.displayName ?? 'This device'
   }
 
@@ -124,7 +124,7 @@ export class SourceLocal extends Service {
   /** The provider object handed to `ctx.sources`. */
   provider(): MediaProvider {
     return {
-      instanceId: this.instanceId,
+      sourceId: this.sourceId,
       displayName: this.displayName,
       capabilities: CAPABILITIES,
       auth: new NoAuth(() => this.forgetEverything()),
@@ -143,7 +143,7 @@ export class SourceLocal extends Service {
   }
 
   private urn(kind: string, id: string): string {
-    return `BBeBee:${this.instanceId}:${kind}:${id}`
+    return `BBeBee:${this.sourceId}:${kind}:${id}`
   }
 
   /* ── the required core ─────────────────────────────────────────────── */
@@ -154,7 +154,7 @@ export class SourceLocal extends Service {
     // when the track was not in it: two queries and a wasted page for every
     // lookup, on the path the player calls per track.
     const track = await this.trackByUrn(this.urn('track', id))
-    if (!track) throw new NotFoundError(`no local track ${id}`, this.instanceId)
+    if (!track) throw new NotFoundError(`no local track ${id}`, this.sourceId)
     return track
   }
 
@@ -191,12 +191,12 @@ export class SourceLocal extends Service {
          FROM media_bindings WHERE track_urn = ? ORDER BY created_at DESC LIMIT 1`,
       [trackUrn],
     )
-    if (!binding) throw new NotFoundError(`no file for ${trackUrn}`, this.instanceId)
+    if (!binding) throw new NotFoundError(`no file for ${trackUrn}`, this.sourceId)
 
     if (!(await this.ctx.fs.exists(binding.uri))) {
       // The file went while we were not looking. Say so in the taxonomy the
       // player branches on rather than failing at decode time.
-      throw new NotFoundError(`file missing for ${trackUrn}`, this.instanceId)
+      throw new NotFoundError(`file missing for ${trackUrn}`, this.sourceId)
     }
 
     return {
@@ -225,12 +225,12 @@ export class SourceLocal extends Service {
 
   /**
    * Answered from the FTS index `ctx.sources` maintains, scoped to this
-   * instance. One index, two entry points — this and `searchLocal` — rather
+   * source. One index, two entry points — this and `searchLocal` — rather
    * than two tokeniser configurations that drift apart.
    */
   async search(query: SearchQuery, page?: PageRequest): Promise<SearchResult> {
     return this.ctx.sources.searchLocal(query.text, {
-      instanceIds: [this.instanceId],
+      sourceIds: [this.sourceId],
       ...(page?.limit ? { limit: page.limit } : {}),
     })
   }
@@ -265,7 +265,7 @@ export class SourceLocal extends Service {
     try {
       listing = await this.ctx.fs.list(uri)
     } catch (error) {
-      throw new ProviderError(`cannot read ${uri}: ${String(error)}`, this.instanceId)
+      throw new ProviderError(`cannot read ${uri}: ${String(error)}`, this.sourceId)
     }
 
     const items: BrowseEntry[] = []
@@ -310,13 +310,13 @@ export class SourceLocal extends Service {
 
   async getAlbum(id: string): Promise<AlbumDetail> {
     const album = await this.ctx.sources.getAlbum(this.urn('album', id))
-    if (!album) throw new NotFoundError(`no local album ${id}`, this.instanceId)
+    if (!album) throw new NotFoundError(`no local album ${id}`, this.sourceId)
     return album
   }
 
   async getArtist(id: string): Promise<ArtistDetail> {
     const artist = await this.ctx.sources.getArtist(this.urn('artist', id))
-    if (!artist) throw new NotFoundError(`no local artist ${id}`, this.instanceId)
+    if (!artist) throw new NotFoundError(`no local artist ${id}`, this.sourceId)
     return artist
   }
 
@@ -326,7 +326,7 @@ export class SourceLocal extends Service {
       'SELECT local_uri FROM artworks WHERE id = ?',
       [id],
     )
-    if (!row?.local_uri) throw new NotFoundError(`no artwork ${id}`, this.instanceId)
+    if (!row?.local_uri) throw new NotFoundError(`no artwork ${id}`, this.sourceId)
     return row.local_uri
   }
 
@@ -341,20 +341,20 @@ export class SourceLocal extends Service {
    */
   private async forgetEverything(): Promise<void> {
     const tracks = await this.ctx.db.query<{ urn: string }>(
-      'SELECT urn FROM tracks WHERE instance_id = ?',
-      [this.instanceId],
+      'SELECT urn FROM tracks WHERE source_id = ?',
+      [this.sourceId],
     )
     await this.ctx.db.transaction(async (tx) => {
-      await tx.exec('DELETE FROM scan_entries WHERE track_urn IN (SELECT urn FROM tracks WHERE instance_id = ?)', [
-        this.instanceId,
+      await tx.exec('DELETE FROM scan_entries WHERE track_urn IN (SELECT urn FROM tracks WHERE source_id = ?)', [
+        this.sourceId,
       ])
       await tx.exec(
-        'DELETE FROM media_bindings WHERE track_urn IN (SELECT urn FROM tracks WHERE instance_id = ?)',
-        [this.instanceId],
+        'DELETE FROM media_bindings WHERE track_urn IN (SELECT urn FROM tracks WHERE source_id = ?)',
+        [this.sourceId],
       )
-      await tx.exec('DELETE FROM tracks WHERE instance_id = ?', [this.instanceId])
-      await tx.exec('DELETE FROM albums WHERE instance_id = ?', [this.instanceId])
-      await tx.exec('DELETE FROM artists WHERE instance_id = ?', [this.instanceId])
+      await tx.exec('DELETE FROM tracks WHERE source_id = ?', [this.sourceId])
+      await tx.exec('DELETE FROM albums WHERE source_id = ?', [this.sourceId])
+      await tx.exec('DELETE FROM artists WHERE source_id = ?', [this.sourceId])
     })
     if (tracks.length > 0) {
       this.ctx.emit(
@@ -363,7 +363,7 @@ export class SourceLocal extends Service {
         tracks.map((t) => t.urn),
       )
     }
-    await this.ctx.parallel('source/signed-out', this.instanceId)
+    await this.ctx.parallel('source/signed-out', this.sourceId)
   }
 
   private async trackByUrn(urn: string): Promise<Track | undefined> {
@@ -372,7 +372,7 @@ export class SourceLocal extends Service {
 
   /** Two queries for any number of tracks: the rows, then all their credits. */
   private async tracksByUrn(urns: string[]): Promise<Map<string, Track>> {
-    const mine = urns.filter((urn) => tryParseUrn(urn)?.instanceId === this.instanceId)
+    const mine = urns.filter((urn) => tryParseUrn(urn)?.sourceId === this.sourceId)
     const out = new Map<string, Track>()
     if (mine.length === 0) return out
 

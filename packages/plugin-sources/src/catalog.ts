@@ -139,14 +139,14 @@ function limitOf(query: CatalogQuery | undefined): number {
   return Math.max(1, Math.min(MAX_LIMIT, requested))
 }
 
-/** `instance_id IN (…)` when instances were named, plus its bound parameters. */
-function instanceFilter(
+/** `source_id IN (…)` when sources were named, plus its bound parameters. */
+function sourceFilter(
   alias: string,
-  instanceIds: string[] | undefined,
+  sourceIds: string[] | undefined,
 ): { sql: string; params: SqlValue[] } {
-  if (!instanceIds || instanceIds.length === 0) return { sql: '', params: [] }
-  const holes = instanceIds.map(() => '?').join(', ')
-  return { sql: ` AND ${alias}.instance_id IN (${holes})`, params: [...instanceIds] }
+  if (!sourceIds || sourceIds.length === 0) return { sql: '', params: [] }
+  const holes = sourceIds.map(() => '?').join(', ')
+  return { sql: ` AND ${alias}.source_id IN (${holes})`, params: [...sourceIds] }
 }
 
 function paged<T>(items: T[], offset: number, limit: number): Paged<T> {
@@ -170,7 +170,7 @@ export class Catalog {
     // fall back rather than interpolate `undefined` into the statement.
     const order = TRACK_ORDER[query.sort ?? 'title'] ?? TRACK_ORDER.title
     const direction = query.desc ? 'DESC' : 'ASC'
-    const filter = instanceFilter('t', query.instanceIds)
+    const filter = sourceFilter('t', query.sourceIds)
 
     const rows = await this.db.query<TrackRow>(
       `SELECT t.urn, t.title, t.sort_title, t.album_urn, al.title AS album_title,
@@ -198,7 +198,7 @@ export class Catalog {
     const offset = offsetOf(query.page?.cursor)
     const order = query.sort === 'year' ? 'al.year' : 'COALESCE(al.sort_title, al.title)'
     const direction = query.desc ? 'DESC' : 'ASC'
-    const filter = instanceFilter('al', query.instanceIds)
+    const filter = sourceFilter('al', query.sourceIds)
 
     const rows = await this.db.query<AlbumRow>(
       `SELECT al.urn, al.title, al.sort_title, al.album_type, al.release_date, al.year,
@@ -219,7 +219,7 @@ export class Catalog {
     const limit = limitOf(query)
     const offset = offsetOf(query.page?.cursor)
     const direction = query.desc ? 'DESC' : 'ASC'
-    const filter = instanceFilter('ar', query.instanceIds)
+    const filter = sourceFilter('ar', query.sourceIds)
 
     const rows = await this.db.query<ArtistRow>(
       `SELECT ar.urn, ar.name, ar.sort_name, ar.bio, ${ARTWORK_COLUMNS}
@@ -307,13 +307,13 @@ export class Catalog {
    */
   async searchLocal(
     text: string,
-    opts: { limit?: number; instanceIds?: string[] } = {},
+    opts: { limit?: number; sourceIds?: string[] } = {},
   ): Promise<SearchResult> {
     const query = ftsQuery(text)
     if (!query) return {}
 
     const limit = Math.max(1, Math.min(MAX_LIMIT, opts.limit ?? 50))
-    const filter = instanceFilter('t', opts.instanceIds)
+    const filter = sourceFilter('t', opts.sourceIds)
 
     const rows = await this.db.query<TrackRow>(
       `SELECT t.urn, t.title, t.sort_title, t.album_urn, al.title AS album_title,

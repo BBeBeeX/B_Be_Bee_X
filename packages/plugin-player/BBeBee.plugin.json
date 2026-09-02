@@ -20,6 +20,5 @@
     "services": [
       "player"
     ]
-  },
-  "instantiable": false
+  }
 }

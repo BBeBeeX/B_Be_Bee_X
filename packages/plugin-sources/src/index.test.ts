@@ -12,7 +12,7 @@ import type { Capabilities, MediaProvider, SearchResult, Track } from '@BBeBee/p
 import plugin, { Sources } from './index.js'
 
 /** A provider with nothing but the required core, declaring no search. */
-function fakeProvider(instanceId: string, overrides: Partial<MediaProvider> = {}): MediaProvider {
+function fakeProvider(sourceId: string, overrides: Partial<MediaProvider> = {}): MediaProvider {
   const capabilities: Capabilities = {
     search: { tracks: false, albums: false, artists: false, playlists: false, fullText: false },
     browse: false,
@@ -23,8 +23,8 @@ function fakeProvider(instanceId: string, overrides: Partial<MediaProvider> = {}
     regional: false,
   }
   return {
-    instanceId,
-    displayName: instanceId,
+    sourceId,
+    displayName: sourceId,
     capabilities,
     auth: {
       flow: { kind: 'none' },
@@ -33,7 +33,7 @@ function fakeProvider(instanceId: string, overrides: Partial<MediaProvider> = {}
       async signOut() {},
       onStatusChange: () => () => {},
     },
-    getTrack: async (id) => ({ urn: `BBeBee:${instanceId}:track:${id}` }) as Track,
+    getTrack: async (id) => ({ urn: `BBeBee:${sourceId}:track:${id}` }) as Track,
     resolveStream: async () => ({ kind: 'remote', target: 'https://example.org/a.mp3', seekable: true }),
     ping: async () => true,
     ...overrides,
@@ -42,10 +42,10 @@ function fakeProvider(instanceId: string, overrides: Partial<MediaProvider> = {}
 
 /** A provider that searches, answering with `whenSearched`. */
 function searchingProvider(
-  instanceId: string,
+  sourceId: string,
   whenSearched: () => Promise<SearchResult>,
 ): MediaProvider {
-  const base = fakeProvider(instanceId)
+  const base = fakeProvider(sourceId)
   return {
     ...base,
     capabilities: {
@@ -133,8 +133,8 @@ describe('registration', () => {
     sources.register(fakeProvider('local'))
     sources.register(fakeProvider('navidrome-home'))
 
-    expect(sources.forUrn('BBeBee:local:track:9f2c')?.instanceId).toBe('local')
-    expect(sources.forUrn('BBeBee:navidrome-home:album:41af')?.instanceId).toBe('navidrome-home')
+    expect(sources.forUrn('BBeBee:local:track:9f2c')?.sourceId).toBe('local')
+    expect(sources.forUrn('BBeBee:navidrome-home:album:41af')?.sourceId).toBe('navidrome-home')
     expect(sources.forUrn('BBeBee:jellyfin-nas:track:1')).toBeUndefined()
     expect(sources.forUrn('not-a-urn')).toBeUndefined()
   })
@@ -157,11 +157,11 @@ describe('searchAll', () => {
       }),
     )
 
-    const { byProvider } = await sources.searchAll(query)
-    expect(byProvider.map((p) => p.instanceId)).toEqual(['navidrome-home', 'jellyfin-nas'])
-    expect(byProvider[0]!.result?.tracks?.items[0]?.title).toBe('Jóga')
-    expect(byProvider[1]!.error?.code).toBe('network')
-    expect(byProvider[1]!.result).toBeUndefined()
+    const { bySource } = await sources.searchAll(query)
+    expect(bySource.map((p) => p.sourceId)).toEqual(['navidrome-home', 'jellyfin-nas'])
+    expect(bySource[0]!.result?.tracks?.items[0]?.title).toBe('Jóga')
+    expect(bySource[1]!.error?.code).toBe('network')
+    expect(bySource[1]!.result).toBeUndefined()
   })
 
   it('maps a raw throw onto the taxonomy rather than letting it escape', async () => {
@@ -172,9 +172,9 @@ describe('searchAll', () => {
       }),
     )
 
-    const { byProvider } = await sources.searchAll(query)
-    expect(byProvider[0]!.error?.code).toBe('provider')
-    expect(byProvider[0]!.error?.instanceId).toBe('rude')
+    const { bySource } = await sources.searchAll(query)
+    expect(bySource[0]!.error?.code).toBe('provider')
+    expect(bySource[0]!.error?.sourceId).toBe('rude')
   })
 
   it('reports a slow provider as pending without failing the search', async () => {
@@ -182,14 +182,14 @@ describe('searchAll', () => {
     sources.register(searchingProvider('fast', async () => hit('Hyperballad')))
     sources.register(searchingProvider('slow', () => new Promise(() => {})))
 
-    const { byProvider } = await sources.searchAll(query, { timeoutMs: 20 })
-    const slow = byProvider.find((p) => p.instanceId === 'slow')!
+    const { bySource } = await sources.searchAll(query, { timeoutMs: 20 })
+    const slow = bySource.find((p) => p.sourceId === 'slow')!
     expect(slow.pending).toBe(true)
     expect(slow.error).toBeUndefined()
-    expect(byProvider.find((p) => p.instanceId === 'fast')!.result).toBeDefined()
+    expect(bySource.find((p) => p.sourceId === 'fast')!.result).toBeDefined()
   })
 
-  it('skips providers that cannot search, and honours instanceIds', async () => {
+  it('skips providers that cannot search, and honours sourceIds', async () => {
     // A provider implementing only the required core must never be called for
     // an optional member — that is what `capabilities` is for (docs/06 §1).
     const { sources } = await withSources()
@@ -204,15 +204,15 @@ describe('searchAll', () => {
     sources.register(searchingProvider('jellyfin-nas', async () => hit('Isobel')))
 
     const all = await sources.searchAll(query)
-    expect(all.byProvider.map((p) => p.instanceId)).toEqual(['navidrome-home', 'jellyfin-nas'])
+    expect(all.bySource.map((p) => p.sourceId)).toEqual(['navidrome-home', 'jellyfin-nas'])
 
-    const one = await sources.searchAll(query, { instanceIds: ['navidrome-home'] })
-    expect(one.byProvider.map((p) => p.instanceId)).toEqual(['navidrome-home'])
+    const one = await sources.searchAll(query, { sourceIds: ['navidrome-home'] })
+    expect(one.bySource.map((p) => p.sourceId)).toEqual(['navidrome-home'])
     expect(asked).toBe(2)
   })
 
   it('returns an empty fan-out when nothing is registered', async () => {
     const { sources } = await withSources()
-    await expect(sources.searchAll(query)).resolves.toEqual({ byProvider: [] })
+    await expect(sources.searchAll(query)).resolves.toEqual({ bySource: [] })
   })
 })

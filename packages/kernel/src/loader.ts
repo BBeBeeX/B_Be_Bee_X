@@ -13,7 +13,7 @@ import type { Context } from 'cordis'
 import type { Plugin } from 'cordis'
 import type { PluginManifest } from '@BBeBee/protocol'
 import { scopeContext } from './capability.js'
-import type { ResolvedInstance } from './config.js'
+import type { ResolvedPlugin } from './config.js'
 import { FiberState, fiberStateName } from './fiber-state.js'
 
 /** What the codegen step emits: package id → plugin, plus its manifest. */
@@ -43,7 +43,6 @@ export type LoadState =
 
 export interface LoadedPlugin {
   pluginId: string
-  instanceId: string
   state: LoadState
   error?: Error
   /** Which injected services were still missing, when `state` is 'pending'. */
@@ -55,12 +54,7 @@ export interface LoadedPlugin {
 export interface LoadOptions {
   /** Consecutive failures before a plugin is skipped on subsequent boots. */
   quarantineAfter?: number
-  /**
-   * Prior failure counts from `plugin_records.fail_count`, keyed by
-   * **instanceId** — one misconfigured server must not take its siblings
-   * offline. A `pluginId` key still applies to every instance, for the
-   * non-instantiable case.
-   */
+  /** Prior failure counts from `plugin_records.fail_count`, keyed by pluginId. */
   failCounts?: Record<string, number>
   /**
    * Grants from `capability_grants`, keyed by pluginId. Absent for a
@@ -69,30 +63,33 @@ export interface LoadOptions {
    */
   grants?: Record<string, readonly string[]>
   /**
-   * Called for each instance to derive its context. Defaults to the capability
-   * gate alone; `ctx.sources` wraps this to add `ctx.isolate('http')` so each
-   * provider instance gets its own cookie jar and rate limiter.
+   * Called for each plugin to derive its context. Defaults to the capability
+   * gate alone.
+   *
+   * Per-source isolation is *not* done here: `plugin-source-runtime` calls
+   * `ctx.isolate('http')` itself, once per imported source, because sources
+   * come and go while the app runs and the loader only runs at boot.
    */
-  deriveContext?: (ctx: Context, inst: ResolvedInstance, manifest: PluginManifest) => Context
+  deriveContext?: (ctx: Context, plugin: ResolvedPlugin, manifest: PluginManifest) => Context
 }
 
 /**
- * Instantiate every resolved instance.
+ * Instantiate every resolved plugin.
  *
  * Failures are contained: a plugin that throws is recorded as `failed` and its
  * dependents simply never activate. Nothing here rethrows, because one bad
- * third-party plugin must not become an unrecoverable boot loop.
+ * plugin must not become an unrecoverable boot loop.
  */
 export async function loadPlugins(
   ctx: Context,
   registry: PluginRegistry,
-  instances: ResolvedInstance[],
+  plugins: ResolvedPlugin[],
   options: LoadOptions = {},
 ): Promise<LoadedPlugin[]> {
   const quarantineAfter = options.quarantineAfter ?? 2
   const results: LoadedPlugin[] = []
 
-  for (const inst of instances) {
+  for (const inst of plugins) {
     const entry = registry[inst.pluginId]
 
     if (!entry) {
@@ -103,10 +100,10 @@ export async function loadPlugins(
       continue
     }
 
-    const failures = options.failCounts?.[inst.instanceId] ?? options.failCounts?.[inst.pluginId] ?? 0
+    const failures = options.failCounts?.[inst.pluginId] ?? 0
     if (failures >= quarantineAfter) {
       ctx.logger.warn(
-        `plugin ${inst.instanceId} is quarantined after ${failures} consecutive failures`,
+        `plugin ${inst.pluginId} is quarantined after ${failures} consecutive failures`,
       )
       results.push({ ...ids(inst), state: 'quarantined' })
       continue
@@ -128,16 +125,12 @@ export async function loadPlugins(
     try {
       const base = scopeContext(ctx, {
         pluginId: inst.pluginId,
-        instanceId: inst.instanceId,
         requested: entry.manifest.capabilities,
         ...(granted ? { granted } : {}),
       })
       const scoped = options.deriveContext?.(base, inst, entry.manifest) ?? base
 
-      const fiber = await scoped.plugin(entry.plugin, {
-        ...inst.config,
-        instanceId: inst.instanceId,
-      })
+      const fiber = await scoped.plugin(entry.plugin, inst.config)
 
       // `await ctx.plugin()` resolves as soon as the fiber settles — which
       // includes settling into PENDING because an injected service never
@@ -146,7 +139,7 @@ export async function loadPlugins(
       if (fiber.state !== FiberState.ACTIVE) {
         const waitingFor = missingInjections(scoped, entry.plugin)
         ctx.logger.warn(
-          `plugin ${inst.instanceId} is ${fiberStateName(fiber.state)}` +
+          `plugin ${inst.pluginId} is ${fiberStateName(fiber.state)}` +
             (waitingFor.length ? `, waiting for: ${waitingFor.join(', ')}` : ''),
         )
         results.push({
@@ -169,7 +162,7 @@ export async function loadPlugins(
       })
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause))
-      ctx.logger.error(`plugin ${inst.instanceId} failed to load: ${error.message}`)
+      ctx.logger.error(`plugin ${inst.pluginId} failed to load: ${error.message}`)
       ctx.emit('plugin/failed', inst.pluginId, error)
       results.push({ ...ids(inst), state: 'failed', error })
     }
@@ -186,6 +179,6 @@ function missingInjections(ctx: Context, plugin: Plugin): string[] {
   return names.filter((name) => (ctx as unknown as Record<string, unknown>)[name] === undefined)
 }
 
-function ids(inst: ResolvedInstance): { pluginId: string; instanceId: string } {
-  return { pluginId: inst.pluginId, instanceId: inst.instanceId }
+function ids(inst: ResolvedPlugin): { pluginId: string } {
+  return { pluginId: inst.pluginId }
 }

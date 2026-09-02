@@ -99,10 +99,10 @@ describe('registration', () => {
   it('registers itself with ctx.sources', async () => {
     const { ctx, provider } = await harness()
     expect(provider.displayName).toBe('This device')
-    expect(ctx.sources.providers.map((p) => p.instanceId)).toEqual(['local'])
+    expect(ctx.sources.providers.map((p) => p.sourceId)).toEqual(['local'])
     // A URN resolves to it, which is what the player uses.
     const track = (await ctx.sources.listTracks()).items[0]!
-    expect(ctx.sources.forUrn(track.urn)?.instanceId).toBe('local')
+    expect(ctx.sources.forUrn(track.urn)?.sourceId).toBe('local')
   })
 
   it('declares only what it implements', async () => {

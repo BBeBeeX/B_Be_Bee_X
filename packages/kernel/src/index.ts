@@ -27,7 +27,7 @@ export { createApp, BootstrapError } from './app.js'
 export type { App, AppOptions, BootstrapEntry, Target } from './app.js'
 
 export { resolveConfig, isEnabled } from './config.js'
-export type { AppConfig, PluginEntry, PluginInstanceConfig, ResolvedInstance } from './config.js'
+export type { AppConfig, PluginEntry, ResolvedPlugin } from './config.js'
 
 export { loadPlugins } from './loader.js'
 export type { LoadOptions, LoadState, LoadedPlugin, PluginRegistry, RegistryEntry } from './loader.js'

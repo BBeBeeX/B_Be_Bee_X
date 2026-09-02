@@ -5,6 +5,5 @@
   "description": "Rotating NDJSON log file.",
   "engines": { "BBeBee": "^0.1.0" },
   "entry": { "main": "./dist/index.js" },
-  "capabilities": ["fs:write:logs", "fs:read:logs"],
-  "instantiable": false
+  "capabilities": ["fs:write:logs", "fs:read:logs"]
 }

@@ -18,7 +18,7 @@ export interface DbScopeSubject {
   /** Ungated, for arranging fixtures and asserting outcomes. */
   admin: DbService
   /** The instance id the gated databases below were scoped to. */
-  instanceId: string
+  scopeId: string
   /** The table prefix that instance owns, e.g. `plugin_bbebee_plugin_demo`. */
   ownPrefix: string
   /** `db` as seen by a plugin granted exactly `db:own`. */
@@ -42,8 +42,8 @@ export const dbScopeConformance: ConformanceSuite<DbScopeSubject> = {
     {
       name: 'a plugin can create and use its own namespaced tables',
       because: 'db:own would be useless otherwise',
-      async run({ own, instanceId, ownPrefix }) {
-        await own.defineSchema(`plugin:${instanceId}`, [
+      async run({ own, scopeId, ownPrefix }) {
+        await own.defineSchema(`plugin:${scopeId}`, [
           { version: 1, up: 'CREATE TABLE {{ns}}_items (id TEXT PRIMARY KEY)' },
         ])
         await own.exec(`INSERT INTO ${ownPrefix}_items VALUES (?)`, ['x'])
@@ -55,12 +55,12 @@ export const dbScopeConformance: ConformanceSuite<DbScopeSubject> = {
       name: 'a plugin cannot drop a core catalogue table',
       because: 'the concrete claim in docs/07 §6 — otherwise db:own means nothing',
       async run({ admin, own }) {
-        await assertRejects(() => own.exec('DROP TABLE providers'), 'DROP of a core table', denied)
+        await assertRejects(() => own.exec('DROP TABLE sources'), 'DROP of a core table', denied)
         // And it really is still there.
         const rows = await admin.query(
-          `SELECT name FROM sqlite_master WHERE type='table' AND name='providers'`,
+          `SELECT name FROM sqlite_master WHERE type='table' AND name='sources'`,
         )
-        assert(rows.length === 1, 'providers table was actually dropped')
+        assert(rows.length === 1, 'sources table was actually dropped')
       },
     },
     {
@@ -252,7 +252,7 @@ export const dbScopeConformance: ConformanceSuite<DbScopeSubject> = {
       because: 'the transaction view is a separate code path in every implementation',
       async run({ own }) {
         await assertRejects(
-          () => own.transaction(async (tx) => void (await tx.exec('DROP TABLE providers'))),
+          () => own.transaction(async (tx) => void (await tx.exec('DROP TABLE sources'))),
           'gated statement inside a transaction',
           denied,
         )
@@ -262,7 +262,7 @@ export const dbScopeConformance: ConformanceSuite<DbScopeSubject> = {
       name: 'the gate does not apply to ungated callers',
       because: 'the kernel, core services and migrations must still work',
       async run({ admin }) {
-        const rows = await admin.query('SELECT * FROM providers')
+        const rows = await admin.query('SELECT * FROM sources')
         assert(Array.isArray(rows), 'ungated query should succeed')
       },
     },

@@ -69,7 +69,7 @@ export class FsExpo extends Service implements FsService {
     if (uri.startsWith('content://')) return 'media'
 
     if (gate) {
-      const own = paths.pluginData(gate.instanceId)
+      const own = paths.pluginData(gate.scopeId)
       if (uriContains(own, uri)) return 'own'
       if (uriContains(paths.appData, uri)) return 'all'
     }

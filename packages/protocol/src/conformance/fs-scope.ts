@@ -14,8 +14,8 @@ export interface FsScopeSubject {
   /** Ungated, for arranging fixtures. */
   admin: FsService
   paths: PathsService
-  /** The instance id the gated services below were scoped to. */
-  instanceId: string
+  /** The scope id the gated services below were scoped to. */
+  scopeId: string
   /** `fs` as seen by a plugin granted exactly `fs:read:own` + `fs:write:own`. */
   own: FsService
   /** `fs` as seen by a plugin granted exactly `fs:read:cache` + `fs:write:cache`. */
@@ -32,8 +32,8 @@ export const fsScopeConformance: ConformanceSuite<FsScopeSubject> = {
     {
       name: 'a plugin can reach its own data directory',
       because: 'fs:*:own would be useless otherwise',
-      async run({ own, paths, instanceId }) {
-        const dir = paths.pluginData(instanceId)
+      async run({ own, paths, scopeId }) {
+        const dir = paths.pluginData(scopeId)
         await own.mkdir(dir, { recursive: true })
         const file = own.join(dir, 'mine.txt')
         await own.writeFile(file, 'ok')

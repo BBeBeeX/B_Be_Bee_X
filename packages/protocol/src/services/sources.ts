@@ -1,6 +1,17 @@
 /**
- * `ctx.sources` and the `MediaProvider` SPI — the most extension-critical
- * contract in the system. See docs/06-music-sources.md.
+ * `ctx.sources` — the source registry and the catalogue cache.
+ *
+ * `MediaProvider` is what the rest of the app consumes, and it is now an
+ * **internal interface with exactly two implementations**: the source
+ * runtime's per-source adapter, and `plugin-source-local`. It is no longer an
+ * extension point — nobody outside this repository implements it. A new music
+ * backend is a `SourceDocument` (see `source-document.ts`), imported as a
+ * string and interpreted by one built-in runtime.
+ *
+ * Keeping the interface is what stops the catalogue, the player and every
+ * screen from growing an "is this a real source or a local file?" branch.
+ *
+ * See docs/06-music-sources.md.
  */
 
 
@@ -21,15 +32,28 @@ import type {
 } from '../entities/catalog.js'
 import type { Lyrics } from '../entities/library.js'
 import type { StreamHandle, StreamPrefs, StreamQuality } from '../entities/media.js'
+import type {
+  CheckReport,
+  DebugStep,
+  ImportOptions,
+  ImportReport,
+  LoginField,
+  SourceRecord,
+  TraceEvent,
+} from './source-document.js'
 
 /* ── Capabilities ───────────────────────────────────────────────────────── */
 
 /**
- * What a provider can actually do.
+ * What a source can actually do.
  *
- * Providers are unequal, and the UI must know how. Every optional member of
- * `MediaProvider` is gated by a flag here, so the shells hide affordances
- * rather than offering buttons that fail.
+ * **Derived, never declared.** For a document-backed source the runtime
+ * computes this from which rule blocks are present, so the old
+ * under-declare/over-declare failure mode cannot occur: a source with no
+ * `ruleExplore` has no `browse`, because there is nothing to call.
+ *
+ * The shells still hide affordances rather than offering buttons that fail —
+ * they now read a computed value rather than a promised one. See docs/06 §1.3.
  */
 export interface Capabilities {
   search: {
@@ -57,6 +81,7 @@ export interface Capabilities {
     /** Whether resolved URLs expire and must be re-resolved. */
     urlExpiry: boolean
   }
+  /** From the document's `concurrentRate`. */
   rateLimit?: { requests: number; windowMs: number }
   /** Region-locked; some catalogue may be unavailable. */
   regional: boolean
@@ -100,27 +125,23 @@ export interface BrowseEntry {
 
 /* ── Authentication ─────────────────────────────────────────────────────── */
 
-export interface AuthField {
-  id: string
-  label: string
-  secret?: boolean
-  placeholder?: string
-}
-
+/**
+ * How a source signs in.
+ *
+ * Declared by the document and driven by the shell, so no source author writes
+ * a login screen — the same principle as before, expressed as data. Each
+ * variant maps to exactly one thing in a `SourceDocument`:
+ *
+ *   none      no auth fields at all
+ *   variable  `variableComment` only — the `{{source.var}}` box
+ *   form      `loginUi` (the fields) + `loginUrl` (where they go)
+ *   webview   `loginUrl` + required cookies, opened via `ctx.shell`
+ */
 export type AuthFlow =
   | { kind: 'none' }
-  | { kind: 'password'; fields: AuthField[] }
-  | { kind: 'token'; label: string; helpUrl?: string }
-  | {
-      kind: 'oauth-pkce'
-      authorizeUrl: string
-      tokenUrl: string
-      clientId: string
-      scopes: string[]
-      redirectUri: string
-    }
-  | { kind: 'qrcode'; poll: () => Promise<{ status: 'pending' | 'confirmed' | 'expired' }> }
-  | { kind: 'cookie'; loginUrl: string; requiredCookies: string[] }
+  | { kind: 'variable'; comment?: string }
+  | { kind: 'form'; fields: LoginField[]; submitTo: string }
+  | { kind: 'webview'; loginUrl: string; requiredCookies: string[] }
 
 export type AuthStatus =
   | { state: 'anonymous' }
@@ -131,9 +152,10 @@ export type AuthStatus =
 /**
  * Sign-in and sign-out.
  *
- * Required on every provider — including ones needing no credentials, which
- * declare `flow: { kind: 'none' }` and implement both trivially. See
- * docs/06-music-sources.md §1.1 for why this one member is not optional.
+ * Present on every provider — including ones needing no credentials, which
+ * declare `flow: { kind: 'none' }` and implement both trivially. The runtime
+ * synthesises this from the document, so the UI has one place to look and
+ * sign-out means the same thing everywhere. See docs/06 §5.
  */
 export interface ProviderAuth {
   readonly flow: AuthFlow
@@ -143,8 +165,9 @@ export interface ProviderAuth {
   signIn(input: Record<string, string>): Promise<void>
 
   /**
-   * Must leave nothing behind: clears the instance's secrets namespace,
-   * empties *and forgets* its persisted cookie jar, and resets status.
+   * Must leave nothing behind: clears the source's secrets namespace, its
+   * `source_vars`, and empties *and forgets* its persisted cookie jar, then
+   * resets status. The most commonly missed step in the whole design.
    */
   signOut(): Promise<void>
 
@@ -168,16 +191,17 @@ export interface ProviderLibrary {
 }
 
 /**
- * A music backend.
+ * A music backend, as the rest of the app sees it.
  *
- * Deliberately split: a small **required core** every provider implements, and
- * a large **optional surface** implemented only where the backend supports it.
- * Omit an optional member rather than stubbing one that throws — `capabilities`
- * already carries that information truthfully.
+ * Deliberately split: a small **required core**, and a large **optional
+ * surface** present only where the backend supports it. Omit an optional
+ * member rather than stubbing one that throws — `capabilities` carries that
+ * information truthfully, and for a document-backed source it is derived from
+ * exactly which members the runtime could build.
  */
 export interface MediaProvider {
   // ══ REQUIRED ═══════════════════════════════════════════════════════════
-  readonly instanceId: string
+  readonly sourceId: string
   readonly displayName: string
   readonly capabilities: Capabilities
   readonly auth: ProviderAuth
@@ -205,17 +229,17 @@ export interface MediaProvider {
 /* ── The registry ───────────────────────────────────────────────────────── */
 
 export interface AggregatedSearchEntry {
-  instanceId: string
+  sourceId: string
   result?: SearchResult
-  /** Present on failure. The provider is reported, never silently dropped. */
+  /** Present on failure. The source is reported, never silently dropped. */
   error?: SourceError
-  /** True when the provider exceeded `timeoutMs` and is still running. */
+  /** True when the source exceeded `timeoutMs` and is still running. */
   pending: boolean
   tookMs: number
 }
 
 export interface AggregatedSearch {
-  byProvider: AggregatedSearchEntry[]
+  bySource: AggregatedSearchEntry[]
 }
 
 /* ── The catalogue cache ────────────────────────────────────────────────── */
@@ -232,8 +256,8 @@ export type TrackSort =
 export interface CatalogQuery {
   sort?: TrackSort
   desc?: boolean
-  /** Restrict to given provider instances. Absent means every instance. */
-  instanceIds?: string[]
+  /** Restrict to given sources. Absent means every source. */
+  sourceIds?: string[]
   page?: PageRequest
 }
 
@@ -244,21 +268,80 @@ export interface CatalogCounts {
 }
 
 export interface SourcesService {
+  /* ── the registry ──────────────────────────────────────────────────── */
+
+  /**
+   * Internal. Called by the source runtime once per enabled source, and by
+   * `plugin-source-local`. Not an extension point — see the note at the top
+   * of this file.
+   */
   register(p: MediaProvider): Disposable
   readonly providers: readonly MediaProvider[]
-  get(instanceId: string): MediaProvider | undefined
-  /** Resolve a URN to its owning provider. */
+  get(sourceId: string): MediaProvider | undefined
+  /** Resolve a URN to its owning source. */
   forUrn(urn: string): MediaProvider | undefined
   /**
-   * Fan out across every provider that supports search.
+   * Fan out across every source that supports search.
    *
-   * Returns per-provider results *and* per-provider errors — never a merged
-   * list that silently drops a failing backend.
+   * Returns per-source results *and* per-source errors — never a merged list
+   * that silently drops a failing backend. With a dozen imported sources of
+   * uneven quality this is the difference between "search is broken" and
+   * "three of your twelve answered, one is rate-limited, one needs updating".
    */
   searchAll(
     q: SearchQuery,
-    opts?: { instanceIds?: string[]; timeoutMs?: number },
+    opts?: { sourceIds?: string[]; timeoutMs?: number },
   ): Promise<AggregatedSearch>
+
+  /* ── sources as data (docs/06 §9, §10) ─────────────────────────────── */
+
+  /** Every imported source, enabled or not, in `sortOrder`. */
+  readonly sources: readonly SourceRecord[]
+  source(id: string): SourceRecord | undefined
+
+  /**
+   * Import one document or a set of them.
+   *
+   * Accepts a JSON object, a JSON array, or either wrapped in whitespace or a
+   * code fence. Deduplicates on `sourceUrl`, so re-importing is an *update*
+   * that keeps the id — and therefore every URN, cached row, cookie jar and
+   * playlist reference — rather than a duplicate.
+   *
+   * Never rejects a whole set for one bad entry: malformed documents land in
+   * `rejected` with their position and the schema issue.
+   */
+  import(input: string, opts?: ImportOptions): Promise<ImportReport>
+
+  /**
+   * Serialise sources back to a shareable string.
+   *
+   * Symmetrical with `import`: app-maintained fields and **every credential**
+   * are stripped, so export → import round-trips to an identical set and
+   * sharing a source never shares an account.
+   */
+  export(ids?: string[]): Promise<string>
+
+  setEnabled(id: string, on: boolean): Promise<void>
+  /** `forgetCatalogue` also drops the rows this source produced. */
+  remove(id: string, opts?: { forgetCatalogue?: boolean }): Promise<void>
+
+  /**
+   * Health run: reach the base URL, search, resolve a stream, HEAD it.
+   *
+   * The first thing to do when "search stopped working", and what keeps the
+   * stale badge honest. Absent `ids` means every enabled source.
+   */
+  check(ids?: string[], opts?: { signal?: AbortSignal }): Promise<CheckReport[]>
+
+  /**
+   * Run one step and stream a trace of every rule it evaluated.
+   *
+   * This is the maintenance story for the whole model: it is how a user — not
+   * a developer — finds out which rule stopped matching. Credentials never
+   * appear in a trace, because a trace is the thing people paste into forum
+   * threads.
+   */
+  debug(id: string, step: DebugStep): AsyncIterable<TraceEvent>
 
   /*
    * Reads over rows already stored, from any provider.
@@ -280,7 +363,7 @@ export interface SourcesService {
    * opposite of `searchAll`, which asks the backends and may be slow, partial
    * or unreachable. Both exist; they answer different questions.
    */
-  searchLocal(text: string, opts?: { limit?: number; instanceIds?: string[] }): Promise<SearchResult>
+  searchLocal(text: string, opts?: { limit?: number; sourceIds?: string[] }): Promise<SearchResult>
 
   counts(): Promise<CatalogCounts>
 }

@@ -13,11 +13,13 @@ function flag(name: string, fallback?: string): string | undefined {
 
 const name = flag('name')
 if (!name) {
-  console.error(`usage: pnpm new:plugin --name <slug> [--kind feature|source|effect]
+  console.error(`usage: pnpm new:plugin --name <slug> [--kind feature|effect]
                         [--ui none|desktop|mobile|both] [--capabilities a,b]
 
   --name          lowercase, hyphenated, no prefix (e.g. "scrobble")
-  --kind          feature (default) | source | effect — decides the package prefix
+  --kind          feature (default) | effect — decides the package prefix.
+                  There is no "source" kind: a music backend is an imported
+                  document, not a package (docs/06).
   --ui            which view packages to emit (default: none)
   --capabilities  comma-separated, e.g. "db:own,net:host/*.example.org"
 `)

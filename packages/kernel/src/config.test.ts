@@ -3,70 +3,40 @@ import { ConfigError } from '@BBeBee/protocol'
 import { isEnabled, resolveConfig } from './config.js'
 
 describe('resolveConfig', () => {
-  it('resolves a plain plugin to one instance keyed by its own id', () => {
+  it('resolves a plugin to one activation keyed by its own id', () => {
     expect(
       resolveConfig({ plugins: { '@BBeBee/plugin-player': { config: { crossfadeMs: 0 } } } }),
-    ).toEqual([
-      {
-        pluginId: '@BBeBee/plugin-player',
-        instanceId: '@BBeBee/plugin-player',
-        config: { crossfadeMs: 0 },
-      },
-    ])
+    ).toEqual([{ pluginId: '@BBeBee/plugin-player', config: { crossfadeMs: 0 } }])
   })
 
   it('skips disabled plugins', () => {
     expect(resolveConfig({ plugins: { a: { enabled: false } } })).toEqual([])
   })
 
-  it('expands instances, one activation each', () => {
+  it('defaults a plugin with no config to an empty one', () => {
+    expect(resolveConfig({ plugins: { a: {} } })).toEqual([{ pluginId: 'a', config: {} }])
+  })
+
+  it('does not expand per-plugin instances', () => {
+    // Multi-instance was only ever for music sources, and a source is now a
+    // row in `sources`, imported in the app. An `instances` key left over in
+    // an old config is inert extra data, not a second activation.
     const resolved = resolveConfig({
       plugins: {
-        '@BBeBee/plugin-source-subsonic': {
-          instances: [
-            { id: 'navidrome-home', config: { baseUrl: 'https://home' } },
-            { id: 'navidrome-work', config: { baseUrl: 'https://work' } },
-          ],
-        },
-      },
+        p: { config: { a: 1 }, instances: [{ id: 'one' }, { id: 'two' }] },
+      } as never,
     })
-    expect(resolved).toHaveLength(2)
-    expect(resolved.map((r) => r.instanceId)).toEqual(['navidrome-home', 'navidrome-work'])
-    expect(resolved[0]!.config).toEqual({ baseUrl: 'https://home' })
+    expect(resolved).toEqual([{ pluginId: 'p', config: { a: 1 } }])
   })
 
-  it('overlays instance config onto plugin-level defaults', () => {
-    const [only] = resolveConfig({
-      plugins: {
-        p: {
-          config: { quality: 'high', timeout: 30 },
-          instances: [{ id: 'one', config: { quality: 'lossless' } }],
-        },
-      },
-    })
-    expect(only!.config).toEqual({ quality: 'lossless', timeout: 30 })
+  it('rejects a null entry rather than skipping it', () => {
+    // `plugins: { a: }` is valid YAML. Dropping it silently would be
+    // indistinguishable from a plugin that failed to load.
+    expect(() => resolveConfig({ plugins: { a: null } as never })).toThrow(ConfigError)
   })
 
-  it('rejects a duplicate instance id across different plugins', () => {
-    // Two providers sharing an id would produce colliding URNs.
-    expect(() =>
-      resolveConfig({
-        plugins: {
-          a: { instances: [{ id: 'shared' }] },
-          b: { instances: [{ id: 'shared' }] },
-        },
-      }),
-    ).toThrow(ConfigError)
-  })
-
-  it('rejects an instance id containing the urn separator', () => {
-    expect(() => resolveConfig({ plugins: { a: { instances: [{ id: 'a:b' }] } } })).toThrow(
-      ConfigError,
-    )
-  })
-
-  it('rejects an empty instance id', () => {
-    expect(() => resolveConfig({ plugins: { a: { instances: [{ id: '' }] } } })).toThrow(
+  it('rejects a non-object config', () => {
+    expect(() => resolveConfig({ plugins: { a: { config: 'nope' } } as never })).toThrow(
       ConfigError,
     )
   })

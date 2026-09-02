@@ -37,8 +37,8 @@ export interface ScannerConfig {
   batchSize?: number
   /** Extensions considered audio, lower-case and without the dot. */
   extensions?: string[]
-  /** The provider instance these tracks belong to. */
-  instanceId?: string
+  /** The source these tracks belong to. */
+  sourceId?: string
   /** How often to poll where `ctx.fs.watch` is unavailable, in minutes. */
   pollIntervalMinutes?: number
   /** Debounce for filesystem events, so a copy of 200 files is one rescan. */
@@ -96,14 +96,14 @@ export class Scanner extends Service implements ScannerService {
     this.config = {
       batchSize: config.batchSize ?? 200,
       extensions: (config.extensions ?? DEFAULT_EXTENSIONS).map((e) => e.toLowerCase()),
-      instanceId: config.instanceId ?? 'local',
+      sourceId: config.sourceId ?? 'local',
       pollIntervalMinutes: config.pollIntervalMinutes ?? 15,
       watchDebounceMs: config.watchDebounceMs ?? 2000,
     }
   }
 
   async [Service.init]() {
-    await this.ensureProvider()
+    await this.ensureSourceRow()
     this.rootList = await this.loadRoots()
     await this.startWatching()
 
@@ -157,7 +157,7 @@ export class Scanner extends Service implements ScannerService {
       await this.ctx.db.transaction(async (tx) => {
         for (const entry of entries) {
           const { removedTrackUrn } = await forgetFile(
-            { tx, instanceId: this.config.instanceId, now: Date.now() },
+            { tx, sourceId: this.config.sourceId, now: Date.now() },
             entry.uri,
           )
           if (removedTrackUrn) removed.push(removedTrackUrn)
@@ -343,7 +343,7 @@ export class Scanner extends Service implements ScannerService {
         }
 
         const { trackUrn } = await importTrack(
-          { tx, instanceId: this.config.instanceId, now },
+          { tx, sourceId: this.config.sourceId, now },
           {
             uri: item.file.uri,
             size: item.file.size,
@@ -392,7 +392,7 @@ export class Scanner extends Service implements ScannerService {
     await this.ctx.db.transaction(async (tx) => {
       for (const uri of uris) {
         const { removedTrackUrn } = await forgetFile(
-          { tx, instanceId: this.config.instanceId, now: Date.now() },
+          { tx, sourceId: this.config.sourceId, now: Date.now() },
           uri,
         )
         if (removedTrackUrn) removed.push(removedTrackUrn)
@@ -540,17 +540,29 @@ export class Scanner extends Service implements ScannerService {
   }
 
   /**
-   * The catalogue's foreign keys point at a provider row, so the instance the
+   * The catalogue's foreign keys point at a `sources` row, so the source the
    * scanner writes under has to exist before any track does. The scanner
    * creates it because the scanner is the writer; `plugin-source-local` reads
    * the same rows and needs no say in it.
+   *
+   * Local files are the one source that is **not** an imported document
+   * (docs/06 §12) — there is no HTTP to describe — so this writes the minimal
+   * row the FKs need. `doc_json` is a real document all the same: it round
+   * trips through export like any other, and says plainly what it is.
    */
-  private async ensureProvider(): Promise<void> {
+  private async ensureSourceRow(): Promise<void> {
+    const id = this.config.sourceId
+    const doc = JSON.stringify({
+      sourceUrl: `bbebee://local/${id}`,
+      sourceName: 'This device',
+      sourceComment: 'Files on this device. Managed by the scanner, not imported.',
+    })
     await this.ctx.db.exec(
-      `INSERT INTO providers (instance_id, plugin_id, display_name, enabled, created_at)
-       VALUES (?, '@BBeBee/plugin-source-local', 'This device', 1, ?)
-       ON CONFLICT(instance_id) DO NOTHING`,
-      [this.config.instanceId, Date.now()],
+      `INSERT INTO sources (id, source_url, name, source_type, doc_json, doc_hash,
+                            enabled, imported_at, updated_at)
+       VALUES (?, ?, 'This device', 'music', ?, ?, 1, ?, ?)
+       ON CONFLICT(id) DO NOTHING`,
+      [id, `bbebee://local/${id}`, doc, `local-${id}`, Date.now(), Date.now()],
     )
   }
 }

@@ -1,0 +1,21 @@
+{
+  "id": "@BBeBee/plugin-source-runtime",
+  "version": "0.0.0",
+  "displayName": "Music sources",
+  "description": "plugin-source-runtime — interprets imported source strings.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "net:host/*",
+    "db:read:core"
+  ],
+  "contributes": {
+    "slots": [
+      "settings.sources"
+    ]
+  }
+}

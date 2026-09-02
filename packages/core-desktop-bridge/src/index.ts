@@ -133,7 +133,7 @@ export class FsBridge extends Service implements FsService {
     if (uriContains(paths.logs, uri)) return 'logs'
     if (paths.music && uriContains(paths.music, uri)) return 'media'
     if (gate) {
-      if (uriContains(paths.pluginData(gate.instanceId), uri)) return 'own'
+      if (uriContains(paths.pluginData(gate.scopeId), uri)) return 'own'
       if (uriContains(paths.appData, uri)) return 'all'
     }
     if (uriContains(paths.appData, uri)) return 'own'

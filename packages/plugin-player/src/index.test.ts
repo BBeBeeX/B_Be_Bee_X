@@ -26,8 +26,8 @@ import type {
 } from '@BBeBee/protocol'
 import plugin, { type Player } from './index.js'
 
-const INSTANCE = 'local'
-const urn = (id: string) => `BBeBee:${INSTANCE}:track:${id}`
+const SOURCE = 'local'
+const urn = (id: string) => `BBeBee:${SOURCE}:track:${id}`
 
 /** `ctx.audio`, provided by the mock rather than by a real engine. */
 function mockAudioPlugin(mock: MockAudio) {
@@ -53,7 +53,7 @@ function localProvider(overrides: Partial<MediaProvider> = {}): MediaProvider {
     regional: false,
   }
   return {
-    instanceId: INSTANCE,
+    sourceId: SOURCE,
     displayName: 'This device',
     capabilities,
     auth: {
@@ -125,13 +125,13 @@ function sourcesStub(provider: MediaProvider) {
       super(ctx, 'sources')
     }
     forUrn(u: string) {
-      return u.startsWith(`BBeBee:${provider.instanceId}:`) ? provider : undefined
+      return u.startsWith(`BBeBee:${provider.sourceId}:`) ? provider : undefined
     }
     get providers() {
       return [provider]
     }
     get(id: string) {
-      return id === provider.instanceId ? provider : undefined
+      return id === provider.sourceId ? provider : undefined
     }
   }
   return SourcesStub
@@ -431,20 +431,20 @@ describe('errors', () => {
   it('skips a missing track and marks it unavailable', async () => {
     const provider = localProvider({
       resolveStream: async (id: string) => {
-        if (id === 'a') throw new NotFoundError('gone', INSTANCE)
+        if (id === 'a') throw new NotFoundError('gone', SOURCE)
         return { kind: 'local', target: `file:///music/${id}.flac`, seekable: true } as StreamHandle
       },
     })
     const { player, db } = await harness({ provider })
     await db.exec(
-      `INSERT INTO providers (instance_id, plugin_id, display_name, created_at)
-       VALUES (?, 'p', 'p', 0)`,
-      [INSTANCE],
+      `INSERT INTO sources (id, source_url, name, doc_json, doc_hash, imported_at, updated_at)
+       VALUES (?, ?, 'p', '{}', 'h', 0, 0)`,
+      [SOURCE, `bbebee://local/${SOURCE}`],
     )
     await db.exec(
-      `INSERT INTO tracks (urn, instance_id, remote_id, title, available, fetched_at)
+      `INSERT INTO tracks (urn, source_id, remote_id, title, available, fetched_at)
        VALUES (?, ?, 'a', 'A', 1, 0)`,
-      [urn('a'), INSTANCE],
+      [urn('a'), SOURCE],
     )
 
     await player.playNow([urn('a'), urn('b')])
@@ -462,7 +462,7 @@ describe('errors', () => {
     const provider = localProvider({
       resolveStream: async () => {
         attempts++
-        throw new NetworkError('offline', INSTANCE)
+        throw new NetworkError('offline', SOURCE)
       },
     })
     const { player } = await harness({ provider, config: { retryBackoffMs: 1 } })
@@ -478,7 +478,7 @@ describe('errors', () => {
   it('stops on an auth error and tells the source', async () => {
     const provider = localProvider({
       resolveStream: async () => {
-        throw new AuthError('expired', INSTANCE)
+        throw new AuthError('expired', SOURCE)
       },
     })
     const { ctx, player } = await harness({ provider })
@@ -489,7 +489,7 @@ describe('errors', () => {
     await tick()
 
     expect(player.state.status).toBe('error')
-    expect(expired, 'the provider gets first refusal').toEqual([INSTANCE])
+    expect(expired, 'the provider gets first refusal').toEqual([SOURCE])
     expect(player.queue).toHaveLength(1)
   })
 })
@@ -501,7 +501,7 @@ describe('failure loops and races', () => {
     // stuck on "skipping" until the battery went.
     const provider = localProvider({
       resolveStream: async () => {
-        throw new NotFoundError('gone', INSTANCE)
+        throw new NotFoundError('gone', SOURCE)
       },
     })
     const { player, ctx } = await harness({ provider, config: { maxSkipStreak: 4 } })
@@ -523,7 +523,7 @@ describe('failure loops and races', () => {
     const provider = localProvider({
       resolveStream: async (id: string) => {
         attempt++
-        if (id === 'a') throw new NotFoundError('gone', INSTANCE)
+        if (id === 'a') throw new NotFoundError('gone', SOURCE)
         return { kind: 'local', target: `file:///music/${id}.flac`, seekable: true } as StreamHandle
       },
     })

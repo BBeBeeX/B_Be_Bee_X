@@ -585,34 +585,6 @@ importers:
         specifier: workspace:*
         version: link:../plugin-sources
 
-  packages/plugin-source-http-url:
-    dependencies:
-      '@BBeBee/kernel':
-        specifier: workspace:*
-        version: link:../kernel
-      '@BBeBee/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      cordis:
-        specifier: 4.0.0-rc.9
-        version: 4.0.0-rc.9
-    devDependencies:
-      '@BBeBee/core-db-node':
-        specifier: workspace:*
-        version: link:../core-db-node
-      '@BBeBee/core-fs-node':
-        specifier: workspace:*
-        version: link:../core-fs-node
-      '@BBeBee/core-http-node':
-        specifier: workspace:*
-        version: link:../core-http-node
-      '@BBeBee/core-paths-node':
-        specifier: workspace:*
-        version: link:../core-paths-node
-      '@BBeBee/plugin-sources':
-        specifier: workspace:*
-        version: link:../plugin-sources
-
   packages/plugin-source-local:
     dependencies:
       '@BBeBee/kernel':
@@ -637,6 +609,37 @@ importers:
       '@BBeBee/plugin-local-scanner':
         specifier: workspace:*
         version: link:../plugin-local-scanner
+      '@BBeBee/plugin-sources':
+        specifier: workspace:*
+        version: link:../plugin-sources
+
+  packages/plugin-source-runtime:
+    dependencies:
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@BBeBee/source-rules':
+        specifier: workspace:*
+        version: link:../source-rules
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+    devDependencies:
+      '@BBeBee/core-db-node':
+        specifier: workspace:*
+        version: link:../core-db-node
+      '@BBeBee/core-fs-node':
+        specifier: workspace:*
+        version: link:../core-fs-node
+      '@BBeBee/core-http-node':
+        specifier: workspace:*
+        version: link:../core-http-node
+      '@BBeBee/core-paths-node':
+        specifier: workspace:*
+        version: link:../core-paths-node
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../kernel
       '@BBeBee/plugin-sources':
         specifier: workspace:*
         version: link:../plugin-sources
@@ -680,6 +683,12 @@ importers:
       cordis:
         specifier: 4.0.0-rc.9
         version: 4.0.0-rc.9
+
+  packages/source-rules:
+    dependencies:
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/tooling-create-plugin:
     dependencies:

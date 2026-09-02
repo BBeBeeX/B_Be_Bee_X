@@ -32,6 +32,7 @@ import type { StreamHandle, StreamPrefs } from './entities/media.js'
 import type { EffectSegment, ChainEntry } from './services/audio.js'
 import type { HttpRequest, HttpResponse } from './services/http.js'
 import type { AuthStatus } from './services/sources.js'
+import type { CheckReport } from './services/source-document.js'
 import type { SourceError } from './errors.js'
 import type { UrnKind } from './urn.js'
 
@@ -52,7 +53,8 @@ declare module 'cordis' {
      * Decide what actually gets played.
      *
      * `plugin-download` hooks this to substitute a local file when a binding
-     * exists; `plugin-source-failover` hooks it to retry a linked URN.
+     * exists; `plugin-failover` hooks it to retry the same recording on
+     * another source when this one is unavailable or its rules have rotted.
      */
     'player/before-resolve'(
       urn: string,
@@ -65,18 +67,33 @@ declare module 'cordis' {
     'queue/changed'(items: readonly QueueItem[]): void
 
     /* ── sources ────────────────────────────────────── emit ── */
-    'source/registered'(instanceId: string): void
-    'source/unregistered'(instanceId: string): void
-    'source/authenticated'(instanceId: string, status: AuthStatus): void
-    'source/unreachable'(instanceId: string, error: SourceError): void
+    'source/registered'(sourceId: string): void
+    'source/unregistered'(sourceId: string): void
+    'source/authenticated'(sourceId: string, status: AuthStatus): void
+    'source/unreachable'(sourceId: string, error: SourceError): void
+
+    /* ── sources: the document itself ───────────────── emit ── */
+    /** One or more documents were imported. The runtime starts their fibers. */
+    'source/imported'(sourceIds: string[]): void
+    /** A stored document changed. The runtime rebuilds exactly that fiber. */
+    'source/changed'(sourceId: string, changedFields: string[]): void
+    'source/removed'(sourceId: string, forgotCatalogue: boolean): void
+    /**
+     * A rule produced nothing where something was required.
+     *
+     * Coalesced per source: one rotted source can fail a rule per track in a
+     * queue, and the stale badge needs the fact, not the volume.
+     */
+    'source/rule-failed'(sourceId: string, rule: { block: string; field: string }): void
+    'source/checked'(sourceId: string, report: CheckReport): void
 
     /* ── sources ──────────────────────────────────── serial ── */
-    /** The token refresher gets first refusal before the UI prompts. */
-    'source/auth-expired'(instanceId: string): void
+    /** The session refresher gets first refusal before the UI prompts. */
+    'source/auth-expired'(sourceId: string): void
 
     /* ── sources ────────────────────────────────── parallel ── */
     /** Listeners purge session-derived state; sign-out awaits them all. */
-    'source/signed-out'(instanceId: string): void
+    'source/signed-out'(sourceId: string): void
 
     /* ── http ──────────────────────────────────── waterfall ── */
     /** Auth injection, retry, rate limiting, and caching all hook here. */

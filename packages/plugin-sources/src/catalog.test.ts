@@ -18,7 +18,7 @@ import type { DbService } from '@BBeBee/protocol'
 import plugin, { type Sources } from './index.js'
 import { ftsQuery } from './catalog.js'
 
-const INSTANCE = 'local'
+const SOURCE = 'local'
 
 async function fixture(): Promise<{ ctx: Context; sources: Sources; db: DbService }> {
   const ctx = new Context()
@@ -30,30 +30,41 @@ async function fixture(): Promise<{ ctx: Context; sources: Sources; db: DbServic
 
   const db = ctx.db
   const now = Date.now()
+  // Local files are the one source that is not an imported document, but the
+  // row is shaped like every other: the catalogue's FKs do not care which.
   await db.exec(
-    `INSERT INTO providers (instance_id, plugin_id, display_name, created_at) VALUES (?, ?, ?, ?)`,
-    [INSTANCE, '@BBeBee/plugin-source-local', 'This device', now],
+    `INSERT INTO sources (id, source_url, name, doc_json, doc_hash, imported_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      SOURCE,
+      `bbebee://local/${SOURCE}`,
+      'This device',
+      JSON.stringify({ sourceUrl: `bbebee://local/${SOURCE}`, sourceName: 'This device' }),
+      `local-${SOURCE}`,
+      now,
+      now,
+    ],
   )
   await db.exec(
     `INSERT INTO artworks (id, blurhash, dominant_color, fetched_at) VALUES (?, ?, ?, ?)`,
     ['art1', 'LKO2?U%2Tw=w]~RB', '#3a5f7d', now],
   )
   await db.exec(
-    `INSERT INTO artists (urn, instance_id, remote_id, name, sort_name, fetched_at)
+    `INSERT INTO artists (urn, source_id, remote_id, name, sort_name, fetched_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [`BBeBee:${INSTANCE}:artist:bjork`, INSTANCE, 'bjork', 'Björk', 'Björk', now],
+    [`BBeBee:${SOURCE}:artist:bjork`, SOURCE, 'bjork', 'Björk', 'Björk', now],
   )
   await db.exec(
-    `INSERT INTO artists (urn, instance_id, remote_id, name, sort_name, fetched_at)
+    `INSERT INTO artists (urn, source_id, remote_id, name, sort_name, fetched_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [`BBeBee:${INSTANCE}:artist:aphex`, INSTANCE, 'aphex', 'Aphex Twin', 'Aphex Twin', now],
+    [`BBeBee:${SOURCE}:artist:aphex`, SOURCE, 'aphex', 'Aphex Twin', 'Aphex Twin', now],
   )
   await db.exec(
-    `INSERT INTO albums (urn, instance_id, remote_id, title, sort_title, year, artwork_id, fetched_at)
+    `INSERT INTO albums (urn, source_id, remote_id, title, sort_title, year, artwork_id, fetched_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      `BBeBee:${INSTANCE}:album:homogenic`,
-      INSTANCE,
+      `BBeBee:${SOURCE}:album:homogenic`,
+      SOURCE,
       'homogenic',
       'Homogenic',
       'Homogenic',
@@ -64,22 +75,22 @@ async function fixture(): Promise<{ ctx: Context; sources: Sources; db: DbServic
   )
   await db.exec(
     `INSERT INTO album_artists (album_urn, artist_urn, ordinal) VALUES (?, ?, 0)`,
-    [`BBeBee:${INSTANCE}:album:homogenic`, `BBeBee:${INSTANCE}:artist:bjork`],
+    [`BBeBee:${SOURCE}:album:homogenic`, `BBeBee:${SOURCE}:artist:bjork`],
   )
 
   const tracks: [string, string, number, string | null, number][] = [
-    ['joga', 'Jóga', 1, `BBeBee:${INSTANCE}:album:homogenic`, 302_000],
-    ['hunter', 'Hunter', 2, `BBeBee:${INSTANCE}:album:homogenic`, 244_000],
+    ['joga', 'Jóga', 1, `BBeBee:${SOURCE}:album:homogenic`, 302_000],
+    ['hunter', 'Hunter', 2, `BBeBee:${SOURCE}:album:homogenic`, 244_000],
     ['xtal', 'Xtal', 1, null, 293_000],
   ]
   for (const [id, title, trackNo, albumUrn, durationMs] of tracks) {
     await db.exec(
-      `INSERT INTO tracks (urn, instance_id, remote_id, title, sort_title, album_urn, track_no,
+      `INSERT INTO tracks (urn, source_id, remote_id, title, sort_title, album_urn, track_no,
                            duration_ms, year, artwork_id, fetched_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        `BBeBee:${INSTANCE}:track:${id}`,
-        INSTANCE,
+        `BBeBee:${SOURCE}:track:${id}`,
+        SOURCE,
         id,
         title,
         title,
@@ -94,10 +105,10 @@ async function fixture(): Promise<{ ctx: Context; sources: Sources; db: DbServic
     await db.exec(
       `INSERT INTO track_artists (track_urn, artist_urn, role, ordinal) VALUES (?, ?, 'main', 0)`,
       [
-        `BBeBee:${INSTANCE}:track:${id}`,
+        `BBeBee:${SOURCE}:track:${id}`,
         id === 'xtal'
-          ? `BBeBee:${INSTANCE}:artist:aphex`
-          : `BBeBee:${INSTANCE}:artist:bjork`,
+          ? `BBeBee:${SOURCE}:artist:aphex`
+          : `BBeBee:${SOURCE}:artist:bjork`,
       ],
     )
   }
@@ -160,13 +171,13 @@ describe('catalogue reads', () => {
 
   it('filters by provider instance', async () => {
     const { sources } = await fixture()
-    expect((await sources.listTracks({ instanceIds: ['local'] })).items).toHaveLength(3)
-    expect((await sources.listTracks({ instanceIds: ['navidrome-home'] })).items).toHaveLength(0)
+    expect((await sources.listTracks({ sourceIds: ['local'] })).items).toHaveLength(3)
+    expect((await sources.listTracks({ sourceIds: ['navidrome-home'] })).items).toHaveLength(0)
   })
 
   it('returns an album with its tracks in disc and track order', async () => {
     const { sources } = await fixture()
-    const album = await sources.getAlbum(`BBeBee:${INSTANCE}:album:homogenic`)
+    const album = await sources.getAlbum(`BBeBee:${SOURCE}:album:homogenic`)
     expect(album?.title).toBe('Homogenic')
     expect(album?.year).toBe(1997)
     expect(album?.artists.map((a) => a.name)).toEqual(['Björk'])
@@ -176,7 +187,7 @@ describe('catalogue reads', () => {
 
   it('returns an artist with their albums', async () => {
     const { sources } = await fixture()
-    const artist = await sources.getArtist(`BBeBee:${INSTANCE}:artist:bjork`)
+    const artist = await sources.getArtist(`BBeBee:${SOURCE}:artist:bjork`)
     expect(artist?.name).toBe('Björk')
     expect(artist?.albums.map((a) => a.title)).toEqual(['Homogenic'])
   })
@@ -192,9 +203,9 @@ describe('the FTS index', () => {
     // The exit criterion from docs/11 §4.6: typing `bjork` must find `Björk`.
     const { ctx, sources } = await fixture()
     ctx.emit('library/changed', 'track', [
-      `BBeBee:${INSTANCE}:track:joga`,
-      `BBeBee:${INSTANCE}:track:hunter`,
-      `BBeBee:${INSTANCE}:track:xtal`,
+      `BBeBee:${SOURCE}:track:joga`,
+      `BBeBee:${SOURCE}:track:hunter`,
+      `BBeBee:${SOURCE}:track:xtal`,
     ])
     await tick()
 
@@ -211,7 +222,7 @@ describe('the FTS index', () => {
     // DELETE + INSERT on the same rowid. Getting that wrong leaves the old
     // title matching forever with no remedy short of a full rebuild.
     const { sources, db } = await fixture()
-    const urn = `BBeBee:${INSTANCE}:track:joga`
+    const urn = `BBeBee:${SOURCE}:track:joga`
     await sources.reindex([urn])
     expect((await sources.searchLocal('joga')).tracks?.items).toHaveLength(1)
 
@@ -227,7 +238,7 @@ describe('the FTS index', () => {
 
   it('drops the index entry when the track is gone', async () => {
     const { sources, db } = await fixture()
-    const urn = `BBeBee:${INSTANCE}:track:xtal`
+    const urn = `BBeBee:${SOURCE}:track:xtal`
     await sources.reindex([urn])
     await db.exec('DELETE FROM tracks WHERE urn = ?', [urn])
     await sources.reindex([urn])
@@ -240,7 +251,7 @@ describe('the FTS index', () => {
     // An unquoted FTS5 query throws on the first apostrophe or asterisk a user
     // types into a search box.
     const { sources } = await fixture()
-    await sources.reindex([`BBeBee:${INSTANCE}:track:joga`])
+    await sources.reindex([`BBeBee:${SOURCE}:track:joga`])
     for (const text of ['"', '*', 'AND', 'NEAR(a b)', "it's", '']) {
       await expect(sources.searchLocal(text), text).resolves.toBeDefined()
     }

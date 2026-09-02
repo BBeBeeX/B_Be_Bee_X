@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   UrnError,
   formatUrn,
-  instanceOf,
+  sourceOf,
   isUrn,
   kindOf,
   orderUrnPair,
@@ -12,8 +12,8 @@ import {
 
 describe('parseUrn', () => {
   it('parses a well-formed urn', () => {
-    expect(parseUrn('BBeBee:navidrome-home:track:8f1a2c')).toEqual({
-      instanceId: 'navidrome-home',
+    expect(parseUrn('BBeBee:music-example-org-4f1a:track:8f1a2c')).toEqual({
+      sourceId: 'music-example-org-4f1a',
       kind: 'track',
       id: '8f1a2c',
     })
@@ -50,7 +50,7 @@ describe('helpers', () => {
   })
 
   it('extracts the instance and kind', () => {
-    expect(instanceOf('BBeBee:nas:artist:9')).toBe('nas')
+    expect(sourceOf('BBeBee:nas:artist:9')).toBe('nas')
     expect(kindOf('BBeBee:nas:artist:9')).toBe('artist')
   })
 
@@ -61,7 +61,7 @@ describe('helpers', () => {
 
   it('rejects an instance id containing a separator', () => {
     // Would otherwise produce a urn that reparses into different fields.
-    expect(() => formatUrn({ instanceId: 'a:b', kind: 'track', id: '1' })).toThrow(UrnError)
+    expect(() => formatUrn({ sourceId: 'a:b', kind: 'track', id: '1' })).toThrow(UrnError)
   })
 })
 

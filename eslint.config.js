@@ -76,6 +76,22 @@ export default tseslint.config(
   },
 
   {
+    // docs/06 §3, docs/09 §3 — the rule engine is pure logic: no platform, and
+    // no I/O either. It takes a document and a rule and returns a value; every
+    // fetch belongs to plugin-source-runtime. Keeping it pure is what makes a
+    // corpus of real source documents runnable against recorded fixtures with
+    // no network — and what keeps rule evaluation testable without a kernel.
+    files: ['packages/source-rules/**/*.ts'],
+    ignores: ['packages/source-rules/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [...PLATFORM_SDKS, 'cordis', '@BBeBee/kernel'] },
+      ],
+    },
+  },
+
+  {
     // docs/08 §1 — UI packages may render, but may not reach the platform.
     // `react-native` is allowed here (ADR-2 accepts a per-target view layer);
     // its capability modules are not.

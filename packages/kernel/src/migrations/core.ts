@@ -16,19 +16,45 @@ export const CORE_MIGRATIONS: Migration[] = [
   {
     version: 1,
     up: [
-      /* ── Providers, accounts, sessions ─────────────────────────────── */
-      `CREATE TABLE providers (
-        instance_id       TEXT PRIMARY KEY,
-        plugin_id         TEXT NOT NULL,
-        display_name      TEXT NOT NULL,
-        enabled           INTEGER NOT NULL DEFAULT 1,
-        capabilities_json TEXT,
-        sort_order        INTEGER NOT NULL DEFAULT 0,
-        created_at        INTEGER NOT NULL,
-        last_seen_at      INTEGER
+      /* ── Sources, accounts, sessions ───────────────────────────────── */
+      // The imported document *is* the row. `doc_json` is the string
+      // verbatim rather than shredded into columns, because export must emit
+      // what was imported: reordered keys or a dropped unknown field would
+      // mean a user's document came back changed, and the first time that
+      // happens they stop trusting export. See docs/07 §4.1.
+      `CREATE TABLE sources (
+        id                 TEXT PRIMARY KEY,
+        source_url         TEXT NOT NULL UNIQUE,
+        name               TEXT NOT NULL,
+        source_group       TEXT,
+        source_type        TEXT NOT NULL DEFAULT 'music',
+        doc_json           TEXT NOT NULL,
+        doc_hash           TEXT NOT NULL,
+        enabled            INTEGER NOT NULL DEFAULT 1,
+        sort_order         INTEGER NOT NULL DEFAULT 0,
+        capabilities_json  TEXT,
+        allowed_hosts_json TEXT,
+        locally_modified   INTEGER NOT NULL DEFAULT 0,
+        origin_uri         TEXT,
+        imported_at        INTEGER NOT NULL,
+        updated_at         INTEGER NOT NULL,
+        last_check_at      INTEGER,
+        last_error         TEXT,
+        fail_count         INTEGER NOT NULL DEFAULT 0,
+        respond_time_ms    INTEGER
+      )`,
+      `CREATE INDEX idx_sources_enabled ON sources(enabled, sort_order)`,
+      // Per-source state a rule persisted via `src.vars`. Credential-grade:
+      // never exported, cleared by signOut(). See docs/06 §3.4.
+      `CREATE TABLE source_vars (
+        source_id  TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        key        TEXT NOT NULL,
+        value      TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (source_id, key)
       )`,
       `CREATE TABLE accounts (
-        instance_id    TEXT PRIMARY KEY REFERENCES providers(instance_id) ON DELETE CASCADE,
+        source_id      TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
         remote_user_id TEXT,
         display_name   TEXT,
         status         TEXT NOT NULL,
@@ -63,7 +89,7 @@ export const CORE_MIGRATIONS: Migration[] = [
       /* ── Catalogue ─────────────────────────────────────────────────── */
       `CREATE TABLE artists (
         urn         TEXT PRIMARY KEY,
-        instance_id TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
+        source_id   TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
         remote_id   TEXT NOT NULL,
         name        TEXT NOT NULL,
         sort_name   TEXT,
@@ -72,12 +98,12 @@ export const CORE_MIGRATIONS: Migration[] = [
         fetched_at  INTEGER NOT NULL,
         raw_json    TEXT
       )`,
-      `CREATE INDEX idx_artists_instance ON artists(instance_id)`,
+      `CREATE INDEX idx_artists_source ON artists(source_id)`,
       `CREATE INDEX idx_artists_sort ON artists(sort_name)`,
 
       `CREATE TABLE albums (
         urn          TEXT PRIMARY KEY,
-        instance_id  TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
+        source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
         remote_id    TEXT NOT NULL,
         title        TEXT NOT NULL,
         sort_title   TEXT,
@@ -91,12 +117,12 @@ export const CORE_MIGRATIONS: Migration[] = [
         fetched_at   INTEGER NOT NULL,
         raw_json     TEXT
       )`,
-      `CREATE INDEX idx_albums_instance ON albums(instance_id)`,
+      `CREATE INDEX idx_albums_source ON albums(source_id)`,
       `CREATE INDEX idx_albums_year ON albums(year)`,
 
       `CREATE TABLE tracks (
         urn               TEXT PRIMARY KEY,
-        instance_id       TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
+        source_id         TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
         remote_id         TEXT NOT NULL,
         title             TEXT NOT NULL,
         sort_title        TEXT,
@@ -117,7 +143,7 @@ export const CORE_MIGRATIONS: Migration[] = [
         raw_json          TEXT
       )`,
       `CREATE INDEX idx_tracks_album ON tracks(album_urn, disc_no, track_no)`,
-      `CREATE INDEX idx_tracks_instance ON tracks(instance_id)`,
+      `CREATE INDEX idx_tracks_source ON tracks(source_id)`,
       `CREATE INDEX idx_tracks_title ON tracks(sort_title)`,
 
       // A join with a role, not an artist string: "Artist feat. Other" as free
@@ -212,7 +238,7 @@ export const CORE_MIGRATIONS: Migration[] = [
       /* ── Playlists and library ─────────────────────────────────────── */
       `CREATE TABLE playlists (
         urn              TEXT PRIMARY KEY,
-        instance_id      TEXT REFERENCES providers(instance_id) ON DELETE CASCADE,
+        source_id        TEXT REFERENCES sources(id) ON DELETE CASCADE,
         remote_id        TEXT,
         name             TEXT NOT NULL,
         description      TEXT,
@@ -245,7 +271,7 @@ export const CORE_MIGRATIONS: Migration[] = [
       `CREATE TABLE library_items (
         urn         TEXT PRIMARY KEY,
         kind        TEXT NOT NULL,
-        instance_id TEXT NOT NULL,
+        source_id   TEXT NOT NULL,
         added_at    INTEGER NOT NULL,
         pinned      INTEGER NOT NULL DEFAULT 0,
         sort_key    TEXT
@@ -409,7 +435,7 @@ export const CORE_MIGRATIONS: Migration[] = [
       /* ── Lyrics and cache ──────────────────────────────────────────── */
       `CREATE TABLE lyrics (
         track_urn    TEXT NOT NULL,
-        instance_id  TEXT NOT NULL,
+        source_id    TEXT NOT NULL,
         format       TEXT NOT NULL,
         content      TEXT NOT NULL,
         synced       INTEGER NOT NULL DEFAULT 0,
@@ -417,7 +443,7 @@ export const CORE_MIGRATIONS: Migration[] = [
         language     TEXT NOT NULL DEFAULT '',
         is_preferred INTEGER NOT NULL DEFAULT 0,
         fetched_at   INTEGER NOT NULL,
-        PRIMARY KEY (track_urn, instance_id, language)
+        PRIMARY KEY (track_urn, source_id, language)
       )`,
       // LRU within a class, each with its own quota: evicting artwork costs a
       // re-fetch, evicting a partial stream costs the user their place.

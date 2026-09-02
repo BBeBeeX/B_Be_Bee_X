@@ -13,85 +13,85 @@ import pluginLogBuffer from '@BBeBee/plugin-log-buffer'
 import pluginLogConsole from '@BBeBee/plugin-log-console'
 import pluginLogFile from '@BBeBee/plugin-log-file'
 import pluginPlayer from '@BBeBee/plugin-player'
-import pluginSourceHttpUrl from '@BBeBee/plugin-source-http-url'
 import pluginSourceLocal from '@BBeBee/plugin-source-local'
+import pluginSourceRuntime from '@BBeBee/plugin-source-runtime'
 import pluginSources from '@BBeBee/plugin-sources'
 import pluginUi from '@BBeBee/plugin-ui'
 
 export const bundled: PluginRegistry = {
   "@BBeBee/core-audio-webaudio": {
     plugin: coreAudioWebaudio,
-    manifest: {"id":"@BBeBee/core-audio-webaudio","version":"0.0.0","displayName":"Audio","description":"ctx.audio — the Web Audio graph, shared by every target.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["audio"]},"instantiable":false},
+    manifest: {"id":"@BBeBee/core-audio-webaudio","version":"0.0.0","displayName":"Audio","description":"ctx.audio — the Web Audio graph, shared by every target.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["audio"]}},
     builtin: true,
   },
   "@BBeBee/core-codec-node": {
     plugin: coreCodecNode,
-    manifest: {"id":"@BBeBee/core-codec-node","version":"0.0.0","displayName":"Codec","description":"ctx.codec — tags, artwork and PCM, over music-metadata.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:all"],"contributes":{"services":["codec"]},"instantiable":false},
+    manifest: {"id":"@BBeBee/core-codec-node","version":"0.0.0","displayName":"Codec","description":"ctx.codec — tags, artwork and PCM, over music-metadata.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:all"],"contributes":{"services":["codec"]}},
     builtin: true,
   },
   "@BBeBee/core-http-node": {
     plugin: coreHttpNode,
-    manifest: {"id":"@BBeBee/core-http-node","version":"0.0.0","displayName":"HTTP","description":"ctx.http — outbound HTTP, the M1 slice.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:write:downloads"],"contributes":{"services":["http"]},"instantiable":false},
+    manifest: {"id":"@BBeBee/core-http-node","version":"0.0.0","displayName":"HTTP","description":"ctx.http — outbound HTTP, the M1 slice.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:write:downloads"],"contributes":{"services":["http"]}},
     builtin: true,
   },
   "@BBeBee/plugin-hello": {
     plugin: pluginHello,
-    manifest: {"id":"@BBeBee/plugin-hello","version":"0.0.0","displayName":"Hello","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:own","secrets:own"],"instantiable":false},
+    manifest: {"id":"@BBeBee/plugin-hello","version":"0.0.0","displayName":"Hello","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:own","secrets:own"]},
     builtin: true,
   },
   "@BBeBee/plugin-hello-ui-mobile": {
     plugin: pluginHelloUi,
-    manifest: {"id":"@BBeBee/plugin-hello-ui-mobile","version":"0.0.0","displayName":"Hello (mobile views)","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"instantiable":false},
+    manifest: {"id":"@BBeBee/plugin-hello-ui-mobile","version":"0.0.0","displayName":"Hello (mobile views)","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-inspector": {
     plugin: pluginInspector,
-    manifest: {"id":"@BBeBee/plugin-inspector","version":"0.0.0","displayName":"Plugin Inspector","description":"Fiber tree and labelled effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[],"instantiable":false},
+    manifest: {"id":"@BBeBee/plugin-inspector","version":"0.0.0","displayName":"Plugin Inspector","description":"Fiber tree and labelled effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-local-scanner": {
     plugin: pluginLocalScanner,
-    manifest: {"id":"@BBeBee/plugin-local-scanner","version":"0.0.0","displayName":"Local Scanner","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:media","fs:read:all","db:read:core","db:write:core","background"],"contributes":{"services":["scanner"]},"instantiable":false},
+    manifest: {"id":"@BBeBee/plugin-local-scanner","version":"0.0.0","displayName":"Local Scanner","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:media","fs:read:all","db:read:core","db:write:core","background"],"contributes":{"services":["scanner"]}},
     builtin: true,
   },
   "@BBeBee/plugin-log-buffer": {
     plugin: pluginLogBuffer,
-    manifest: {"id":"@BBeBee/plugin-log-buffer","version":"0.0.0","displayName":"Log Buffer","description":"In-app log ring buffer.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"instantiable":false},
+    manifest: {"id":"@BBeBee/plugin-log-buffer","version":"0.0.0","displayName":"Log Buffer","description":"In-app log ring buffer.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-log-console": {
     plugin: pluginLogConsole,
-    manifest: {"id":"@BBeBee/plugin-log-console","version":"0.0.0","displayName":"Console Logs","description":"Development console transport.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"instantiable":false},
+    manifest: {"id":"@BBeBee/plugin-log-console","version":"0.0.0","displayName":"Console Logs","description":"Development console transport.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-log-file": {
     plugin: pluginLogFile,
-    manifest: {"id":"@BBeBee/plugin-log-file","version":"0.0.0","displayName":"Log File","description":"Rotating NDJSON log file.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:write:logs","fs:read:logs"],"instantiable":false},
+    manifest: {"id":"@BBeBee/plugin-log-file","version":"0.0.0","displayName":"Log File","description":"Rotating NDJSON log file.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:write:logs","fs:read:logs"]},
     builtin: true,
   },
   "@BBeBee/plugin-player": {
     plugin: pluginPlayer,
-    manifest: {"id":"@BBeBee/plugin-player","version":"0.0.0","displayName":"Player","description":"ctx.player — transport, queue, resolution, history.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio","mediaSession","background","db:read:core","db:write:core"],"contributes":{"services":["player"]},"instantiable":false},
-    builtin: true,
-  },
-  "@BBeBee/plugin-source-http-url": {
-    plugin: pluginSourceHttpUrl,
-    manifest: {"id":"@BBeBee/plugin-source-http-url","version":"0.0.0","displayName":"Web address","description":"plugin-source-http-url — a plain audio URL, as a MediaProvider.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*"],"contributes":{"services":["sourceHttpUrl"]},"instantiable":true},
+    manifest: {"id":"@BBeBee/plugin-player","version":"0.0.0","displayName":"Player","description":"ctx.player — transport, queue, resolution, history.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio","mediaSession","background","db:read:core","db:write:core"],"contributes":{"services":["player"]}},
     builtin: true,
   },
   "@BBeBee/plugin-source-local": {
     plugin: pluginSourceLocal,
-    manifest: {"id":"@BBeBee/plugin-source-local","version":"0.0.0","displayName":"This device","description":"plugin-source-local — the files on this device, as a MediaProvider.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:all","db:read:core","db:write:core"],"contributes":{"services":["sourceLocal"]},"instantiable":false},
+    manifest: {"id":"@BBeBee/plugin-source-local","version":"0.0.0","displayName":"This device","description":"plugin-source-local — the files on this device, as a MediaProvider.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:all","db:read:core","db:write:core"],"contributes":{"services":["sourceLocal"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-source-runtime": {
+    plugin: pluginSourceRuntime,
+    manifest: {"id":"@BBeBee/plugin-source-runtime","version":"0.0.0","displayName":"Music sources","description":"plugin-source-runtime — interprets imported source strings.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","db:read:core"],"contributes":{"slots":["settings.sources"]}},
     builtin: true,
   },
   "@BBeBee/plugin-sources": {
     plugin: pluginSources,
-    manifest: {"id":"@BBeBee/plugin-sources","version":"0.0.0","displayName":"Sources","description":"ctx.sources — provider registration, discovery, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["sources"]},"instantiable":false},
+    manifest: {"id":"@BBeBee/plugin-sources","version":"0.0.0","displayName":"Sources","description":"ctx.sources — imported source documents, the registry, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["sources"]}},
     builtin: true,
   },
   "@BBeBee/plugin-ui": {
     plugin: pluginUi,
-    manifest: {"id":"@BBeBee/plugin-ui","version":"0.0.0","displayName":"UI Registry","description":"The ctx.ui contribution registry.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"instantiable":false},
+    manifest: {"id":"@BBeBee/plugin-ui","version":"0.0.0","displayName":"UI Registry","description":"The ctx.ui contribution registry.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
 }

@@ -1058,13 +1058,13 @@ function delay(ms: number): Promise<void> {
 }
 
 /** The provider-local id inside a URN, without importing the parser twice. */
-function parseUrnId(urn: string): { instanceId: string; id: string } {
+function parseUrnId(urn: string): { sourceId: string; id: string } {
   const parts = urn.split(':')
-  return { instanceId: parts[1] ?? '', id: parts.slice(3).join(':') }
+  return { sourceId: parts[1] ?? '', id: parts.slice(3).join(':') }
 }
 
 function instanceOf(urn: string): string {
-  return parseUrnId(urn).instanceId
+  return parseUrnId(urn).sourceId
 }
 
 export const name = 'plugin-player'
