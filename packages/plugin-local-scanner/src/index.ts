@@ -86,6 +86,9 @@ export class Scanner extends Service implements ScannerService {
   private abort?: AbortController
   private watchers: Disposable[] = []
   private watchTimer?: ReturnType<typeof setTimeout>
+  private pollTimer?: ReturnType<typeof setTimeout>
+  /** Resolves the in-flight scan, so concurrent callers queue rather than race. */
+  private inFlight?: Promise<ScanSummary>
   private disposed = false
 
   constructor(ctx: Context, config: ScannerConfig = {}) {
@@ -108,6 +111,7 @@ export class Scanner extends Service implements ScannerService {
       this.disposed = true
       this.cancel()
       if (this.watchTimer) clearTimeout(this.watchTimer)
+      if (this.pollTimer) clearTimeout(this.pollTimer)
       for (const off of this.watchers) off()
       this.watchers = []
     }
@@ -179,7 +183,26 @@ export class Scanner extends Service implements ScannerService {
     this.abort?.abort()
   }
 
-  async scan(
+  /**
+   * Walk the roots.
+   *
+   * Serialised: a watch event, a poll and a manual scan can all arrive at
+   * once, and two concurrent walks would fight over `this.abort` — the second
+   * overwriting it, orphaning the first, which then keeps writing rows nobody
+   * can cancel. Callers that arrive during a scan get the one already running.
+   */
+  async scan(opts: { rootId?: string; full?: boolean; signal?: AbortSignal } = {}): Promise<ScanSummary> {
+    if (this.inFlight) return this.inFlight
+    const run = this.runScan(opts)
+    this.inFlight = run
+    try {
+      return await run
+    } finally {
+      this.inFlight = undefined
+    }
+  }
+
+  private async runScan(
     opts: { rootId?: string; full?: boolean; signal?: AbortSignal } = {},
   ): Promise<ScanSummary> {
     const summary: ScanSummary = { added: 0, updated: 0, removed: 0, errors: 0 }
@@ -432,9 +455,19 @@ export class Scanner extends Service implements ScannerService {
       return
     }
 
-    // ⚠️ React Native has no `fs.watch`, so the library goes stale between
-    // polls and the UI says so rather than implying live updates (docs/04 §1).
+    // ⚠️ React Native has no `fs.watch`, and neither does the desktop bridge,
+    // so the library goes stale between polls and the UI says so rather than
+    // implying live updates (docs/04 §1).
+    //
+    // `ctx.background` is preferred where it exists, because on mobile only
+    // the OS scheduler can run work while the app is away. But it is an
+    // *optional* service: when it is absent — which is every desktop build
+    // until `core-background-electron` lands — the scanner falls back to its
+    // own timer. Without that fallback there was no automatic rescan on
+    // desktop at all: files changed and the library silently stayed stale.
+    let scheduled = false
     this.ctx.inject(['background'], (scoped) => {
+      scheduled = true
       let cancelled = false
       void scoped.background
         .schedule('scanner:poll', this.config.pollIntervalMinutes, async () => {
@@ -443,7 +476,36 @@ export class Scanner extends Service implements ScannerService {
         .then((off) => this.watchers.push(off))
       return () => {
         cancelled = true
+        scheduled = false
       }
+    })
+
+    if (!scheduled) this.startSelfPoll()
+  }
+
+  /**
+   * The fallback timer.
+   *
+   * Deliberately a chained `setTimeout` rather than an interval: a scan that
+   * takes longer than the period must not have another queued behind it.
+   */
+  private startSelfPoll(): void {
+    // Floored in milliseconds rather than minutes: a misconfigured 0 must not
+    // become a busy loop, but a test may legitimately ask for a fast poll.
+    const period = Math.max(50, this.config.pollIntervalMinutes * 60_000)
+    const tick = () => {
+      this.pollTimer = setTimeout(() => {
+        void this.scan()
+          .catch(() => undefined)
+          .finally(() => {
+            if (!this.disposed) tick()
+          })
+      }, period)
+    }
+    tick()
+    this.watchers.push(() => {
+      if (this.pollTimer) clearTimeout(this.pollTimer)
+      this.pollTimer = undefined
     })
   }
 

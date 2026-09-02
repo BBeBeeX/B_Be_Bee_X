@@ -151,6 +151,13 @@ describe('catalogue reads', () => {
     expect(second.items[0]!.title).toBe('Xtal')
   })
 
+  it('falls back to a known sort rather than building invalid SQL', async () => {
+    // `sort` arrives from a UI and, later, from a smart-playlist rule tree.
+    const { sources } = await fixture()
+    const page = await sources.listTracks({ sort: 'nonsense' as never })
+    expect(page.items).toHaveLength(3)
+  })
+
   it('filters by provider instance', async () => {
     const { sources } = await fixture()
     expect((await sources.listTracks({ instanceIds: ['local'] })).items).toHaveLength(3)

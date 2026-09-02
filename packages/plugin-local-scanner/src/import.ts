@@ -54,7 +54,9 @@ export function sortKey(value: string | undefined): string | undefined {
 export function splitArtists(value: string | undefined): string[] {
   if (!value) return []
   return value
-    .split(/\s*[;/,]\s*|\s+(?:feat\.?|ft\.?|with)\s+/i)
+    // `/` only counts as a separator with whitespace around it: AC/DC is one
+    // band, "Simon / Garfunkel" is two.
+    .split(/\s*[;,]\s*|\s+\/\s+|\s+(?:feat\.?|ft\.?|with)\s+/i)
     .map((part) => part.trim())
     .filter(Boolean)
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
+import { scopeContext } from '@BBeBee/kernel'
+import { CapabilityError } from '@BBeBee/protocol'
 import { audioConformance } from '@BBeBee/protocol/conformance'
 import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
 import plugin, { AudioWebAudio } from './index.js'
@@ -113,6 +115,31 @@ describe('core-audio-webaudio', () => {
     expect(engine.closed, 'the audio context must be closed on unload').toBe(true)
     const problems = diffSnapshots(before, snapshotContext(ctx))
     expect(problems, problems?.join('; ')).toBeUndefined()
+  })
+})
+
+describe('the audio gate', () => {
+  it('refuses a plugin that was not granted `audio`', async () => {
+    // The flag capability means "may contribute nodes to the audio graph".
+    // Without a check it was a manifest string with no meaning.
+    const { ctx } = await harness()
+    const ungranted = scopeContext(ctx, {
+      pluginId: '@BBeBee/plugin-demo',
+      requested: ['db:own'] as never,
+    })
+    await expect(ungranted.audio.load('file:///x.flac', { strategy: 'buffer' })).rejects.toThrow(
+      CapabilityError,
+    )
+    expect(() => ungranted.audio.setVolume(0.5)).toThrow(/was not granted audio/)
+
+    const granted = scopeContext(ctx, {
+      pluginId: '@BBeBee/plugin-player',
+      requested: ['audio'] as never,
+    })
+    await expect(
+      granted.audio.load('file:///x.flac', { strategy: 'buffer' }),
+    ).resolves.toBeDefined()
+    expect(() => granted.audio.setVolume(0.5)).not.toThrow()
   })
 })
 

@@ -17,6 +17,7 @@
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
+import { assertHost } from '@BBeBee/kernel'
 import { NetworkError } from '@BBeBee/protocol'
 import type {
   Cookie,
@@ -32,6 +33,14 @@ export interface HttpNodeConfig {
   fetch?: typeof fetch
   /** Applied when a request does not set its own. */
   defaultTimeoutMs?: number
+  /**
+   * How long a download may go without receiving a byte.
+   *
+   * The request timeout covers headers only: a server that answers and then
+   * stops sending would otherwise hold the transfer open indefinitely, which
+   * on mobile means holding a wake lock indefinitely too.
+   */
+  stallTimeoutMs?: number
   /** Sent on every request unless overridden. */
   userAgent?: string
 }
@@ -47,6 +56,7 @@ export class HttpNode extends Service {
     this.config = {
       fetch: config.fetch ?? globalThis.fetch.bind(globalThis),
       defaultTimeoutMs: config.defaultTimeoutMs ?? 30_000,
+      stallTimeoutMs: config.stallTimeoutMs ?? 60_000,
       userAgent: config.userAgent ?? 'BBeBee/0.1',
     }
     this.cookies = new MemoryJars()
@@ -64,7 +74,16 @@ export class HttpNode extends Service {
    * from a cache, or retry it — without this service knowing any of those
    * exist.
    */
-  request(req: HttpRequest): Promise<HttpResponse> {
+  // `async` deliberately: a refused host must arrive as a *rejection* like
+  // every other failure, not as a synchronous throw that callers would have to
+  // wrap separately.
+  async request(req: HttpRequest): Promise<HttpResponse> {
+    // The `net:host/<glob>` gate, before anything else — including before the
+    // waterfall, so a listener cannot be used to launder a host the caller was
+    // never granted. Ungated callers (the kernel, core services, tests) pass
+    // through; a plugin is held to its manifest. Without this the grant was a
+    // manifest string with no meaning, exactly as `db:own` once was.
+    assertHost(this[Service.resolveConfig](), req.url)
     // The terminal takes no arguments: `next` is closed over the original
     // request, so a listener rewrites it by mutating `req` in place. The
     // object here is the one every listener saw (docs/07 §5).
@@ -118,11 +137,15 @@ export class HttpNode extends Service {
 
     try {
       for (;;) {
-        const { done, value } = await reader.read()
+        const { done, value } = await withStallTimeout(
+          reader.read(),
+          this.config.stallTimeoutMs,
+          req.url,
+        )
         if (done) break
         await writer.write(value)
         bytes += value.byteLength
-        req.onProgress?.(bytes, contentLengthOf(response, req.resumeFrom))
+        req.onProgress?.(bytes, contentLengthOf(response, append ? (req.resumeFrom ?? 0) : 0))
       }
       await writer.close()
     } catch (error) {
@@ -135,6 +158,11 @@ export class HttpNode extends Service {
   }
 
   private async send(req: HttpRequest): Promise<HttpResponse> {
+    // Re-checked after the waterfall: a listener may legitimately rewrite the
+    // URL (a redirect policy, a proxy), and the rewritten host must be granted
+    // too.
+    assertHost(this[Service.resolveConfig](), req.url)
+
     const controller = new AbortController()
     const timeoutMs = req.timeoutMs ?? this.config.defaultTimeoutMs
     const timer =
@@ -166,11 +194,36 @@ export class HttpNode extends Service {
   }
 }
 
-function contentLengthOf(response: HttpResponse, resumeFrom?: number): number | undefined {
+/**
+ * The expected total, given what the server actually did.
+ *
+ * `resumeFrom` is only part of the total when the server honoured the range
+ * (206). A server that ignored it sends the whole body with a 200, and adding
+ * the offset then reports a total larger than the file — a progress bar that
+ * never reaches the end.
+ */
+/** Reject if a chunk does not arrive in time, so a dead stream is an error. */
+async function withStallTimeout<T>(work: Promise<T>, ms: number, url: string): Promise<T> {
+  if (ms <= 0) return work
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const stalled = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new NetworkError(`download stalled for ${ms}ms: ${url}`)),
+      ms,
+    )
+  })
+  try {
+    return await Promise.race([work, stalled])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+function contentLengthOf(response: HttpResponse, alreadyHave: number): number | undefined {
   const raw = response.headers['content-length']
   if (!raw) return undefined
   const length = Number(raw)
-  return Number.isFinite(length) ? length + (resumeFrom ?? 0) : undefined
+  return Number.isFinite(length) ? length + alreadyHave : undefined
 }
 
 /** `Response` → the contract's shape, with progress if anyone asked. */
@@ -260,7 +313,12 @@ class MemoryJar implements CookieJar {
     // Expired cookies are dropped rather than replayed, which otherwise
     // produces a confusing "logged in but every request fails" state.
     this.cookies = this.cookies.filter((c) => !c.expiresAt || c.expiresAt > now)
-    return this.cookies.filter((c) => host.endsWith(c.domain.replace(/^\./, '')))
+    // A bare `endsWith` sends example.com's cookie to evilexample.com. The
+    // boundary is a dot, or an exact match — RFC 6265 §5.1.3.
+    return this.cookies.filter((c) => {
+      const domain = c.domain.replace(/^\./, '').toLowerCase()
+      return host === domain || host.endsWith(`.${domain}`)
+    })
   }
 
   async set(cookies: Cookie[]): Promise<void> {

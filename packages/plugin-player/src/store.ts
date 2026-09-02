@@ -56,8 +56,11 @@ export class PlayerStore {
         trackUrn: row.track_urn,
         addedBy: row.added_by as QueueItem['addedBy'],
         addedAt: row.added_at,
-        ...(row.source_context_json
-          ? { sourceContext: JSON.parse(row.source_context_json) as QueueItem['sourceContext'] }
+        // A malformed `source_context_json` costs its own "playing from" line,
+        // not the whole queue: an exception here would fail Player init and
+        // leave the user with no player at all.
+        ...(parseContext(row.source_context_json)
+          ? { sourceContext: parseContext(row.source_context_json) }
           : {}),
       },
     }))
@@ -233,6 +236,15 @@ export class PlayerStore {
       // rather than handed over to fail silently (docs/04 §7).
       ...(row.artwork_uri ? { artworkUri: row.artwork_uri } : {}),
     }
+  }
+}
+
+function parseContext(raw: string | null): QueueItem['sourceContext'] | undefined {
+  if (!raw) return undefined
+  try {
+    return JSON.parse(raw) as QueueItem['sourceContext']
+  } catch {
+    return undefined
   }
 }
 

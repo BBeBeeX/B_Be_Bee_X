@@ -165,7 +165,10 @@ export class Catalog {
   async listTracks(query: CatalogQuery = {}): Promise<Paged<Track>> {
     const limit = limitOf(query)
     const offset = offsetOf(query.page?.cursor)
-    const order = TRACK_ORDER[query.sort ?? 'title']
+    // `?? title` on the *lookup*, not just the key: `sort` arrives from a UI,
+    // and later from a smart-playlist rule tree, so an unrecognised value must
+    // fall back rather than interpolate `undefined` into the statement.
+    const order = TRACK_ORDER[query.sort ?? 'title'] ?? TRACK_ORDER.title
     const direction = query.desc ? 'DESC' : 'ASC'
     const filter = instanceFilter('t', query.instanceIds)
 
@@ -347,9 +350,14 @@ export class Catalog {
    */
   async index(urns: string[]): Promise<void> {
     if (urns.length === 0) return
+    // One transaction for the batch: four statements per track, and a crash
+    // between them would leave the index disagreeing with the catalogue.
+    await this.db.transaction(async (tx) => this.indexWithin(tx, urns))
+  }
 
+  private async indexWithin(tx: DbService, urns: string[]): Promise<void> {
     for (const urn of urns) {
-      const track = await this.db.get<{
+      const track = await tx.get<{
         urn: string
         title: string
         album_title: string | null
@@ -365,7 +373,7 @@ export class Catalog {
         [urn],
       )
 
-      const mapped = await this.db.get<{ rowid: number }>(
+      const mapped = await tx.get<{ rowid: number }>(
         'SELECT rowid FROM tracks_fts_map WHERE urn = ?',
         [urn],
       )
@@ -374,21 +382,21 @@ export class Catalog {
         // The row is gone: drop its index entry rather than leaving a hit that
         // resolves to nothing.
         if (mapped) {
-          await this.db.exec('DELETE FROM tracks_fts WHERE rowid = ?', [mapped.rowid])
-          await this.db.exec('DELETE FROM tracks_fts_map WHERE rowid = ?', [mapped.rowid])
+          await tx.exec('DELETE FROM tracks_fts WHERE rowid = ?', [mapped.rowid])
+          await tx.exec('DELETE FROM tracks_fts_map WHERE rowid = ?', [mapped.rowid])
         }
         continue
       }
 
       let rowid = mapped?.rowid
       if (rowid === undefined) {
-        const inserted = await this.db.exec('INSERT INTO tracks_fts_map (urn) VALUES (?)', [urn])
+        const inserted = await tx.exec('INSERT INTO tracks_fts_map (urn) VALUES (?)', [urn])
         rowid = inserted.lastInsertRowid
       } else {
-        await this.db.exec('DELETE FROM tracks_fts WHERE rowid = ?', [rowid])
+        await tx.exec('DELETE FROM tracks_fts WHERE rowid = ?', [rowid])
       }
 
-      await this.db.exec(
+      await tx.exec(
         'INSERT INTO tracks_fts (rowid, title, artist_names, album_title) VALUES (?, ?, ?, ?)',
         [rowid, track.title, track.artist_names ?? '', track.album_title ?? ''],
       )

@@ -20,6 +20,7 @@
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
+import { assertGranted } from '@BBeBee/kernel'
 import type {
   AudioService,
   AudioSourceHandle,
@@ -276,7 +277,16 @@ export class AudioWebAudio extends Service implements AudioService {
   }
 
   async load(src: string | Uri, opts: LoadOptions): Promise<AudioSourceHandle> {
+    // `audio` is a flag capability: holding it means "may contribute nodes to
+    // the audio graph" (docs/03 §7). Gated here rather than on `chainInput`
+    // because this is where a caller actually acquires a node.
+    this.gate()
     return opts.strategy === 'buffer' ? this.loadBuffered(src, opts) : this.loadStreamed(src, opts)
+  }
+
+  /** Ungated callers pass through; a plugin is held to its manifest. */
+  private gate(): void {
+    assertGranted(this[Service.resolveConfig](), 'audio')
   }
 
   private async loadBuffered(src: string, opts: LoadOptions): Promise<AudioSourceHandle> {
@@ -323,6 +333,7 @@ export class AudioWebAudio extends Service implements AudioService {
   }
 
   setVolume(v: number): void {
+    this.gate()
     const clamped = Math.max(0, Math.min(1, v))
     if (this.mutedAt !== undefined) {
       // Remember the level so unmuting restores it rather than jumping to 1.
@@ -333,6 +344,7 @@ export class AudioWebAudio extends Service implements AudioService {
   }
 
   setMuted(m: boolean): void {
+    this.gate()
     if (m) {
       if (this.mutedAt !== undefined) return
       this.mutedAt = this.master.gain.value
@@ -366,6 +378,7 @@ export class AudioWebAudio extends Service implements AudioService {
   }
 
   async setOutputDevice(id: string): Promise<void> {
+    this.gate()
     const sink = (this.context as BaseAudioContext & { setSinkId?: (id: string) => Promise<void> })
       .setSinkId
     if (!sink) {

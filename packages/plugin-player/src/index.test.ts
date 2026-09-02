@@ -319,6 +319,19 @@ describe('persistence', () => {
     expect(second.audio.playing?.positionMs).toBe(42_000)
   })
 
+  it('survives a corrupted queue row instead of failing to start', async () => {
+    // One bad `source_context_json` used to throw inside Player init, leaving
+    // the user with no player at all.
+    const first = await harness()
+    await first.player.playNow([urn('a'), urn('b')])
+    await tick()
+    await first.db.exec("UPDATE queue_items SET source_context_json = '{oops' WHERE 1 = 1")
+
+    const second = await first.restart()
+    expect(second.player.queue).toHaveLength(2)
+    expect(second.player.queue[0]!.sourceContext, 'the bad field is dropped').toBeUndefined()
+  })
+
   it('writes a play record and its derived stats together', async () => {
     const { player, audio, db } = await harness()
     await player.playNow([urn('a'), urn('b')])
@@ -481,6 +494,131 @@ describe('errors', () => {
   })
 })
 
+describe('failure loops and races', () => {
+  it('gives up after a run of failures instead of skipping forever', async () => {
+    // Under repeat-all the queue never runs out, so a queue where every track
+    // fails used to skip for ever: an event storm, a write per track, and a UI
+    // stuck on "skipping" until the battery went.
+    const provider = localProvider({
+      resolveStream: async () => {
+        throw new NotFoundError('gone', INSTANCE)
+      },
+    })
+    const { player, ctx } = await harness({ provider, config: { maxSkipStreak: 4 } })
+    let errors = 0
+    ctx.on('player/error', () => void errors++)
+
+    // Repeat first: it is the wrap that makes the queue infinite.
+    player.setRepeat('all')
+    await player.playNow([urn('a'), urn('b'), urn('c')])
+    await tick()
+
+    expect(player.state.status).toBe('error')
+    expect(errors, 'bounded, not unbounded').toBeLessThanOrEqual(6)
+    expect(player.queue, 'and the queue survives').toHaveLength(3)
+  })
+
+  it('resets the failure count once a track starts', async () => {
+    let attempt = 0
+    const provider = localProvider({
+      resolveStream: async (id: string) => {
+        attempt++
+        if (id === 'a') throw new NotFoundError('gone', INSTANCE)
+        return { kind: 'local', target: `file:///music/${id}.flac`, seekable: true } as StreamHandle
+      },
+    })
+    const { player } = await harness({ provider, config: { maxSkipStreak: 2 } })
+    await player.playNow([urn('a'), urn('b')])
+    await tick()
+
+    expect(player.state.trackUrn).toBe(urn('b'))
+    expect(player.state.status).toBe('playing')
+    expect(attempt).toBe(2)
+  })
+
+  it('honours a pause that lands while a track is still loading', async () => {
+    // Press play, press pause immediately: the load finishes later and used to
+    // start playing anyway, because `attach` acted on the flag captured when
+    // the load began.
+    let release: (() => void) | undefined
+    const provider = localProvider({
+      resolveStream: async (id: string) => {
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return { kind: 'local', target: `file:///music/${id}.flac`, seekable: true } as StreamHandle
+      },
+    })
+    const { player } = await harness({ provider })
+
+    const started = player.playNow([urn('a')])
+    await tick()
+    player.pause()
+    release?.()
+    await started
+    await tick()
+
+    expect(player.state.status, 'the user asked for paused').toBe('paused')
+  })
+
+  it('honours a stop that lands while a track is still loading', async () => {
+    let release: (() => void) | undefined
+    const provider = localProvider({
+      resolveStream: async (id: string) => {
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return { kind: 'local', target: `file:///music/${id}.flac`, seekable: true } as StreamHandle
+      },
+    })
+    const { player, audio } = await harness({ provider })
+
+    const started = player.playNow([urn('a')])
+    await tick()
+    player.stop()
+    release?.()
+    await started
+    await tick()
+
+    expect(player.state.status).toBe('idle')
+    expect(audio.playing, 'nothing may be sounding after a stop').toBeUndefined()
+  })
+})
+
+describe('memory', () => {
+  it('streams a local file too large to decode', async () => {
+    // Decoded PCM is roughly ten times the file: a two-hour FLAC is ~2.5 GB,
+    // and the phone kills the app rather than the track.
+    const provider = localProvider({
+      resolveStream: async (id: string) =>
+        ({
+          kind: 'local',
+          target: `file:///music/${id}.flac`,
+          seekable: true,
+          byteLength: 900 * 1024 * 1024,
+        }) as StreamHandle,
+    })
+    const { player, audio } = await harness({ provider })
+    await player.playNow([urn('long')])
+    expect(audio.loads[0]!.opts.strategy).toBe('stream')
+  })
+
+  it('still buffers an ordinary local file', async () => {
+    const provider = localProvider({
+      resolveStream: async (id: string) =>
+        ({
+          kind: 'local',
+          target: `file:///music/${id}.flac`,
+          seekable: true,
+          byteLength: 40 * 1024 * 1024,
+        }) as StreamHandle,
+    })
+    const { player, audio } = await harness({ provider })
+    await player.playNow([urn('album-track')])
+    expect(audio.loads[0]!.opts.strategy).toBe('buffer')
+  })
+})
+
 describe('prefetch', () => {
   it('decodes the next track before the current one ends', async () => {
     const { player, audio } = await harness()
@@ -528,6 +666,35 @@ describe('prefetch', () => {
     await player.refresh()
     await tick()
     expect(audio.loads).toHaveLength(1)
+  })
+})
+
+describe('crossfade', () => {
+  it('keeps the outgoing source alive for the length of its fade', async () => {
+    // Disposing it at the swap stops it instantly, so the ramp never sounds
+    // and a "crossfade" is only ever a fade-in.
+    const { ctx, player, audio } = await harness({
+      config: { transition: 'crossfade', crossfadeMs: 200 },
+    })
+    audio.setDuration(20_000)
+    const changed: (string | undefined)[] = []
+    ctx.on('player/track-changed', (u) => void changed.push(u))
+    await player.playNow([urn('a'), urn('b')])
+    const outgoing = audio.sources[0]!
+
+    audio.advance(15_000)
+    await player.refresh()
+    await tick()
+    audio.advance(4900)
+    await player.refresh()
+    await tick()
+
+    expect(player.state.trackUrn, 'the next track has taken over').toBe(urn('b'))
+    expect(outgoing.disposed, 'and the old one is still fading, not stopped').toBe(false)
+    expect(changed.at(-1), 'a crossfade is a track change like any other').toBe(urn('b'))
+
+    await new Promise((resolve) => setTimeout(resolve, 260))
+    expect(outgoing.disposed, 'disposed once the fade is done').toBe(true)
   })
 })
 

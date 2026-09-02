@@ -540,6 +540,20 @@ Each mediated core service reads its interception config and refuses out-of-scop
 a `CapabilityError`. Because services are reached through Cordis's proxy, a plugin cannot obtain
 an unscoped reference by walking the object graph from the one it was given.
 
+**A grant is only real where a service checks it.** `db:own` was a manifest string with no meaning
+until `ctx.db` called the gate, and `net:host/…` was the same until `ctx.http` did. Where a
+service does not exist yet, neither does its enforcement — and the install prompt would be
+promising something nothing keeps. Current state, so the gap is visible rather than assumed:
+
+| Capability | Enforced by | Status |
+|---|---|---|
+| `fs:read:<scope>` / `fs:write:<scope>` | `core-fs-node`, `core-fs-expo`, the bridge host | ✅ |
+| `db:own`, `db:read:<ns>`, `db:write:<ns>`, `db:*:<ns>` | `core-db-node`, `core-db-expo`, the bridge host | ✅ |
+| `net:host/<glob>` | `core-http-node`, before *and* after the `http/request` waterfall, so a listener cannot launder a host | ✅ |
+| `audio` | `core-audio-webaudio` on `load` and the mutators | ✅ |
+| `mediaSession`, `background`, `notify`, `shell` | — | ⏳ The services do not exist yet; the grant is declarative until they do |
+| `secrets:own` | — | ⏳ M2, with `ctx.secrets` |
+
 ### The gate fails closed
 
 A plugin's manifest is a *request*, never an authorisation. The loader trusts a manifest only for

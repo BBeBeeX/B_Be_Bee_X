@@ -149,23 +149,25 @@ export class SourceLocal extends Service {
   /* ── the required core ─────────────────────────────────────────────── */
 
   async getTrack(id: string): Promise<Track> {
-    const page = await this.ctx.sources.listTracks({ instanceIds: [this.instanceId] })
-    const found = page.items.find((track) => track.urn === this.urn('track', id))
-    if (found) return found
-
-    // The list is paged, so fall back to a direct read for a track beyond it.
+    // Straight to the row. An earlier version listed the first page of the
+    // whole catalogue — credits hydration and all — and only fell back to this
+    // when the track was not in it: two queries and a wasted page for every
+    // lookup, on the path the player calls per track.
     const track = await this.trackByUrn(this.urn('track', id))
     if (!track) throw new NotFoundError(`no local track ${id}`, this.instanceId)
     return track
   }
 
+  /**
+   * Batched, which is the whole reason the SPI has this member: the fallback
+   * `ids.map(getTrack)` is N round trips, and a queue restore asks for the
+   * whole queue at once.
+   */
   async getTracks(ids: string[]): Promise<Track[]> {
-    const tracks: Track[] = []
-    for (const id of ids) {
-      const track = await this.trackByUrn(this.urn('track', id))
-      if (track) tracks.push(track)
-    }
-    return tracks
+    if (ids.length === 0) return []
+    const urns = ids.map((id) => this.urn('track', id))
+    const byUrn = await this.tracksByUrn(urns)
+    return urns.map((urn) => byUrn.get(urn)).filter((t): t is Track => t !== undefined)
   }
 
   /**
@@ -267,23 +269,36 @@ export class SourceLocal extends Service {
     }
 
     const items: BrowseEntry[] = []
+    const files = listing.filter((entry) => !entry.isDirectory)
+
+    // Two queries for the whole folder rather than two per file. A directory
+    // of 300 tracks was 600 round trips.
+    const urnByUri = new Map<string, string>()
+    if (files.length > 0) {
+      const holes = files.map(() => '?').join(', ')
+      const rows = await this.ctx.db.query<{ uri: string; track_urn: string | null }>(
+        `SELECT uri, track_urn FROM scan_entries
+          WHERE status = 'ok' AND track_urn IS NOT NULL AND uri IN (${holes})`,
+        files.map((f) => f.uri),
+      )
+      for (const row of rows) if (row.track_urn) urnByUri.set(row.uri, row.track_urn)
+    }
+    const tracks = await this.tracksByUrn([...urnByUri.values()])
+
     for (const entry of listing) {
       if (entry.isDirectory) {
         items.push({ id: entry.uri, title: entry.name, kind: 'folder' })
         continue
       }
-      const row = await this.ctx.db.get<{ track_urn: string | null }>(
-        "SELECT track_urn FROM scan_entries WHERE uri = ? AND status = 'ok'",
-        [entry.uri],
-      )
-      if (!row?.track_urn) continue
-      const track = await this.trackByUrn(row.track_urn)
+      const trackUrn = urnByUri.get(entry.uri)
+      if (!trackUrn) continue
+      const track = tracks.get(trackUrn)
       items.push({
         id: entry.uri,
         title: track?.title ?? entry.name,
         ...(track?.artists[0]?.name ? { subtitle: track.artists[0].name } : {}),
         kind: 'track',
-        urn: row.track_urn,
+        urn: trackUrn,
       })
     }
 
@@ -352,9 +367,17 @@ export class SourceLocal extends Service {
   }
 
   private async trackByUrn(urn: string): Promise<Track | undefined> {
-    const parsed = tryParseUrn(urn)
-    if (!parsed || parsed.instanceId !== this.instanceId) return undefined
-    const row = await this.ctx.db.get<{
+    return (await this.tracksByUrn([urn])).get(urn)
+  }
+
+  /** Two queries for any number of tracks: the rows, then all their credits. */
+  private async tracksByUrn(urns: string[]): Promise<Map<string, Track>> {
+    const mine = urns.filter((urn) => tryParseUrn(urn)?.instanceId === this.instanceId)
+    const out = new Map<string, Track>()
+    if (mine.length === 0) return out
+
+    const holes = mine.map(() => '?').join(', ')
+    const rows = await this.ctx.db.query<{
       urn: string
       title: string
       album_urn: string | null
@@ -368,35 +391,46 @@ export class SourceLocal extends Service {
       `SELECT t.urn, t.title, t.album_urn, al.title AS album_title, t.track_no, t.disc_no,
               t.duration_ms, t.year, t.available
          FROM tracks t LEFT JOIN albums al ON al.urn = t.album_urn
-        WHERE t.urn = ?`,
-      [urn],
+        WHERE t.urn IN (${holes})`,
+      mine,
     )
-    if (!row) return undefined
+    if (rows.length === 0) return out
 
-    const artists = await this.ctx.db.query<{ urn: string; name: string; ordinal: number }>(
-      `SELECT a.urn, a.name, ta.ordinal FROM track_artists ta
+    const credits = await this.ctx.db.query<{
+      track_urn: string
+      urn: string
+      name: string
+      ordinal: number
+    }>(
+      `SELECT ta.track_urn, a.urn, a.name, ta.ordinal FROM track_artists ta
          JOIN artists a ON a.urn = ta.artist_urn
-        WHERE ta.track_urn = ? ORDER BY ta.ordinal`,
-      [urn],
+        WHERE ta.track_urn IN (${rows.map(() => '?').join(', ')})
+        ORDER BY ta.ordinal`,
+      rows.map((r) => r.urn),
     )
 
-    return {
-      urn: row.urn,
-      title: row.title,
-      artists: artists.map((a) => ({
-        urn: a.urn,
-        name: a.name,
-        role: 'main' as const,
-        ordinal: a.ordinal,
-      })),
-      ...(row.album_urn ? { albumUrn: row.album_urn } : {}),
-      ...(row.album_title ? { albumTitle: row.album_title } : {}),
-      ...(row.track_no !== null ? { trackNo: row.track_no } : {}),
-      ...(row.disc_no !== null ? { discNo: row.disc_no } : {}),
-      ...(row.duration_ms !== null ? { durationMs: row.duration_ms } : {}),
-      ...(row.year !== null ? { year: row.year } : {}),
-      available: row.available === 1,
+    const byTrack = new Map<string, Track['artists']>()
+    for (const credit of credits) {
+      const list = byTrack.get(credit.track_urn) ?? []
+      list.push({ urn: credit.urn, name: credit.name, role: 'main', ordinal: credit.ordinal })
+      byTrack.set(credit.track_urn, list)
     }
+
+    for (const row of rows) {
+      out.set(row.urn, {
+        urn: row.urn,
+        title: row.title,
+        artists: byTrack.get(row.urn) ?? [],
+        ...(row.album_urn ? { albumUrn: row.album_urn } : {}),
+        ...(row.album_title ? { albumTitle: row.album_title } : {}),
+        ...(row.track_no !== null ? { trackNo: row.track_no } : {}),
+        ...(row.disc_no !== null ? { discNo: row.disc_no } : {}),
+        ...(row.duration_ms !== null ? { durationMs: row.duration_ms } : {}),
+        ...(row.year !== null ? { year: row.year } : {}),
+        available: row.available === 1,
+      })
+    }
+    return out
   }
 }
 

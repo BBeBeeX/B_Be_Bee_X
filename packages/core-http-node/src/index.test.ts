@@ -13,6 +13,8 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
+import { scopeContext } from '@BBeBee/kernel'
+import { CapabilityError } from '@BBeBee/protocol'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
@@ -175,6 +177,56 @@ describe('requests', () => {
   })
 })
 
+describe('the net:host gate', () => {
+  it('refuses a host the plugin was not granted', async () => {
+    // `net:host/<glob>` was a manifest string with no enforcement — the same
+    // shape `db:own` once had. A plugin holding ctx.http could reach anything,
+    // including intranet and cloud-metadata addresses (docs/03 §7).
+    const { ctx } = await harness()
+    const scoped = scopeContext(ctx, {
+      pluginId: '@BBeBee/plugin-demo',
+      requested: ['net:host/*.example.org'] as never,
+    })
+
+    await expect(scoped.http({ url: `${origin}/json` })).rejects.toThrow(CapabilityError)
+    await expect(scoped.http.get(`${origin}/json`)).rejects.toThrow(/may not reach/)
+    await expect(
+      scoped.http.download({ url: `${origin}/bytes`, to: 'file:///tmp/x' }),
+    ).rejects.toThrow(CapabilityError)
+  })
+
+  it('allows a granted host', async () => {
+    const { ctx } = await harness()
+    const scoped = scopeContext(ctx, {
+      pluginId: '@BBeBee/plugin-demo',
+      requested: ['net:host/127.0.0.1'] as never,
+    })
+    await expect(scoped.http({ url: `${origin}/json` })).resolves.toMatchObject({ status: 200 })
+  })
+
+  it('cannot be laundered by a waterfall listener rewriting the url', async () => {
+    // The gate runs before the waterfall *and* after it, so a listener cannot
+    // be used as a redirect to somewhere the caller was never granted.
+    const { ctx } = await harness()
+    ctx.on('http/request', ((req: { url: string }, next: () => unknown) => {
+      req.url = 'http://169.254.169.254/latest/meta-data/'
+      return next()
+    }) as never)
+
+    const scoped = scopeContext(ctx, {
+      pluginId: '@BBeBee/plugin-demo',
+      requested: ['net:host/127.0.0.1'] as never,
+    })
+    await expect(scoped.http({ url: `${origin}/json` })).rejects.toThrow(/may not reach/)
+  })
+
+  it('leaves ungated callers alone', async () => {
+    // The kernel, core services and tests are trusted; only plugins are gated.
+    const { ctx } = await harness()
+    await expect(ctx.http({ url: `${origin}/json` })).resolves.toMatchObject({ status: 200 })
+  })
+})
+
 describe('the http/request waterfall', () => {
   it('lets a listener rewrite the request', async () => {
     // Where M2's auth injection, retry and rate limiting hook in.
@@ -258,6 +310,27 @@ describe('cookies', () => {
 
     await home.clear()
     expect(await home.all()).toEqual([])
+  })
+
+  it('does not hand example.com cookies to evilexample.com', async () => {
+    // `host.endsWith(domain)` has no boundary: the attacker registers a domain
+    // that ends with yours. RFC 6265 §5.1.3 wants a dot or an exact match.
+    const { ctx } = await harness()
+    const jar = ctx.http.cookies.jar('site')
+    await jar.set([
+      {
+        name: 'session',
+        value: 'secret',
+        domain: 'example.com',
+        path: '/',
+        secure: true,
+        httpOnly: true,
+      },
+    ])
+
+    expect(await jar.get('https://example.com/')).toHaveLength(1)
+    expect(await jar.get('https://api.example.com/')).toHaveLength(1)
+    expect(await jar.get('https://evilexample.com/'), 'not a subdomain').toHaveLength(0)
   })
 })
 

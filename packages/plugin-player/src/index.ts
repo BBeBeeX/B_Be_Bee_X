@@ -49,6 +49,17 @@ export interface PlayerConfig {
   saveThrottleMs?: number
   /** Base delay for the network-error backoff. */
   retryBackoffMs?: number
+  /**
+   * How much of a local file may be decoded into memory.
+   *
+   * Buffered playback holds *decoded PCM*: a two-hour FLAC is ~2.5 GB at
+   * 44.1 kHz stereo, which the phone kills the app for. Past this budget the
+   * track streams instead, losing gapless for that one track rather than the
+   * process.
+   */
+  bufferMaxBytes?: number
+  /** Consecutive failed tracks before the player stops trying. */
+  maxSkipStreak?: number
   /** Which device wrote `playback_state`, for future sync. */
   deviceId?: string
 }
@@ -60,6 +71,9 @@ const DEFAULTS = {
   tickMs: 1000,
   saveThrottleMs: 5000,
   retryBackoffMs: 500,
+  // ~150 MB of source bytes; comfortably a long album, not an audiobook.
+  bufferMaxBytes: 150 * 1024 * 1024,
+  maxSkipStreak: 10,
 }
 
 /** Prefetch starts here, per docs/05 §2. */
@@ -117,6 +131,19 @@ export class Player extends Service implements PlayerService {
   /** Set when *we* paused for an interruption, cleared by any user action. */
   private pausedByInterruption = false
   private attempts = 0
+  /**
+   * What the *user* last asked for.
+   *
+   * Resolving and decoding are async, so "press play, immediately pause" would
+   * otherwise finish loading and start playing anyway: `attach` acted on the
+   * autoplay flag captured when the load began, not on what was wanted by the
+   * time it finished.
+   */
+  private playIntent = false
+  /** Consecutive tracks that failed to start. Reset by any success. */
+  private skipStreak = 0
+  /** The outgoing source of a crossfade, kept alive until its fade finishes. */
+  private fading?: { handle: AudioSourceHandle; timer: ReturnType<typeof setTimeout> }
   private disposed = false
 
   constructor(ctx: Context, config: PlayerConfig = {}) {
@@ -212,6 +239,7 @@ export class Player extends Service implements PlayerService {
       offInterruption()
       offRoute()
       this.cancelPrefetch()
+      this.clearFading()
       await this.finishPlay({ completed: false, skipped: false })
       this.detachSource()
       await this.persist(true).catch(() => undefined)
@@ -241,6 +269,7 @@ export class Player extends Service implements PlayerService {
 
   async play(): Promise<void> {
     this.pausedByInterruption = false
+    this.playIntent = true
     if (this.transport.status === 'playing') return
 
     const current = this.transport.currentItemId
@@ -259,6 +288,9 @@ export class Player extends Service implements PlayerService {
 
   pause(): void {
     this.pausedByInterruption = false
+    // Recorded before the early return: a pause during `loading` must still be
+    // honoured when the in-flight load lands.
+    this.playIntent = false
     if (!this.source || this.transport.status !== 'playing') {
       if (this.transport.status === 'loading') this.set({ status: 'paused' })
       return
@@ -276,10 +308,19 @@ export class Player extends Service implements PlayerService {
 
   stop(): void {
     this.pausedByInterruption = false
+    this.playIntent = false
     void this.finishPlay({ completed: false, skipped: false })
     this.cancelPrefetch()
     this.detachSource()
-    this.set({ status: 'idle', positionMs: 0, durationMs: 0 })
+    // `currentItemId` is cleared too, so a load still in flight recognises
+    // that it is no longer wanted rather than matching its own guard.
+    this.set({
+      status: 'idle',
+      currentItemId: undefined,
+      trackUrn: undefined,
+      positionMs: 0,
+      durationMs: 0,
+    })
     this.mediaCtx?.mediaSession.clear()
     void this.persist(true)
   }
@@ -365,6 +406,7 @@ export class Player extends Service implements PlayerService {
     await this.store.replaceQueue(this.model.all)
     this.emitQueueChanged()
 
+    this.playIntent = true
     const startAt = Math.max(0, Math.min(items.length - 1, opts.startIndex ?? 0))
     const entry = this.model.entry(this.model.order()[startAt]!)
     if (entry) await this.start(entry, { autoplay: true })
@@ -506,12 +548,17 @@ export class Player extends Service implements PlayerService {
     source.node.connect(this.ctx.audio.chainInput)
     this.sourceEnded = source.onEnded(() => void this.onEnded())
 
+    // A track that started is a track that worked.
+    this.skipStreak = 0
+
     const positionMs = opts.positionMs ?? 0
-    if (opts.autoplay) {
+    if (opts.autoplay && this.playIntent) {
       source.play(positionMs)
       this.set({ status: 'playing', durationMs: source.durationMs, positionMs })
       this.beginPlay(entry, positionMs)
     } else {
+      // Either this was a deliberate load-without-play, or the user paused or
+      // stopped while the load was in flight. Their intent wins.
       this.set({ status: 'paused', durationMs: source.durationMs, positionMs })
     }
     this.publishNowPlaying()
@@ -519,14 +566,27 @@ export class Player extends Service implements PlayerService {
   }
 
   private async load(handle: StreamHandle): Promise<AudioSourceHandle> {
-    // Local files decode fully: constant, small, and the only way to hand off
-    // gaplessly. Remote streams keep memory flat instead.
-    const strategy = handle.kind === 'local' ? 'buffer' : 'stream'
     return this.ctx.audio.load(handle.target, {
-      strategy,
+      strategy: this.strategyFor(handle),
       ...(handle.headers ? { headers: handle.headers } : {}),
       onBuffered: (seconds) => this.set({ bufferedMs: Math.round(seconds * 1000) }),
     })
+  }
+
+  /**
+   * Buffered or streamed.
+   *
+   * Local files decode fully — that is what makes a gapless handoff possible —
+   * but only within a budget: decoded PCM is roughly ten times the file, so an
+   * unbounded rule turns a long audiobook into a 2.5 GB allocation and an
+   * out-of-memory kill on a phone. Past the budget the track streams and loses
+   * gapless, which is the right thing to lose.
+   */
+  private strategyFor(handle: StreamHandle): 'buffer' | 'stream' {
+    if (handle.kind !== 'local') return 'stream'
+    const bytes = handle.byteLength
+    if (bytes !== undefined && bytes > this.config.bufferMaxBytes) return 'stream'
+    return 'buffer'
   }
 
   /**
@@ -617,6 +677,9 @@ export class Player extends Service implements PlayerService {
       const handle = await this.resolveStream(next.item.trackUrn)
       if (abort.signal.aborted) return
       // Buffered, because a handoff with no gap cannot wait on a network read.
+      // A track too large to buffer is simply not prefetched: it will stream
+      // when its turn comes, and gapless was never available for it anyway.
+      if (this.strategyFor(handle) !== 'buffer') return
       const source = await this.ctx.audio.load(handle.target, {
         strategy: 'buffer',
         ...(handle.headers ? { headers: handle.headers } : {}),
@@ -657,9 +720,47 @@ export class Player extends Service implements PlayerService {
     ramp(incoming.node, 0, 1, seconds, this.ctx.audio.context.currentTime)
 
     await this.finishPlay({ completed: true, skipped: false })
-    this.detachSource()
+
+    // The outgoing source is kept alive for the length of its fade. Disposing
+    // it here — as `detachSource` would — stops it instantly, so the ramp
+    // never sounds and a "crossfade" is only ever a fade-in.
+    this.sourceEnded?.()
+    this.sourceEnded = undefined
+    this.source = undefined
+    if (outgoing) this.fadeOut(outgoing, this.config.crossfadeMs)
+
+    // The identity moves with the audio. `attach` only wires a source; the
+    // track a crossfade hands over to is a *track change*, and without this
+    // the transport, the lock screen, the history and `next()` all went on
+    // believing the previous track was still playing.
+    const previousUrn = this.transport.trackUrn
+    this.set({
+      currentItemId: next.item.id,
+      trackUrn: next.item.trackUrn,
+      positionMs: 0,
+      bufferedMs: 0,
+      error: undefined,
+    })
+    this.ctx.emit('player/track-changed', next.item.trackUrn, previousUrn)
+
     this.attach(incoming, next, { autoplay: true })
     this.crossfading = false
+  }
+
+  private fadeOut(handle: AudioSourceHandle, ms: number): void {
+    this.clearFading()
+    const timer = setTimeout(() => {
+      this.fading = undefined
+      handle.dispose()
+    }, ms)
+    this.fading = { handle, timer }
+  }
+
+  private clearFading(): void {
+    if (!this.fading) return
+    clearTimeout(this.fading.timer)
+    this.fading.handle.dispose()
+    this.fading = undefined
   }
 
   private takePrefetched(itemId: string): AudioSourceHandle | undefined {
@@ -806,6 +907,21 @@ export class Player extends Service implements PlayerService {
   }
 
   private async skip(entry: QueueEntry): Promise<void> {
+    // Under repeat-all the queue never runs out, so a queue in which every
+    // track fails would skip forever — an event storm, a write per track, and
+    // a UI stuck on "skipping" until the battery goes. Give up after a run of
+    // failures instead; any track that starts resets the count.
+    if (++this.skipStreak >= this.config.maxSkipStreak) {
+      this.skipStreak = 0
+      this.fail(
+        new ProviderError(
+          `${this.config.maxSkipStreak} tracks in a row failed to play; stopping`,
+        ),
+        true,
+      )
+      return
+    }
+
     const next = this.model.next(entry.item.id, this.transport.repeat)
     if (!next || next.item.id === entry.item.id) {
       this.set({ status: 'idle' })

@@ -20,6 +20,7 @@ import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
 import type { AudioMetadata, DbService, Uri } from '@BBeBee/protocol'
 import plugin, { type Scanner } from './index.js'
 import { splitArtists, sortKey } from './import.js'
+import { artworkId } from './ids.js'
 
 /** Counts what the scanner asks of the codec — the exit criterion is a count. */
 interface FakeCodec {
@@ -68,7 +69,9 @@ interface Harness {
   write(name: string, content?: string): Promise<string>
 }
 
-async function harness(): Promise<Harness> {
+async function harness(
+  opts: { pollIntervalMinutes?: number; canWatch?: boolean } = {},
+): Promise<Harness> {
   const dir = await mkdtemp(join(tmpdir(), 'bbebee-scan-'))
   const codec: FakeCodec = {
     metadataReads: [],
@@ -82,7 +85,17 @@ async function harness(): Promise<Harness> {
   await ctx.plugin(FsNode)
   await ctx.plugin(DbNode, { fileName: ':memory:' })
   await ctx.plugin(codecPlugin(codec))
-  await ctx.plugin(plugin, { batchSize: 2, watchDebounceMs: 5 })
+  if (opts.canWatch === false) {
+    // Stand in for the desktop bridge, whose `canWatch` is false.
+    Object.defineProperty(ctx.fs, 'canWatch', { get: () => false, configurable: true })
+  }
+  await ctx.plugin(plugin, {
+    batchSize: 2,
+    watchDebounceMs: 5,
+    ...(opts.pollIntervalMinutes !== undefined
+      ? { pollIntervalMinutes: opts.pollIntervalMinutes }
+      : {}),
+  })
   await tick()
 
   return {
@@ -331,12 +344,53 @@ describe('roots', () => {
   })
 })
 
+describe('keeping up with the filesystem', () => {
+  it('polls on its own where there is neither a watcher nor a background service', async () => {
+    // Desktop has both problems: the bridge's `canWatch` is false and
+    // `core-background-electron` does not exist yet — so without this fallback
+    // there is no automatic rescan at all, and the library silently goes stale.
+    const h = await harness({ pollIntervalMinutes: 1 / 600, canWatch: false }) // 100 ms
+    await h.write('a.mp3')
+    await h.scanner.addRoot(h.uri)
+    await h.scanner.scan()
+    expect(await h.db.query('SELECT urn FROM tracks')).toHaveLength(1)
+
+    await h.write('b.mp3')
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    expect(
+      await h.db.query('SELECT urn FROM tracks'),
+      'the new file was picked up without anyone asking',
+    ).toHaveLength(2)
+  })
+
+  it('runs one scan at a time', async () => {
+    // A watch event, a poll and a manual scan can arrive together; two walks
+    // would fight over the abort controller and orphan one another.
+    const h = await harness()
+    for (let i = 0; i < 6; i++) await h.write(`t${i}.mp3`)
+    await h.scanner.addRoot(h.uri)
+
+    const [first, second] = await Promise.all([h.scanner.scan(), h.scanner.scan()])
+    expect(first, 'the second caller joined the first scan').toBe(second)
+    expect(first.added).toBe(6)
+    expect(h.codec.metadataReads, 'and no file was read twice').toHaveLength(6)
+  })
+})
+
 describe('tag handling', () => {
   it('splits an artist tag that names several people', () => {
     // "Artist feat. Other" as free text makes the featured artist unbrowsable.
     expect(splitArtists('Björk feat. Thom Yorke')).toEqual(['Björk', 'Thom Yorke'])
     expect(splitArtists('A; B / C')).toEqual(['A', 'B', 'C'])
     expect(splitArtists(undefined)).toEqual([])
+  })
+
+  it('does not split a band whose name contains a slash', () => {
+    // AC/DC is one band; "Simon / Garfunkel" is two. The separator is the
+    // whitespace, not the slash.
+    expect(splitArtists('AC/DC')).toEqual(['AC/DC'])
+    expect(splitArtists('Simon / Garfunkel')).toEqual(['Simon', 'Garfunkel'])
+    expect(splitArtists('Godspeed You! Black Emperor')).toEqual(['Godspeed You! Black Emperor'])
   })
 
   it('files sort keys the way a library expects', () => {
@@ -355,6 +409,18 @@ describe('tag handling', () => {
     // The extension is not part of a title, and the name is URL-decoded.
     const track = await h.db.get<{ title: string }>('SELECT title FROM tracks')
     expect(track?.title).toBe('01 - Untagged Song')
+  })
+})
+
+describe('identity', () => {
+  it('gives different covers of the same size different ids', () => {
+    // A single 32-bit round plus the length collides on same-size images often
+    // enough to matter at library scale, and a collision silently gives one
+    // album another's artwork.
+    const a = new Uint8Array(4096).fill(7)
+    const b = new Uint8Array(4096).fill(9)
+    expect(artworkId(a)).not.toBe(artworkId(b))
+    expect(artworkId(a), 'and it stays stable').toBe(artworkId(new Uint8Array(4096).fill(7)))
   })
 })
 

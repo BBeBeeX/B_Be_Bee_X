@@ -400,6 +400,9 @@ The `http/request` waterfall is dispatched with no listeners, so M2's auth plugi
 hook that already works.
 
 - [ ] `httpConformance` covers only the M1 slice, written so M2 adds cases rather than rewrites it.
+- [x] `net:host/<glob>` is enforced here, before and after the waterfall — the grant was a manifest
+      string with no meaning, exactly as `db:own` once was
+      ([03 §7](./03-plugin-system.md#enforcement)).
 - [ ] `ReadableStream` availability verified on RN 0.86, with `web-streams-polyfill` in the mobile
       entry if absent ([04 §17](./04-core-services.md#17-runtime-compatibility-checklist)).
 - [ ] Range requests and progress are exercised against a real byte-serving fixture, not a mock.
@@ -484,9 +487,12 @@ Separate from `plugin-source-local`, because scanning is a different concern fro
   during a list scroll costs a frame.
 - **Deletions.** A file that is gone takes its `media_bindings` row with it, and a local track
   left with no binding is removed — for instance `local`, the file *is* the track.
-- **Watching.** `ctx.fs.watch` where `ctx.fs.canWatch`; otherwise a poll registered through
+- **Watching.** `ctx.fs.watch` where `ctx.fs.canWatch`; otherwise a poll through
   `ctx.background.schedule`, with the resulting latency stated in the UI rather than pretended
-  away.
+  away. ⚠️ And where *neither* exists — which is every desktop build until
+  `core-background-electron` lands, since the bridge's `canWatch` is false — the scanner falls back
+  to its own timer. Without that there was no automatic rescan on desktop at all: files changed and
+  the library silently stayed stale.
 
 - [ ] `addRoot` uses `ctx.fs.pickDirectory`, and the Android SAF grant survives a relaunch.
 - [ ] Writes `tracks`, `albums`, `artists`, `track_artists`, `genres`, `track_genres`, `artworks`,
