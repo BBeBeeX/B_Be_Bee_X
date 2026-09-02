@@ -205,7 +205,7 @@ sequenceDiagram
         Note over DL: The player never learns downloads exist.
     else no local copy
         DL->>SRC: next()
-        SRC->>SRC: provider.resolveStream(ref, prefs)
+        SRC->>SRC: source.resolveStream(ref, prefs)
         SRC-->>Q: StreamHandle { url, headers, expiresAt }
     end
     Q->>A: load(target, { strategy })
@@ -214,10 +214,11 @@ sequenceDiagram
     Q->>A: handle.play()
 ```
 
-On failure the pipeline is re-entered rather than surfaced immediately: an `UnavailableError`
-triggers a lookup in `track_links` ([07 §4.4](./07-data-model.md#44-identity-linking)) for the
-same recording on another provider, and only when that yields nothing does the player enter
-`error`.
+On failure the pipeline is re-entered rather than surfaced immediately: an `UnavailableError` — or
+a `RuleError` from a source whose rules have rotted
+([06 §7](./06-music-sources.md#7-errors)) — triggers a lookup in `track_links`
+([07 §4.4](./07-data-model.md#44-identity-linking)) for the same recording on another source, and
+only when that yields nothing does the player enter `error`.
 
 ### Gapless and crossfade
 

@@ -12,7 +12,7 @@ M1 is where four claims stop being design and become code that either works or d
 | Claim | Stated in | What M1 does to it |
 |---|---|---|
 | One Web Audio graph plays and processes audio on iOS, Android and Electron | [ADR-4](./01-overview.md#adr-4--react-native-audio-api-is-the-primary-playback-and-dsp-engine-on-every-target) | Buffered and streamed playback on all three targets, with lock-screen control and background survival |
-| The provider SPI is an abstraction, not a description of one backend | [06 §1](./06-music-sources.md#1-the-contract) | Two providers at opposite ends of the optional surface: `plugin-source-local` and `plugin-source-http-url` |
+| A music source is data the runtime interprets, not a package we ship | [06 §1](./06-music-sources.md#1-the-model) | Two providers at opposite ends of the surface: `plugin-source-local`, and a **one-rule source document** played through the runtime's M1 slice (MD-7) |
 | The player does not know where bytes come from | [02 §5](./02-architecture.md#5-composition-how-features-reach-each-other) | `player/before-resolve` becomes a live waterfall with two possible answers, one local and one remote |
 | One plugin contributes UI to two shells that share no component code | [ADR-2](./01-overview.md#adr-2--the-ui-is-split-react-native-on-mobile-react-dom-on-desktop) | Five screens per shell, from headless packages plus per-target view packages |
 
@@ -32,11 +32,11 @@ work; ADR-4 is not.
 | Decoding & tags | `core-codec-node`, `core-codec-rn` | `ctx.codec` — metadata, artwork, PCM, format support |
 | OS surfaces | `core-media-session-electron`, `core-media-session-rn`, `core-device-electron`, `core-device-expo`, `core-background-electron`, `core-background-expo` | Lock screen, notification, MPRIS/SMTC/Now Playing, media keys, network state, wake locks, suspend hooks |
 | Network (slice) | `core-http-node`, `core-http-rn` | `ctx.http` restricted to GET/HEAD, headers, `Range`, streaming, progress — MD-1 |
-| Sources & catalogue | `plugin-sources`, `plugin-source-local`, `plugin-source-http-url` | `ctx.sources` — registration, discovery, and the catalogue cache those answers land in |
+| Sources & catalogue | `plugin-sources`, `plugin-source-local`, `plugin-source-runtime` *(stream-only slice, MD-7)* | `ctx.sources` — registration, discovery, the catalogue cache those answers land in, and the first source document |
 | Scanning | `plugin-local-scanner` | `ctx.scanner` — roots, incremental walk, tag and artwork import |
 | Playback | `plugin-player` | `ctx.player` — transport, queue, resolution, history, persistence |
 | UI infrastructure | `ui-tokens`, `ui-core`, `ui-kit-mobile`, `ui-kit-desktop` | Tokens, hooks, and the parity component set |
-| Views | `plugin-player-ui-*`, `plugin-sources-ui-*`, `plugin-local-scanner-ui-*` | Library, album, queue, now playing, scan-root settings |
+| Views | `plugin-player-ui-*`, `plugin-sources-ui-*`, `plugin-local-scanner-ui-*` | Library, album, queue, now playing, scan-root settings, and a minimal paste-a-URL source list |
 | Shells | `apps/mobile`, `apps/desktop` | Background audio configuration, close-to-tray, bootstrap sets, new bridge hosts |
 | Kernel & contracts | `@BBeBee/kernel`, `@BBeBee/protocol` | `db:write:core` (MD-4), the catalogue reads on `ctx.sources`, the `ctx.scanner` contract, the fractional-index helper |
 
@@ -46,19 +46,20 @@ Deferred deliberately, with where each lands. Nothing here is blocked by an M1 d
 
 | Deferred | Lands in | Why it can wait |
 |---|---|---|
-| Authentication, `ctx.secrets`, persistent cookie jars | M2 | No M1 provider has credentials. Building the jar with no backend to sign into tests nothing ([06 §4.1](./06-music-sources.md#41-session-persistence--cookies-survive-the-app)) |
-| Cross-provider fan-out in anger, `track_links`, identity linking | M2 | `searchAll` exists and is exercised, but two providers — one of which cannot search — is not a fan-out. `ctx.sources.searchLocal` covers the catalogue in the meantime |
+| The rule language, `ctx.js`, `@js:`, search/explore/album rules, import UI, the tracer | M2 | MD-7. M1 needs a playable URL, which is one template; everything else in [06](./06-music-sources.md) needs a backend to point at and a sandbox to run in, and neither is on M1's critical path |
+| Authentication, `ctx.secrets`, persistent cookie jars | M2 | No M1 source has credentials. Building the jar with no backend to sign into tests nothing ([06 §5.1](./06-music-sources.md#51-session-persistence--cookies-survive-the-app)) |
+| Cross-source fan-out in anger, `track_links`, identity linking | M2 | `searchAll` exists and is exercised, but two sources — one of which cannot search — is not a fan-out. `ctx.sources.searchLocal` covers the catalogue in the meantime |
 | `plugin-library` / `ctx.library` — playlists, favourites, collections | M2 | MD-3. None of M1's five screens curates anything, and the catalogue reads that used to justify the package now live on `ctx.sources` |
 | `plugin-download`, bindings with `origin: 'download'` | M3 | The waterfall it hooks is live in M1 with no listeners — which is exactly the control arm its regression test compares against |
 | `ctx.dsp` and every effect | M4 | The splice point exists in the M1 graph and stays empty (§4.2) |
-| `plugin-loader-dynamic`, capability prompts, quarantine | M5 | Every M1 plugin is `builtin` |
+| Capability prompts, quarantine, any runtime-loaded code | M5, if ever | Every plugin is `builtin` and statically bundled ([ADR-1 as amended](./01-overview.md#adr-1--plugins-are-statically-bundled-on-every-target)) |
 | Command palette, context menus, drag-to-reorder, tray mini-player, detached window | M2+ | MD-2 |
 | Playlists, smart playlists, ratings, lyrics, scrobbling | M2+ | Not required to browse a library and press play |
 | Packaging (`electron-builder`, `eas build`) | First release | Already noted in [09 §7](./09-project-structure.md#running-the-apps) |
 
 ### 1.3 Milestone decisions
 
-Six decisions taken for M1, in the shape of the ADRs and for the same reason: so a reader six
+Seven decisions taken for M1, in the shape of the ADRs and for the same reason: so a reader six
 months from now can tell what was chosen from what was merely assumed.
 
 **MD-1 — A minimal `ctx.http` ships in M1.**
@@ -82,6 +83,27 @@ screens first and infrastructure later means writing the screens twice.
 *Cost.* Desktop does not yet feel like a desktop app, so ADR-2's premise stays unproven until the
 desktop-only interactions land in M2.
 
+**MD-7 — `plugin-source-runtime` enters at M1 as a stream-only slice.**
+The runtime ships in M1 able to do exactly one thing: hold a source document whose only rule block
+is `ruleStream`, render its `url` template, and return a `StreamHandle`. No `@js:`, no `ctx.js`,
+no selector engines, no import review screen — a URL typed into settings becomes a two-field
+document written straight to the `sources` table.
+*Why.* M1 must exercise the streaming path — buffering, stall and recovery, seek-by-range — or
+ADR-4's early warning is untested (MD-1). Something has to own a remote URL. Under the old design
+that was `plugin-source-http-url`, a package; under
+[ADR-5](./01-overview.md#adr-5--music-sources-are-imported-strings-interpreted-by-one-runtime)
+the same job is a document, and writing the package would mean deleting it in M2. This way M1's
+streaming provider *is* the first source document, and M2 grows the runtime rather than replacing
+a package.
+*Cost.* A sliver of M2 pulled forward — the record shape, the fiber-per-source lifecycle, and the
+`=`-template evaluator, which is the smallest piece of the language. Everything expensive stays in
+M2.
+*Consequence.* The regression test M1 wanted — "a provider with none of the optional surface must
+not break any screen" — gets sharper: capabilities are derived
+([06 §1.3](./06-music-sources.md#13-capabilities-are-derived-not-declared)), so a document with
+one rule block genuinely *has* one capability, and a screen that assumes more fails immediately
+rather than plausibly.
+
 **MD-3 — `ctx.sources` owns the catalogue; `ctx.library` is curation, and moves to M2.**
 Three services, three responsibilities, no overlap:
 
@@ -92,9 +114,9 @@ Three services, three responsibilities, no overlap:
 | `ctx.player` | `plugin-player` | Playback: transport, queue, resolution, history |
 
 The view packages call `ctx.sources` and never touch `ctx.db`.
-*Why.* [06 §1](./06-music-sources.md#1-the-contract) already assigns the catalogue cache to
-`ctx.sources` — "the provider … answers questions and returns plain data; `ctx.sources` caches the
-answers into the catalogue tables" — so reads belong beside the writes rather than in a second
+*Why.* [06 §1.1](./06-music-sources.md#11-one-runtime-many-sources) already assigns the catalogue
+cache to `ctx.sources` — "the provider … answers questions and returns plain data; `ctx.sources`
+caches the answers into the catalogue tables" — so reads belong beside the writes rather than in a second
 service that would have to agree with it. And [02 §6](./02-architecture.md#6-state-ownership)
 requires catalogue access through *one* owning service: without that, the same SQL gets written in
 `-ui-mobile` and `-ui-desktop`, which is the exact failure mode ADR-2's risk entry names.
@@ -169,8 +191,8 @@ core-fs-node / -expo        ✅  toPlayableUri and canWatch get their first real
 core-db-node / -expo        ~   the db:write:core verb check (MD-4)
 
 plugin-sources              ✅  ctx.sources — registry, discovery, catalogue cache, FTS index
-plugin-source-local         ✅  MediaProvider over the filesystem, instance id 'local'
-plugin-source-http-url      ✅  MediaProvider implementing the required core and nothing else
+plugin-source-local         ✅  MediaProvider over the filesystem, source id 'local'
+plugin-source-runtime       +   MD-7 slice: a source row, a fiber, a `=` template, a stream
 plugin-local-scanner        ✅  ctx.scanner — roots, incremental walk, tag and artwork import
 plugin-player               ✅  ctx.player — transport, queue, resolution, history, persistence
 plugin-ui                   ✅  gets its first non-trivial contributions
@@ -181,8 +203,8 @@ ui-core                     +   useService / useServiceState over useSyncExterna
 ui-kit-mobile               +   the parity component set, React Native
 ui-kit-desktop              +   the parity component set, React DOM
 plugin-player-ui-*          +   now playing, mini player, transport, queue
-plugin-sources-ui-*         +   library, album detail
-plugin-local-scanner-ui-*   +   settings: scan roots and URL sources
+plugin-sources-ui-*         +   library, album detail, the minimal source list
+plugin-local-scanner-ui-*   +   settings: scan roots
 
 protocol                    ✅  catalogue reads on ctx.sources, ctx.scanner, the fractional index,
                                 the audio/codec conformance suites, the mock AudioService
@@ -200,7 +222,7 @@ flowchart TD
     CODEC --> SCAN
     CODEC --> AUDIO["core-audio-webaudio<br/>ctx.audio"]
     SCAN --> SRCLOCAL["plugin-source-local"]
-    HTTP["ctx.http — M1 slice"] --> SRCURL["plugin-source-http-url"]
+    HTTP["ctx.http — M1 slice"] --> SRCURL["plugin-source-runtime<br/>MD-7 slice"]
     SRCLOCAL --> SOURCES["plugin-sources<br/>ctx.sources<br/>registry · catalogue · FTS"]
     SRCURL --> SOURCES
     FS --> SOURCES
@@ -228,7 +250,7 @@ cannot be shown to be finished.
 flowchart LR
     S0["Stage 0<br/>audio spike<br/><i>ADR-4 go/no-go</i>"] --> S1["Stage 1<br/>the platform floor<br/>codec · audio · device · background"]
     S1 --> S2["Stage 2<br/>the catalogue<br/>scanner · source-local · library"]
-    S1 --> S5["Stage 5<br/>streaming<br/>http slice · source-http-url"]
+    S1 --> S5["Stage 5<br/>streaming<br/>http slice · source-runtime slice"]
     S2 --> S3["Stage 3<br/>transport<br/>player · media session"]
     S5 --> S3
     S3 --> S4["Stage 4<br/>the surface<br/>kits · views · shells"]
@@ -291,11 +313,11 @@ holding a phone and a person clicking a mouse.
 
 ### 3.6 Stage 5 — streaming (parallel with Stage 2)
 
-`core-http-node`, `core-http-rn`, `plugin-source-http-url`. Depends only on Stage 1 and joins at
-Stage 3, so it never sits on the critical path.
+`core-http-node`, `core-http-rn`, and the MD-7 slice of `plugin-source-runtime`. Depends only on
+Stage 1 and joins at Stage 3, so it never sits on the critical path.
 
-**Demo.** A URL configured as a source plays, seeks, survives a stall, and reports `stalled`
-rather than `paused` while it recovers.
+**Demo.** A URL pasted into settings becomes a one-rule source document; it plays, seeks, survives
+a stall, and reports `stalled` rather than `paused` while it recovers.
 
 ---
 
@@ -395,7 +417,8 @@ Per MD-1: GET and HEAD, arbitrary headers, `Range`, `stream()`, `onProgress`, `t
 the renderer, for the CORS and header reasons in [02 §2](./02-architecture.md#desktop).
 
 `cookies` and `download()` are **absent, not stubbed** — a member that throws is a lie about the
-contract ([06 §1.1](./06-music-sources.md#11-why-auth-is-required-and-everything-else-is-not)).
+contract, which is the same principle that makes a source's capabilities derived rather than
+declared ([06 §1.3](./06-music-sources.md#13-capabilities-are-derived-not-declared)).
 The `http/request` waterfall is dispatched with no listeners, so M2's auth plugins arrive to a
 hook that already works.
 
@@ -412,13 +435,15 @@ hook that already works.
 `plugin-sources` arrives in two halves.
 
 **The registry — built.** `register`, `providers`, `get`, `forUrn`, and a `searchAll` that in M1
-has at most two providers to ask. It refuses a duplicate `instanceId` rather than shadowing the
-incumbent, because two providers on one instance id makes every URN in that namespace ambiguous —
-the one thing the URN scheme exists to prevent. `searchAll` returns per-provider results *and*
+has at most two sources to ask. It refuses a duplicate `sourceId` rather than shadowing the
+incumbent, because two providers on one source id makes every URN in that namespace ambiguous —
+the one thing the URN scheme exists to prevent. `sourceUrl` uniqueness in the `sources` table
+([07 §4.1](./07-data-model.md#41-sources-accounts-and-sessions)) is the other half of the same
+guarantee, enforced one layer down. `searchAll` returns per-provider results *and*
 per-provider errors, reports a slow backend as `pending` rather than cancelling it, skips
 providers whose `capabilities` declare no search, and maps a raw `throw` onto the
-[06 §6](./06-music-sources.md#6-errors) taxonomy so one rude provider cannot fail the fan-out.
-Registration is a disposer, so a provider plugin that unloads takes its registration with it.
+[06 §7](./06-music-sources.md#7-errors) taxonomy so one rude source cannot fail the fan-out.
+Registration is a disposer, so a source whose fiber unloads takes its registration with it.
 
 **The catalogue cache — Stage 2.** Reads for everything above it (MD-3), and ownership of the
 FTS5 index. Indexing is driven by `library/changed`, so **any** provider's rows are indexed
@@ -426,9 +451,9 @@ without the scanner or a source knowing an index exists. Re-indexing is `DELETE`
 same rowid: `contentless_delete=1` permits deletion but refuses a partial `UPDATE`
 ([07 §4.3](./07-data-model.md#43-catalogue)).
 
-Each provider instance is loaded inside its own `ctx.isolate('http')` scope from the start
-([06 §2](./06-music-sources.md#2-provider-plugins-vs-provider-instances)), even though nothing in
-M1 has cookies to isolate.
+Each source is loaded inside its own `ctx.isolate('http')` scope from the start
+([06 §4.1](./06-music-sources.md#41-a-sources-lifetime)), even though nothing in M1 has cookies to
+isolate.
 
 - [ ] `listTracks` / `listAlbums` / `listArtists` page and sort in SQL, never in JS — a 100k-track
       library must not be materialised in order to sort it.
@@ -440,10 +465,10 @@ M1 has cookies to isolate.
 - [ ] Declares `db:read:core` + `db:write:core` once the cache lands; the registry half needs
       neither and declares nothing (MD-4).
 
-`plugin-source-local` is a provider like any other — the local library is not privileged.
-`instantiable: false`, instance id `local`, `auth.flow = { kind: 'none' }` with `signIn` resolving
-immediately and `signOut` clearing its cached rows. Four lines, and precisely the case that proves
-requiring `auth` costs nothing.
+`plugin-source-local` is a provider like any other — the local library is not privileged. Source
+id `local`, `auth.flow = { kind: 'none' }` with `signIn` resolving immediately and `signOut`
+clearing its cached rows. It is the one provider that is not a document and never will be, because
+there is no HTTP to describe ([06 §12](./06-music-sources.md#12-what-is-not-a-string-local-files)).
 
 `resolveStream` reads the `media_bindings` row the scanner wrote (`origin: 'scan'`) and returns
 `{ kind: 'local', target: await ctx.fs.toPlayableUri(uri), seekable: true }`. That is the entire
@@ -451,10 +476,12 @@ difference from a remote provider — and it is why M3's downloads slot in witho
 noticing, since a downloaded track is the same shape with `origin: 'download'`.
 
 `browse` walks `ctx.fs.list` under the enabled scan roots and resolves leaves to URNs through
-`scan_entries`, which gives the folder tree of [06 §3](./06-music-sources.md#browse) for free.
+`scan_entries`, which gives the folder tree of
+[06 §2.2](./06-music-sources.md#22-the-rule-blocks) for free — the same `childUrl`-or-leaf shape a
+document's `ruleExplore` produces, rendered by the same component.
 
 `search` is answered from the FTS index `ctx.sources` maintains, filtered to
-`instance_id = 'local'`. One index with two entry points — `ctx.sources.searchLocal` for the
+`source_id = 'local'`. One index with two entry points — `ctx.sources.searchLocal` for the
 unified catalogue, `provider.search` for the fan-out — rather than two tokeniser configurations
 that drift apart.
 
@@ -465,14 +492,12 @@ that drift apart.
 - [ ] Registration is returned as a disposer, so unloading the plugin removes the provider and
       everything derived from it.
 - [ ] Declares `db:read:core` + `db:write:core`: it reads the rows the scanner wrote, and
-      `signOut()` deletes its own instance's rows, which is a write (MD-4).
-- [ ] The checklist in [06 §9](./06-music-sources.md#9-writing-a-provider-checklist) is walked,
-      with the credential rows marked *not applicable — flow: none* rather than skipped silently.
+      `signOut()` deletes its own source's rows, which is a write (MD-4).
 
 ### 4.7 `plugin-local-scanner` — `ctx.scanner`
 
 Separate from `plugin-source-local`, because scanning is a different concern from serving
-([06 §8](./06-music-sources.md#the-local-scanner)).
+([06 §12](./06-music-sources.md#the-local-scanner)).
 
 - **Incremental.** `(size, mtime)` against `scan_entries` decides whether a file is touched at
   all. An unchanged library costs stat calls and nothing else. This is an exit criterion, so it is
@@ -510,14 +535,16 @@ piece of state several M1 packages touch.
 
 | Rows | Written by | Grant |
 |---|---|---|
-| `tracks`, `albums`, `artists`, `artworks`, `media_bindings`, `scan_*` for instance `local` | `plugin-local-scanner`, from files on disk | `db:read:core` + `db:write:core` |
-| The same tables for a remote instance | `plugin-sources`, caching what a provider answered ([06 §1](./06-music-sources.md#1-the-contract)) | `db:read:core` + `db:write:core` |
+| `tracks`, `albums`, `artists`, `artworks`, `media_bindings`, `scan_*` for source `local` | `plugin-local-scanner`, from files on disk | `db:read:core` + `db:write:core` |
+| The same tables for a remote source | `plugin-sources`, caching what a source answered ([06 §1.1](./06-music-sources.md#11-one-runtime-many-sources)) | `db:read:core` + `db:write:core` |
 | `tracks_fts`, `tracks_fts_map` | `plugin-sources` only, off `library/changed` | as above |
 | `queue_items`, `playback_state`, `play_history`, `track_stats` | `plugin-player` | `db:read:core` + `db:write:core` |
 | `playlists`, `playlist_items`, `library_items`, `collections` | Nobody in M1 — `plugin-library` in M2 | — |
 
 Everything *reads* through `ctx.sources`. A provider never writes the catalogue itself: it answers
-questions and returns plain data, which is what makes a provider testable without a database.
+questions and returns plain data, which is what makes a provider testable without a database — and
+what makes the source runtime testable against recorded HTTP fixtures with no database at all
+([09 §6](./09-project-structure.md#6-testing-strategy)).
 
 ### 4.9 `plugin-player` — `ctx.player`
 
@@ -557,29 +584,45 @@ written in the same transaction.
 
 - [ ] Every state-machine transition has a unit test against a mock `AudioService`, including
       interruption-during-load and queue-change-during-prefetch.
-- [ ] Errors are mapped onto the [06 §6](./06-music-sources.md#6-errors) taxonomy, and **no
+- [ ] Errors are mapped onto the [06 §7](./06-music-sources.md#7-errors) taxonomy, and **no
       failure path clears the queue**.
 - [ ] Publishes to `ctx.mediaSession` on every track and status change, position throttled to 1 Hz.
 - [ ] Capabilities: `audio`, `mediaSession`, `background`, `db:write:core`.
 - [ ] Disabling the plugin mid-playback stops audio, clears the lock screen, and leaves no node
       connected — verified through `ctx.inspector`.
 
-### 4.10 `plugin-source-http-url`
+### 4.10 `plugin-source-runtime` — the MD-7 slice
 
-Implements the required core and *nothing* else: no `search`, no `browse`, no `getAlbum`, no
-`library`. Configured with a URL and an optional title; `getTrack` synthesises a `Track`;
-`resolveStream` returns a remote handle; `ping()` is a HEAD; `capabilities.streaming.seekable`
-comes from that HEAD's `Accept-Ranges`.
+Per MD-7, the runtime lands in M1 doing one thing: turning a source row into a playable URL.
 
-It is the SPI's floor, and its value is as a regression test: if any screen breaks with it
-configured, some consumer is calling an optional method without checking `capabilities`. M2's exit
-criteria name it; bringing it forward costs almost nothing once §4.5 exists, and it gives the
-streaming path a real user.
+**What ships.** The `sources` table and its migration
+([07 §4.1](./07-data-model.md#41-sources-accounts-and-sessions)); source-id derivation from
+`sourceUrl` ([06 §1.2](./06-music-sources.md#12-identity-the-source-id)); a fiber per enabled
+source inside its own `ctx.isolate('http')` scope; the `=` template evaluator with `{{source.*}}`,
+`{{track.*}}` and `{{prefs.*}}` in scope; and `ruleStream` → `StreamHandle`. `getTrack`
+synthesises a `Track` from the row; `ping()` is a HEAD; `capabilities.streaming.seekable` comes
+from that HEAD's `Accept-Ranges` when the document does not say.
 
-- [ ] Configured alongside `plugin-source-local` with no screen breaking on a missing optional
-      member — asserted, not observed.
+**What does not.** The selector engines, combinators, `@put`/`@get`, `@js:` and therefore `ctx.js`,
+`searchUrl`, `exploreUrl`, every rule block but `ruleStream`, login, the import review screen, the
+editor, and the tracer. Settings offers "add a URL", which writes a two-field document; pasting a
+full document is M2.
+
+Its value is unchanged from the package it replaces — it is the floor, and therefore the
+regression test: if any screen breaks with it configured, some consumer is reading a capability it
+never checked. Derived capabilities make that sharper, since a one-block document genuinely has
+one capability rather than a declared claim to one.
+
+- [ ] Configured alongside `plugin-source-local` with no screen breaking on an absent capability —
+      asserted, not observed.
 - [ ] Playing it exercises the `stream` strategy, `stalled` → `playing` recovery, and seek by
       `Range`.
+- [ ] Disabling the source disposes its fiber and its isolated http scope; the leak test covers it
+      like any plugin ([06 §4.1](./06-music-sources.md#41-a-sources-lifetime)).
+- [ ] `doc_json` round-trips: what settings wrote is what `export()` emits, byte for byte. The
+      cheapest possible early check on the claim M2's export criterion rests on.
+- [ ] The `=` evaluator refuses anything it does not understand rather than silently emitting the
+      rule as a literal — the failure mode that would make every later rule bug harder to find.
 
 ### 4.11 `ui-tokens` · `ui-core` · `ui-kit-mobile` · `ui-kit-desktop`
 
@@ -602,7 +645,9 @@ props — `Button`, `IconButton`, `TrackRow`, `Slider`, `Sheet`/`Dialog`, `List`
 `plugin-player-ui-{mobile,desktop}`, `plugin-sources-ui-{mobile,desktop}`,
 `plugin-local-scanner-ui-{mobile,desktop}`. Five screens per MD-2: library (tracks and albums),
 album detail, queue, now playing (full screen on mobile, bottom bar on desktop), and settings for
-scan roots and URL sources.
+scan roots and URL sources. The last one is the seed of M2's source list
+([08 §4](./08-ui-architecture.md#the-source-surfaces)) — a list with add and remove, and
+deliberately no import review screen, because there is nothing yet to review.
 
 The rule that keeps ADR-2 affordable: **if the same `if` is about to be written in both packages,
 it belongs in the headless one.** These packages should be layout, gestures and event wiring, and
@@ -654,8 +699,8 @@ export type TrackSort = 'title' | 'artist' | 'album' | 'addedAt' | 'year' | 'dur
 export interface CatalogQuery {
   sort?: TrackSort
   desc?: boolean
-  /** Restrict to given provider instances. Absent means every instance. */
-  instanceIds?: string[]
+  /** Restrict to given sources. Absent means every source. */
+  sourceIds?: string[]
   page?: PageRequest
 }
 
@@ -729,7 +774,7 @@ declare module 'cordis' {
 > The snippet in [03 §2](./03-plugin-system.md#the-rule-every-side-effect-goes-through-the-fiber)
 > writes `ctx.library.scan({ signal })`. That was illustrating cancellation, not assigning
 > ownership: scanning belongs to `ctx.scanner`, per
-> [06 §8](./06-music-sources.md#the-local-scanner)'s separation of scanning from serving. The
+> [06 §12](./06-music-sources.md#the-local-scanner)'s separation of scanning from serving. The
 > cancellation shape it demonstrates is exactly what `ScannerService.scan` takes.
 
 ### 5.3 Capability grammar
@@ -759,7 +804,11 @@ useful thing to be able to check:
 | `http/request` | `ctx.http` | none until M2 |
 
 Dormant through M1: `download/*`, `dsp/*`, `source/auth-expired`, `source/signed-out`,
-`source/authenticated`.
+`source/authenticated`, `source/rule-failed`, `source/checked`.
+
+`source/imported`, `source/changed` and `source/removed` get a first emitter in the MD-7 slice —
+"add a URL" is an import of a two-field document — and their listener is the runtime rebuilding
+that source's fiber, which is the mechanism M2 then leans on entirely.
 
 ---
 
@@ -852,17 +901,21 @@ earlier and is not the same thing.
 
 ### What M1 knowingly leaves broken
 
-Worth stating, so nobody reports these as bugs: there is no way to sign into anything; search
-covers only what has been scanned; nothing can be downloaded, and the download-substitution path
-has no listener; the equalizer does not exist and neither does the chain it would join; there are
-no playlists, ratings, or lyrics; desktop has no keyboard shortcuts, context menus, or command
-palette; a plugin cannot be installed at runtime; and neither app has an installer.
+Worth stating, so nobody reports these as bugs: **a source string cannot be imported** — settings
+takes a URL and nothing more, so nothing in [06](./06-music-sources.md) beyond `ruleStream` works
+yet; there is no way to sign into anything; search covers only what has been scanned; nothing can
+be downloaded, and the download-substitution path has no listener; the equalizer does not exist
+and neither does the chain it would join; there are no playlists, ratings, or lyrics; desktop has
+no keyboard shortcuts, context menus, or command palette; nothing can be installed at runtime; and
+neither app has an installer.
 
 ---
 
 ## 10. Where to go next
 
-[10 §M2](./10-roadmap.md#m2--a-second-source) is where the provider SPI stops being a hypothesis.
-Everything M1 defers about credentials — `ctx.secrets`, the persistent cookie jar, the auth
-half of `ctx.http`, `source/auth-expired` — arrives together there, against a backend that
-actually requires them.
+[10 §M2](./10-roadmap.md#m2--sources-are-strings) is where
+[ADR-5](./01-overview.md#adr-5--music-sources-are-imported-strings-interpreted-by-one-runtime)
+stops being a hypothesis: the rule language, the sandbox, import and export, and the tracer, all
+against a backend that requires them. Everything M1 defers about credentials — `ctx.secrets`, the
+persistent cookie jar, the auth half of `ctx.http`, `source/auth-expired` — arrives in the same
+milestone, because a real source needs to log in.

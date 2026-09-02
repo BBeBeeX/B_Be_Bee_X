@@ -1,7 +1,7 @@
 # 01 — Overview & Decisions
 
 > **What this answers.** What BBeBee is, what it deliberately is not, which platforms it targets,
-> and the four architectural decisions that everything downstream depends on. If you read one
+> and the five architectural decisions that everything downstream depends on. If you read one
 > document before writing code, read this one and [02](./02-architecture.md).
 
 ---
@@ -9,13 +9,16 @@
 ## 1. What we are building
 
 A music player that runs on desktop and mobile from one codebase, where the player itself is
-thin and nearly all behaviour arrives as plugins.
+thin, nearly all behaviour arrives as plugins, and **the music sources arrive as text the user
+pastes in**.
 
 The user-visible product is ordinary: a library, a queue, playback with an equalizer, offline
 downloads, playlists, lyrics, and the ability to pull music from more than one place — a folder
-of files on disk, a self-hosted server, a streaming service. What is unusual is the shape
-underneath: there is no privileged "core" that owns those features. The library is a plugin. The
-downloader is a plugin. So is the filesystem access the downloader uses.
+of files on disk, a self-hosted server, whatever a source string describes. Two things are unusual
+underneath. There is no privileged "core" that owns the features: the library is a plugin, the
+downloader is a plugin, and so is the filesystem access the downloader uses. And a music source is
+not a package at all — it is a JSON document the user imports, interpreted by one built-in runtime
+([ADR-5](#adr-5--music-sources-are-imported-strings-interpreted-by-one-runtime)).
 
 ### Why build it this way
 
@@ -24,11 +27,12 @@ Three reasons, in order of importance:
 1. **Cross-platform without conditionals.** The alternative to a service abstraction is
    `Platform.OS === 'ios' ? … : …` scattered across the codebase, which decays quickly. Here,
    platform difference is expressed once, as *which plugin got loaded*, and never again.
-2. **Music sources are inherently plural and unstable.** Every streaming backend has a different
-   API, different auth, different pagination, and a different lifespan. A source has to be
-   addable and removable without touching the player. This forces a real SPI
-   ([06](./06-music-sources.md)) rather than an internal interface that happens to have one
-   implementation.
+2. **Music sources are inherently plural and unstable.** Every backend has a different API,
+   different auth, different pagination, and a different lifespan — and it changes without
+   warning. A source therefore cannot be something we compile, review, and release: it has to be
+   something a user adds, edits and repairs in the app, in minutes. That is what makes a source a
+   *string* rather than a package ([06](./06-music-sources.md)), and it is the decision the rest
+   of the source design falls out of.
 3. **Lifecycle correctness is hard, and Cordis already solved it.** Plugins that register event
    listeners, open sockets, hold audio nodes, and start timers must tear all of that down when
    disabled. Cordis's fiber/effect model makes unload total by construction, which is the part
@@ -38,7 +42,7 @@ Three reasons, in order of importance:
 
 - One plugin graph that runs unmodified on iOS, Android, and desktop.
 - A plugin can be disabled at runtime and leave no trace — no listeners, no timers, no sockets.
-- Adding a music source requires touching exactly one new package.
+- Adding a music source requires importing a string — no build, no release, no install.
 - The audio path supports a real DSP chain (parametric EQ, dynamics, convolution) on *all*
   targets, not just desktop.
 - Offline-first: the library and queue are usable, and the app is navigable, with no network.
@@ -52,14 +56,16 @@ Stated explicitly, because each of these would change the architecture if reintr
   nothing implements it.
 - **Not a server.** No sync backend is built. Cross-device sync is designed as an SPI with a
   file/WebDAV reference implementation, deferred past M5.
-- **No scraping of proprietary services.** The provider SPI is designed to *support* commercial
-  backends, and third parties may write such plugins, but the plugins shipped in this repository
-  target open protocols only: the local filesystem, Subsonic/Navidrome, Jellyfin, and plain HTTP
-  URLs. This is a scoping decision as much as a legal one — open protocols have stable
-  specifications to build a reference implementation against.
-- **Not a general-purpose extension host.** Runtime-loaded plugins on desktop run in the same JS
-  realm as the app. This is documented honestly as *defense in depth, not a sandbox*
-  ([03 §7](./03-plugin-system.md#7-capability-model)).
+- **We ship no sources for third-party services.** The runtime is content-neutral and can express
+  a great deal, but this repository ships only the interpreter, the local-files provider, and a
+  small corpus of source documents for open self-hosted protocols — Subsonic/Navidrome, Jellyfin,
+  plain HTTP URLs, podcast feeds — used as worked examples and as tests. What a user imports is
+  their choice; the import screen states what a source will do and whom it will talk to, and the
+  app does not editorialise beyond that ([06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do)).
+- **Not a general-purpose extension host.** Plugins are first-party packages, statically bundled
+  on both targets. Imported *sources* are the extension story, and they are contained by a real
+  interpreter boundary rather than by the plugin capability model, which is documented honestly as
+  *defense in depth, not a sandbox* ([03 §7](./03-plugin-system.md#7-capability-model)).
 - **No web build in scope.** React Native Web would technically work, but decision **ADR-2**
   below chooses a separate DOM UI for desktop, and a browser target would be a third shell with
   no offline story. Revisitable later; not planned.
@@ -82,30 +88,39 @@ front because it affects the onboarding instructions for every contributor.
 
 ## 3. Architecture decisions (ADRs)
 
-These four were settled before the design was written. Each records what was chosen, what was
-rejected, and what it costs.
+The first four were settled before the design was written; **ADR-5 was taken later and rewrote
+ADR-1's justification**, which is recorded here rather than quietly patched. Each records what was
+chosen, what was rejected, and what it costs.
 
-### ADR-1 — Plugins are statically bundled on mobile, runtime-loadable on desktop
+### ADR-1 — Plugins are statically bundled on every target
 
-**Decision.** A single plugin manifest format serves both targets, resolved by two different
-loader plugins. On mobile, a codegen step emits static `import` statements for every plugin in
-the workspace; configuration only enables, disables, and configures them. On desktop, plugins may
-additionally be installed into a user directory and loaded at runtime via dynamic `import()`.
+> **Amended by [ADR-5](#adr-5--music-sources-are-imported-strings-interpreted-by-one-runtime).**
+> This decision originally read *"statically bundled on mobile, runtime-loadable on desktop"*, and
+> its entire justification was that a desktop user should not need a project release to get a new
+> music source. Sources are no longer packages, so that justification is gone and the option ADR-1
+> once rejected is now the decision.
 
-**Rejected — bundle everywhere.** Simplest, and it was the recommendation, but it makes desktop
-users dependent on a project release to get any third-party source plugin. For an app whose whole
-value proposition is pluggable music sources, that is the wrong tradeoff on the platform where
-runtime loading is actually permitted.
+**Decision.** One plugin manifest format, one loader. A codegen step emits static `import`
+statements for every plugin in the workspace on both targets; configuration only enables,
+disables, and configures them. Extensibility for users lives in imported **source strings**
+([06](./06-music-sources.md)), not in loadable plugin code.
 
-**Rejected — runtime marketplace on both.** On iOS, downloading and executing new JavaScript
-requires shipping an interpreter sandbox to remain store-compliant. That is a large subsystem —
-sandbox, capability grants, signing, versioning — and it can be added later behind the same
-manifest format without invalidating anything designed here.
+**Rejected — keep the desktop dynamic loader.** It works, and the design for it stands
+([03 §6.2](./03-plugin-system.md#62-desktop-additions--plugin-loader-dynamic) keeps it on the
+shelf). Rejected as *current* scope because what it was for — sources — now arrives as data on
+both platforms, and what remains for it (third-party effects, scrobblers, lyric providers) does
+not yet justify an install/update/quarantine flow, a capability-grant UI, and a per-plugin gate
+that [03 §7](./03-plugin-system.md#where-the-gate-actually-runs) admits does not hold on desktop.
 
-**Costs.** Two loader implementations to maintain. A desktop-only install/update/quarantine flow.
-A capability-grant UI. Mobile and desktop can drift in which plugins are available, so the UI must
-degrade when a contributed view is absent. Desktop must load third-party code without weakening
-its CSP — solved with a custom protocol, see [03 §6](./03-plugin-system.md#6-loading-two-modes).
+**Rejected — runtime marketplace on both.** Same reasoning, plus: on iOS, downloading and
+executing new JavaScript requires an interpreter sandbox. That sandbox now exists for a different
+reason (ADR-5), so if this is ever revisited it starts from a much better position.
+
+**Costs.** A third-party plugin author must vendor their package into a build, so in practice
+non-source extensions are first-party until the sandbox generalises
+([10 §M5](./10-roadmap.md#m5--third-party-extensions-on-the-sandbox)). Mobile and desktop no
+longer drift in which plugins exist, which removes a whole class of "contributed view is missing"
+handling — though the handling stays, because ADR-2 produces the same state for its own reasons.
 
 ### ADR-2 — The UI is split: React Native on mobile, React DOM on desktop
 
@@ -167,6 +182,53 @@ can be swapped behind it without touching `ctx.player` or any effect plugin. The
 the insurance policy. Tracked as the highest-priority item in the risk register
 ([10 §3](./10-roadmap.md#risk-register)).
 
+### ADR-5 — Music sources are imported strings, interpreted by one runtime
+
+**Decision.** A music source is a **JSON document the user imports as text** — pasted, fetched
+from a URL, opened from a file, or scanned from a QR code — stored as a row and interpreted by a
+single built-in runtime, `plugin-source-runtime`. The document declares its endpoints and a set of
+**rules** in a small selector/template language; the runtime does every fetch, selection and
+coercion. This is the [legado](https://github.com/gedoor/legado) book-source model applied to
+audio, and it is specified in [06](./06-music-sources.md).
+
+**Rejected — one plugin package per backend** (the previous design). Every source was a
+`plugin-source-*` package implementing a provider SPI. It is the more powerful option: arbitrary
+code can handle any backend, with types and tests. Rejected because it puts the project in the
+path of every fix. A backend renames a JSON field; the user cannot do anything about it. Someone
+must write TypeScript, open a PR, get it reviewed, cut a release, and — on mobile, where runtime
+loading is not permitted — ship through an app store. For a class of backend that changes on
+someone else's schedule, a release cycle per breakage is not a maintenance plan.
+
+**Rejected — sources as declarative config with no code at all.** Safer and much easier to reason
+about, and it fails on contact with reality: real backends need a computed signature, a token
+lifted out of one response and used in the next, a timestamp, an MD5. A source language with no
+escape hatch produces sources that *almost* work, and the workaround is worse than the hatch.
+
+**Consequences, all of which are load-bearing elsewhere:**
+
+- **Capabilities are derived, not declared.** What a source can do follows from which rule blocks
+  it contains, so the old under-declare/over-declare failure mode is gone
+  ([06 §1.3](./06-music-sources.md#13-capabilities-are-derived-not-declared)).
+- **A real sandbox is now mandatory, not deferred.** Source rules are code from strangers, so
+  `ctx.js` — a separate QuickJS realm with an enumerable host API and a per-source host allowlist
+  — is a core service that ships with the feature
+  ([04 §19](./04-core-services.md#19-ctxjs--the-sandboxed-evaluator),
+  [06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do)). The plugin
+  system's own containment gap ([03 §7](./03-plugin-system.md#what-this-is-not)) gets its answer
+  as a side effect.
+- **ADR-1 loses its reason for existing** and is amended above.
+- **Diagnosis becomes a shipped feature.** When sources are user-owned, "why did this stop
+  working" is a user's question, so the step-by-step rule tracer in
+  [06 §10](./06-music-sources.md#10-diagnosing-a-broken-source) is not a developer tool that
+  happens to be in the build — it is the maintenance story for the whole model.
+
+**Costs.** A rule language, an interpreter, a sandbox, an import/export flow, an editor and a
+debugger — all before the second source works. Type safety stops at the document boundary: a bad
+rule is a runtime error with a good message, not a compile error. Sources rot silently when
+backends change, so `RuleError`, the stale badge, and the health check
+([06 §7](./06-music-sources.md#7-errors)) exist to make rot visible. And the app now runs code it
+did not write, which is a security posture to maintain rather than a box to tick.
+
 ---
 
 ## 4. Glossary
@@ -182,8 +244,12 @@ Terms used with a precise meaning throughout these documents.
 | **Effect** | A reversible side effect registered via `ctx.effect()`. The returned disposer runs automatically on unload. |
 | **Core plugin** | A plugin implementing a platform service. Lives in `packages/core-*`. The only code permitted to import a platform SDK. |
 | **Feature plugin** | Everything else. Reaches the platform only through service keys. |
-| **Provider** | A music source implementation (`source-subsonic`). A *provider plugin* may be instantiated as several *provider instances* — two Navidrome servers are two instances of one plugin. |
-| **URN** | `BBeBee:<providerInstance>:<kind>:<id>`. The stable identity of a catalog entity. |
+| **Source** | One music backend, as configured by the user. Identified by `sourceUrl`, addressed by a derived **source id**. Two Navidrome servers are two sources. |
+| **Source string** | The importable text form of a source: one JSON document, or an array of them (a *source set*). The unit users share. |
+| **Rule** | One field of a source document, written in the selector/template language of [06 §3](./06-music-sources.md#3-the-rule-language). |
+| **Source runtime** | `plugin-source-runtime` — the one interpreter of source documents. Presents each enabled source to `ctx.sources` as a `MediaProvider`. |
+| **Provider** | The internal interface `ctx.sources` consumes. Exactly two implementations: the source runtime's per-source adapter, and `plugin-source-local`. Not an extension point. |
+| **URN** | `BBeBee:<sourceId>:<kind>:<id>`. The stable identity of a catalog entity. |
 | **Binding** | A `media_bindings` row tying a track URN to a concrete local file. What "this track is downloaded" actually means. |
 | **Chain** | An ordered list of DSP effects between the player's source node and the output. |
 | **Descriptor** | A renderer-agnostic UI contribution — a route, slot filling, command, or settings page — resolved to real components by whichever shell is running. |

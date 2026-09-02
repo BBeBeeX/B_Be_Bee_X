@@ -20,7 +20,7 @@ flowchart TD
 
     subgraph L4["Feature plugins"]
         F1["player · queue · dsp"]
-        F2["sources · library · scanner"]
+        F2["source runtime · sources · library · scanner"]
         F3["download · lyrics · cache"]
         F4["ui registry · settings · log viewer"]
     end
@@ -33,7 +33,7 @@ flowchart TD
         C1["core-fs-node / core-fs-expo"]
         C2["core-http-node / core-http-rn"]
         C3["core-db-node / core-db-expo"]
-        C4["core-secrets-* · core-media-session-* · ..."]
+        C4["core-js-quickjs-* · core-secrets-* · core-media-session-* · ..."]
     end
 
     subgraph L1["@BBeBee/kernel"]
@@ -130,8 +130,7 @@ flowchart LR
         H2["http host"]
         H3["sqlite host — node:sqlite"]
         H4["secrets host — safeStorage"]
-        H5["protocol: BBeBee-plugin://"]
-        H6["window · tray · autoupdate"]
+        H5["window · tray · autoupdate"]
     end
     CD -->|window.BBeBee.*| PRE
     PRE -->|ipcRenderer.invoke| Main
@@ -148,16 +147,22 @@ Two things route through `main` for reasons worth stating:
 - **HTTP.** Not because the renderer cannot fetch, but because a renderer `fetch` is subject to
   CORS and cannot set `Origin`, `Referer`, `Cookie`, or a custom `User-Agent`. Music backends
   routinely require all four. Going through `main` also gives a real cookie jar and proxy support.
-- **Plugin loading.** See [03 §6](./03-plugin-system.md#6-loading-two-modes) — `main` registers a
-  custom protocol so the renderer can `import()` third-party code without disabling CSP or
-  enabling `nodeIntegration`.
+- **Nothing else.** Plugins are statically bundled on both targets
+  ([ADR-1](./01-overview.md#adr-1--plugins-are-statically-bundled-on-every-target)), so `main`
+  registers no custom protocol and the renderer never loads code it did not ship with. The design
+  for doing so is kept on the shelf in
+  [03 §6.2](./03-plugin-system.md#62-desktop-additions--plugin-loader-dynamic); it is not wired
+  up. User-supplied behaviour arrives as **source strings**, which are data, and runs inside
+  `ctx.js` rather than in the renderer's realm
+  ([06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do)).
 
 ### Process/security posture on desktop
 
 `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` for the renderer. The preload
 exposes a single frozen `window.BBeBee` object whose methods are capability-tagged; the kernel
 wraps them per plugin ([03 §7](./03-plugin-system.md#7-capability-model)). A strict CSP is served
-for the app origin and extended only to the `BBeBee-plugin:` scheme.
+for the app origin and is **not** extended — there is no scheme for loading foreign code, because
+nothing loads foreign code.
 
 ---
 
@@ -222,12 +227,16 @@ The shells differ only in this table. It is the entire platform-specific surface
 | `ctx.background` | `core-background-expo` | `core-background-electron` |
 | `ctx.device` | `core-device-expo` | `core-device-electron` |
 | `ctx.crypto` | `core-crypto-expo` | `core-crypto-node` |
+| `ctx.js` | `core-js-quickjs-rn` | `core-js-quickjs-node` |
 | `ctx.codec` | `core-codec-rn` | `core-codec-node` |
 | `ctx.shell` | `core-shell-expo` | `core-shell-electron` |
-| plugin loading | `plugin-loader-static` | `plugin-loader-static` + `plugin-loader-dynamic` |
+| plugin loading | `plugin-loader-static` | `plugin-loader-static` |
 
-Note that desktop registers **both** loaders: workspace plugins are still statically bundled, and
-the dynamic loader adds user-installed ones on top.
+The loader row is the same on both targets, which is
+[ADR-1](./01-overview.md#adr-1--plugins-are-statically-bundled-on-every-target) as amended: the
+plugin graph is fixed at build time everywhere, and the thing users add at runtime is a **source
+string**, loaded by `plugin-source-runtime` from the `sources` table rather than by a loader
+([06 §4.1](./06-music-sources.md#41-a-sources-lifetime)).
 
 ---
 
@@ -277,8 +286,8 @@ The three load-bearing waterfalls:
 
 | Hook | Purpose | Who hooks it |
 |---|---|---|
-| `player/before-resolve` | Given a track URN, decide what actually gets played | `plugin-download` substitutes a local file when a binding exists; `plugin-source-failover` retries a linked URN from another provider when one is unavailable |
-| `http/request` | Wrap every outbound request | Source plugins inject auth headers and refresh expired tokens; `plugin-cache` serves and stores responses; a rate limiter delays; a retry policy backs off |
+| `player/before-resolve` | Given a track URN, decide what actually gets played | `plugin-download` substitutes a local file when a binding exists; `plugin-failover` retries a linked URN on another source when one is unavailable or its rules have rotted |
+| `http/request` | Wrap every outbound request | The source runtime injects each source's headers and cookies and refreshes an expired session; `plugin-cache` serves and stores responses; a rate limiter delays; a retry policy backs off |
 | `dsp/build-chain` | Assemble the audio node chain | Each effect plugin inserts its own segment at its configured position |
 
 The payoff is concrete: **the player has no concept of downloads.** It asks for a playable
@@ -299,14 +308,15 @@ exactly one owner.
 
 | State | Owner | Others get it via |
 |---|---|---|
-| Catalog rows (tracks, albums, …) | `ctx.db`, written by the owning source plugin | Query through the owning service, never raw SQL across plugin boundaries |
+| Catalog rows (tracks, albums, …) | `ctx.db`, written by `ctx.sources` on behalf of the owning source | Query through `ctx.sources`, never raw SQL across plugin boundaries |
 | Transport state (playing, position) | `ctx.player` | `player/*` events; `ctx.player.state` snapshot |
 | Queue | `ctx.player` (persisted to `queue_items`) | `queue/changed` events |
 | Audio graph nodes | `ctx.audio` | Never touched directly; effects contribute segments via `dsp/build-chain` |
 | Effect parameters | `ctx.dsp` (persisted to `effect_nodes`) | `ctx.dsp.setParam()` |
-| Auth tokens | `ctx.secrets`, keyed per provider instance | Never leaves the owning source plugin |
+| Auth tokens, source variables | `ctx.secrets`, keyed per source id | Never leaves that source's isolated scope; never exported with the source string |
 | UI contributions | `ctx.ui` | Read-only from shells |
 | Plugin config | Kernel, persisted in `plugin_records` | Delivered as the plugin's `config` argument; changes reload the fiber |
+| Source documents | `ctx.sources`, persisted in `sources` | Imported, edited and exported as strings; an edit reloads exactly that source's fiber |
 
 React holds **no domain state** — only view state (which tab is open, is this menu expanded).
 Enforcement rationale and hook design in [08 §4](./08-ui-architecture.md#4-binding-services-to-react).

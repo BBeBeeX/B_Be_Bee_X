@@ -12,6 +12,13 @@ All interfaces live in `packages/protocol/src/services/` and are applied to the 
 augmentation. Implementations live in `packages/core-*` and are the sole holders of platform
 dependencies.
 
+> §§1–16 are the services in the order a reader meets them. §§17–18 are cross-cutting: the runtime
+> requirements every implementation must satisfy, and the conformance suites that keep two
+> implementations of one key honest. **§19 — `ctx.js`** is appended rather than inserted because it
+> arrived with [ADR-5](./01-overview.md#adr-5--music-sources-are-imported-strings-interpreted-by-one-runtime)
+> and renumbering a document other documents link into is a worse trade than an out-of-order
+> section.
+
 ---
 
 ## 0. Shared types
@@ -124,7 +131,7 @@ export interface HttpRequest {
   signal?: AbortSignal
   timeoutMs?: number
   redirect?: 'follow' | 'manual' | 'error'
-  /** Named cookie jar. Provider instances get their own via ctx.isolate('http'). */
+  /** Named cookie jar. Each music source gets its own via ctx.isolate('http'). */
   jar?: string
   onProgress?: (loaded: number, total?: number) => void
 }
@@ -165,9 +172,9 @@ client ([02 §5](./02-architecture.md#5-composition-how-features-reach-each-othe
 ### 2.1 Cookie jars
 
 A signed-in music source must stay signed in across restarts
-([06 §4.1](./06-music-sources.md#41-session-persistence--cookies-survive-the-app)). Cookie
-persistence is therefore part of the platform contract rather than something each provider
-reimplements.
+([06 §5.1](./06-music-sources.md#51-session-persistence--cookies-survive-the-app)). Cookie
+persistence is therefore part of the platform contract rather than something a source document has
+to express in rules.
 
 ```ts
 export interface Cookie {
@@ -216,7 +223,7 @@ Semantics both implementations must satisfy — the shared conformance suite (§
 | | Electron (`core-http-node`) | Expo (`core-http-rn`) |
 |---|---|---|
 | Storage | `session.fromPartition('persist:BBeBee-<name>')` — Chromium's own cookie store, on disk, with correct expiry/`Secure`/`SameSite` handling for free | RFC 6265 jar in JS, serialised to JSON |
-| At rest | Chromium encrypts the store with the OS keychain where one exists | **Envelope encryption**: a random AES key in `ctx.secrets`, ciphertext in the `cookie_jars` table ([07 §4.1](./07-data-model.md#41-providers-accounts-and-sessions)) |
+| At rest | Chromium encrypts the store with the OS keychain where one exists | **Envelope encryption**: a random AES key in `ctx.secrets`, ciphertext in the `cookie_jars` table ([07 §4.1](./07-data-model.md#41-sources-accounts-and-sessions)) |
 | Clearing | `session.clearStorageData({ storages: ['cookies'] })` + partition removal | Row deleted, key deleted from `ctx.secrets` |
 
 > ⚠️ **Why mobile does not simply put the jar in `ctx.secrets`.** `expo-secure-store` caps a value
@@ -228,7 +235,7 @@ Semantics both implementations must satisfy — the shared conformance suite (§
 > ⚠️ React Native's `fetch` uses a **shared, app-global** native cookie store on both platforms.
 > That is the opposite of what per-instance isolation needs, so `core-http-rn` disables it and
 > manages `Cookie` / `Set-Cookie` headers itself. Verify this per RN upgrade: a change in the
-> default here silently leaks cookies between provider instances, which the conformance suite's
+> default here silently leaks cookies between sources, which the conformance suite's
 > isolation test is there to catch.
 
 ---
@@ -373,7 +380,7 @@ under `userData`. Expo: `expo-secure-store` (Keychain / EncryptedSharedPreferenc
 > `isHardwareBacked` reports `false` and the UI says so rather than implying safety it lacks.
 
 **Tokens live here and nowhere else.** Never in `ctx.db`, never in the config file, never in a log
-line. Each provider instance gets `ctx.secrets.namespace(instanceId)`, and the capability grammar
+line. Each source gets `ctx.secrets.namespace(sourceId)`, and the capability grammar
 has no `secrets:all` ([03 §7](./03-plugin-system.md#7-capability-model)).
 
 ---
@@ -567,9 +574,10 @@ export interface ShellService {
 }
 ```
 
-`openAuthSession` is what makes OAuth PKCE work identically in
-[06 §4](./06-music-sources.md#4-authentication): `expo-web-browser`'s auth session on mobile, a
-`BrowserWindow` with a navigation listener on desktop.
+`openAuthSession` is what makes the `webview` login flow of
+[06 §5](./06-music-sources.md#5-authentication-and-session) work identically: `expo-web-browser`'s
+auth session on mobile, a `BrowserWindow` with a navigation listener on desktop. The cookies it
+collects land in that source's jar (§2.1), which is the whole point.
 
 ---
 
@@ -618,8 +626,9 @@ export interface LogTransport {
 
 > ⚠️ **Redaction is mandatory.** Transports run a redactor over `meta` and `message` that strips
 > anything keyed `token`, `password`, `authorization`, `cookie`, or `refresh_token`, and rewrites
-> query strings on URLs. Music-source plugins put credentials in headers routinely; a log file
-> the user is about to email must not contain them.
+> query strings on URLs. Source rules put credentials in headers and query strings routinely, and
+> the rule tracer ([06 §10](./06-music-sources.md#10-diagnosing-a-broken-source)) exists to be
+> copied into a forum thread — so the same redactor runs over traces, not only over logs.
 
 ---
 
@@ -638,6 +647,7 @@ sandboxed renderer. Each has bitten real projects.
 | **Node builtins** | `cordis` imports none. If a dependency of a *core* plugin does, it belongs in `main`, not the renderer, and never in the mobile bundle |
 | **`ReadableStream` / `WritableStream`** | Used by `ctx.fs` and `ctx.http`. Available in the renderer; on RN 0.86 verify presence and polyfill with `web-streams-polyfill` in the mobile entry if absent |
 | **`structuredClone`** | Used by the desktop IPC bridge. Available in Electron; not needed on mobile |
+| **A second JS engine** | `ctx.js` (§19) embeds QuickJS: a WASM build in the renderer, a native module on mobile. It is a native dependency, so mobile needs a dev-client rebuild when it lands, and the WASM asset must be bundled rather than fetched — the CSP forbids fetching it |
 
 ---
 
@@ -660,7 +670,84 @@ nothing wrong. The suite is the executable form of this document.
 
 ---
 
-## 19. Where to go next
+## 19. `ctx.js` — the sandboxed evaluator
+
+**Purpose.** Evaluate a snippet of untrusted JavaScript and get a value back, in a realm that
+shares nothing with the app.
+
+It exists for exactly one caller today: `plugin-source-runtime`, whose rules are written by
+strangers ([06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do)). It
+is a core service rather than part of that plugin because embedding an interpreter means shipping
+native code, which only `core-*` may do ([02 §1](./02-architecture.md#the-invariant)).
+
+```ts
+export interface JsRealm {
+  /**
+   * Evaluate `code` with `scope` bound as globals. Resolves with the completion
+   * value, structured-cloned out of the realm — never a live reference into it.
+   */
+  eval<T = unknown>(code: string, scope?: Record<string, unknown>): Promise<T>
+  /** Install a host function callable from inside. Arguments arrive cloned. */
+  expose(name: string, fn: (...args: unknown[]) => unknown | Promise<unknown>): Disposable
+  /** Evaluate once at realm creation — the source document's `jsLib`. */
+  preload(code: string): Promise<void>
+  dispose(): void
+}
+
+export interface JsLimits {
+  /** Wall clock for one eval. Exceeding it throws JsTimeoutError and unwinds the realm. */
+  timeoutMs: number
+  /** Heap ceiling. Exceeding it throws JsMemoryError. */
+  memoryBytes: number
+  /** Cap on the size of a returned value, before cloning. */
+  maxResultBytes: number
+}
+
+export interface JsService {
+  /** A fresh realm with nothing in it but ECMAScript builtins. */
+  createRealm(limits: JsLimits): Promise<JsRealm>
+  readonly engine: { name: string; version: string }
+}
+
+export class JsTimeoutError extends Error {}
+export class JsMemoryError extends Error {}
+```
+
+| | Electron (`core-js-quickjs-node`) | Expo (`core-js-quickjs-rn`) |
+|---|---|---|
+| Backing | `quickjs-emscripten` (WASM) in the renderer | A QuickJS JSI module |
+| Isolation | A separate WASM instance per realm | A separate `JSRuntime` per realm |
+| Interrupts | QuickJS interrupt handler, checked on backward jumps | Same |
+| Async | Host functions may return promises; the realm's job queue is driven by the host | Same |
+
+Rules the contract is built around, each of which a naive embedding gets wrong:
+
+- **No ambient globals.** A realm starts with ECMAScript builtins and nothing else — no `fetch`,
+  no timers, no `console`, no module loader. Everything a caller wants available must be
+  `expose`d by name, which is what makes the host surface in
+  [06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do) an exhaustive
+  list rather than a summary.
+- **Values cross by cloning, never by reference.** Nothing inside the realm can retain a live
+  object from the host, so it cannot walk the object graph to reach a service — the failure that
+  makes same-realm "sandboxes" worthless.
+- **Limits are enforced by the engine, not by convention.** A `while (true)` is interrupted, not
+  waited on. This is the reason for a second engine rather than a `Worker`: a worker cannot be
+  memory-capped and can only be killed, losing the diagnostic.
+- **A realm is disposable and cheap.** One per source, disposed with that source's fiber. A leaked
+  realm is a leaked native handle, so it is registered through `ctx.effect()` like any other.
+- **`engine` is reported** so a rule can branch on it and a trace can record it. Two QuickJS
+  builds are not identical, and a source that works on desktop and not on mobile must be
+  debuggable rather than mysterious.
+
+> ⚠️ **The sandbox bounds reach, not intent.** Code in a realm still sees everything the host
+> passes in and can send it wherever the host's exposed functions allow — which is why the source
+> runtime pairs this with a per-source **host allowlist** on `ctx.http`
+> ([03 §7](./03-plugin-system.md#capability-grammar)). An evaluator without an egress limit is a
+> containment story with a hole in the middle.
+
+---
+
+## 20. Where to go next
 
 [05 — Audio & Playback](./05-audio-playback.md) builds the playback engine and DSP chain on top of
 these services.

@@ -12,24 +12,29 @@ Everything here lives in one SQLite database behind
 ## 1. Identity: the URN
 
 ```
-BBeBee:<providerInstance>:<kind>:<id>
-       │                  │       └── provider-local id, opaque, never parsed
-       │                  └────────── track | album | artist | playlist | genre
-       └───────────────────────────── instance id, not plugin id (06 §2)
+BBeBee:<sourceId>:<kind>:<id>
+       │          │       └── source-local id, opaque, never parsed
+       │          └────────── track | album | artist | playlist | genre
+       └───────────────────── source id, derived from sourceUrl (06 §1.2)
 ```
 
 Examples:
 
 ```
 BBeBee:local:track:9f2c8a1e
-BBeBee:navidrome-home:album:41af02
-BBeBee:jellyfin-nas:playlist:7c11
+BBeBee:music-example-org-4f1a:album:41af02
+BBeBee:jelly-nas-7b02:playlist:7c11
 ```
 
-### Why the instance, not the plugin
+### Why the source, not the backend kind
 
-Two Navidrome servers are two namespaces. If the URN keyed on the plugin, ids would collide the
-moment a user added a second server, and removing one server would corrupt the other's rows.
+Two Navidrome servers are two namespaces, and under the string model they are simply two imported
+documents with two `sourceUrl`s ([06 §1.2](./06-music-sources.md#12-identity-the-source-id)). If
+the URN keyed on anything coarser — a protocol, a "plugin" — ids would collide the moment a user
+added a second server, and removing one would corrupt the other's rows.
+
+The segment survived the move from plugins to strings unchanged, which is the point of having
+made it "whichever namespace owns this id" rather than "which package produced this".
 
 ### Why the same song is several rows
 
@@ -44,23 +49,23 @@ worth stating:
 - Merging requires deciding *which* metadata wins, and any such decision is wrong for some user.
 - Un-merging after a bad automatic match is far harder than merging on demand, and fuzzy matching
   is wrong often enough to guarantee bad matches
-  ([06 §7](./06-music-sources.md#7-cross-provider-identity-and-failover)).
-- A provider removed from the app should take exactly its own rows with it.
+  ([06 §11](./06-music-sources.md#11-cross-source-identity-and-failover)).
+- A source removed from the app should take exactly its own rows with it.
 
 The unified library presents linked tracks as one item at *display* time. Storage stays faithful.
 
 ### URN helpers
 
 ```ts
-export interface Urn { instanceId: string; kind: UrnKind; id: string }
+export interface Urn { sourceId: string; kind: UrnKind; id: string }
 export type UrnKind = 'track' | 'album' | 'artist' | 'playlist' | 'genre'
 
 export function parseUrn(urn: string): Urn
 export function formatUrn(u: Urn): string
-export function instanceOf(urn: string): string
+export function sourceOf(urn: string): string
 ```
 
-`parseUrn` splits on the first three colons only, so provider-local ids may contain colons.
+`parseUrn` splits on the first three colons only, so source-local ids may contain colons.
 
 ---
 
@@ -68,11 +73,12 @@ export function instanceOf(urn: string): string
 
 ```mermaid
 erDiagram
-    providers ||--o{ accounts : "has"
-    providers ||--o{ tracks : "owns"
-    providers ||--o{ albums : "owns"
-    providers ||--o{ artists : "owns"
-    providers ||--o{ playlists : "owns"
+    sources ||--o{ accounts : "has"
+    sources ||--o{ source_vars : "remembers"
+    sources ||--o{ tracks : "owns"
+    sources ||--o{ albums : "owns"
+    sources ||--o{ artists : "owns"
+    sources ||--o{ playlists : "owns"
 
     albums ||--o{ tracks : "contains"
     tracks }o--o{ artists : "track_artists"
@@ -112,30 +118,57 @@ erDiagram
 - Booleans are `INTEGER` 0/1.
 - JSON columns are `TEXT` holding JSON, named with a `_json` suffix.
 - Every table that mirrors remote data carries `fetched_at`, so staleness is answerable.
-- Foreign keys to catalogue rows are URN `TEXT`, not integer ids — an id from a provider is
-  meaningless without its instance, and joining on URNs keeps that impossible to get wrong.
+- Foreign keys to catalogue rows are URN `TEXT`, not integer ids — an id from a backend is
+  meaningless without the source it came from, and joining on URNs keeps that impossible to get
+  wrong.
 - `ON DELETE CASCADE` wherever a child cannot exist alone; explicit cleanup where it can.
 
 ---
 
 ## 4. Tables
 
-### 4.1 Providers, accounts, and sessions
+### 4.1 Sources, accounts, and sessions
+
+**The source document is the row.** `doc_json` holds the imported string verbatim; every other
+column is either derived from it (and therefore rebuildable) or app-maintained state that must not
+travel when the source is shared.
 
 ```sql
-CREATE TABLE providers (
-  instance_id   TEXT PRIMARY KEY,          -- 'navidrome-home'
-  plugin_id     TEXT NOT NULL,             -- '@BBeBee/plugin-source-subsonic'
-  display_name  TEXT NOT NULL,
+CREATE TABLE sources (
+  id            TEXT PRIMARY KEY,          -- 'music-example-org-4f1a', derived (06 §1.2)
+  source_url    TEXT NOT NULL UNIQUE,      -- the document's identity; dedup key on import
+  name          TEXT NOT NULL,             -- denormalised from doc_json for list rendering
+  source_group  TEXT,                      -- comma-separated, free text
+  source_type   TEXT NOT NULL DEFAULT 'music',  -- music|podcast|radio
+  doc_json      TEXT NOT NULL,             -- the SourceDocument, verbatim (06 §2.1)
+  doc_hash      TEXT NOT NULL,             -- sha256 of doc_json; drives the import diff
   enabled       INTEGER NOT NULL DEFAULT 1,
-  capabilities_json TEXT,                  -- last-known Capabilities (06 §1)
   sort_order    INTEGER NOT NULL DEFAULT 0,
-  created_at    INTEGER NOT NULL,
-  last_seen_at  INTEGER                    -- last successful ping()
+  capabilities_json TEXT,                  -- derived Capabilities, cached (06 §1.3)
+  allowed_hosts_json TEXT,                 -- the egress allowlist shown at import (06 §8)
+  locally_modified INTEGER NOT NULL DEFAULT 0,  -- edited in-app since import
+  origin_uri    TEXT,                      -- where it was imported from, if a URL
+  imported_at   INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL,
+  last_check_at INTEGER,                   -- last `check` run (06 §10)
+  last_error    TEXT,                      -- the failing rule, if any
+  fail_count    INTEGER NOT NULL DEFAULT 0,-- 3 consecutive RuleErrors → stale badge (06 §7)
+  respond_time_ms INTEGER
+);
+CREATE INDEX idx_sources_enabled ON sources(enabled, sort_order);
+
+-- Per-source persisted state written by rules via src.vars (06 §3.4).
+-- Credential-grade: never exported, cleared by signOut().
+CREATE TABLE source_vars (
+  source_id  TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  key        TEXT NOT NULL,
+  value      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (source_id, key)
 );
 
 CREATE TABLE accounts (
-  instance_id    TEXT PRIMARY KEY REFERENCES providers(instance_id) ON DELETE CASCADE,
+  source_id      TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
   remote_user_id TEXT,
   display_name   TEXT,
   status         TEXT NOT NULL,            -- anonymous|authenticated|expired|error
@@ -146,7 +179,7 @@ CREATE TABLE accounts (
 -- Mobile only. Desktop keeps cookies in Chromium's own persisted partition
 -- and never writes this table. See 04 §2.1.
 CREATE TABLE cookie_jars (
-  name        TEXT PRIMARY KEY,            -- the provider instance_id
+  name        TEXT PRIMARY KEY,            -- the source id
   ciphertext  BLOB NOT NULL,               -- AES-GCM over the serialised jar
   iv          BLOB NOT NULL,
   key_ref     TEXT NOT NULL,               -- ctx.secrets key holding the AES key
@@ -154,18 +187,37 @@ CREATE TABLE cookie_jars (
 );
 ```
 
-> **No readable credential is ever in this database.** Tokens and passwords live in `ctx.secrets`
-> under `namespace(instanceId)`. Cookies are also credentials, but a real session jar exceeds
-> `expo-secure-store`'s 2048-byte value limit, so mobile stores them **envelope-encrypted**: the
-> AES key (small) in `ctx.secrets`, the ciphertext (unbounded) in `cookie_jars`. The invariant is
-> preserved — the key and the ciphertext are never in the same store, and a leaked database file
-> yields nothing ([04 §2.1](./04-core-services.md#21-cookie-jars),
+Why `doc_json` is stored whole rather than shredded into columns: the document is the artefact the
+user owns. Round-tripping it through a normalised schema would mean export producing something
+subtly different from what was imported — reordered keys, dropped unknown fields, a rule
+reformatted — and the first time a user's edited document came back changed, they would stop
+trusting export. Unknown fields from a newer document version survive an older app for the same
+reason.
+
+`doc_hash` is what makes re-import a three-way answer rather than a coin flip: unchanged (same
+hash, skip), updated (different hash, show the field diff), or conflicting (different hash *and*
+`locally_modified`, require confirmation) — see
+[06 §9](./06-music-sources.md#9-importing-updating-and-sharing).
+
+> **No readable credential is ever in this database.** Tokens, passwords and the per-source
+> variable live in `ctx.secrets` under `namespace(sourceId)`; `source_vars` holds only what a rule
+> chose to persist and is treated the same way. Cookies are also credentials, but a real session
+> jar exceeds `expo-secure-store`'s 2048-byte value limit, so mobile stores them
+> **envelope-encrypted**: the AES key (small) in `ctx.secrets`, the ciphertext (unbounded) in
+> `cookie_jars`. The invariant is preserved — the key and the ciphertext are never in the same
+> store, and a leaked database file yields nothing
+> ([04 §2.1](./04-core-services.md#21-cookie-jars),
 > [04 §6](./04-core-services.md#6-ctxsecrets--credential-storage)).
 >
-> `accounts` records only that a session exists and when it lapses. Deleting a provider cascades
-> to `accounts`; `signOut()` is separately responsible for clearing `cookie_jars` and the secrets
-> namespace, because those are outside SQLite's cascade
-> ([06 §4.1](./06-music-sources.md#41-session-persistence--cookies-survive-the-app)).
+> ⚠️ **A source document must never contain a credential**, and `export()` cannot strip what it
+> cannot recognise. Hence the separation above: credentials live outside `doc_json` by
+> construction, so "share this source" is safe by default rather than by the sharer remembering
+> ([06 §5](./06-music-sources.md#5-authentication-and-session)).
+>
+> `accounts` records only that a session exists and when it lapses. Deleting a source cascades to
+> `accounts` and `source_vars`; `signOut()` is separately responsible for clearing `cookie_jars`
+> and the secrets namespace, because those are outside SQLite's cascade
+> ([06 §5.1](./06-music-sources.md#51-session-persistence--cookies-survive-the-app)).
 
 ### 4.2 Artwork
 
@@ -194,7 +246,7 @@ doing it in the UI costs a frame on every list scroll.
 ```sql
 CREATE TABLE artists (
   urn          TEXT PRIMARY KEY,
-  instance_id  TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
+  source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
   remote_id    TEXT NOT NULL,
   name         TEXT NOT NULL,
   sort_name    TEXT,
@@ -203,12 +255,12 @@ CREATE TABLE artists (
   fetched_at   INTEGER NOT NULL,
   raw_json     TEXT
 );
-CREATE INDEX idx_artists_instance ON artists(instance_id);
+CREATE INDEX idx_artists_source ON artists(source_id);
 CREATE INDEX idx_artists_sort ON artists(sort_name);
 
 CREATE TABLE albums (
   urn           TEXT PRIMARY KEY,
-  instance_id   TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
+  source_id     TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
   remote_id     TEXT NOT NULL,
   title         TEXT NOT NULL,
   sort_title    TEXT,
@@ -222,12 +274,12 @@ CREATE TABLE albums (
   fetched_at    INTEGER NOT NULL,
   raw_json      TEXT
 );
-CREATE INDEX idx_albums_instance ON albums(instance_id);
+CREATE INDEX idx_albums_source ON albums(source_id);
 CREATE INDEX idx_albums_year ON albums(year);
 
 CREATE TABLE tracks (
   urn                TEXT PRIMARY KEY,
-  instance_id        TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
+  source_id          TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
   remote_id          TEXT NOT NULL,
   title              TEXT NOT NULL,
   sort_title         TEXT,
@@ -248,7 +300,7 @@ CREATE TABLE tracks (
   raw_json           TEXT
 );
 CREATE INDEX idx_tracks_album ON tracks(album_urn, disc_no, track_no);
-CREATE INDEX idx_tracks_instance ON tracks(instance_id);
+CREATE INDEX idx_tracks_source ON tracks(source_id);
 CREATE INDEX idx_tracks_title ON tracks(sort_title);
 
 CREATE TABLE track_artists (
@@ -399,14 +451,14 @@ CREATE INDEX idx_scan_entries_root ON scan_entries(root_id, status);
 ```
 
 `(size, mtime)` is the incremental-scan key: unchanged files cost one `stat` and nothing more
-([06 §8](./06-music-sources.md#the-local-scanner)).
+([06 §12](./06-music-sources.md#the-local-scanner)).
 
 ### 4.6 Playlists and library
 
 ```sql
 CREATE TABLE playlists (
-  urn          TEXT PRIMARY KEY,             -- local ones use instance 'local'
-  instance_id  TEXT REFERENCES providers(instance_id) ON DELETE CASCADE,
+  urn          TEXT PRIMARY KEY,             -- local ones use source id 'local'
+  source_id    TEXT REFERENCES sources(id) ON DELETE CASCADE,
   remote_id    TEXT,
   name         TEXT NOT NULL,
   description  TEXT,
@@ -418,7 +470,7 @@ CREATE TABLE playlists (
   track_count  INTEGER,
   duration_ms  INTEGER,
   revision     INTEGER NOT NULL DEFAULT 0,   -- bumped on every local edit
-  remote_revision TEXT,                      -- provider's etag/version, for conflict detection
+  remote_revision TEXT,                      -- the source's etag/version, for conflict detection
   sync_state   TEXT NOT NULL DEFAULT 'clean',-- clean|dirty|conflict
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
@@ -453,7 +505,7 @@ export type SmartRule =
 export type SmartField =
   | 'title' | 'artist' | 'album' | 'genre' | 'year' | 'bpm' | 'durationMs'
   | 'playCount' | 'skipCount' | 'lastPlayedAt' | 'addedAt' | 'rating' | 'loved'
-  | 'hasBinding' | 'instanceId' | 'quality'
+  | 'hasBinding' | 'sourceId' | 'quality'
 
 export interface SmartPlaylist { rules: SmartRule; limit?: number; orderBy?: SmartField; desc?: boolean }
 ```
@@ -465,7 +517,7 @@ are always bound. A rule tree from a plugin or an imported playlist is untrusted
 CREATE TABLE library_items (
   urn         TEXT PRIMARY KEY,
   kind        TEXT NOT NULL,                 -- track|album|artist|playlist
-  instance_id TEXT NOT NULL,
+  source_id   TEXT NOT NULL,
   added_at    INTEGER NOT NULL,
   pinned      INTEGER NOT NULL DEFAULT 0,
   sort_key    TEXT
@@ -599,7 +651,7 @@ CREATE TABLE effect_chains (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL,
   is_active  INTEGER NOT NULL DEFAULT 0,
-  scope      TEXT NOT NULL DEFAULT 'global',  -- global|output:<id>|source:<instanceId>
+  scope      TEXT NOT NULL DEFAULT 'global',  -- global|output:<id>|source:<sourceId>
   created_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX idx_chain_active ON effect_chains(scope) WHERE is_active = 1;
@@ -666,7 +718,7 @@ CREATE TABLE capability_grants (
 ```sql
 CREATE TABLE lyrics (
   track_urn   TEXT NOT NULL,
-  instance_id TEXT NOT NULL,                  -- who provided them
+  source_id   TEXT NOT NULL,                  -- which source provided them
   format      TEXT NOT NULL,                  -- lrc|ttml|plain
   content     TEXT NOT NULL,
   synced      INTEGER NOT NULL DEFAULT 0,
@@ -674,7 +726,7 @@ CREATE TABLE lyrics (
   language    TEXT,
   is_preferred INTEGER NOT NULL DEFAULT 0,    -- user's pick when several exist
   fetched_at  INTEGER NOT NULL,
-  PRIMARY KEY (track_urn, instance_id, language)
+  PRIMARY KEY (track_urn, source_id, language)
 );
 
 CREATE TABLE cache_entries (
@@ -719,14 +771,22 @@ declare module 'cordis' {
     // queue — emit
     'queue/changed'(items: readonly QueueItem[]): void
 
-    // sources
-    'source/registered'(instanceId: string): void
-    'source/unregistered'(instanceId: string): void
-    'source/authenticated'(instanceId: string, status: AuthStatus): void
-    'source/auth-expired'(instanceId: string): void
-    'source/unreachable'(instanceId: string, error: SourceError): void
+    // sources — registration and session
+    'source/registered'(sourceId: string): void
+    'source/unregistered'(sourceId: string): void
+    'source/authenticated'(sourceId: string, status: AuthStatus): void
+    'source/auth-expired'(sourceId: string): void
+    'source/unreachable'(sourceId: string, error: SourceError): void
     /** Sign-out completed. Listeners purge anything derived from that session. */
-    'source/signed-out'(instanceId: string): void
+    'source/signed-out'(sourceId: string): void
+
+    // sources — the document itself (06 §9, §10)
+    'source/imported'(sourceIds: string[]): void
+    'source/changed'(sourceId: string, changedFields: string[]): void
+    'source/removed'(sourceId: string, forgotCatalogue: boolean): void
+    /** A rule produced nothing where something was required. Drives the stale badge. */
+    'source/rule-failed'(sourceId: string, rule: { block: string; field: string }): void
+    'source/checked'(sourceId: string, report: CheckReport): void
 
     // http — waterfall
     'http/request'(req: HttpRequest, next: (r: HttpRequest) => Promise<HttpResponse>): Promise<HttpResponse>
@@ -764,8 +824,10 @@ declare module 'cordis' {
 | `player/before-resolve`, `player/before-enqueue`, `http/request`, `dsp/build-chain` | **waterfall** | Listeners transform the value and control whether the chain continues. The composition mechanism of [02 §5](./02-architecture.md#5-composition-how-features-reach-each-other) |
 | `*/changed`, `*/progress`, `player/*`, `plugin/*` | **emit** | Notification. Listener errors must not affect the emitter |
 | `player/track-completed` | **parallel** | Scrobblers, stats, and history all run; all are awaited; one failing does not block the others |
-| `source/auth-expired` | **serial** | Ordered handling — the token refresher gets first refusal before the UI prompts |
+| `source/auth-expired` | **serial** | Ordered handling — the session refresher gets first refusal before the UI prompts |
 | `source/signed-out` | **parallel** | Every listener purging session-derived state is awaited, so sign-out completes only once the cleanup has actually finished |
+| `source/imported`, `source/changed`, `source/removed` | **emit** | Notification. The runtime rebuilds the affected fibers; views re-render |
+| `source/rule-failed` | **emit**, coalesced per source | One rotted source can fail a rule per track in a queue; the badge needs the fact, not the volume |
 | `player/position` | **emit**, throttled to 1 Hz | At 60 Hz it would dominate the event bus for no benefit; the UI interpolates between ticks |
 
 ---
@@ -857,12 +919,13 @@ Deliberately transient. Persisting any of them would create staleness bugs with 
 
 | Type | Defined in | Why it stays in memory |
 |---|---|---|
-| `StreamHandle` | [06 §5](./06-music-sources.md#5-stream-resolution) | Frequently expires; must be re-resolved, never trusted from storage |
+| `StreamHandle` | [06 §6](./06-music-sources.md#6-stream-resolution) | Frequently expires; must be re-resolved, never trusted from storage |
 | `TransportState` | [05 §2](./05-audio-playback.md#2-ctxplayer--transport-and-queue) | Live; only a durable subset lands in `playback_state` |
-| `Capabilities` | [06 §1](./06-music-sources.md#capabilities) | Derived from the live provider. Cached in `providers.capabilities_json` purely so the UI can render before a provider connects |
-| `Paged<T>`, cursors | [06 §3](./06-music-sources.md#3-pagination-and-queries) | Opaque and provider-owned; meaningless after a session |
+| `Capabilities` | [06 §1.3](./06-music-sources.md#13-capabilities-are-derived-not-declared) | Computed from the source document's rule blocks. Cached in `sources.capabilities_json` purely so the UI can render before a source connects |
+| `Paged<T>`, cursors | [06 §4.3](./06-music-sources.md#43-pagination-rate-limiting-and-caching) | Opaque and source-owned; meaningless after a session |
+| `TraceEvent` | [06 §10](./06-music-sources.md#10-diagnosing-a-broken-source) | A debug trace is about one run against one live backend; storing it would preserve a redacted answer to a question nobody asks twice |
 | `EffectSegment` | [05 §3](./05-audio-playback.md#3-ctxdsp--the-effect-chain) | Live `AudioNode`s. Only `params_json` persists |
-| `AuthStatus` | [06 §4](./06-music-sources.md#4-authentication) | Recomputed at sign-in; `accounts` keeps only the durable summary |
+| `AuthStatus` | [06 §5](./06-music-sources.md#5-authentication-and-session) | Recomputed at sign-in; `accounts` keeps only the durable summary |
 
 ---
 

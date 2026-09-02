@@ -89,8 +89,8 @@ Two conventions on top of Cordis, both enforced by the kernel:
 
 - Every plugin package ships a **`BBeBee.plugin.json` manifest** (§6.3) describing entrypoints,
   capabilities, and UI contributions. Cordis knows nothing about it; the kernel reads it.
-- A plugin's **runtime module has a default export** that is the Cordis plugin, so both loaders
-  can treat static and dynamic imports identically.
+- A plugin's **runtime module has a default export** that is the Cordis plugin, so the loader and
+  the shelved dynamic one (§6.2) can treat every plugin identically.
 
 ---
 
@@ -113,8 +113,10 @@ stateDiagram-v2
 
 The transition that matters most, and that most plugin systems lack: **`ACTIVE → UNLOADING →
 PENDING`**. If a service a plugin injected disappears, the plugin is torn down and parked. If
-that service comes back, the plugin is rebuilt from scratch. This is why sign-out of a music
-source cleanly removes everything that source contributed, with no bespoke cleanup code anywhere.
+that service comes back, the plugin is rebuilt from scratch. This is also why disabling one
+imported music source removes everything it contributed with no bespoke cleanup code: a source is
+data, but the runtime gives each one its own fiber precisely to inherit this
+([06 §4.1](./06-music-sources.md#41-a-sources-lifetime)).
 
 ### The rule: every side effect goes through the fiber
 
@@ -126,14 +128,14 @@ tracing proxy, and the function that comes back through it is not the one the fi
 the obvious line leaves the registration in place after unload.
 
 ```ts
-// ❌ Looks right; the provider is still registered after this plugin unloads.
+// ❌ Looks right; the effect is still registered after this plugin unloads.
 export async function apply(ctx: Context) {
-  return ctx.sources.register(provider)
+  return ctx.dsp.registerEffect(effect)
 }
 
 // ✅ Wrapped in a local closure, which is what gets collected.
 export async function apply(ctx: Context) {
-  const off = ctx.sources.register(provider)
+  const off = ctx.dsp.registerEffect(effect)
   return () => off()
 }
 ```
@@ -323,17 +325,18 @@ BBeBee leans on both.
 ### `ctx.isolate(key)` — a private instance of a service
 
 ```ts
-// Each provider instance gets its own HTTP stack: its own cookie jar,
-// its own rate limiter, its own auth. They cannot see each other's.
+// Each imported source gets its own HTTP stack: its own cookie jar, its own
+// rate limiter, its own host allowlist. They cannot see each other's.
 const scoped = ctx.isolate('http')
-scoped.plugin(HttpWithCookieJar, { jar: instanceId, rateLimit: caps.rateLimit })
-scoped.plugin(SubsonicProvider, providerConfig)
+scoped.plugin(HttpWithCookieJar, { jar: sourceId, rateLimit, allowedHosts })
+scoped.plugin(SourceInstance, { record })
 ```
 
-Inside `scoped`, `ctx.http` is the provider-specific stack. Everywhere else it is the shared one.
+Inside `scoped`, `ctx.http` is the source-specific stack. Everywhere else it is the shared one.
 Every other service — `fs`, `db`, `logger` — is still shared, because only the named key is
-isolated. This is exactly the semantics wanted: one bad provider's rate limiting cannot stall
-another's requests, and cookies never cross a provider boundary.
+isolated. This is exactly the semantics wanted: one slow source's rate limiting cannot stall
+another's requests, and cookies never cross a source boundary
+([06 §4.1](./06-music-sources.md#41-a-sources-lifetime)).
 
 ### `ctx.intercept(key, config)` — same instance, different configuration
 
@@ -347,13 +350,17 @@ namespaces are applied without every plugin having to remember to prefix its key
 
 ---
 
-## 6. Loading: two modes
+## 6. Loading
 
-Per [ADR-1](./01-overview.md#adr-1--plugins-are-statically-bundled-on-mobile-runtime-loadable-on-desktop),
-one manifest format, two loaders. Both produce the same thing: a list of
-`{ plugin, config }` pairs handed to `ctx.plugin()`.
+Per [ADR-1 as amended](./01-overview.md#adr-1--plugins-are-statically-bundled-on-every-target),
+there is **one loader on both targets**: the plugin graph is fixed at build time everywhere. The
+thing a user adds at runtime is a music **source string**, which is data interpreted by
+`plugin-source-runtime` ([06](./06-music-sources.md)) rather than code handed to `ctx.plugin()`.
 
-### 6.1 Mobile and workspace plugins — `plugin-loader-static`
+§6.2 documents the dynamic loader as a shelf design — worked out, not wired up — because the
+decision to shelve it is reversible and the CSP problem it solves is not obvious.
+
+### 6.1 Every target — `plugin-loader-static`
 
 Metro cannot resolve a module path computed at runtime, so plugin imports must be statically
 analysable. A codegen step (`pnpm gen:plugins`, run pre-build and in dev watch) scans the
@@ -375,9 +382,15 @@ generated file is committed so a clean checkout builds without running codegen f
 
 ### 6.2 Desktop additions — `plugin-loader-dynamic`
 
+> **Shelved, not built.** Nothing below is registered in either shell. It is kept because ADR-1's
+> amendment is a scope decision rather than a technical one: if third-party *plugins* (as distinct
+> from sources) ever justify the install flow, this is the design, and the reasons the obvious
+> approaches fail are worth not rediscovering. Everything in it is gated behind
+> [10 §M5](./10-roadmap.md#m5--third-party-extensions-on-the-sandbox).
+
 The renderer is sandboxed with `contextIsolation` on and a strict CSP, so it cannot `import()` a
-`file://` path, and we are not willing to relax either. Instead, `main` registers a privileged
-custom scheme:
+`file://` path, and we are not willing to relax either. Instead, `main` would register a
+privileged custom scheme:
 
 ```ts
 // apps/desktop/main — registered before app ready
@@ -387,8 +400,8 @@ protocol.registerSchemesAsPrivileged([{
 }])
 ```
 
-and serves it from the user plugins directory with path traversal rejected and a
-`text/javascript` content type. The renderer's CSP then reads
+and serve it from the user plugins directory with path traversal rejected and a
+`text/javascript` content type. The renderer's CSP would then read
 `script-src 'self' BBeBee-plugin:`, and the loader is an ordinary dynamic import:
 
 ```ts
@@ -396,8 +409,11 @@ const mod = await import(/* @vite-ignore */ `BBeBee-plugin://${id}@${version}/in
 await ctx.plugin(mod.default, config)
 ```
 
-This keeps CSP enforceable, keeps `nodeIntegration` off, avoids `new Function`, and — because
-`import()` returns a real module — gives correct ESM semantics including top-level await.
+This would keep CSP enforceable, keep `nodeIntegration` off, avoid `new Function`, and — because
+`import()` returns a real module — give correct ESM semantics including top-level await. Note what
+it does *not* give: containment. The module lands in the renderer's realm, which is why the
+version of this that ships (if one does) runs over `ctx.js` instead
+([§7](#what-this-is-not)).
 
 **Install flow.** Fetch → verify integrity hash → check `engines.BBeBee` against the app version →
 extract to `plugins/<id>@<version>/` → read manifest → prompt for capability grants → write
@@ -408,7 +424,10 @@ or the fiber's disposer may fail mid-teardown.
 **Quarantine.** A plugin that throws during load twice consecutively is marked
 `enabled = false` with `lastError` set and is skipped on subsequent boots until the user
 re-enables it. Without this, a single bad third-party plugin becomes an unrecoverable boot loop —
-the most common failure mode of runtime plugin systems.
+the most common failure mode of runtime plugin systems. The same idea, applied to a rotted source
+rather than a crashing plugin, is the stale badge in
+[06 §7](./06-music-sources.md#7-errors) — with the deliberate difference that a stale source is
+*not* disabled, because its cached catalogue is still worth browsing.
 
 > ⚠️ Module caching means an updated plugin at the same URL will not be re-fetched.
 > Versioned URLs (`<id>@<version>`) sidestep this; dev mode appends a cache-busting query.
@@ -417,27 +436,27 @@ the most common failure mode of runtime plugin systems.
 
 ```jsonc
 {
-  "id": "@BBeBee/plugin-source-subsonic",
-  "version": "1.2.0",
-  "displayName": "Subsonic / Navidrome",
-  "description": "Play music from any Subsonic-compatible server.",
+  "id": "@BBeBee/plugin-source-runtime",
+  "version": "1.0.0",
+  "displayName": "Music sources",
+  "description": "Interprets imported source strings.",
   "engines": { "BBeBee": "^1.0.0" },
   "entry": {
     "main": "./dist/index.js",
     "ui": { "mobile": "./dist/ui.mobile.js", "desktop": "./dist/ui.desktop.js" }
   },
   "capabilities": [
-    "net:host/*",           // user-supplied server address
-    "db:own",               // its own namespaced tables
-    "secrets:own",          // its own credentials
+    "net:host/*",           // narrowed per source to that source's allowlist — see §7
+    "js",                   // evaluates source rules in ctx.js
+    "db:read:core",
+    "db:write:core",
+    "secrets:own",          // one namespace per source id
     "fs:read:media"         // read cached artwork
   ],
   "contributes": {
-    "services": ["sources.subsonic"],
     "settings": "./dist/settings-schema.js",
-    "slots": ["settings.sources", "source.browse"]
-  },
-  "instantiable": true       // may be configured more than once — see 06 §2
+    "slots": ["settings.sources", "source.browse", "source.debug"]
+  }
 }
 ```
 
@@ -456,16 +475,19 @@ plugins:
   '@BBeBee/plugin-player':
     enabled: true
     config: { crossfadeMs: 0, prefetchNext: true }
-  '@BBeBee/plugin-source-subsonic':
+  '@BBeBee/plugin-source-runtime':
     enabled: true
-    instances:
-      - id: navidrome-home
-        config: { baseUrl: https://music.example.org, username: revers }
+    config: { defaultRate: '2/1000' }
 ```
 
-`instances` expands to one `ctx.plugin()` call per entry, each inside its own
-`ctx.isolate('http')` scope (§5). Secrets never appear here — only a reference; the value lives in
-`ctx.secrets`. Editing config disposes and rebuilds only the affected fibers.
+Editing config disposes and rebuilds only the affected fibers.
+
+> **Music sources are not configured here.** They are rows in the `sources` table
+> ([07 §4.1](./07-data-model.md#41-sources-accounts-and-sessions)), imported and edited in the app,
+> and `plugin-source-runtime` gives each one its own fiber inside its own `ctx.isolate('http')`
+> scope (§5). Putting them in a config file would mean hand-editing JSON to add a server, and
+> would make "import this string" a developer action
+> ([06 §9](./06-music-sources.md#9-importing-updating-and-sharing)).
 
 ### 6.5 Hot reload
 
@@ -478,8 +500,12 @@ it composes with Metro Fast Refresh for the view layer while the kernel reloads 
 
 ## 7. Capability model
 
-Desktop can load third-party code (ADR-1), so plugins declare what they intend to touch and the
-kernel mediates.
+Plugins declare what they intend to touch and the kernel mediates. With
+[ADR-1 amended](./01-overview.md#adr-1--plugins-are-statically-bundled-on-every-target) every
+plugin is first-party, so the gate is now a **discipline that keeps intent auditable** rather than
+a boundary against a stranger's package — and the stranger's code that does exist, a source
+string, is contained by a different and much stronger mechanism
+([06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do)).
 
 ### Capability grammar
 
@@ -507,6 +533,7 @@ Three refusals apply whatever was granted, because each was a way past the table
 it cannot attribute is treated as foreign — and it is a guard rail against the ordinary mistake
 and the casual overreach, not against an author who is trying, who shares the runtime anyway.
 | `secrets:own` | Its own credential namespace. There is no `secrets:all`. A plugin that only needs its login to persist does not need this — the cookie jar under `net:` already covers it |
+| `js` | May evaluate untrusted script in `ctx.js` ([04 §19](./04-core-services.md#19-ctxjs--the-sandboxed-evaluator)). Held by `plugin-source-runtime` and nothing else. The grant does not widen what the evaluated code can reach — that is fixed by the host API and the per-evaluation allowlist — it makes *who is allowed to run it* auditable |
 | `audio` | May contribute nodes to the audio graph |
 | `mediaSession` | May publish now-playing metadata and receive transport commands |
 | `notify`, `shell`, `background` | User-visible or OS-level actions |
@@ -515,6 +542,13 @@ and the casual overreach, not against an author who is trying, who shares the ru
 the plugin's **storage namespace**, which `ctx.store`, `ctx.secrets`, and the cookie jar all key
 on so a plugin gets the same namespace across the three (`storageNamespace(config)` in the
 kernel).
+
+> **`net:host/*` on `plugin-source-runtime` is not what it looks like.** The runtime holds the
+> broad grant because the hosts are not known until a source is imported, and it then **narrows**
+> it: each source's isolated `ctx.http` scope carries that source's own allowlist — its
+> `sourceUrl` host plus its declared `allowedHosts` — and `core-http-*` enforces the narrower of
+> the two. A rule that computes a URL to an undeclared host is refused, and the list is shown to
+> the user at import ([06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do)).
 
 ### Enforcement
 
@@ -525,7 +559,7 @@ The kernel derives each plugin's context by interception:
 function scopeContext(ctx: Context, opts: GrantOptions) {
   const config = {
     pluginId: opts.pluginId,
-    instanceId: opts.instanceId ?? opts.pluginId,
+    scopeId: opts.scopeId ?? opts.pluginId,   // a source id, or the plugin id
     granted: opts.granted ?? opts.requested,
   }
   let scoped = ctx
@@ -553,17 +587,19 @@ promising something nothing keeps. Current state, so the gap is visible rather t
 | `audio` | `core-audio-webaudio` on `load` and the mutators | ✅ |
 | `mediaSession`, `background`, `notify`, `shell` | — | ⏳ The services do not exist yet; the grant is declarative until they do |
 | `secrets:own` | — | ⏳ M2, with `ctx.secrets` |
+| `js`, and the per-source narrowing of `net:host/…` | `core-js-quickjs-*`, `core-http-*` | ⏳ M2, with the source runtime |
 
 ### The gate fails closed
 
 A plugin's manifest is a *request*, never an authorisation. The loader trusts a manifest only for
-plugins marked `builtin` — first-party packages bundled with the app. Anything else
-(runtime-installed, third-party) must have a matching row in `capability_grants`; without one it
-is refused and recorded as `ungranted` rather than loaded.
+plugins marked `builtin` — first-party packages bundled with the app. Anything else must have a
+matching row in `capability_grants`; without one it is refused and recorded as `ungranted` rather
+than loaded. Today every plugin is `builtin`, so the branch is exercised only by tests — which is
+exactly why it is kept.
 
 This matters because the failure mode is silent: a host that simply forgot to pass its grants
-would otherwise hand every third-party plugin exactly what it declared for itself — including
-`net:host/*` — turning install-time approval into a no-op.
+would otherwise hand a non-builtin plugin exactly what it declared for itself — including
+`net:host/*` — turning approval into a no-op.
 
 ### Where the gate actually runs
 
@@ -588,21 +624,27 @@ What `main` enforces regardless, because it does not require knowing who is call
 | Transaction lifecycle | An abandoned transaction is rolled back on renderer teardown and on an idle timeout, so a reload cannot wedge the database |
 
 Closing the per-plugin gap properly requires plugins to stop sharing the renderer's realm — the
-same prerequisite as real sandboxing, below. **This must be resolved before M5** ships
-runtime-loaded third-party plugins on desktop; until then the gate's per-plugin half is a
-first-party discipline, not a boundary.
+same prerequisite as real sandboxing, below. Nothing outside this repository is loaded as a plugin
+any more, so the gate's per-plugin half is a first-party discipline by design rather than by
+oversight. **It must be resolved before anything third-party is loaded as a plugin**
+([10 §M5](./10-roadmap.md#m5--third-party-extensions-on-the-sandbox)).
 
 ### What this is not
 
-> ⚠️ **This is defense in depth, not a sandbox.** Runtime-loaded plugins execute in the same JS
-> realm as the app. A determined plugin can reach globals, patch prototypes, and generally do
-> anything the renderer can do. The capability model raises the cost of *accidental* overreach and
-> makes intent auditable and revocable — it does not contain a hostile plugin.
+> ⚠️ **This is defense in depth, not a sandbox.** Plugins execute in the same JS realm as the app.
+> A determined plugin can reach globals, patch prototypes, and generally do anything the renderer
+> can do. The capability model raises the cost of *accidental* overreach and makes intent auditable
+> and revocable — it does not contain a hostile plugin. It is not asked to: every plugin is
+> first-party and ships in the build.
 
-Real containment needs an isolated realm — a `Worker` with a message-passing service bridge, or a
-QuickJS interpreter. Both are compatible with everything above (the capability grammar becomes the
-bridge's protocol) and both are deferred past M5. In the meantime the honest mitigations are
-social: signed plugins, a curated list, a clear install-time warning, and the quarantine in §6.2.
+Real containment needs an isolated realm. **One now exists** — `ctx.js`, a QuickJS realm with an
+enumerable host API, built because imported music sources are untrusted code and had to be
+contained ([04 §19](./04-core-services.md#19-ctxjs--the-sandboxed-evaluator),
+[06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do)). Generalising it
+from "evaluate source rules" to "host a whole plugin" means giving it the service bridge the
+capability grammar above already describes as a protocol. That is the shape of
+[M5](./10-roadmap.md#m5--third-party-extensions-on-the-sandbox), and it is now an extension of
+something shipped rather than a subsystem to invent.
 
 ---
 
@@ -617,6 +659,9 @@ social: signed plugins, a curated list, a clear install-time warning, and the qu
 - [ ] No module-level mutable state.
 - [ ] `Config` schema present if configurable; defaults supplied.
 - [ ] `BBeBee.plugin.json` declares the minimum capabilities that work.
+- [ ] It is a plugin at all. A new music backend is a **source string**, not a package
+      ([06](./06-music-sources.md)); a plugin is for behaviour the runtime cannot express —
+      an effect, a scrobbler, a transport, a UI surface.
 - [ ] Own DB tables declared through `ctx.db.defineSchema('plugin:<id>', …)`
       ([07 §6](./07-data-model.md#6-migrations)).
 - [ ] Disable, re-enable, and confirm via `fiber.getEffects()` that nothing leaked.

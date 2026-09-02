@@ -135,8 +135,10 @@ export type SlotId =
   | 'album.context-menu'
   | 'library.sidebar'            // extra library sections
   | 'search.results-section'     // an extra results group
-  | 'settings.sources'
-  | 'source.browse'
+  | 'settings.sources'            // the source list: import, groups, enable, reorder
+  | 'source.browse'               // a source's explore tree
+  | 'source.editor'               // the document editor for one source
+  | 'source.debug'                // the rule tracer (06 §10)
   | 'status-bar'                 // desktop only; ignored on mobile
 ```
 
@@ -248,6 +250,26 @@ which events invalidate which state — are written once. Only the JSX is writte
   `requestAnimationFrame` and re-syncs on each event.
 - **Artwork renders `blurhash` first**, then the image
   ([07 §4.2](./07-data-model.md#42-artwork)). No layout shift, no grey flash on scroll.
+
+---
+
+### The source surfaces
+
+Four screens carry the whole string model, and they are worth naming because they are the part of
+the UI that has no equivalent in a conventional player. All four are contributed by
+`plugin-source-runtime-ui-{mobile,desktop}`, and all four are ordinary descriptors — nothing about
+them is privileged.
+
+| Screen | Does | Notes on the split |
+|---|---|---|
+| **Source list** | Enable, disable, reorder, group, and see each source's health badge | Ordinary list; parity is free |
+| **Import review** | Show what a pasted string contains — added / updated / rejected, and the host allowlist — before anything is written ([06 §9](./06-music-sources.md#9-importing-updating-and-sharing)) | The one screen that must never be skipped, so it is a modal route on both, not a slot |
+| **Source editor** | Edit the document's fields and rules | ⚠️ Genuinely different: desktop gets a two-pane JSON/form editor, mobile a sectioned form. The *validation* is in the headless package, so the two cannot disagree about what is valid |
+| **Rule tracer** | Run one step and show every rule's input, output and timing ([06 §10](./06-music-sources.md#10-diagnosing-a-broken-source)) | A long scrollable log with an editable rule at each row — the closest thing in the app to a developer tool, and the reason a user can fix a source themselves |
+
+The rule that keeps this affordable is [§1](#1-the-three-package-convention)'s: parsing,
+validating, diffing, tracing and redacting all live in the headless package. The view packages
+show a list and a text field.
 
 ---
 

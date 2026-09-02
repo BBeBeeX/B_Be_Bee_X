@@ -7,6 +7,12 @@ plugin-lifecycle framework — and *everything above the kernel is a plugin*, in
 networking, and persistence. Platform differences are absorbed by swapping which implementation
 of a core service is loaded, not by branching inside feature code.
 
+**Music sources are not plugins.** A source is a JSON document the user imports as text — the
+[legado](https://github.com/gedoor/legado) book-source model applied to audio — interpreted by one
+built-in runtime and sandboxed in its own JS realm. Adding a backend is a paste, not a release
+([ADR-5](./01-overview.md#adr-5--music-sources-are-imported-strings-interpreted-by-one-runtime),
+[06](./06-music-sources.md)).
+
 > **Status.** These documents describe a design, not a shipped system. The repository contains
 > no application code yet. Every version number and API fact was verified against the published
 > package at the time of writing (see [09 — Project Structure](./09-project-structure.md) for
@@ -42,7 +48,7 @@ Read `01` and `02` first — they establish the vocabulary every other document 
 | 03 | [Plugin System](./03-plugin-system.md) | What a plugin *is*, how it declares dependencies, how it is loaded, and how it is contained |
 | 04 | [Core Services](./04-core-services.md) | The platform abstraction: `fs`, `http`, `db`, `secrets`, … and their two implementations each |
 | 05 | [Audio & Playback](./05-audio-playback.md) | The audio engine, the transport state machine, and the DSP effect chain |
-| 06 | [Music Sources](./06-music-sources.md) | The provider SPI: search, browse, auth, stream resolution, failover |
+| 06 | [Music Sources](./06-music-sources.md) | The source string: its JSON, the rule language, the runtime, trust, import, and how a broken source is repaired |
 | 07 | [Data Model](./07-data-model.md) | Identity (URNs), every table, every runtime type, the event map, and migrations |
 | 08 | [UI Architecture](./08-ui-architecture.md) | How one plugin contributes UI to two very different shells |
 | 09 | [Project Structure](./09-project-structure.md) | Monorepo layout, build pipelines, version matrix, testing strategy |
@@ -55,14 +61,18 @@ Read `01` and `02` first — they establish the vocabulary every other document 
 
 A Cordis `Context` is created inside the app's single JavaScript runtime — Hermes on mobile, the
 Electron renderer on desktop. A small set of **core plugins** claim service keys (`ctx.fs`,
-`ctx.http`, `ctx.db`, …) and are the *only* code in the repository allowed to import a platform
-SDK; there is one implementation per target behind each key. Above them, **feature plugins**
-provide playback, music sources, DSP, downloads, the library, and the UI, and they reach the
-platform exclusively through those service keys. All contracts — service interfaces, entity
-types, and the typed event map — live in a single runtime-free package, `@BBeBee/protocol`, which
-is the seam that makes implementations interchangeable. Features compose with each other through
-Cordis **waterfall hooks**, so that, for example, the download plugin can transparently
-substitute a local file for a stream URL without the player knowing downloads exist.
+`ctx.http`, `ctx.db`, `ctx.js`, …) and are the *only* code in the repository allowed to import a
+platform SDK; there is one implementation per target behind each key. Above them, **feature
+plugins** provide playback, DSP, downloads, the library, and the UI, and they reach the platform
+exclusively through those service keys. All contracts — service interfaces, entity types, and the
+typed event map — live in a single runtime-free package, `@BBeBee/protocol`, which is the seam
+that makes implementations interchangeable. Features compose with each other through Cordis
+**waterfall hooks**, so that, for example, the download plugin can transparently substitute a
+local file for a stream URL without the player knowing downloads exist. **Music sources sit
+outside all of this**: they are imported documents, held as rows, interpreted by
+`plugin-source-runtime`, and presented to the rest of the app through the same provider interface
+the local-files plugin implements — so nothing above `ctx.sources` can tell where a track came
+from.
 
 ---
 
@@ -71,8 +81,10 @@ substitute a local file for a stream URL without the player knowing downloads ex
 - **Service key** — a name claimed on the context, e.g. `ctx.player`. Written with the `ctx.`
   prefix throughout so it is never confused with a package name.
 - **Package name** — always fully qualified, e.g. `@BBeBee/plugin-download`.
+- **Source** — one music backend as the user configured it, identified by its `sourceUrl` and
+  addressed by a derived **source id**. A *source string* is its importable text form.
 - **URN** — a stable identifier for a catalog entity, e.g.
-  `BBeBee:navidrome-home:track:8f1a2c`. Defined in [07](./07-data-model.md).
+  `BBeBee:music-example-org-4f1a:track:8f1a2c`. Defined in [07](./07-data-model.md).
 - TypeScript blocks are **contracts**, not illustrations. They are intended to compile.
 - Tables named in `snake_case` are SQLite tables. Types in `PascalCase` are TypeScript.
 - ⚠️ marks a place where the two platforms genuinely differ and the abstraction leaks. These are

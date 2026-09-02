@@ -35,8 +35,9 @@ that surfaces, while backing out is still cheap.
 
 ### M1 — It plays music
 
-`core-audio-webaudio`, `plugin-player`, `plugin-source-local`, `plugin-local-scanner`, plus enough
-UI in both shells to browse a library and control playback. Media session integration.
+`core-audio-webaudio`, `plugin-player`, `plugin-source-local`, `plugin-local-scanner`, a
+stream-only slice of `plugin-source-runtime`, plus enough UI in both shells to browse a library
+and control playback. Media session integration.
 
 > **Detailed plan** — [11 — M1 Execution Plan](./11-roadmap-M1.md): the package set, the build
 > order, the milestone-level decisions, and the check behind each criterion below.
@@ -51,32 +52,46 @@ UI in both shells to browse a library and control playback. Media session integr
 
 ---
 
-### M2 — A second source
+### M2 — Sources are strings
 
-The provider SPI made real: `plugin-source-subsonic` with multi-instance support, auth, search,
-browse, and stream resolution. `ctx.sources` aggregation and the identity-linking tables.
+The whole of [ADR-5](./01-overview.md#adr-5--music-sources-are-imported-strings-interpreted-by-one-runtime):
+`source-rules` (the language), `ctx.js` and both `core-js-quickjs-*` (the sandbox), the rest of
+`plugin-source-runtime` (search, explore, album, lyrics, login), the import/export/editor/tracer
+UI, and `ctx.secrets` with persistent cookie jars. `ctx.sources` aggregation and the
+identity-linking tables. The corpus in `fixtures/sources/` grows a Subsonic and a podcast-feed
+document.
 
 **Exit criteria**
-- Two Navidrome instances configured simultaneously, with isolated cookie jars and independent
-  auth state — cookies set by one are never sent to the other.
+- **A pasted string plays music.** A Subsonic document imported from text — never compiled, never
+  installed — searches, browses, and streams on all three platforms.
+- Two Navidrome servers imported simultaneously, with isolated cookie jars and independent auth
+  state — cookies set by one are never sent to the other.
 - **Sign in once, stay signed in.** Force-quit and relaunch: the session is restored from the
   persisted jar with no prompt and no stored password
-  ([06 §4.1](./06-music-sources.md#41-session-persistence--cookies-survive-the-app)).
-- **Sign out leaves nothing.** After `signOut()`, the jar's persisted copy and the secrets
-  namespace are both gone; relaunching shows a signed-out source.
-- A provider implementing only the required core (`plugin-source-http-url`) is configured
-  alongside the others without any screen breaking on a missing optional method.
-- `searchAll` returns per-provider results and reports a failing provider without failing the
-  search.
-- Token expiry mid-session refreshes transparently; a failed refresh shows an in-place re-login
-  and leaves cached content browsable.
-- The full error taxonomy is exercised — every row in
-  [06 §6](./06-music-sources.md#6-errors) has a test.
+  ([06 §5.1](./06-music-sources.md#51-session-persistence--cookies-survive-the-app)).
+- **Sign out leaves nothing.** After `signOut()`, the persisted jar, the secrets namespace and
+  `source_vars` are all gone; relaunching shows a signed-out source.
+- **Export round-trips.** Export the source set, import it into a clean profile: identical
+  behaviour, and no credential travelled ([06 §9](./06-music-sources.md#9-importing-updating-and-sharing)).
+- A document with only `ruleStream` is imported alongside the others without any screen breaking
+  on a capability it does not have.
+- `searchAll` returns per-source results and reports a failing source without failing the search.
+- Session expiry mid-use re-authenticates transparently; a failed re-auth shows an in-place
+  re-login and leaves cached content browsable.
+- The full error taxonomy is exercised — every row in [06 §7](./06-music-sources.md#7-errors) has
+  a test, including `RuleError` and the stale badge.
+- **The sandbox holds.** A deliberately hostile document cannot reach an undeclared host, cannot
+  read another source's cookies or vars, cannot touch the filesystem, and is interrupted rather
+  than hanging the app ([06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do)).
+- **A broken source is diagnosable by a user.** Break a rule deliberately; the tracer names the
+  failing step, the rule is edited in place, and the next run succeeds — without a rebuild.
 - A local track and a server track of the same recording are linked by ISRC and shown as one
   library item with two sources.
 
-**Why second.** One provider proves nothing about an SPI. The second is where the abstraction is
-either validated or exposed as a description of the first implementation.
+**Why second.** M1 plays files. M2 is where the model that the whole design now rests on is either
+true — a stranger's string plays music, safely, and can be repaired by the person holding it — or
+is revealed to need more than a milestone. It is also the last cheap moment to discover that the
+rule language is too weak, because every document written after M2 is one someone has to migrate.
 
 ---
 
@@ -115,20 +130,34 @@ Web Audio contract from M1 either supports it or does not, and by M4 that is alr
 
 ---
 
-### M5 — Third-party plugins on desktop
+### M5 — Third-party extensions, on the sandbox
 
-`plugin-loader-dynamic`, the `BBeBee-plugin://` protocol, install/update/uninstall, capability
-grants, and quarantine.
+The generalisation of `ctx.js` from "evaluate a source rule" to "host an extension": a service
+bridge whose protocol is the capability grammar of
+[03 §7](./03-plugin-system.md#capability-grammar), plus install, update, uninstall, grants and
+quarantine. Scoped after M2 rather than before it because the realm, the limits, the host-surface
+discipline and the conformance suite all arrive with sources — M5 spends them rather than
+inventing them.
+
+Its scope shrank when sources became strings
+([ADR-1 as amended](./01-overview.md#adr-1--plugins-are-statically-bundled-on-every-target)):
+music backends no longer need this, so what remains is effects, scrobblers, lyric providers and
+transports — real, but no longer urgent. If that demand never materialises, **not building M5 is
+a valid outcome**, and the shelf design in
+[03 §6.2](./03-plugin-system.md#62-desktop-additions--plugin-loader-dynamic) is what it cost.
 
 **Exit criteria**
-- A plugin built outside the repo installs from a local file and a URL, and loads under the strict
-  CSP with `nodeIntegration` off.
-- A plugin requesting a capability it was not granted receives a `CapabilityError`, and the
+- An extension built outside the repo installs from a local file and a URL and runs **inside a
+  `ctx.js` realm**, not in the renderer's — so the honesty note in
+  [03 §7](./03-plugin-system.md#what-this-is-not) can finally be deleted rather than reworded.
+- An extension requesting a capability it was not granted receives a `CapabilityError`, and the
   operation fails cleanly rather than crashing the app.
-- A plugin that throws on load twice is quarantined; the app boots normally afterwards and shows
-  why.
+- The gate holds on **both** platforms, including across the desktop bridge — the gap named in
+  [03 §7](./03-plugin-system.md#where-the-gate-actually-runs) is closed, or M5 does not ship.
+- An extension that throws on load twice is quarantined; the app boots normally afterwards and
+  shows why.
 - Uninstalling disposes the fiber before removing files, and "remove data" drops exactly that
-  plugin's namespaced tables.
+  extension's namespaced tables.
 
 ---
 
@@ -140,7 +169,11 @@ Not scheduled, but designed for and not blocked by anything above:
   carries `device_id`, `revision`, and `sync_state`.
 - **A real sandbox** — a `Worker` or QuickJS realm for third-party plugins, with the capability
   grammar from [03 §7](./03-plugin-system.md#7-capability-model) becoming the bridge protocol.
-- **Mobile runtime plugins** — unblocked once the sandbox exists.
+- **Mobile runtime extensions** — unblocked once M5's bridge exists, since the sandbox itself
+  already ships on mobile with sources.
+- **A source registry** — a browsable, versioned index of shared source documents with update
+  notifications. Deliberately not M2: a distribution channel for other people's code is a
+  commitment, and the model has to prove itself on pasted strings first.
 - **Fingerprint matching** — an AcoustID plugin feeding `track_links`.
 - **More providers** — Jellyfin, podcast feeds, whatever the SPI turns out to accommodate.
 
@@ -203,15 +236,51 @@ plugins ask, and `download_tasks` checkpoints per chunk so interruption is cheap
 truth about what will and will not continue, rather than showing a progress bar that silently
 stalls.
 
-### 🟡 Third-party plugins are not contained
+### 🔴 An imported source is code from a stranger
 
-Runtime-loaded plugins share the renderer's realm. The capability model is defense in depth, not a
-sandbox, and [03 §7](./03-plugin-system.md#what-this-is-not) says so plainly.
+[ADR-5](./01-overview.md#adr-5--music-sources-are-imported-strings-interpreted-by-one-runtime)
+puts arbitrary JavaScript from the internet into the app's normal workflow. This is the risk the
+project deliberately took on, and it is first-class rather than a footnote.
 
-*Mitigation until a real sandbox exists* — install-time capability prompts naming what is being
-granted, integrity hashes, quarantine after repeated failure, and an install warning that does not
-soften the situation. The design does not depend on containment being solved; adding it later
-changes the bridge, not the plugin contract.
+*Mitigation* — a real realm boundary rather than a policy: `ctx.js` with no ambient globals and
+clone-only value passing ([04 §19](./04-core-services.md#19-ctxjs--the-sandboxed-evaluator)); an
+enumerable host API; engine-enforced time and memory limits; and — the part that actually bounds
+damage — a **per-source egress allowlist** shown to the user at import
+([06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do)). M2's exit
+criteria include a hostile-document test, so the claim is checked rather than asserted.
+
+*Residual, stated plainly* — a source sees what the user gives it and can send that to its own
+backend. No sandbox fixes a backend the user chose to trust. The import screen names the hosts;
+beyond that it is the user's call.
+
+*Trigger to reconsider* — a sandbox escape, or an ecosystem where documents routinely need hosts
+they cannot justify. The response is not to widen the allowlist but to narrow what a document may
+carry: a declarative-only profile, with `@js:` requiring a separate opt-in per source.
+
+### 🟠 Sources rot, and the app gets blamed
+
+A backend renames a field and every document targeting it silently returns nothing. With a dozen
+imported sources this is not an edge case; it is Tuesday. The user experiences it as "the app
+broke".
+
+*Mitigation* — `RuleError` is a distinct class from a network failure, and the UI says "<source>
+needs updating", not "something went wrong" ([06 §7](./06-music-sources.md#7-errors)). A stale
+source keeps its cached catalogue rather than vanishing. `check` finds rot before playback does,
+and the rule tracer makes the fix a two-minute edit by the person holding the string
+([06 §10](./06-music-sources.md#10-diagnosing-a-broken-source)).
+
+*What would make it worse* — shipping the model without the tracer. That is the one piece of M2
+that cannot be deferred, because without it every rotted source becomes a support request.
+
+### 🟡 Extensions that are not sources have no home
+
+With ADR-1 amended, a third-party effect or scrobbler cannot be installed at all until M5, and M5
+may never be built.
+
+*Mitigation* — the shelf design is kept and dated
+([03 §6.2](./03-plugin-system.md#62-desktop-additions--plugin-loader-dynamic)), and the sandbox
+M5 would need now ships with sources, so the remaining work is a service bridge rather than a
+subsystem. If demand appears, it is a milestone; if it does not, nothing was spent.
 
 ### 🟡 Version drift across two large frameworks
 
@@ -240,10 +309,15 @@ nothing joins across those boundaries.
 
 Worth writing down so it is recognisable:
 
-- **If only one music source ever ships**, the provider SPI is overhead and a direct implementation
-  would have been better. M2 is the test.
-- **If plugins are never loaded at runtime**, ADR-1's desktop loader, the capability model, and the
-  manifest are all cost with no return, and static bundling everywhere was correct.
+- **If nobody ever writes or imports a source**, the rule language, the interpreter, the sandbox,
+  the import flow and the tracer are all overhead, and three hand-written providers would have
+  been better. M2 ships the machinery; the six months after it are the test.
+- **If the rule language cannot express the backends people actually want**, sources become a
+  worse version of plugins — documents padded with `@js:` until they are programs in a bad editor.
+  The signal is the ratio of declarative rules to script in the corpus and in shared documents.
+- **If plugins are never loaded at runtime**, the capability model and the manifest are cost with
+  no return beyond auditability — though ADR-1's amendment already banked most of that saving, and
+  the remaining question is only whether M5 is worth building.
 - **If mobile and desktop end up with substantially different feature sets**, the split UI has
   become a split *product*, and the universal RN-Web option that ADR-2 rejected was the right call.
 
