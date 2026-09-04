@@ -1,0 +1,34 @@
+{
+  "name": "@BBeBee/ui-kit-desktop",
+  "version": "0.0.0",
+  "description": "The parity component set, React DOM.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./manifest": "./src/manifest.ts",
+    "./package.json": "./package.json"
+  },
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@BBeBee/protocol": "workspace:*",
+    "@BBeBee/ui-core": "workspace:*",
+    "@BBeBee/ui-tokens": "workspace:*",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@BBeBee/ui-parity": "workspace:*",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "vitest": "^4.1.11"
+  }
+}

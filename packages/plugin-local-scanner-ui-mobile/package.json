@@ -1,0 +1,33 @@
+{
+  "name": "@BBeBee/plugin-local-scanner-ui-mobile",
+  "version": "0.0.0",
+  "description": "React Native views for plugin-local-scanner.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./package.json": "./package.json"
+  },
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@BBeBee/protocol": "workspace:*",
+    "@BBeBee/ui-kit-mobile": "workspace:*",
+    "@BBeBee/ui-core": "workspace:*",
+    "@BBeBee/ui-tokens": "workspace:*",
+    "cordis": "4.0.0-rc.9",
+    "react": "19.2.3"
+  },
+  "devDependencies": {
+    "@BBeBee/plugin-local-scanner": "workspace:*",
+    "@types/react": "^19.2.0",
+    "vitest": "^4.1.11"
+  }
+}

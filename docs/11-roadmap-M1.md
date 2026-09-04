@@ -200,13 +200,14 @@ plugin-player               ✅  ctx.player — transport, queue, resolution, hi
 plugin-ui                   ✅  gets its first non-trivial contributions
 plugin-inspector            ✅  used to verify the M1 fiber tree unloads clean
 
-ui-tokens                   +   design tokens as data
-ui-core                     +   useService / useServiceState over useSyncExternalStore
-ui-kit-mobile               +   the parity component set, React Native
-ui-kit-desktop              +   the parity component set, React DOM
-plugin-player-ui-*          +   now playing, mini player, transport, queue
-plugin-sources-ui-*         +   library, album detail, the minimal source list
-plugin-local-scanner-ui-*   +   settings: scan roots
+ui-tokens                   ✅  design tokens as data, with the WCAG AA gate
+ui-core                     ✅  useService / useServiceState over useSyncExternalStore
+ui-parity                   ✅  the component contract, and the check both kits must pass
+ui-kit-mobile               ✅  the parity component set, React Native
+ui-kit-desktop              ✅  the parity component set, React DOM
+plugin-player-ui-*          ✅  now playing, transport, queue
+plugin-sources-ui-*         ✅  library, album detail
+plugin-local-scanner-ui-*   ✅  settings: scan roots
 
 protocol                    ✅  catalogue reads on ctx.sources, ctx.scanner, the fractional index,
                                 the audio/codec conformance suites, the mock AudioService

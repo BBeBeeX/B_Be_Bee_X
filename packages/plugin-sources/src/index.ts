@@ -66,6 +66,7 @@ import {
   validateDocument,
 } from './identity.js'
 import { SourceStore } from './store.js'
+import { SOURCES_ROUTES, SOURCES_VIEWS } from './views.js'
 
 export interface SourcesConfig {
   /**
@@ -164,6 +165,38 @@ export class Sources extends Service implements SourcesService {
     this.catalog = new Catalog(this.ctx.db)
     this.store = new SourceStore(this.ctx.db)
     this.records = await this.store.all()
+
+    // Descriptors, not components: the headless plugin says what exists and
+    // where it belongs; whichever view package was loaded for this target
+    // binds a component to the same id (docs/08 §2).
+    this.ctx.inject(['ui'], (scoped) =>
+      scoped.effect(function* () {
+        yield scoped.ui.contribute({
+          kind: 'route',
+          id: SOURCES_ROUTES.library,
+          path: '/library',
+          title: 'Library',
+          icon: 'library',
+          placement: ['tab-bar', 'sidebar'],
+          order: 0,
+        })
+        yield scoped.ui.contribute({
+          kind: 'route',
+          id: SOURCES_ROUTES.album,
+          path: '/album/:urn',
+          title: 'Album',
+          // Reached from the library rather than from the chrome, so it is a
+          // route with no placement rather than a tab nobody would press.
+          order: 0,
+        })
+        yield scoped.ui.contribute({
+          kind: 'settings',
+          id: SOURCES_VIEWS.sourceList,
+          section: 'sources',
+          title: 'Music sources',
+        })
+      }, 'sources-ui-contributions'),
+    )
 
     // Any source's rows get indexed without the writer knowing an index
     // exists — the scanner emits this, and so does the runtime's cache path.

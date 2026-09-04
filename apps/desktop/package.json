@@ -28,7 +28,15 @@
     "@BBeBee/core-desktop-bridge": "workspace:*",
     "@BBeBee/core-device-electron": "workspace:*",
     "@BBeBee/core-background-electron": "workspace:*",
-    "@BBeBee/core-media-session-electron": "workspace:*"
+    "@BBeBee/core-media-session-electron": "workspace:*",
+    "@BBeBee/plugin-sources": "workspace:*",
+    "@BBeBee/plugin-sources-ui-desktop": "workspace:*",
+    "@BBeBee/plugin-source-local": "workspace:*",
+    "@BBeBee/plugin-source-runtime": "workspace:*",
+    "@BBeBee/plugin-local-scanner": "workspace:*",
+    "@BBeBee/plugin-local-scanner-ui-desktop": "workspace:*",
+    "@BBeBee/plugin-player": "workspace:*",
+    "@BBeBee/plugin-player-ui-desktop": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",

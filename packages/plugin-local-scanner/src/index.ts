@@ -31,6 +31,7 @@ import type {
 } from '@BBeBee/protocol'
 import { forgetFile, importTrack } from './import.js'
 import { stableId } from './ids.js'
+import { SCANNER_VIEWS } from './views.js'
 
 export interface ScannerConfig {
   /** Files per transaction. A checkpoint costs one batch on interruption. */
@@ -123,6 +124,18 @@ export class Scanner extends Service implements ScannerService {
   }
 
   async [Service.init]() {
+    // A descriptor, not a component: the settings page is listed even on a
+    // target whose view package was not loaded, which is what lets a shell
+    // show "not available on this platform" rather than a hole (docs/08 §3).
+    this.ctx.inject(['ui'], (scoped) =>
+      scoped.ui.contribute({
+        kind: 'settings',
+        id: SCANNER_VIEWS.settings,
+        section: 'sources',
+        title: 'Music folders',
+      }),
+    )
+
     await this.ensureSourceRow()
     this.rootList = await this.loadRoots()
     await this.startWatching()

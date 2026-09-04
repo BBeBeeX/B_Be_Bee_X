@@ -31,6 +31,7 @@ import type {
 } from '@BBeBee/protocol'
 import { QueueModel, type QueueEntry } from './queue.js'
 import { PlayerStore } from './store.js'
+import { PLAYER_COMMANDS, PLAYER_ROUTES } from './views.js'
 
 export type Transition = 'gapless' | 'crossfade' | 'neither'
 
@@ -227,6 +228,62 @@ export class Player extends Service implements PlayerService {
         off()
       }
     })
+
+    // Descriptors, not components: the headless plugin says *what* exists and
+    // where it belongs, and whichever view package was loaded for this target
+    // binds a component to the same id (docs/08 §2). A target with no view
+    // still gets the route listed and the commands working.
+    // Arrow functions, so `this` is captured lexically: a generator passed to
+    // `ctx.effect` is called without a receiver, and aliasing `this` into a
+    // local would work but says less about why.
+    const togglePlay = () => this.togglePlay()
+    const next = () => void this.next()
+    const previous = () => void this.previous()
+
+    this.ctx.inject(['ui'], (scoped) =>
+      scoped.effect(function* () {
+        yield scoped.ui.contribute({
+          kind: 'route',
+          id: PLAYER_ROUTES.nowPlaying,
+          path: '/now-playing',
+          title: 'Now playing',
+          icon: 'play',
+          placement: ['tab-bar'],
+          order: 10,
+        })
+        yield scoped.ui.contribute({
+          kind: 'route',
+          id: PLAYER_ROUTES.queue,
+          path: '/queue',
+          title: 'Queue',
+          icon: 'list',
+          placement: ['tab-bar', 'sidebar'],
+          order: 20,
+        })
+        // Commands work with no view at all: they reach the command palette on
+        // desktop and the more-menu on mobile, which is the cheapest way to
+        // make a feature reachable on both targets (docs/08 §3).
+        yield scoped.ui.contribute({
+          kind: 'command',
+          id: PLAYER_COMMANDS.togglePlay,
+          title: 'Play / pause',
+          defaultKeybinding: 'Space',
+          run: togglePlay,
+        })
+        yield scoped.ui.contribute({
+          kind: 'command',
+          id: PLAYER_COMMANDS.next,
+          title: 'Next track',
+          run: next,
+        })
+        yield scoped.ui.contribute({
+          kind: 'command',
+          id: PLAYER_COMMANDS.previous,
+          title: 'Previous track',
+          run: previous,
+        })
+      }, 'player-ui-contributions'),
+    )
 
     this.ctx.inject(['background'], (scoped) =>
       // Checkpoint before the host suspends: on mobile there may be no later.
@@ -1082,3 +1139,4 @@ export async function apply(ctx: Context, config: PlayerConfig = {}) {
 export default { name, apply }
 export { QueueModel, permute } from './queue.js'
 export { PlayerStore } from './store.js'
+export { PLAYER_COMMANDS, PLAYER_ROUTES, PLAYER_VIEWS } from './views.js'

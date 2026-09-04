@@ -1,14 +1,12 @@
 {
-  "name": "@BBeBee/plugin-player",
+  "name": "@BBeBee/ui-core",
   "version": "0.0.0",
-  "description": "ctx.player — transport, queue, resolution, history.",
+  "description": "Framework-agnostic React hooks binding services to views.",
   "type": "module",
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
-    "./package.json": "./package.json",
-    "./hooks": "./src/hooks.ts",
-    "./views": "./src/views.ts"
+    "./package.json": "./package.json"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -31,17 +29,11 @@
   },
   "dependencies": {
     "@BBeBee/protocol": "workspace:*",
-    "@BBeBee/kernel": "workspace:*",
     "cordis": "4.0.0-rc.9",
-    "@BBeBee/ui-core": "workspace:*",
     "react": "19.2.3"
   },
   "devDependencies": {
-    "@BBeBee/core-db-node": "workspace:*",
-    "@BBeBee/core-fs-node": "workspace:*",
-    "@BBeBee/core-paths-node": "workspace:*",
-    "@BBeBee/core-audio-webaudio": "workspace:*",
-    "@BBeBee/plugin-sources": "workspace:*",
-    "@types/react": "^19.2.0"
+    "@types/react": "^19.2.0",
+    "vitest": "^4.1.11"
   }
 }

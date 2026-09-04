@@ -79,10 +79,14 @@ B_Be_Bee/
 │  ├─ plugin-hello/        ✅       the M0 demonstration plugin
 │  ├─ core-desktop-bridge/ ✅       renderer↔main IPC clients + the main-side host
 │
-│  ├─ ui-tokens/                    design tokens as plain data (08 §6)
-│  ├─ ui-core/                      framework-agnostic React hooks
-│  ├─ ui-kit-mobile/                React Native components
-│  ├─ ui-kit-desktop/               React DOM components
+│  ├─ ui-tokens/           ✅       design tokens as plain data, plus the
+│  │                                WCAG AA gate of 08 §8
+│  ├─ ui-core/            ✅       framework-agnostic React hooks, and the
+│  │                                prop types both kits share
+│  ├─ ui-parity/          ✅       the component contract, and the check that
+│  │                                both kits meet it (08 §6)
+│  ├─ ui-kit-mobile/      ✅       React Native components
+│  ├─ ui-kit-desktop/     ✅       React DOM components
 │  ├─ plugin-hello-ui-desktop/ ✅   ┐ per-target view packages
 │  ├─ plugin-hello-ui-mobile/  ✅   ┘
 │  ├─ plugin-source-runtime-ui-desktop/ ┐ source list, import review,

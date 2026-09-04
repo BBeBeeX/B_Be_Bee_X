@@ -1,0 +1,142 @@
+/**
+ * React Native views for `plugin-local-scanner`.
+ *
+ * The scan-root settings screen: which folders, what happened last time, and
+ * a way to start a walk. Layout and wiring only — the progress bookkeeping is
+ * in `plugin-local-scanner/hooks`, shared with the mobile twin (docs/08 1).
+ */
+
+import { createElement as h } from 'react'
+import type { ReactElement } from 'react'
+import type { Context } from 'cordis'
+import type {} from '@BBeBee/protocol'
+import type { ScanRoot } from '@BBeBee/protocol'
+import { SCANNER_VIEWS } from '@BBeBee/plugin-local-scanner/views'
+import { summarise, useScanRoots, useScanState } from '@BBeBee/plugin-local-scanner/hooks'
+import {
+  Button,
+  EmptyState,
+  IconButton,
+  List,
+  Text,
+  nativePrimitives,
+} from '@BBeBee/ui-kit-mobile'
+import { tokens } from '@BBeBee/ui-tokens'
+
+export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
+  const native = nativePrimitives()
+  const roots = useScanRoots(ctx)
+  const scan = useScanState(ctx)
+
+  const addFolder = async () => {
+    // The picker is what carries a durable permission grant on Android; a
+    // typed path would not, so there is deliberately no text field here.
+    const uri = await ctx.fs.pickDirectory()
+    if (uri) await ctx.scanner.addRoot(uri)
+  }
+
+  return h(
+    native.View as never,
+    { style: { flex: 1, padding: tokens.space[4], gap: tokens.space[3] } },
+    h(
+      native.View as never,
+      { style: { flexDirection: 'row', alignItems: 'center', gap: tokens.space[3] } },
+      h(Text, { variant: 'lg', children: 'Music folders' }),
+      h(Button, { onPress: () => void addFolder(), children: 'Add folder' }),
+      h(Button, {
+        variant: 'secondary',
+        // Disabled while running rather than hidden: a control that vanishes
+        // mid-scan makes the screen look like it lost the button.
+        disabled: scan.running,
+        onPress: () => void ctx.scanner.scan(),
+        children: scan.running ? 'Scanning…' : 'Scan now',
+      }),
+      scan.running
+        ? h(Button, {
+            variant: 'ghost',
+            onPress: () => ctx.scanner.cancel(),
+            children: 'Cancel',
+          })
+        : null,
+    ),
+    // Progress per batch, not per scan: a large library takes minutes, and a
+    // screen that only learned the outcome would look frozen throughout.
+    scan.progress
+      ? h(Text, {
+          tone: 'muted',
+          accessibilityLabel: 'Scan progress',
+          children: scan.progress.total
+            ? `Scanned ${scan.progress.done} of ${scan.progress.total}`
+            : `Scanned ${scan.progress.done} files`,
+        })
+      : scan.lastSummary
+        ? h(Text, {
+            tone: scan.lastSummary.errors > 0 ? 'warn' : 'muted',
+            children: `Last scan: ${summarise(scan.lastSummary)}`,
+          })
+        : null,
+    h(List<ScanRoot>, {
+      items: roots,
+      accessibilityLabel: 'Music folders',
+      estimatedItemSize: tokens.size.row,
+      keyExtractor: (root) => root.id,
+      empty: h(EmptyState, {
+        icon: '📁',
+        title: 'No folders yet',
+        description: 'Add one and its music appears in your library as it is scanned.',
+      }),
+      renderItem: (root) =>
+        h(
+          native.View as never,
+          {
+            style: {
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: tokens.space[3],
+              height: tokens.size.row,
+              opacity: root.enabled ? 1 : 0.5,
+            },
+          },
+          h(
+            native.View as never,
+            { style: { flex: 1, minWidth: 0 } },
+            h(Text, { numberOfLines: 1, children: root.uri }),
+            // The reason a folder failed, kept in front of the user rather
+            // than only in a log they will never open.
+            root.lastError
+              ? h(Text, { variant: 'sm', tone: 'error', numberOfLines: 1, children: root.lastError })
+              : null,
+          ),
+          h(Button, {
+            variant: 'ghost',
+            onPress: () => void ctx.scanner.setEnabled(root.id, !root.enabled),
+            accessibilityLabel: root.enabled ? `Disable ${root.uri}` : `Enable ${root.uri}`,
+            children: root.enabled ? 'Disable' : 'Enable',
+          }),
+          h(IconButton, {
+            icon: '🗑',
+            // Removing a root keeps its tracks by default: losing a library
+            // to a mis-clicked button is far worse than a stale row.
+            accessibilityLabel: `Remove ${root.uri}`,
+            onPress: () => void ctx.scanner.removeRoot(root.id),
+          }),
+        ),
+    }),
+    h(Text, {
+      variant: 'sm',
+      tone: 'muted',
+      children: 'Removing a folder keeps the tracks it found. Nothing is deleted from disk.',
+    }),
+  )
+}
+
+export const name = 'plugin-local-scanner-ui-mobile'
+export const inject = ['ui']
+
+export async function apply(ctx: Context) {
+  return ctx.effect(function* () {
+    yield ctx.ui.registerView(SCANNER_VIEWS.settings, ScanRootsScreen)
+  }, 'scanner-ui-mobile')
+}
+
+export default { name, inject, apply }

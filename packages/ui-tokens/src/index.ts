@@ -1,0 +1,161 @@
+/**
+ * `@BBeBee/ui-tokens` — the design system as plain data.
+ *
+ * Values, not components, and no framework import anywhere: this is the only
+ * way two view layers that share no component code end up looking like one
+ * product (docs/08 §6). `ui-kit-mobile` consumes these as `StyleSheet`
+ * values; `ui-kit-desktop` emits them as CSS custom properties.
+ *
+ * The palette is defined **per scheme** rather than as one set of colours
+ * with a dark override. A dark theme is not a light theme with the lightness
+ * flipped — the contrast relationships differ, and expressing dark as a patch
+ * is how a palette drifts into being unreadable in one of its two modes with
+ * nobody noticing.
+ */
+
+import { AA_LARGE, AA_TEXT, contrastRatio } from './color.js'
+
+export * from './color.js'
+
+export type Scheme = 'light' | 'dark'
+
+export interface Palette {
+  bg: { base: string; raised: string; overlay: string }
+  text: { primary: string; secondary: string; disabled: string }
+  accent: { base: string; hover: string; muted: string; on: string }
+  state: { error: string; warn: string; ok: string }
+  /**
+   * `subtle` separates surfaces and is decorative; `strong` outlines a control
+   * or draws a focus ring, so it is held to WCAG 1.4.11's 3:1 against the
+   * surface behind it and is checked (`paletteContrastIssues`).
+   */
+  border: { subtle: string; strong: string }
+}
+
+/**
+ * Dark first, because it is the mode a music player is used in.
+ *
+ * Every foreground here clears WCAG AA against the surface it is specified
+ * for; `paletteContrastIssues` is what proves it, and the parity test is what
+ * runs that on every change.
+ */
+const dark: Palette = {
+  bg: { base: '#0B0B0F', raised: '#15151C', overlay: '#1E1E28' },
+  text: { primary: '#F5F5F7', secondary: '#B4B4C4', disabled: '#7A7A8C' },
+  accent: { base: '#9B85FF', hover: '#B4A2FF', muted: '#2A2340', on: '#0B0B0F' },
+  state: { error: '#FF8080', warn: '#FFC04D', ok: '#5BE0A0' },
+  border: { subtle: '#2A2A36', strong: '#6E6E86' },
+}
+
+const light: Palette = {
+  bg: { base: '#FFFFFF', raised: '#F5F5F8', overlay: '#EDEDF2' },
+  text: { primary: '#16161C', secondary: '#54546A', disabled: '#8A8A9C' },
+  accent: { base: '#5B3FD1', hover: '#4A31B5', muted: '#EAE4FF', on: '#FFFFFF' },
+  state: { error: '#B3261E', warn: '#8A5A00', ok: '#0F6E4A' },
+  border: { subtle: '#E2E2EA', strong: '#86869A' },
+}
+
+export const palettes: Record<Scheme, Palette> = { light, dark }
+
+/**
+ * Everything that is not a colour.
+ *
+ * Scales rather than free values: a spacing that is not on the scale is a
+ * decision made twice, and the second one will not match.
+ */
+export const tokens = {
+  /** Index into this, never a raw pixel value. */
+  space: [0, 4, 8, 12, 16, 24, 32, 48, 64] as const,
+  radius: { sm: 4, md: 8, lg: 16, pill: 999 } as const,
+  font: {
+    family: {
+      ui: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+      mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+    },
+    /** Relative on mobile, so the OS text-size setting is honoured (docs/08 §8). */
+    size: { xs: 11, sm: 13, md: 15, lg: 20, xl: 28, display: 40 } as const,
+    weight: { regular: '400', medium: '500', bold: '700' } as const,
+    lineHeight: { tight: 1.2, normal: 1.45, loose: 1.7 } as const,
+  },
+  duration: { fast: 120, normal: 200, slow: 320 } as const,
+  /** Hit targets. 44 is the smallest either OS considers reliably tappable. */
+  size: { touchTarget: 44, icon: 20, iconLarge: 28, row: 56, artworkThumb: 48 } as const,
+  z: { base: 0, sticky: 10, overlay: 100, toast: 1000 } as const,
+} as const
+
+export type Tokens = typeof tokens
+
+/* ── Contrast checking ──────────────────────────────────────────────────── */
+
+export interface ContrastIssue {
+  scheme: Scheme
+  pair: string
+  ratio: number
+  required: number
+}
+
+/**
+ * Every foreground/background pair the design actually uses, and the minimum
+ * each must clear.
+ *
+ * Enumerated rather than derived: only the design knows that
+ * `text.secondary` is used on `bg.raised` and never on `accent.base`, and a
+ * combinatorial check would fail on pairs nobody puts together.
+ */
+const CHECKED_PAIRS: {
+  pair: string
+  fg: (p: Palette) => string
+  bg: (p: Palette) => string
+  large?: boolean
+}[] = [
+  { pair: 'text.primary on bg.base', fg: (p) => p.text.primary, bg: (p) => p.bg.base },
+  { pair: 'text.primary on bg.raised', fg: (p) => p.text.primary, bg: (p) => p.bg.raised },
+  { pair: 'text.primary on bg.overlay', fg: (p) => p.text.primary, bg: (p) => p.bg.overlay },
+  { pair: 'text.secondary on bg.base', fg: (p) => p.text.secondary, bg: (p) => p.bg.base },
+  { pair: 'text.secondary on bg.raised', fg: (p) => p.text.secondary, bg: (p) => p.bg.raised },
+  { pair: 'accent.base on bg.base', fg: (p) => p.accent.base, bg: (p) => p.bg.base, large: true },
+  { pair: 'accent.on on accent.base', fg: (p) => p.accent.on, bg: (p) => p.accent.base },
+  { pair: 'state.error on bg.base', fg: (p) => p.state.error, bg: (p) => p.bg.base },
+  { pair: 'state.warn on bg.base', fg: (p) => p.state.warn, bg: (p) => p.bg.base },
+  { pair: 'state.ok on bg.base', fg: (p) => p.state.ok, bg: (p) => p.bg.base },
+  // A boundary is a UI component, so it is held to the 3:1 rule rather than 4.5.
+  { pair: 'border.strong on bg.base', fg: (p) => p.border.strong, bg: (p) => p.bg.base, large: true },
+]
+
+/**
+ * Which checked pairs fail WCAG AA, in both schemes.
+ *
+ * Returns the failures rather than a boolean so a CI message can name the
+ * pair and its actual ratio — "contrast failed" sends someone hunting.
+ */
+export function paletteContrastIssues(): ContrastIssue[] {
+  const issues: ContrastIssue[] = []
+  for (const scheme of ['light', 'dark'] as const) {
+    const palette = palettes[scheme]
+    for (const check of CHECKED_PAIRS) {
+      const ratio = contrastRatio(check.fg(palette), check.bg(palette))
+      const required = check.large ? AA_LARGE : AA_TEXT
+      if (Math.round(ratio * 100) / 100 < required) {
+        issues.push({ scheme, pair: check.pair, ratio: Math.round(ratio * 100) / 100, required })
+      }
+    }
+  }
+  return issues
+}
+
+/** Design-token names, for the desktop kit's CSS custom properties. */
+export function cssVariables(scheme: Scheme): Record<string, string> {
+  const palette = palettes[scheme]
+  const out: Record<string, string> = {}
+  for (const [group, values] of Object.entries(palette)) {
+    for (const [name, value] of Object.entries(values as Record<string, string>)) {
+      out[`--bb-${group}-${name}`] = value
+    }
+  }
+  for (const [name, value] of Object.entries(tokens.radius)) out[`--bb-radius-${name}`] = `${value}px`
+  for (const [name, value] of Object.entries(tokens.duration)) {
+    out[`--bb-duration-${name}`] = `${value}ms`
+  }
+  tokens.space.forEach((value, i) => void (out[`--bb-space-${i}`] = `${value}px`))
+  return out
+}

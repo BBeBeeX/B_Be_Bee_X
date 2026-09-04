@@ -1,0 +1,33 @@
+{
+  "name": "@BBeBee/ui-kit-mobile",
+  "version": "0.0.0",
+  "description": "The parity component set, React Native.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./manifest": "./src/manifest.ts",
+    "./package.json": "./package.json"
+  },
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@BBeBee/protocol": "workspace:*",
+    "@BBeBee/ui-core": "workspace:*",
+    "@BBeBee/ui-tokens": "workspace:*",
+    "react": "19.2.3"
+  },
+  "devDependencies": {
+    "@BBeBee/ui-parity": "workspace:*",
+    "@types/react": "^19.2.0",
+    "react-native": "0.86.3",
+    "vitest": "^4.1.11"
+  }
+}

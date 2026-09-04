@@ -23,6 +23,14 @@ import helloUi from '@BBeBee/plugin-hello-ui-desktop'
 import logConsole from '@BBeBee/plugin-log-console'
 import logBuffer from '@BBeBee/plugin-log-buffer'
 import logFile from '@BBeBee/plugin-log-file'
+import sources from '@BBeBee/plugin-sources'
+import sourcesUi from '@BBeBee/plugin-sources-ui-desktop'
+import sourceLocal from '@BBeBee/plugin-source-local'
+import sourceRuntime from '@BBeBee/plugin-source-runtime'
+import scanner from '@BBeBee/plugin-local-scanner'
+import scannerUi from '@BBeBee/plugin-local-scanner-ui-desktop'
+import player from '@BBeBee/plugin-player'
+import playerUi from '@BBeBee/plugin-player-ui-desktop'
 
 
 declare global {
@@ -62,6 +70,26 @@ export function registry(): PluginRegistry {
     entry('@BBeBee/plugin-inspector-ui-desktop', inspectorUi),
     entry('@BBeBee/plugin-hello', hello, ['db:own', 'secrets:own']),
     entry('@BBeBee/plugin-hello-ui-desktop', helloUi),
+
+    // M1's feature set. Load order is derived from `inject`, never declared:
+    // `plugin-player` waits for ctx.audio and ctx.sources, `plugin-source-*`
+    // wait for ctx.sources, and none of them is sequenced here (docs/02 §3).
+    entry('@BBeBee/plugin-sources', sources, ['db:read:core', 'db:write:core']),
+    entry('@BBeBee/plugin-sources-ui-desktop', sourcesUi),
+    entry('@BBeBee/plugin-local-scanner', scanner, [
+      'fs:read:all',
+      'db:read:core',
+      'db:write:core',
+    ]),
+    entry('@BBeBee/plugin-local-scanner-ui-desktop', scannerUi),
+    entry('@BBeBee/plugin-source-local', sourceLocal, [
+      'fs:read:all',
+      'db:read:core',
+      'db:write:core',
+    ]),
+    entry('@BBeBee/plugin-source-runtime', sourceRuntime, ['net:host/*', 'db:read:core']),
+    entry('@BBeBee/plugin-player', player, ['audio', 'db:read:core', 'db:write:core']),
+    entry('@BBeBee/plugin-player-ui-desktop', playerUi),
   ])
 }
 
@@ -103,6 +131,22 @@ export async function boot(): Promise<App> {
         '@BBeBee/plugin-inspector-ui-desktop': {},
         '@BBeBee/plugin-hello': { config: { greeting: 'Hello' } },
         '@BBeBee/plugin-hello-ui-desktop': {},
+
+        '@BBeBee/plugin-sources': {},
+        '@BBeBee/plugin-sources-ui-desktop': {},
+        '@BBeBee/plugin-local-scanner': {},
+        '@BBeBee/plugin-local-scanner-ui-desktop': {},
+        '@BBeBee/plugin-source-local': {},
+        '@BBeBee/plugin-source-runtime': {},
+        // ⚠️ `plugin-player` injects `ctx.audio`, which no bootstrap entry
+        // provides yet: `core-audio-webaudio` needs a real AudioContext, so
+        // it lands with the audio spike's follow-up rather than here. Until
+        // then the fiber sits PENDING — a diagnosable state the inspector
+        // names, not a crash (docs/03 §2) — and the transport views render
+        // against a service that is not there. Enabling it now would report
+        // a plugin as healthy when it has never run.
+        // '@BBeBee/plugin-player': {},
+        // '@BBeBee/plugin-player-ui-desktop': {},
       },
     },
   })
