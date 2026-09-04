@@ -32,7 +32,7 @@ import type { Uri, Disposable } from '@BBeBee/protocol'
 
 /** Internal. Two implementations: the source runtime, and plugin-source-local. */
 export interface MediaProvider {
-  readonly sourceId: string             // 'music-example-org-4f1a'
+  readonly sourceId: string             // 'music-example-org-35be9fe2'
   readonly displayName: string
   readonly capabilities: Capabilities   // derived — see §1.3
   readonly auth: ProviderAuth           // synthesised from the document — see §5
@@ -61,11 +61,13 @@ export interface MediaProvider {
 
 ```
 sourceUrl  https://music.example.org
-       ↓   slugified host + 4 hex of sha256(sourceUrl)
-id         music-example-org-4f1a
+       ↓   slugified host + the first 8 hex of sha256(sourceUrl)
+id         music-example-org-35be9fe2
        ↓
-URN        BBeBee:music-example-org-4f1a:track:8f1a2c
+URN        BBeBee:music-example-org-35be9fe2:track:8f1a2c
 ```
+
+> 这个摘要用的是 **SHA-256**，后缀取的是其中的 32 位。这不是装饰：id 是一个主键，因此一次碰撞不只是让某个列表显示混乱 —— 它会让一个源的行覆盖另一个源的行。`doc_hash`（[07 §4.1](./07-data-model.md#41-音源账号与会话)）出于同样的原因用的是完整摘要，还要更糟一步：它决定一次重新导入算更新还是无操作，因此那里的碰撞会悄悄跳过这次更新。
 
 这个 id 是推导出来的、稳定的，而且短到能放进一行日志里读。它占据 URN 的第二段，而这一段正是 [07 §1](./07-data-model.md#1-身份标识urn) 一直保留给"拥有这个 id 的那个命名空间"的 —— 因此模型变了，URN 方案却不需要变。
 
@@ -84,7 +86,7 @@ URN        BBeBee:music-example-org-4f1a:track:8f1a2c
 | `exploreUrl` + `ruleExplore` | `browse` |
 | `ruleAlbum` | `getAlbum`、专辑详情页 |
 | `ruleTrackList` | 专辑与播放列表的曲目列表 |
-| `ruleStream` *（或列表规则内的 `streamUrl`）* | `resolveStream` —— **必需**；没有它的源什么都播不了，会在导入时被拒绝 |
+| `ruleStream` | `resolveStream` —— **必需**；没有它的源什么都播不了，会在导入时被拒绝 |
 | `ruleLyric` | `getLyrics` |
 | `loginUrl` / `loginUi` | 一个登录流程；缺席意味着 `flow: { kind: 'none' }` |
 | `ruleLibrary.*` | 对应的 `ProviderLibrary` 成员 |
@@ -196,7 +198,14 @@ export interface ListRule {
   trackId: string                 // becomes the URN's last segment
   quality?: string
 
-  /** Shortcut: when the list already carries a playable URL, ruleStream is skipped. */
+  /**
+   * A playable URL the list already carries.
+   *
+   * A convenience, not a substitute: `ruleStream` is required regardless, and
+   * reaches this value as `{{track.streamUrl}}`. Making it a substitute would
+   * mean two code paths to a stream URL and a source that plays from search
+   * but not from the library, so there is one.
+   */
   streamUrl?: string
   /** For explore and album lists: descend rather than play. */
   childUrl?: string
@@ -232,6 +241,8 @@ export interface LyricRule { lyric: string; format?: string; offsetMs?: string }
 ```
 
 `browse` 就是 `exploreUrl` + `ruleExplore`：每个探索条目是一个带标题的 URL，而 `childUrl` 非空的条目是要深入下去的节点，而不是拿来播放的叶子。文件夹树、流派列表、排行榜、播客 feed 的单集列表，用的都是同样三个字段 —— 这正是同一个 UI 组件能渲染它们全部的原因。
+
+**规则块内的未知字段会在导入时被拒绝。** 不是忽略 —— 是拒绝，并指明路径，因此 `{ "ruleSearch": { "titel": "$.title" } }` 会在导入界面上失败，而不是导入一个标题永远缺席的源。与顶层的非对称（[07 §4.1](./07-data-model.md#41-音源账号与会话)，在那里未知字段被原样保留、只是根本无人去读）是刻意的：`sourceName` 旁边多出来的一个键是向前兼容，而 `title` 旁边多出来的一个键是笔误 —— 恰好是笔误只产出静默、不产出错误的唯一一处。
 
 ### 2.3 一个完整的例子
 
@@ -319,6 +330,10 @@ export interface LyricRule { lyric: string; format?: string; offsetMs?: string }
 
 推断的存在是为了让常见情形写得短。它也是这门语言唯一可能让你吃惊的地方，所以这条规则被明文写下，而不是留给各人口味：**规则是选择器，除非它以 `=` 开头。** 一个不带 `=` 的常量 `"audio/mpeg"` 是一个针对不存在元素类型的 CSS 选择器，解释器会明确告诉你这一点，而不是悄悄把字符串原样返回。
 
+**URL 字段是例外，而且是唯一的例外。** `searchUrl` 与 `exploreUrl` 是 *URL 模板*，不是选择器：在它们被渲染的时刻，还不存在可供选择的文档 —— 它们正是产出文档的那一步。所以无论是否以 `=` 开头，它们都按模板插值，前导的 `=` 在这里可有可无。文档中的其余所有字段都遵循上文的选择器规则。
+
+把这一点写明而不是让人默认领会，是因为这两种读法肉眼无法区分、而且会无声地分岔：一个被当作选择器处理的 `searchUrl` 会产生一个 CSS 错误，报出一个作者从未要求的引擎；而修法 —— 补上一个 `=` —— 会让症状消失，却没有任何人会因此弄清当初哪种读法才正确。
+
 ### 3.2 模板与作用域
 
 `{{ }}` 求值一个表达式并把结果内联进去。模板内部，以下名字处于作用域之中：
@@ -344,7 +359,7 @@ export interface LyricRule { lyric: string; format?: string; offsetMs?: string }
 |---|---|
 | `a || b` | 第一个非空结果胜出。后端改了字段名时的惯用法 |
 | `a && b` | 按顺序拼接每个结果 |
-| `a %% b` | 交错合并两个列表 —— `a[0], b[0], a[1], b[1], …` |
+| `a %% b` | 交错合并各个列表 —— `a[0], b[0], a[1], b[1], …`。支持 N 路：`a %% b %% c` 在三个列表间轮转，先耗尽的列表被跳过而不是补齐 |
 | `rule##pattern##replacement` | 对结果做正则替换。`##pattern##` 不带替换部分即为删除 |
 | `rule##pattern##replacement###` | 末尾的 `###` 使它只替换第一处，而不是全部 |
 | `=` 模板内的 `{{rule}}` | 内联求值 |
@@ -427,8 +442,29 @@ export interface SourcesService {
   import(input: string, opts?: ImportOptions): Promise<ImportReport>
   export(ids?: string[]): Promise<string>
   setEnabled(id: string, on: boolean): Promise<void>
+  /**
+   * Remove a source.
+   *
+   * ⚠️ The two modes differ in what survives, and the difference is forced by
+   * the schema rather than chosen: catalogue rows are `ON DELETE CASCADE`, so
+   * deleting the row *necessarily* takes the library with it. There is no
+   * third option where the row is gone and the tracks remain — those would be
+   * orphans with unresolvable URNs.
+   *
+   *   forgetCatalogue: true   delete the row; the cascade drops its tracks,
+   *                           albums, artists, account and vars
+   *   forgetCatalogue: false  (default) keep the row, disabled, so the library
+   *                           stays browsable and the source list brings it back
+   *
+   * The default is the safe one: losing a library to a mis-tapped button is
+   * far worse than a stale row nothing reads.
+   */
   remove(id: string, opts?: { forgetCatalogue?: boolean }): Promise<void>
-  check(ids?: string[], opts?: { signal?: AbortSignal }): Promise<CheckReport[]>
+  /** Every step gets `timeoutMs`, so one hanging source cannot hold the run. */
+  check(
+    ids?: string[],
+    opts?: { signal?: AbortSignal; timeoutMs?: number },
+  ): Promise<CheckReport[]>
   debug(id: string, step: DebugStep): AsyncIterable<TraceEvent>
 }
 
@@ -743,6 +779,9 @@ export interface SourceHost {
 | 限制 | 数值 | 它挡住什么 |
 |---|---|---|
 | **主机允许列表** | `sourceUrl` 的主机加上 `allowedHosts`，按主机名匹配 | 向攻击者控制的端点外泄数据。指向任何其他主机的 URL 都会被以 `CapabilityError` 拒绝，无论它是字面写出的还是运行时算出来的 |
+
+`allowedHosts` 的条目是**主机名**，任何会在静默中被放宽成一个主机名的东西都会在导入时被拒绝。`nas:4533` 读起来像"这台主机的这个端口"，但匹配器里根本不存在端口 —— 端口会被丢弃，条目于是覆盖所有端口 —— 因此它会以一条点名该条目的消息被拒绝。路径出于同样的原因被拒绝。裸 scheme 什么都不会丢，所以 `https://cdn.example.org` 会被接受并规范化为它的主机。一个条目覆盖它的子域（`example.org` 接纳 `cdn.example.org`，绝不容纳 `notexample.org`）；单标签条目只匹配它自己，因此 `["org"]` 不可能意味着".org 中的任何地方"。
+
 | 每条规则的墙钟时间 | 2 秒（带网络的 `@js:` 为 10 秒） | 一条把搜索挂死的规则 |
 | 每次求值的内存 | 32 MB | 一个把应用 OOM 掉的源 |
 | 每条规则的 HTTP 调用次数 | 8 | 一条把一次搜索变成爬取的规则 |
@@ -786,7 +825,15 @@ export interface ImportReport {
   added: SourceRecord[]
   updated: { record: SourceRecord; changedFields: string[] }[]
   unchanged: SourceRecord[]
+  /** One malformed entry never rejects the rest of a set. */
   rejected: { index: number; sourceName?: string; error: SourceFormatError }[]
+  /**
+   * Would overwrite a document the user edited in the app. Needs `overwrite`.
+   *
+   * Separate from `rejected` because nothing is wrong with these documents —
+   * the user is being asked a question, not shown a failure.
+   */
+  conflicts: { record: SourceRecord; changedFields: string[] }[]
 }
 ```
 
@@ -806,7 +853,8 @@ export interface ImportReport {
 - **没有任何东西被悄悄导入。** 哪怕是单源字符串也会展示确认界面。这是用户唯一一次看到自己同意了什么的机会。
 - **一个集合可以被部分导入。** 四十个条目里有一个格式损坏，不会连累另外三十九个；它会带着 schema 问题和自己的位置落进 `rejected`。
 - **更新保留身份。** 以 `sourceUrl` 匹配会保留 id、URN、缓存的曲库、jar 与登录态。diff 会指明哪些字段变了，因此重新导入朋友分享的源集合，不会悄悄覆盖用户自己修好的规则。
-- **本地编辑会被标记。** 在应用内编辑过的源带有 `locallyModified` 标志；在它之上重新导入需要一次显式确认，并指明将丢失哪些字段。
+- **本地编辑会被标记。** 在应用内编辑过的源带有 `locallyModified` 标志；对它重新导入会落进 `conflicts` 而不是 `updated`，并指明将丢失哪些字段，且只有在 `overwrite` 之下才会继续。
+- **用户的开关归用户。** 更新绝不会改动 `enabled`。发布修复的作者不能把用户亲手关掉的源重新打开 —— 而一行被禁用的记录，与一行"移除了源但保留曲库"的记录无法区分，因此重新导入不做猜测。
 - **导出是对称且干净的。** `export()` 产出同样的数组格式、排好序，并剥除应用维护的字段（`respondTime`、`lastUpdated`、`weight`）与一切凭据（[§5](#5-认证与会话)）。导出 → 导入来回一趟，得到与原来完全相同的集合。
 
 **组织它们。** `sourceGroup` 是自由文本、逗号分隔，也是唯一的组织概念：源列表按组过滤，搜索可以限定在一个组内。源可以单独启用或禁用，被禁用的源其 fiber 会被销毁 —— 它只花一行记录的代价。
@@ -840,7 +888,7 @@ export type TraceEvent =
 
 - **每一步都可见，包括成功的那些。** 出错的地方通常在空结果之前两步。
 - **它可以原地编辑。** 调试界面就是源编辑器：改一条规则、重跑这一步、保留追踪的其余部分。一次修复是几秒钟的事，不是一轮重新导入。
-- **它会脱敏。** 凭据、cookie 与 `source.var` 绝不出现在追踪里，因为追踪正是用户会贴到论坛求助帖里的东西。
+- **它会脱敏。** 凭据、cookie 与 `source.var` 绝不出现在追踪里，因为追踪正是用户会贴到论坛求助帖里的东西。这是一条**类型**义务，而非一条约定：`TraceEvent` 的每个源自用户的字段都是 `Redacted`，而只有脱敏器能产出它，因此一个携带 `{{source.var}}` 的 URL —— 这是常见情形，不是罕见情形 —— 不可能因为被人遗忘而混进追踪。
 
 **向上游报告。** "复制追踪"会产出源的 id、出错的规则、脱敏后的输入摘录，以及应用版本 —— 一个源作者修好自己文档所需的一切，而不包含任何关于用户的信息。
 
@@ -852,9 +900,9 @@ export type TraceEvent =
 
 ```mermaid
 flowchart LR
-    A["BBeBee:music-example-org-4f1a:track:a1<br/>FLAC, server"]
+    A["BBeBee:music-example-org-35be9fe2:track:a1<br/>FLAC, server"]
     B["BBeBee:local:track:f9<br/>MP3, on disk"]
-    C["BBeBee:jelly-nas-7b02:track:7c<br/>FLAC, server"]
+    C["BBeBee:jellyfin-nas-local-1bb03370:track:7c<br/>FLAC, server"]
     A ---|"isrc · 1.0"| B
     A ---|"isrc · 1.0"| C
     B ---|"fuzzy · 0.86"| C

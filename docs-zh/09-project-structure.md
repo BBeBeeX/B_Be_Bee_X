@@ -42,6 +42,12 @@ B_Be_Bee/
 │  ├─ core-http-rn/                 │
 │  ├─ core-js-quickjs-node/         │ ctx.js —— 音源沙箱 (04 §19)
 │  ├─ core-js-quickjs-rn/           │
+│  ├─ core-device-electron/ ✅      │ ctx.device —— 网络、电量、媒体键
+│  ├─ core-device-expo/             │
+│  ├─ core-background-electron/ ✅  │ ctx.background —— wake lock、挂起
+│  ├─ core-background-expo/         │
+│  ├─ core-media-session-electron/ ✅ ctx.mediaSession —— OS 的“正在播放”表面
+│  ├─ core-media-session-rn/        │
 │  ├─ core-secrets-electron/        │
 │  ├─ core-secrets-expo/            │
 │  ├─ core-audio-webaudio/          │ (共享：两个平台都用 react-native-audio-api)
@@ -71,10 +77,14 @@ B_Be_Bee/
 │  ├─ plugin-hello/        ✅       M0 演示插件
 │  ├─ core-desktop-bridge/ ✅       renderer↔main IPC 客户端 + main 侧宿主
 │
-│  ├─ ui-tokens/                    以纯数据形式存在的设计令牌 (08 §6)
-│  ├─ ui-core/                      框架无关的 React hooks
-│  ├─ ui-kit-mobile/                React Native 组件
-│  ├─ ui-kit-desktop/               React DOM 组件
+│  ├─ ui-tokens/           ✅       以纯数据形式存在的设计令牌，外加
+│  │                                08 §8 的 WCAG AA 闸门
+│  ├─ ui-core/            ✅       框架无关的 React hooks，以及
+│  │                                两套组件库共享的 prop 类型
+│  ├─ ui-parity/          ✅       组件契约，以及检查两套组件库
+│  │                                是否满足它的测试 (08 §6)
+│  ├─ ui-kit-mobile/      ✅       React Native 组件
+│  ├─ ui-kit-desktop/     ✅       React DOM 组件
 │  ├─ plugin-hello-ui-desktop/ ✅   ┐ 按目标划分的视图包
 │  ├─ plugin-hello-ui-mobile/  ✅   ┘
 │  ├─ plugin-source-runtime-ui-desktop/ ┐ 音源列表、导入审查、

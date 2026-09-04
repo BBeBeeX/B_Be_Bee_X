@@ -19,8 +19,8 @@ BBeBee:<sourceId>:<kind>:<id>
 
 ```
 BBeBee:local:track:9f2c8a1e
-BBeBee:music-example-org-4f1a:album:41af02
-BBeBee:jelly-nas-7b02:playlist:7c11
+BBeBee:music-example-org-35be9fe2:album:41af02
+BBeBee:jellyfin-nas-local-1bb03370:playlist:7c11
 ```
 
 ### 为什么是音源，而不是后端类型
@@ -119,7 +119,7 @@ erDiagram
 
 ```sql
 CREATE TABLE sources (
-  id            TEXT PRIMARY KEY,          -- 'music-example-org-4f1a', derived (06 §1.2)
+  id            TEXT PRIMARY KEY,          -- 'music-example-org-35be9fe2', derived (06 §1.2)
   source_url    TEXT NOT NULL UNIQUE,      -- the document's identity; dedup key on import
   name          TEXT NOT NULL,             -- denormalised from doc_json for list rendering
   source_group  TEXT,                      -- comma-separated, free text
@@ -171,9 +171,15 @@ CREATE TABLE cookie_jars (
 );
 ```
 
-为什么 `doc_json` 要整体存储而不是拆散成列：这份文档是用户拥有的制品。让它在一个规范化的 schema 里走个来回，意味着导出产物会与导入内容有微妙差异 —— 键被重排、未知字段被丢弃、某条规则被重新排版 —— 而当用户编辑过的文档第一次导出后就变了样，他们就会不再信任导出。来自更新版文档的未知字段能在旧版应用中幸存，也是出于同样的原因。
+为什么 `doc_json` 要整体存储而不是拆散成列：这份文档是用户拥有的制品。让它在一个规范化的 schema 里走个来回，意味着导出产物会与导入内容有微妙差异 —— 键被重排、未知字段被丢弃、某条规则被重新排版 —— 而当用户编辑过的文档第一次导出后就变了样，他们就会不再信任导出。
+
+**未知*顶层*字段能在旧版应用中幸存**，也是出于同样的原因：为更新版运行时编写的文档会被原样存储、原样再导出，这个构建所不理解的字段只是不会被读取。规则块**内部**的未知字段则会在导入时被拒绝（[06 §2.2](./06-music-sources.md#22-规则块)）—— 这种不对称是刻意的。游离的顶层键是向前兼容；`ruleSearch.titel` 则是一个拼写错误，若无这道检查它本会通过校验、永远不会被读取，并让音源半失灵地运行，看上去就像后端变了。
 
 `doc_hash` 让重新导入成为一个三分判定，而不是掷硬币：未变化（哈希相同，跳过）、有更新（哈希不同，展示字段差异）、或冲突（哈希不同*且* `locally_modified`，要求确认）—— 见 [06 §9](./06-music-sources.md#9-导入更新与分享)。
+
+它是一个**完整的 SHA-256**，`id` 的后缀取的正是其一的前 32 位。最初使用的那个短的非加密哈希错在两处：`id` 是主键，一次碰撞就会让一个音源的行覆盖另一个音源的行；而 `doc_hash` 决定更新到底会不会发生，在那里发生碰撞会把一份已变更的文档归类为"未变化"，然后悄无声息地跳过。
+
+> **`enabled` 属于用户，而不属于文档。** 导入会写入其余每一列，唯独不写这一列。发布修复的作者绝不能把用户已关掉的音源重新打开 —— 而被禁用的行与"音源已移除但曲库保留"的行根本无法区分（[06 §4.1](./06-music-sources.md#41-一个源的生命周期)），所以导入路径不做猜测。
 
 > **数据库中绝无可读凭据。** Token、密码与每个音源的变量都存放在 `ctx.secrets` 中，位于 `namespace(sourceId)` 之下；`source_vars` 只保存规则选择持久化的内容，并以同样的方式对待。Cookie 同样是凭据，但一个真实的会话 jar 会超出 `expo-secure-store` 的 2048 字节值上限，因此移动端对它采用**信封加密**：AES 密钥（很小）放 `ctx.secrets`，密文（不限大小）放 `cookie_jars`。不变式得以保住 —— 密钥与密文绝不同处一库，泄露的数据库文件什么都得不到（[04 §2.1](./04-core-services.md#21-cookie-罐)、[04 §6](./04-core-services.md#6-ctxsecrets--凭据存储)）。
 >

@@ -43,7 +43,8 @@ M1 是四项主张停止停留在设计、变成要么能跑要么不能跑的�
 
 | 推迟项 | 落点 | 为什么可以等 |
 |---|---|---|
-| 规则语言、`ctx.js`、`@js:`、搜索/探索/专辑规则、导入 UI、tracer | M2 | MD-7。M1 需要的是一个可播放的 URL，那只是一条模板；[06](./06-music-sources.md) 里的其他一切都需要一个可指向的后端和一个可运行的沙箱，而这两者都不在 M1 的关键路径上 |
+| 规则语言、`@js:`、搜索/探索/专辑规则、导入 UI、tracer | M2 | MD-7。M1 需要的是一个可播放的 URL，那只是一条模板；[06](./06-music-sources.md) 里的其他一切都需要一个可指向的后端和一个可运行的沙箱，而这两者都不在 M1 的关键路径上 |
+| `ctx.js` —— **实现** | M2 | 契约随文档一起落在 `@BBeBee/protocol` 里，因为 M2 正是照着 [04 §19](./04-core-services.md#19-ctxjs--沙箱化求值器) 构建的，而一份没人能读到的契约算不上计划。不存在 `core-js-quickjs-*` 包，没有任何东西注入 `js`，也没有任何 M1 代码路径会求值脚本 |
 | 认证、`ctx.secrets`、持久化 cookie 罐 | M2 | M1 的音源没有需要凭据的。没有可登录的后端时造这个罐什么也测不到（[06 §5.1](./06-music-sources.md#51-会话持久化--cookie-在应用关闭后依然存活)） |
 | 认真的跨音源扇出、`track_links`、身份关联 | M2 | `searchAll` 存在且被使用，但两个音源 —— 其中一个还不能搜索 —— 不构成扇出。过渡期由 `ctx.sources.searchLocal` 覆盖目录 |
 | `plugin-library` / `ctx.library` —— 播放列表、收藏、合集 | M2 | MD-3。M1 的五块屏幕没有任何整理功能，而过去用来论证这个包的目录读取现在已落在 `ctx.sources` 上 |
@@ -115,13 +116,14 @@ core-codec-node             ✅  ctx.codec — music-metadata over ctx.fs, bound
 core-codec-rn               +   ctx.codec — AudioDecoder plus a native tag reader
 core-http-node              ✅  ctx.http (M1 slice) — fetch-shaped, transport is a seam
 core-http-rn                +   ctx.http (M1 slice) — RN fetch / XHR
-core-media-session-electron +   ctx.mediaSession — navigator.mediaSession + MPRIS/SMTC/Now Playing
+core-media-session-electron ✅  ctx.mediaSession — navigator.mediaSession + MPRIS/SMTC/Now Playing
 core-media-session-rn       +   ctx.mediaSession — lock screen and media notification
-core-device-electron        +   ctx.device — network, battery, media keys, hotkeys
+core-device-electron        ✅  ctx.device — network, battery, media keys, hotkeys
 core-device-expo            +   ctx.device
-core-background-electron    +   ctx.background — powerSaveBlocker, intervals, suspend hooks
+core-background-electron    ✅  ctx.background — powerSaveBlocker, intervals, suspend hooks
 core-background-expo        +   ctx.background — audio session, expo-background-task
-core-desktop-bridge         ~   hosts for codec, http, media session, device; preload surface
+core-desktop-bridge         ~   hosts for codec, http, media session, device; preload surface;
+                                the main→renderer event channel the last two need
 core-fs-node / -expo        ✅  toPlayableUri and canWatch get their first real consumer
 core-db-node / -expo        ~   the db:write:core verb check (MD-4)
 
@@ -133,13 +135,14 @@ plugin-player               ✅  ctx.player — transport, queue, resolution, hi
 plugin-ui                   ✅  gets its first non-trivial contributions
 plugin-inspector            ✅  used to verify the M1 fiber tree unloads clean
 
-ui-tokens                   +   design tokens as data
-ui-core                     +   useService / useServiceState over useSyncExternalStore
-ui-kit-mobile               +   the parity component set, React Native
-ui-kit-desktop              +   the parity component set, React DOM
-plugin-player-ui-*          +   now playing, mini player, transport, queue
-plugin-sources-ui-*         +   library, album detail, the minimal source list
-plugin-local-scanner-ui-*   +   settings: scan roots
+ui-tokens                   ✅  design tokens as data, with the WCAG AA gate
+ui-core                     ✅  useService / useServiceState over useSyncExternalStore
+ui-parity                   ✅  the component contract, and the check both kits must pass
+ui-kit-mobile               ✅  the parity component set, React Native
+ui-kit-desktop              ✅  the parity component set, React DOM
+plugin-player-ui-*          ✅  now playing, transport, queue
+plugin-sources-ui-*         ✅  library, album detail
+plugin-local-scanner-ui-*   ✅  settings: scan roots
 
 protocol                    ✅  catalogue reads on ctx.sources, ctx.scanner, the fractional index,
                                 the audio/codec conformance suites, the mock AudioService

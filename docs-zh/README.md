@@ -54,7 +54,7 @@ pnpm dev:desktop # Electron, with HMR across main, preload and renderer
 - **服务键（service key）** —— 在上下文上认领的一个名字，例如 `ctx.player`。全文始终带 `ctx.` 前缀书写，以免与包名混淆。
 - **包名** —— 始终使用全限定名，例如 `@BBeBee/plugin-download`。
 - **源（source）** —— 用户所配置的一个音乐后端，由其 `sourceUrl` 标识，并通过一个派生的 **source id** 寻址。*源字符串（source string）*是它可导入的文本形式。
-- **URN** —— 曲库实体的稳定标识符，例如 `BBeBee:music-example-org-4f1a:track:8f1a2c`。定义见 [07](./07-data-model.md)。
+- **URN** —— 曲库实体的稳定标识符，例如 `BBeBee:music-example-org-35be9fe2:track:8f1a2c`。定义见 [07](./07-data-model.md)。
 - TypeScript 代码块是**契约**，不是示意。它们应当能够通过编译。
 - 以 `snake_case` 命名的表是 SQLite 表。以 `PascalCase` 命名的类型是 TypeScript 类型。
 - ⚠️ 标记两个平台确实存在差异、抽象在此泄漏之处。这些点被有意指出，而不是藏起来。
