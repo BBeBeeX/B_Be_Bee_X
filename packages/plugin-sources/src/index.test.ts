@@ -1,12 +1,9 @@
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
-import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
+import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
 import { NetworkError } from '@BBeBee/protocol'
 import type { Capabilities, MediaProvider, SearchResult, Track } from '@BBeBee/protocol'
 import plugin, { Sources } from './index.js'
@@ -62,7 +59,7 @@ function searchingProvider(
  */
 async function withSources(): Promise<{ ctx: Context; sources: Sources }> {
   const ctx = new Context()
-  await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-sources-')) })
+  await ctx.plugin(PathsNode, { root: await tempDir('bbebee-sources') })
   await ctx.plugin(FsNode)
   await ctx.plugin(DbNode, { fileName: ':memory:' })
   await ctx.plugin(plugin, {})
@@ -79,7 +76,7 @@ describe('plugin-sources', () => {
   it('leaves nothing behind when unloaded', async () => {
     // The architecture's central claim, applied to this plugin (docs/09 §6).
     const ctx = new Context()
-    await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-leak-')) })
+    await ctx.plugin(PathsNode, { root: await tempDir('bbebee-leak') })
     await ctx.plugin(FsNode)
     await ctx.plugin(DbNode, { fileName: ':memory:' })
     await tick()

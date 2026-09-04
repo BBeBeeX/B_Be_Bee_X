@@ -501,6 +501,7 @@ export class Scanner extends Service implements ScannerService {
     let depth = 0
 
     let listed = 0
+    let unreadable = 0
     while (queue.length > 0 && depth <= MAX_SCAN_DEPTH && listed < MAX_SCAN_DIRS) {
       const next: Uri[] = []
       for (const dir of queue) {
@@ -510,7 +511,14 @@ export class Scanner extends Service implements ScannerService {
         try {
           listing = await this.ctx.fs.list(dir)
         } catch {
-          // An unreadable directory is not a scan failure: skip it, carry on.
+          /*
+           * An unreadable directory is not a scan *failure* — a permissions
+           * quirk somewhere in a music folder must not abort the walk. But it
+           * *is* a hole in the view, and reconciliation cannot tell a file it
+           * could not see from one that is gone: without this, `chmod 000` on
+           * a subdirectory deleted its tracks on the next scan, silently.
+           */
+          unreadable++
           continue
         }
         for (const entry of listing) {
@@ -527,8 +535,14 @@ export class Scanner extends Service implements ScannerService {
       depth++
     }
 
-    const truncated = queue.length > 0 || listed >= MAX_SCAN_DIRS
-    if (truncated) {
+    const truncated = queue.length > 0 || listed >= MAX_SCAN_DIRS || unreadable > 0
+    if (unreadable > 0) {
+      this.ctx.logger.warn(
+        `scanner: ${unreadable} director${unreadable === 1 ? 'y' : 'ies'} under ${uri} could ` +
+          'not be read. This scan will not remove anything, because it did not see everything.',
+      )
+    }
+    if (queue.length > 0 || listed >= MAX_SCAN_DIRS) {
       // Say so rather than silently truncating: a library legitimately this
       // large is a bug report worth getting, and a symlink loop is a problem
       // the user can fix once they know it is there.

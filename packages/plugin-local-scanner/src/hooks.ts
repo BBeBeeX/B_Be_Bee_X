@@ -79,5 +79,20 @@ export function summarise(summary: ScanSummary | undefined): string {
   if (summary.updated) parts.push(`${summary.updated} updated`)
   if (summary.removed) parts.push(`${summary.removed} removed`)
   if (summary.errors) parts.push(`${summary.errors} could not be read`)
+
+  /*
+   * ⚠️ `incomplete` outranks the counts, and is not a footnote to them.
+   *
+   * A truncated scan — a symlink loop, an unreadable folder — imports what it
+   * saw and deliberately removes nothing (docs/06 §12). Rendering that as
+   * "nothing changed" tells the user their library is reconciled when the
+   * opposite is true, which is the exact failure the flag exists to prevent.
+   */
+  if (summary.incomplete) {
+    const prefix = summary.cancelled ? 'Scan cancelled' : 'Scan incomplete'
+    const detail = parts.length > 0 ? parts.join(', ') : 'nothing imported'
+    return `${prefix} — ${detail}. Some folders could not be read, so nothing was removed.`
+  }
+
   return parts.length > 0 ? parts.join(', ') : 'nothing changed'
 }

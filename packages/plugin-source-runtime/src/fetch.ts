@@ -13,15 +13,24 @@
  * the URL.
  */
 
-import { NetworkError, ProviderError, RateLimitError, AuthError, NotFoundError } from '@BBeBee/protocol'
+import {
+  AuthError,
+  NetworkError,
+  NotFoundError,
+  ProviderError,
+  RateLimitError,
+  RuleError,
+  isRetryable,
+} from '@BBeBee/protocol'
 import type { HttpRequest, HttpService } from '@BBeBee/protocol'
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'HEAD'
   body?: string
   headers?: Record<string, string>
-  /** Decode a non-UTF-8 response. Recorded; honoured where the host can. */
+  /** Decode a non-UTF-8 response — `gbk`, `big5`, `shift_jis`. */
   charset?: string
+  /** Attempts before the call is an error; default 1 (docs/06 §3.5). */
   retry?: number
 }
 
@@ -96,7 +105,7 @@ export async function fetchDocument(
   http: HttpService,
   target: ParsedUrl,
   extraHeaders: Record<string, string> | undefined,
-  sourceId: string,
+  site: FetchSite,
 ): Promise<FetchedDocument> {
   const request: HttpRequest = {
     url: target.url,
@@ -107,14 +116,16 @@ export async function fetchDocument(
       : {}),
   }
 
-  // Not wrapped: whatever `ctx.http` throws is already in the taxonomy — a
-  // capability refusal, a transport failure — and re-wrapping it would flatten
-  // a `CapabilityError` into something retryable.
-  const response = await http(request)
+  const response = await withRetries(target.options.retry ?? 1, async () => {
+    // Not wrapped: whatever `ctx.http` throws is already in the taxonomy — a
+    // capability refusal, a transport failure — and re-wrapping it would
+    // flatten a `CapabilityError` into something retryable.
+    const res = await http(request)
+    if (res.status >= 400) throw statusError(res.status, target.url, site.sourceId)
+    return res
+  })
 
-  if (response.status >= 400) throw statusError(response.status, target.url, sourceId)
-
-  const text = await response.text()
+  const text = await decode(response, target.options.charset, site)
   const contentType = response.headers['content-type'] ?? ''
   let value: unknown = text
   if (contentType.includes('json') || looksLikeJson(text)) {
@@ -126,6 +137,73 @@ export async function fetchDocument(
   }
 
   return { value, text, baseUrl: response.url || target.url, status: response.status }
+}
+
+/** Where a fetch came from, so a failure names the rule and not just the URL. */
+export interface FetchSite {
+  sourceId: string
+  /** e.g. 'searchUrl'. Used to attribute a decode failure. */
+  block: string
+}
+
+/**
+ * Decode the body, honouring `charset`.
+ *
+ * The reason this exists is the reason the whole rule language does: legado's
+ * sources are largely Chinese-language sites, and a good number still serve
+ * GBK or Big5. `response.text()` decodes as UTF-8 unconditionally, so those
+ * came back as replacement characters — a source that fetched, parsed, and
+ * imported a page of mojibake without one error along the way.
+ */
+async function decode(
+  response: { text(): Promise<string>; bytes(): Promise<Uint8Array> },
+  charset: string | undefined,
+  site: FetchSite,
+): Promise<string> {
+  if (!charset) return response.text()
+
+  let decoder: TextDecoder
+  try {
+    decoder = new TextDecoder(charset)
+  } catch {
+    /*
+     * An unsupported label is the author's mistake and is reported as one.
+     * Falling back to UTF-8 would be the same silent mojibake this exists to
+     * prevent, with the added insult that the document *said* what to do.
+     * Which labels work depends on the build's ICU, so the message says so.
+     */
+    throw new RuleError(
+      `charset ${JSON.stringify(charset)} is not one this build can decode`,
+      { block: site.block, field: 'charset' },
+      site.sourceId,
+    )
+  }
+  return decoder.decode(await response.bytes())
+}
+
+/** Cap on the backoff between attempts, and on `retryAfterMs` from a 429. */
+const MAX_BACKOFF_MS = 2000
+
+/**
+ * Run `attempt` up to `attempts` times, retrying only what can succeed.
+ *
+ * docs/06 §3.5: `retry` is "attempts before the call is an error; default 1".
+ * Retrying a 404 or a 401 is how a broken source becomes a slow broken source,
+ * so only `retryable` failures come back round — and a 429 waits the interval
+ * it asked for rather than a guess.
+ */
+async function withRetries<T>(attempts: number, attempt: () => Promise<T>): Promise<T> {
+  const total = Math.max(1, Math.min(attempts, 5))
+  for (let i = 1; ; i++) {
+    try {
+      return await attempt()
+    } catch (error) {
+      if (i >= total || !isRetryable(error)) throw error
+      const asked = error instanceof RateLimitError ? error.retryAfterMs : 0
+      const wait = Math.min(Math.max(asked, 100 * 2 ** (i - 1)), MAX_BACKOFF_MS)
+      await new Promise((resolve) => setTimeout(resolve, wait))
+    }
+  }
 }
 
 function looksLikeJson(text: string): boolean {

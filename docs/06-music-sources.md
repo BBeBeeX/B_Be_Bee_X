@@ -119,7 +119,7 @@ such gap: **the runtime computes `Capabilities` from which rule blocks are prese
 | `exploreUrl` + `ruleExplore` | `browse` |
 | `ruleAlbum` | `getAlbum`, album detail screens |
 | `ruleTrackList` | Album and playlist track listings |
-| `ruleStream` *(or `streamUrl` inside a list rule)* | `resolveStream` — **required**; a source without it cannot play anything and is rejected at import |
+| `ruleStream` | `resolveStream` — **required**; a source without it cannot play anything and is rejected at import |
 | `ruleLyric` | `getLyrics` |
 | `loginUrl` / `loginUi` | A sign-in flow; absent means `flow: { kind: 'none' }` |
 | `ruleLibrary.*` | The corresponding `ProviderLibrary` members |
@@ -237,7 +237,14 @@ export interface ListRule {
   trackId: string                 // becomes the URN's last segment
   quality?: string
 
-  /** Shortcut: when the list already carries a playable URL, ruleStream is skipped. */
+  /**
+   * A playable URL the list already carries.
+   *
+   * A convenience, not a substitute: `ruleStream` is required regardless, and
+   * reaches this value as `{{track.streamUrl}}`. Making it a substitute would
+   * mean two code paths to a stream URL and a source that plays from search
+   * but not from the library, so there is one.
+   */
   streamUrl?: string
   /** For explore and album lists: descend rather than play. */
   childUrl?: string
@@ -276,6 +283,14 @@ export interface LyricRule { lyric: string; format?: string; offsetMs?: string }
 `childUrl` is non-empty is a node to descend into rather than a leaf to play. A folder tree, a
 genre list, a chart, and a podcast feed's episode list are all the same three fields, which is why
 one UI component renders all of them.
+
+**An unknown field inside a rule block is refused at import.** Not ignored — refused, with the
+path named, so `{ "ruleSearch": { "titel": "$.title" } }` fails on the import screen rather than
+importing a source whose titles are permanently absent. The asymmetry with the top level
+([07 §4.1](./07-data-model.md#41-sources-accounts-and-sessions), where an unknown field is kept
+verbatim and simply not read) is deliberate: a stray key beside `sourceName` is forward
+compatibility, and a stray key beside `title` is a typo in the one place a typo produces silence
+instead of an error.
 
 ### 2.3 A complete example
 
@@ -374,6 +389,17 @@ it starts with `=`.** A constant `"audio/mpeg"` with no `=` is a CSS selector fo
 that does not exist, and the interpreter will tell you so rather than quietly returning the
 string.
 
+**The URL fields are the exception, and the only one.** `searchUrl` and `exploreUrl` are *URL
+templates*, not selectors: there is no document to select from at the point they are rendered —
+they are what produces the document. So they are interpolated as templates whether or not they
+start with `=`, and the leading `=` is optional there. Every other field in the document follows
+the selector rule above.
+
+This is stated rather than implied because the two readings are indistinguishable by eye and
+diverge silently: a `searchUrl` treated as a selector produces a CSS error naming an engine the
+author never asked for, and the fix — adding an `=` — makes the symptom disappear without anyone
+learning which reading was correct.
+
 ### 3.2 Templates and scope
 
 `{{ }}` evaluates an expression and inlines the result. Inside a template, the following are in
@@ -401,7 +427,7 @@ Expressions are ordinary JavaScript evaluated in the sandbox, so `{{(page-1)*50}
 |---|---|
 | `a || b` | First non-empty result wins. The idiom for a backend that renamed a field |
 | `a && b` | Concatenate every result, in order |
-| `a %% b` | Interleave the two lists — `a[0], b[0], a[1], b[1], …` |
+| `a %% b` | Interleave the lists — `a[0], b[0], a[1], b[1], …`. N-way: `a %% b %% c` round-robins all three, and a list that runs out is skipped rather than padded |
 | `rule##pattern##replacement` | Regex-replace the result. `##pattern##` with no replacement deletes |
 | `rule##pattern##replacement###` | The trailing `###` makes it replace-first rather than replace-all |
 | `{{rule}}` inside a `=` template | Inline evaluation |
@@ -915,6 +941,14 @@ the call, and no filesystem of any kind.
 | Limit | Value | What it stops |
 |---|---|---|
 | **Host allowlist** | `sourceUrl`'s host plus `allowedHosts`, matched on hostname | Exfiltration to an attacker-controlled endpoint. A URL to any other host is refused with `CapabilityError`, whether it was written literally or computed at runtime |
+
+`allowedHosts` entries are **hostnames**, and import refuses anything that would be silently widened
+to one. `nas:4533` reads as "this host on this port", but there is no port anywhere in the matcher —
+it would be dropped and the entry would cover every port — so it is rejected with a message naming
+the entry. A path is rejected for the same reason. A bare scheme drops nothing, so
+`https://cdn.example.org` is accepted and normalised to its host. An entry covers its subdomains
+(`example.org` admits `cdn.example.org`, never `notexample.org`); a single-label entry matches only
+itself, so `["org"]` cannot mean "anywhere in .org".
 | Wall clock per rule | 2 s (10 s for `@js:` with network) | A rule that hangs the search |
 | Memory per evaluation | 32 MB | A source that OOMs the app |
 | HTTP calls per rule | 8 | A rule that turns one search into a crawl |

@@ -18,7 +18,16 @@ export {
   toText,
   type RuleContext,
 } from './evaluate.js'
-export { RuleSyntaxError, parseJsonPath, queryJsonPath } from './jsonpath.js'
+export { parseJsonPath, queryJsonPath } from './jsonpath.js'
+export { RuleSyntaxError, type RuleDialect } from './syntax-error.js'
+export {
+  MAX_REGEX_INPUT,
+  MAX_REGEX_MATCHES,
+  UnsafeRegexError,
+  boundInput,
+  compileRuleRegex,
+  isUnsafeRegex,
+} from './regex-guard.js'
 export {
   inferEngine,
   parseRule,
@@ -31,6 +40,7 @@ export {
 } from './parse.js'
 export {
   evaluateRule,
+  evaluateUrlTemplate,
   isTemplate,
   renderTemplate,
   type RuleSite,

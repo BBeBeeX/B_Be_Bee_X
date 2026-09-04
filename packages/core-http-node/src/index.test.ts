@@ -7,8 +7,7 @@
  */
 
 import { createServer, type Server } from 'node:http'
-import { mkdtemp, readFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -17,7 +16,7 @@ import { scopeContext } from '@BBeBee/kernel'
 import { CapabilityError } from '@BBeBee/protocol'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
-import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
+import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
 import plugin, { type HttpNode } from './index.js'
 
 const PAYLOAD = Buffer.from(
@@ -112,7 +111,7 @@ afterAll(() => {
 })
 
 async function harness() {
-  const root = await mkdtemp(join(tmpdir(), 'bbebee-http-'))
+  const root = await tempDir('bbebee-http')
   const ctx = new Context()
   await ctx.plugin(PathsNode, { root })
   await ctx.plugin(FsNode)
@@ -457,7 +456,7 @@ describe('cookies', () => {
 describe('lifecycle', () => {
   it('leaves nothing behind when unloaded', async () => {
     const ctx = new Context()
-    await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-http-leak-')) })
+    await ctx.plugin(PathsNode, { root: await tempDir('bbebee-http-leak') })
     await ctx.plugin(FsNode)
     await tick()
 

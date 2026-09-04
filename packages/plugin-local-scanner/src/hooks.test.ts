@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import { summarise } from './hooks.js'
 
-const summary = (over: Partial<Record<string, number>> = {}) => ({
+const summary = (over: Record<string, number | boolean> = {}) => ({
   added: 0,
   updated: 0,
   removed: 0,
@@ -42,5 +42,32 @@ describe('summarise', () => {
 
   it('is empty before any scan has finished', () => {
     expect(summarise(undefined)).toBe('')
+  })
+})
+
+describe('a scan that did not see the whole library', () => {
+  it('leads with the truncation rather than the counts', () => {
+    // The failure this prevents: an incomplete scan that happened to change
+    // nothing rendered as "nothing changed", which reads as "your library is
+    // reconciled" — the opposite of what happened.
+    const text = summarise(summary({ incomplete: true }))
+    expect(text).not.toBe('nothing changed')
+    expect(text).toMatch(/^Scan incomplete/)
+  })
+
+  it('says why nothing was removed', () => {
+    // Without this the user sees 0 removed after deleting files and concludes
+    // the scanner is broken, rather than that it declined to guess.
+    expect(summarise(summary({ incomplete: true, added: 3 }))).toContain('nothing was removed')
+  })
+
+  it('keeps the counts it does have', () => {
+    expect(summarise(summary({ incomplete: true, added: 3 }))).toContain('3 added')
+  })
+
+  it('distinguishes a cancelled scan from a truncated one', () => {
+    // Same "removed nothing" consequence, entirely different cause: one the
+    // user did on purpose, one they need to investigate.
+    expect(summarise(summary({ incomplete: true, cancelled: true }))).toMatch(/^Scan cancelled/)
   })
 })

@@ -107,3 +107,25 @@ describe('evaluateRule', () => {
     expect(() => evaluateRule('audio/mpeg', {}, site)).toThrow(/must start with "="/)
   })
 })
+
+describe('braces in the data, rather than in the template', () => {
+  it('renders a value that itself contains {{ }}', () => {
+    // The check used to run on the output, so a remote server could invalidate
+    // a correct rule by returning a title with braces in it — and the message
+    // quoted the template, which had nothing wrong with it.
+    expect(
+      renderTemplate('{{track.title}} - {{track.artist}}', {
+        track: { title: 'Live {{2019}}', artist: 'A' },
+      }, site),
+    ).toBe('Live {{2019}} - A')
+  })
+
+  it('renders a value containing a single stray brace pair', () => {
+    expect(renderTemplate('{{key}}', { key: 'a}}b' }, site)).toBe('a}}b')
+  })
+
+  it('still refuses an unbalanced placeholder in the template itself', () => {
+    expect(() => renderTemplate('{{track.id', { track: { id: '1' } }, site)).toThrow(/unbalanced/)
+    expect(() => renderTemplate('{{track.id}}}}', { track: { id: '1' } }, site)).toThrow(/unbalanced/)
+  })
+})

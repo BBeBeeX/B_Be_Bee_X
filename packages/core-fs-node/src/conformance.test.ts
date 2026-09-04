@@ -7,7 +7,6 @@
  */
 
 import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -17,12 +16,13 @@ import type { FsService, PathsService } from '@BBeBee/protocol'
 import { scopeContext } from '@BBeBee/kernel'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '../src/index.js'
+import { tempDir } from '@BBeBee/kernel/testing'
 
 let root: string
 let ctx: Context
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), 'bbebee-fs-'))
+  root = await tempDir('bbebee-fs')
   ctx = new Context()
   // `root` confines every well-known directory to the temp dir, so the suite
   // never touches the developer's real Music or Downloads folder.

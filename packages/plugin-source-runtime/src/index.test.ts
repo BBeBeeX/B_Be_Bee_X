@@ -9,9 +9,7 @@
  */
 
 import { createServer, type Server } from 'node:http'
-import { mkdtemp, readFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { readFile } from 'node:fs/promises'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
@@ -20,7 +18,7 @@ import { DbNode } from '@BBeBee/core-db-node'
 import httpPlugin from '@BBeBee/core-http-node'
 import sourcesPlugin from '@BBeBee/plugin-sources'
 import { CORE_MIGRATIONS, MigrationRunner } from '@BBeBee/kernel'
-import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
+import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
 import plugin from './index.js'
 
 let server: Server
@@ -75,7 +73,7 @@ function radio(path = '/track.mp3', extra: Record<string, unknown> = {}) {
 
 async function harness(docs: unknown[] = []) {
   const ctx = new Context()
-  await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-runtime-')) })
+  await ctx.plugin(PathsNode, { root: await tempDir('bbebee-runtime') })
   await ctx.plugin(FsNode)
   await ctx.plugin(DbNode, { fileName: ':memory:' })
   await ctx.plugin(httpPlugin, {})
@@ -403,7 +401,7 @@ describe('the source list drives the fibers', () => {
 describe('lifecycle', () => {
   it('leaves nothing behind when unloaded', async () => {
     const ctx = new Context()
-    await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-runtime-leak-')) })
+    await ctx.plugin(PathsNode, { root: await tempDir('bbebee-runtime-leak') })
     await ctx.plugin(FsNode)
     await ctx.plugin(DbNode, { fileName: ':memory:' })
     await ctx.plugin(httpPlugin, {})

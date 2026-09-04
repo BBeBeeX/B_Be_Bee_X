@@ -13,13 +13,22 @@
 
 import { RuleError } from '@BBeBee/protocol'
 import type { ListRule, Track } from '@BBeBee/protocol'
-import { evaluate, evaluateNodes, type RuleContext } from '@BBeBee/source-rules'
-import type { TemplateScope } from '@BBeBee/source-rules'
+import {
+  RuleSyntaxError,
+  evaluateNodes,
+  evaluateParsed,
+  parseRule,
+  type RuleContext,
+  type RuleSite,
+} from '@BBeBee/source-rules'
+import type { ParsedRule, TemplateScope } from '@BBeBee/source-rules'
 
 export interface ListRowsResult {
   rows: Record<string, unknown>[]
   /** Elements dropped for want of a required field. Surfaced, never hidden. */
   dropped: number
+  /** Elements sharing a `trackId` with an earlier one. Also surfaced. */
+  duplicates: number
 }
 
 export interface ListRuleContext {
@@ -49,8 +58,27 @@ export function evaluateListRule(rule: ListRule, ctx: ListRuleContext): ListRows
     vars: new Map(),
   })
 
+  /*
+   * Parse each field rule once, not once per row.
+   *
+   * The inner loop ran `evaluate(fieldRule, …)` — which re-parses — for every
+   * field of every element, so a 50-row page with 8 fields parsed the same 8
+   * strings 400 times. `evaluateParsed` existed for exactly this and had no
+   * callers.
+   *
+   * It also moves a malformed rule's error out of the row loop: it is raised
+   * once, before any row is built, instead of identically on each of them.
+   */
+  const fields: { field: string; parsed: ParsedRule }[] = []
+  for (const [field, fieldRule] of Object.entries(rule)) {
+    if (field === 'trackList' || typeof fieldRule !== 'string' || !fieldRule) continue
+    fields.push({ field, parsed: parseFieldRule(fieldRule, site(field)) })
+  }
+
   const rows: Record<string, unknown>[] = []
+  const seen = new Set<string>()
   let dropped = 0
+  let duplicates = 0
 
   for (const element of elements) {
     // Each element is its own little document: a field rule selects *within*
@@ -65,23 +93,44 @@ export function evaluateListRule(rule: ListRule, ctx: ListRuleContext): ListRows
     const row: Record<string, unknown> = { raw: element }
     let usable = true
 
-    for (const [field, fieldRule] of Object.entries(rule)) {
-      if (field === 'trackList' || typeof fieldRule !== 'string' || !fieldRule) continue
-      const values = evaluate(fieldRule, { ...rowCtx, site: site(field) })
+    for (const { field, parsed } of fields) {
+      const values = evaluateParsed(parsed, { ...rowCtx, site: site(field) })
       const value = values[0]
 
-      if (value === undefined || value === '') {
+      /*
+       * Whitespace is absence, not a value.
+       *
+       * `"  "` passed the empty check, so a `trackId` rule that matched an
+       * empty cell produced the URN `BBeBee:<source>:track:  ` — a key that
+       * looks like an id, collides with every other blank one on the page,
+       * and cannot be typed back. A title of `"  "` is no better.
+       */
+      if (value === undefined || String(value).trim() === '') {
         if ((REQUIRED as string[]).includes(field)) usable = false
         continue
       }
-      row[field] = value
+      // Trimmed because a URN segment cannot carry leading or trailing space
+      // and a backend's padding is not part of anybody's identifier.
+      row[field] = field === 'trackId' ? String(value).trim() : value
     }
 
-    if (usable) rows.push(row)
-    else dropped++
+    if (!usable) {
+      dropped++
+      continue
+    }
+    // Two rows carrying one `trackId` become one URN, and the second silently
+    // overwrites the first in the catalogue. A backend repeating an id in a
+    // page is a backend bug, but losing a row to it quietly is ours.
+    const id = String(row.trackId)
+    if (seen.has(id)) {
+      duplicates++
+      continue
+    }
+    seen.add(id)
+    rows.push(row)
   }
 
-  return { rows, dropped }
+  return { rows, dropped, duplicates }
 }
 
 /**
@@ -115,6 +164,26 @@ export function rowToTrack(
   if (typeof row.albumId === 'string') track.albumUrn = `BBeBee:${sourceId}:album:${row.albumId}`
   if (typeof row.artwork === 'string') track.artwork = { id: row.artwork, sourceUrl: row.artwork }
   return track
+}
+
+/**
+ * Parse one field rule, failing inside the taxonomy.
+ *
+ * `parseRule` throws `RuleSyntaxError`, which is not a `SourceError` — so a
+ * malformed field rule escaped past every handler that branches on `code`
+ * and surfaced as "something went wrong" rather than as the field it is in.
+ */
+function parseFieldRule(rule: string, site: RuleSite): ParsedRule {
+  try {
+    return parseRule(rule)
+  } catch (error) {
+    if (error instanceof RuleSyntaxError) {
+      throw new RuleError(error.message, { block: site.block, field: site.field }, site.sourceId, {
+        cause: error,
+      })
+    }
+    throw error
+  }
 }
 
 /** `213` · `"213"` · `"3:33"` · `"213.4s"` → milliseconds, or a `RuleError`. */

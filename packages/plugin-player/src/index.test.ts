@@ -6,15 +6,12 @@
  * prefetch that makes gapless possible. The rest need a device.
  */
 
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { Context, Service } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
-import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
+import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
 import { createMockAudio, type MockAudio } from '@BBeBee/protocol/conformance'
 import { NetworkError, NotFoundError, AuthError } from '@BBeBee/protocol'
 import type {
@@ -86,7 +83,7 @@ interface Harness {
 async function harness(
   opts: { root?: string; provider?: MediaProvider; config?: Record<string, unknown> } = {},
 ): Promise<Harness> {
-  const root = opts.root ?? (await mkdtemp(join(tmpdir(), 'bbebee-player-')))
+  const root = opts.root ?? (await tempDir('bbebee-player'))
   const audio = createMockAudio({ durationMs: 200_000 })
 
   const ctx = new Context()
@@ -700,7 +697,7 @@ describe('crossfade', () => {
 
 describe('lifecycle', () => {
   it('leaves nothing behind when unloaded', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'bbebee-player-leak-'))
+    const root = await tempDir('bbebee-player-leak')
     const audio = createMockAudio()
     const ctx = new Context()
     await ctx.plugin(PathsNode, { root })

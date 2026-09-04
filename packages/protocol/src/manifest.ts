@@ -188,7 +188,17 @@ function normaliseHost(value: string): string {
    * so `[::1]`, `[0:0:0:0:0:0:0:1]` and `::1` agree.
    */
   try {
-    const parsed = new URL(`http://${bare.includes(':') && !bare.includes('.') ? `[${bare}]` : bare}`)
+    /*
+     * Two or more colons means an IPv6 literal, dots or no dots.
+     *
+     * The earlier test was `has ':' and no '.'`, which excluded exactly the
+     * IPv4-mapped spellings — `::ffff:127.0.0.1` went through unbracketed,
+     * failed to parse, and fell back to its literal text. A URL carrying the
+     * same address normalises to `::ffff:7f00:1`, so the two spellings of one
+     * address could never match each other.
+     */
+    const literal = (bare.match(/:/g)?.length ?? 0) >= 2
+    const parsed = new URL(`http://${literal ? `[${bare}]` : bare}`)
     const host = parsed.hostname.toLowerCase()
     return host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host
   } catch {

@@ -9,12 +9,11 @@
  */
 
 import { mkdtemp, rm, readFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { createApp, type PluginRegistry } from '@BBeBee/kernel'
-import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
+import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
 import type { PluginManifest, RouteContribution } from '@BBeBee/protocol'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
@@ -31,7 +30,7 @@ import type { Hello } from '../src/index.js'
 let root: string
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), 'bbebee-m0-'))
+  root = await tempDir('bbebee-m0')
 })
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })

@@ -9,6 +9,9 @@
  * See docs/09-project-structure.md §6.
  */
 
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Context } from 'cordis'
 import type { EffectMeta } from 'cordis'
 import { fiberStateName } from './fiber-state.js'
@@ -136,4 +139,22 @@ export function describeFiber(fiber: { state: number; name: string }): string {
 /** A bare context with no core services, for unit tests. */
 export function createTestContext(): Context {
   return new Context()
+}
+
+/**
+ * A scratch directory that the suite actually cleans up.
+ *
+ * Every harness in the workspace called `mkdtemp(join(tmpdir(), 'bbebee-…'))`
+ * and nothing ever removed the result. About 400 directories accumulated per
+ * full run; after a handful of runs `/tmp` was full, and the suite then failed
+ * with `ENOSPC` from whichever test happened to allocate next — a failure that
+ * points at an innocent test and says nothing about the cause.
+ *
+ * Directories land under one per-run root that `vitest.global.ts` removes when
+ * the run ends, so cleanup does not depend on a test reaching its own teardown
+ * — which is exactly what a failing test does not do.
+ */
+export async function tempDir(prefix: string): Promise<string> {
+  const root = process.env.BBEBEE_TEST_TMP ?? tmpdir()
+  return mkdtemp(join(root, `${prefix}-`))
 }

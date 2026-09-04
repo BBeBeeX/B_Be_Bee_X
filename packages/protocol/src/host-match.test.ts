@@ -138,3 +138,29 @@ describe('normalisation', () => {
     expect(declaredHostMatches('example.org', '  example.org  ')).toBe(true)
   })
 })
+
+describe('one address, several spellings', () => {
+  it('agrees about an IPv4-mapped IPv6 address', () => {
+    /*
+     * The bracket test was "has a colon and no dot", which excluded exactly
+     * the mapped spellings. `::ffff:127.0.0.1` failed to parse, fell back to
+     * its literal text, and so could never match the `::ffff:7f00:1` a URL
+     * produces for the same address.
+     */
+    expect(declaredHostMatches('::ffff:7f00:1', '::ffff:127.0.0.1')).toBe(true)
+    expect(declaredHostMatches('[::ffff:127.0.0.1]', '::ffff:7f00:1')).toBe(true)
+  })
+
+  it('still agrees about the plain literals', () => {
+    expect(declaredHostMatches('::1', '[0:0:0:0:0:0:0:1]')).toBe(true)
+    expect(declaredHostMatches('[::1]', '::1')).toBe(true)
+  })
+
+  it('does not conflate two different addresses', () => {
+    expect(declaredHostMatches('::ffff:127.0.0.2', '::ffff:127.0.0.1')).toBe(false)
+  })
+
+  it('gives an IPv6 literal no subdomains', () => {
+    expect(declaredHostMatches('evil.::1', '::1')).toBe(false)
+  })
+})

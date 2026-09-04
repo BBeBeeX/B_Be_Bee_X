@@ -125,9 +125,12 @@ function redactStructured(text: string): string {
     )
     // `k=v` in a query string or form body, quoted or bare.
     .replace(
-      /\b([A-Za-z_][A-Za-z0-9_-]*)=("[^"]*"|'[^']*'|[^&;\s"']+)/g,
+      /\b([A-Za-z_][A-Za-z0-9_-]*)=("[^"]*"|'[^']*'|(?:(?![A-Za-z_][A-Za-z0-9_-]*=)[^&\s"'])+)/g,
       (match, key: string, value: string) => {
         if (!SECRET_KEYS.test(key)) return match
+        // The whole value goes, quotes and all. Replacing only the matched
+        // run left the tail of a `;`-containing secret in the trace —
+        // `token=ab;cd` became `token=***;cd`.
         const quote = value.startsWith('"') ? '"' : value.startsWith("'") ? "'" : ''
         return `${key}=${quote}${PLACEHOLDER}${quote}`
       },

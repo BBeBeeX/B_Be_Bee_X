@@ -6,7 +6,6 @@
  */
 
 import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
@@ -16,11 +15,12 @@ import { FsNode } from '@BBeBee/core-fs-node'
 import type { LogBuffer } from '@BBeBee/plugin-log-buffer'
 import logBuffer from '@BBeBee/plugin-log-buffer'
 import logFile from '../src/index.js'
+import { tempDir } from '@BBeBee/kernel/testing'
 
 let root: string
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), 'bbebee-log-'))
+  root = await tempDir('bbebee-log')
 })
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })

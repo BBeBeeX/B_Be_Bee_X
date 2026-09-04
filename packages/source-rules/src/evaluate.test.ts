@@ -206,3 +206,70 @@ describe('toText', () => {
     expect(toText({ a: 1 })).toBe('{"a":1}')
   })
 })
+
+/**
+ * docs/06 §3.6: "Every error carries the source id, the rule block, the field,
+ * and the input excerpt." The first three were there; the fourth was the one
+ * §10's "copy trace" actually needs, and it was missing.
+ */
+describe('what a failed rule tells you about the input', () => {
+  const failing = (document: unknown, sourceVar?: string) => {
+    try {
+      evaluate(':(a+)+b', {
+        document,
+        scope: sourceVar ? { source: { var: sourceVar } } : {},
+        site: { block: 'ruleSearch', field: 'title', sourceId: 's1' },
+        vars: new Map(),
+      })
+      return expect.unreachable('should have thrown') as never
+    } catch (error) {
+      return error as RuleError
+    }
+  }
+
+  it('carries the document it was run against', () => {
+    // Without this, a renamed backend field and an HTML login page served with
+    // a 200 produce the same message and need opposite fixes.
+    const error = failing('<html>Please sign in</html>')
+    expect(error.excerpt).toContain('Please sign in')
+    expect(error.message).toContain('Please sign in')
+  })
+
+  it('redacts a credential that reached the document', () => {
+    expect(failing('token=hunter2secret&x=1', 'hunter2secret').excerpt).not.toContain('hunter2secret')
+  })
+
+  it('redacts a query parameter that looks like a secret', () => {
+    // The trace is meant to be pasted into a forum thread. Over-broad on
+    // purpose: a stray *** costs a reader nothing.
+    expect(failing('https://host/rest/x?u=me&t=abcdef123456').excerpt).not.toContain('abcdef123456')
+  })
+
+  it('clips a large document rather than pasting it into a toast', () => {
+    const error = failing(JSON.stringify({ songs: Array.from({ length: 500 }, (_, i) => ({ i })) }))
+    expect(error.excerpt!.length).toBeLessThan(300)
+    expect(error.excerpt).toMatch(/…$/)
+  })
+
+  it('still names the block and field', () => {
+    expect(failing('x').rule).toEqual({ block: 'ruleSearch', field: 'title' })
+    expect(failing('x').sourceId).toBe('s1')
+  })
+
+  it('leaves the message alone when there is nothing to excerpt', () => {
+    // An engine this build cannot run is not an input failure, and quoting the
+    // document would point the author at the wrong thing entirely.
+    try {
+      evaluate('@css:h3', {
+        document: '<h3>x</h3>',
+        scope: {},
+        site: { block: 'ruleSearch', field: 'title', sourceId: 's1' },
+        vars: new Map(),
+      })
+      expect.unreachable('should have thrown')
+    } catch (error) {
+      expect((error as RuleError).excerpt).toBeUndefined()
+      expect((error as Error).message).not.toContain('input was')
+    }
+  })
+})

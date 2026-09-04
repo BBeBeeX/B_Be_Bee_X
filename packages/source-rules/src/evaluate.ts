@@ -20,7 +20,14 @@
 
 import { RuleError } from '@BBeBee/protocol'
 import { parseRule, type Atom, type Engine, type ParsedRule } from './parse.js'
-import { RuleSyntaxError, queryJsonPath } from './jsonpath.js'
+import { queryJsonPath } from './jsonpath.js'
+import { RuleSyntaxError } from './syntax-error.js'
+import {
+  MAX_REGEX_MATCHES,
+  UnsafeRegexError,
+  boundInput,
+  compileRuleRegex,
+} from './regex-guard.js'
 import { renderTemplate, type RuleSite, type TemplateScope } from './template.js'
 
 /** What a rule is evaluated against. */
@@ -34,18 +41,30 @@ export interface RuleContext {
 }
 
 /** An engine this build cannot run. Distinct from "the rule was wrong". */
-export class RuleEngineUnavailableError extends Error {
+/**
+ * An engine this build cannot run. Distinct from "the rule was wrong".
+ *
+ * A `RuleError` so it carries the block and field like every other rule
+ * failure (docs/06 §3.6): the tracer and the stale badge both key on that, and
+ * an error that arrives without it is one the user cannot act on.
+ */
+export class RuleEngineUnavailableError extends RuleError {
   override readonly name = 'RuleEngineUnavailableError'
-  constructor(readonly engine: Engine) {
+  constructor(
+    readonly engine: Engine,
+    site: RuleSite,
+  ) {
     super(
       `the "${engine}" engine is not available in this build — ` +
         'it needs ctx.js (docs/04 §19) or a markup parser',
+      { block: site.block, field: site.field },
+      site.sourceId,
     )
   }
 }
 
 /** Engines this build can actually run. */
-const AVAILABLE: ReadonlySet<Engine> = new Set<Engine>(['template', 'json', 'regex'])
+const AVAILABLE: ReadonlySet<Engine> = new Set<Engine>(['template', 'json', 'regex', 'empty'])
 
 export function engineAvailable(engine: Engine): boolean {
   return AVAILABLE.has(engine)
@@ -64,7 +83,24 @@ export function evaluate(rule: string, context: RuleContext): string[] {
 
 /** As `evaluate`, but keeping the selected values rather than stringifying. */
 export function evaluateNodes(rule: string, context: RuleContext): unknown[] {
-  return runParsed(parseRule(rule), context)
+  return runParsed(parseOrFail(rule, context), context)
+}
+
+/**
+ * Parse, or fail inside the taxonomy.
+ *
+ * `parseRule` throws `RuleSyntaxError`, which is not a `SourceError` — so an
+ * unclosed `##` escaped as a bare `Error` past every handler that branches on
+ * `code`, and the source list rendered "something went wrong" for a mistake
+ * with an exact location. A malformed rule is a rule failure like any other.
+ */
+function parseOrFail(rule: string, context: RuleContext): ParsedRule {
+  try {
+    return parseRule(rule)
+  } catch (error) {
+    if (error instanceof RuleSyntaxError) throw asRuleError(error.message, context)
+    throw error
+  }
 }
 
 /** Evaluate an already-parsed rule. Saves a re-parse in a list of N items. */
@@ -125,15 +161,37 @@ function runAtom(atom: Atom, context: RuleContext): unknown[] {
 }
 
 function select(atom: Atom, context: RuleContext): unknown[] {
-  if (!engineAvailable(atom.engine)) throw new RuleEngineUnavailableError(atom.engine)
+  if (!engineAvailable(atom.engine)) throw new RuleEngineUnavailableError(atom.engine, context.site)
 
   switch (atom.engine) {
+    // An empty atom contributes nothing, so an alternative chain falls
+    // through it rather than failing on it.
+    case 'empty':
+      return []
+
     case 'template':
       // A template always produces exactly one value, even an empty one: it
       // is text, not a selection, and "no match" is not a thing it can mean.
       return [renderTemplate(atom.selector, context.scope, context.site)]
 
     case 'json':
+      /*
+       * A JSONPath against text can never match, so returning "absent" is a
+       * lie about which of two very different things happened. `fetch.ts`
+       * hands the body on as text when it does not parse as JSON — which is
+       * exactly what a backend does when it serves an HTML login page or a
+       * maintenance notice with a 200 — and a search that then reports zero
+       * results reads as an empty backend.
+       *
+       * Erroring here is what puts the body in front of the author, via the
+       * excerpt `asRuleError` attaches.
+       */
+      if (typeof context.document !== 'object' || context.document === null) {
+        throw asRuleError(
+          `${atom.selector} expects JSON, and the document is ${describe(context.document)}`,
+          context,
+        )
+      }
       try {
         return queryJsonPath(context.document, atom.selector)
       } catch (error) {
@@ -145,7 +203,7 @@ function select(atom: Atom, context: RuleContext): unknown[] {
       return runRegex(atom.selector, context)
 
     default:
-      throw new RuleEngineUnavailableError(atom.engine)
+      throw new RuleEngineUnavailableError(atom.engine, context.site)
   }
 }
 
@@ -157,11 +215,15 @@ function select(atom: Atom, context: RuleContext): unknown[] {
  * than "the number and the word".
  */
 function runRegex(pattern: string, context: RuleContext): string[] {
-  const text = toText(context.document)
+  // Bounded on both sides: the pattern is refused if it can blow up, and the
+  // text it runs against is capped. See `regex-guard.ts` for why a timeout is
+  // not available to us.
+  const text = boundInput(toText(context.document))
   let expression: RegExp
   try {
-    expression = new RegExp(pattern, 'g')
+    expression = compileRuleRegex(pattern, 'g')
   } catch (error) {
+    if (error instanceof UnsafeRegexError) throw asRuleError(error.message, context)
     throw asRuleError(`bad regex ${JSON.stringify(pattern)}: ${String(error)}`, context)
   }
 
@@ -170,6 +232,7 @@ function runRegex(pattern: string, context: RuleContext): string[] {
     out.push(match[1] ?? match[0])
     // A zero-length match would loop forever against `matchAll`'s cursor.
     if (match[0] === '') break
+    if (out.length >= MAX_REGEX_MATCHES) break
   }
   return out
 }
@@ -179,11 +242,16 @@ function applyReplacements(value: string, atom: Atom, context: RuleContext): str
   for (const { pattern, replacement, firstOnly } of atom.replacements) {
     let expression: RegExp
     try {
-      expression = new RegExp(pattern, firstOnly ? '' : 'g')
+      expression = compileRuleRegex(pattern, firstOnly ? '' : 'g')
     } catch (error) {
+      if (error instanceof UnsafeRegexError) throw asRuleError(error.message, context)
       throw asRuleError(`bad replacement ${JSON.stringify(pattern)}: ${String(error)}`, context)
     }
-    out = out.replace(expression, replacement)
+    // `$&`, `$1` and `$\'` in the *replacement* are interpreted by
+    // `String.replace`, so a document that meant a literal `$` silently got a
+    // captured group instead. The language has no substitution syntax of its
+    // own, so the replacement is literal text.
+    out = boundInput(out).replace(expression, () => replacement)
   }
   return out
 }
@@ -206,10 +274,52 @@ export function toText(value: unknown): string {
   }
 }
 
+/**
+ * A rule failure, carrying the input it failed on.
+ *
+ * docs/06 §3.6 promises the excerpt, and §10's "copy trace" is unusable
+ * without it: "$.songs[*] matched nothing" reads identically whether the
+ * backend renamed the field or served an HTML login page with a 200, and
+ * those need opposite fixes. `RuleError` redacts and clips what it is given.
+ */
 function asRuleError(message: string, context: RuleContext): RuleError {
   return new RuleError(
     message,
     { block: context.site.block, field: context.site.field },
     context.site.sourceId,
+    {
+      excerpt: excerptOf(context.document),
+      // Secret by provenance rather than by shape: `{{source.var}}` is where
+      // a password reaches a rule, so it is scrubbed wherever it landed.
+      ...(context.scope.source?.var ? { secrets: [context.scope.source.var] } : {}),
+    },
   )
+}
+
+/** What the document turned out to be, for a message an author can act on. */
+function describe(document: unknown): string {
+  if (document === null) return 'null'
+  if (document === undefined) return 'absent'
+  if (typeof document === 'string') {
+    const trimmed = document.trimStart()
+    if (/^\s*<(?:!doctype|html|head|body)/i.test(trimmed)) return 'an HTML page'
+    if (trimmed.startsWith('<')) return 'markup'
+    return 'text'
+  }
+  return `a ${typeof document}`
+}
+
+/** Cap on what is stringified for an excerpt. Bounds the *error* path's cost. */
+const EXCERPT_SOURCE_LIMIT = 4096
+
+/**
+ * The document as a short string.
+ *
+ * Sliced before `JSON.stringify` where it can be — a rule that fails once per
+ * row over a large response would otherwise serialise the whole document on
+ * every one of those failures, turning a broken rule into a slow app.
+ */
+function excerptOf(document: unknown): string {
+  if (typeof document === 'string') return document.slice(0, EXCERPT_SOURCE_LIMIT)
+  return toText(document).slice(0, EXCERPT_SOURCE_LIMIT)
 }

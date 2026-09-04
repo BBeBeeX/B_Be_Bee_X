@@ -14,6 +14,9 @@
  * See docs/06-music-sources.md §7.
  */
 
+import { redactForTrace } from './redact.js'
+import type { Redacted } from './services/source-document.js'
+
 export type SourceErrorCode =
   | 'auth'
   | 'rate-limit'
@@ -108,19 +111,66 @@ export class ProviderError extends SourceError {
  * three of these in a row marks a source stale (docs/06 §7).
  */
 export class RuleError extends SourceError {
-  override readonly name = 'RuleError'
+  // Not `readonly 'RuleError'`: subclasses narrow it — a rule that failed
+  // because an engine is missing is still a rule failure, and has to carry
+  // the same block and field.
+  override readonly name: string = 'RuleError'
   override readonly code = 'rule' as const
   override readonly retryable = false
+
+  /**
+   * The input the rule was run against, redacted and clipped.
+   *
+   * docs/06 §3.6 promises that every failure carries one, and §10 is built on
+   * it: "the rule matched nothing" is unactionable on its own, because the
+   * author cannot tell a renamed field from an error page served with a 200.
+   * The excerpt is the difference between those two.
+   *
+   * Redaction happens here rather than at the call sites, because a call site
+   * that forgets is a credential in whatever the message reaches — and the
+   * excerpt is remote text, which is exactly where one shows up.
+   */
+  readonly excerpt?: Redacted
 
   constructor(
     message: string,
     /** Which rule. `block` is e.g. 'ruleSearch'; `field` e.g. 'trackId'. */
     readonly rule: { block: string; field: string },
     sourceId?: string,
-    options?: { cause?: unknown },
+    options?: {
+      cause?: unknown
+      /** The document, response body or value the rule was applied to. */
+      excerpt?: string
+      /** Values secret by provenance — `source.var`, stored credentials. */
+      secrets?: readonly string[]
+    },
   ) {
-    super(message, sourceId, options)
+    const excerpt =
+      options?.excerpt === undefined
+        ? undefined
+        : clip(redactForTrace(options.excerpt, options.secrets ?? []))
+    super(excerpt === undefined ? message : `${message} — input was ${JSON.stringify(excerpt)}`, sourceId, options)
+    if (excerpt !== undefined) this.excerpt = excerpt
   }
+}
+
+/**
+ * Clip an excerpt to something a person will actually read.
+ *
+ * `redactForTrace` caps at 2000 for a trace field; a message is read in a
+ * toast and in a log line, and 2000 characters of minified JSON there buries
+ * the sentence that says what went wrong.
+ */
+const EXCERPT_LENGTH = 180
+
+function clip(value: Redacted): Redacted {
+  // Clipping after redaction, never before: cutting first can slice a secret
+  // in half and leave the front of it in the message. The cast is the one
+  // place a `Redacted` is rebuilt, and it is rebuilt from an already-redacted
+  // string, so the brand still means what it says.
+  const text = value as unknown as string
+  if (text.length <= EXCERPT_LENGTH) return value
+  return `${text.slice(0, EXCERPT_LENGTH)}…` as unknown as Redacted
 }
 
 /**

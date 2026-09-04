@@ -85,6 +85,32 @@ export function evaluateRule(rule: string, scope: TemplateScope, site: RuleSite)
 }
 
 /**
+ * Evaluate a field that is a **URL template**, not a selector.
+ *
+ * `searchUrl` and `exploreUrl` are not rules in the §3.1 sense: they do not
+ * select out of a document — there is no document yet — they *build the
+ * request that fetches one*. So `{{ }}` interpolation applies directly and a
+ * leading `=` is optional, which is what docs/06 §2.3's worked example writes
+ * and what every legado source does.
+ *
+ * That distinction was missing, and the cost was concrete: every source
+ * written to the published example threw "needs a selector engine" on its
+ * first search, and this repository's own Subsonic fixture had been quietly
+ * given a `=` to make the integration test pass — the divergence hidden by
+ * the thing that should have caught it.
+ */
+export function evaluateUrlTemplate(
+  rule: string,
+  scope: TemplateScope,
+  site: RuleSite,
+): string {
+  // A leading `=` is accepted and stripped, so documents written either way
+  // work and neither spelling is a trap.
+  const body = isTemplate(rule) ? rule.slice(TEMPLATE_PREFIX.length) : rule
+  return renderTemplate(body, scope, site)
+}
+
+/**
  * Render `{{ }}` placeholders in a literal string.
  *
  * The expression grammar is deliberately tiny — a dotted path, optionally
@@ -127,11 +153,19 @@ export function renderTemplate(template: string, scope: TemplateScope, site: Rul
 
   if (failure) throw failure
 
-  // An unbalanced placeholder is a typo, and passing it through as literal
-  // text is how it becomes a URL containing "{{track.id" that fails three
-  // steps later as an unexplained 404. The module's own promise is to refuse
-  // what it does not understand, and that has to include this.
-  if (STRAY_BRACE.test(out)) {
+  /*
+   * An unbalanced placeholder is a typo, and passing it through as literal
+   * text is how it becomes a URL containing "{{track.id" that fails three
+   * steps later as an unexplained 404. The module's own promise is to refuse
+   * what it does not understand, and that has to include this.
+   *
+   * ⚠️ Checked against the **template**, with its well-formed placeholders
+   * removed — never against the output. The output contains interpolated
+   * data, and a track genuinely titled `Live {{2019}}` made a correct
+   * template fail with a message quoting that innocent template. A remote
+   * server's response cannot be allowed to invalidate the author's rule.
+   */
+  if (STRAY_BRACE.test(template.replace(PLACEHOLDER, ''))) {
     throw ruleError(`unbalanced {{ }} in ${JSON.stringify(template)}`, site)
   }
 

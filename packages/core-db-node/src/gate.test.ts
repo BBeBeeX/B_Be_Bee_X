@@ -7,7 +7,6 @@
  */
 
 import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
@@ -16,9 +15,10 @@ import { dbScopeConformance } from '@BBeBee/protocol/conformance'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '../src/index.js'
+import { tempDir } from '@BBeBee/kernel/testing'
 
 let root: string
-beforeAll(async () => { root = await mkdtemp(join(tmpdir(), 'bbebee-dbgate-')) })
+beforeAll(async () => { root = await tempDir('bbebee-dbgate') })
 afterAll(async () => { await rm(root, { recursive: true, force: true }) })
 
 async function gated(grants: string[], scopeId = '@BBeBee/plugin-demo') {

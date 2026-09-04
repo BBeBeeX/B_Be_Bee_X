@@ -5,7 +5,7 @@
   "sourceComment": "A Subsonic-compatible server. Set the source variable to user:password.",
   "variableComment": "username:password",
   "concurrentRate": "5/1000",
-  "searchUrl": "={{source.url}}/rest/search3?query={{key}}&songCount=50&f=json&v=1.16.1&c=BBeBee",
+  "searchUrl": "{{source.url}}/rest/search3?query={{key}}&songCount=50&f=json&v=1.16.1&c=BBeBee",
   "ruleSearch": {
     "trackList": "$.subsonic-response.searchResult3.song[*]",
     "trackId": "$.id",

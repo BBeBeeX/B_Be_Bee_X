@@ -5,9 +5,7 @@
  * so they validate the SQL rather than a mock's idea of it.
  */
 
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rm } from 'node:fs/promises'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { dbConformance } from '@BBeBee/protocol/conformance'
@@ -15,11 +13,12 @@ import type { DbService } from '@BBeBee/protocol'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '../src/index.js'
+import { tempDir } from '@BBeBee/kernel/testing'
 
 let root: string
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), 'bbebee-db-'))
+  root = await tempDir('bbebee-db')
 })
 
 afterAll(async () => {

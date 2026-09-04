@@ -6,7 +6,9 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { RuleSyntaxError, parseJsonPath, queryJsonPath } from './jsonpath.js'
+import { parseJsonPath, queryJsonPath } from './jsonpath.js'
+import { parseRule } from './parse.js'
+import { RuleSyntaxError } from './syntax-error.js'
 
 const doc = {
   'subsonic-response': {
@@ -111,3 +113,37 @@ describe('syntax errors', () => {
     expect(() => parseJsonPath('$.a[')).toThrow(/\$\.a\[/)
   })
 })
+
+describe('one error class, not two', () => {
+  it('reports a bad path and a bad rule as the same type', () => {
+    /*
+     * There used to be two classes both named `RuleSyntaxError`, and only the
+     * JSONPath one was exported from the package. A caller catching it handled
+     * a bad path and fell straight through on a bad rule — same name, different
+     * identity, and nothing in the compiler to say so.
+     */
+    const path = tryCatch(() => parseJsonPath('a.b'))
+    const rule = tryCatch(() => parseRule('$.a|||$.b'))
+    expect(path).toBeInstanceOf(RuleSyntaxError)
+    expect(rule).toBeInstanceOf(RuleSyntaxError)
+    expect(rule!.constructor).toBe(path!.constructor)
+  })
+
+  it('keeps saying which grammar refused the string', () => {
+    // The distinction the two classes drew was real; it just did not need to
+    // be an identity.
+    expect(tryCatch(() => parseJsonPath('a.b'))).toMatchObject({ dialect: 'JSONPath' })
+    expect(tryCatch(() => parseRule('$.a|||$.b'))).toMatchObject({ dialect: 'rule' })
+    expect(tryCatch(() => parseJsonPath('a.b'))!.message).toContain('bad JSONPath')
+    expect(tryCatch(() => parseRule('$.a|||$.b'))!.message).toContain('bad rule')
+  })
+})
+
+function tryCatch(fn: () => unknown): RuleSyntaxError | undefined {
+  try {
+    fn()
+    return undefined
+  } catch (error) {
+    return error as RuleSyntaxError
+  }
+}

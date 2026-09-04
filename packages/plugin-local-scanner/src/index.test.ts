@@ -7,8 +7,7 @@
  * what gets written, and what happens when a file disappears.
  */
 
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { chmod, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -16,7 +15,7 @@ import { Context, Service } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
-import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
+import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
 import type { AudioMetadata, DbService, Uri } from '@BBeBee/protocol'
 import plugin, { type Scanner } from './index.js'
 import { splitArtists, sortKey } from './import.js'
@@ -72,7 +71,7 @@ interface Harness {
 async function harness(
   opts: { pollIntervalMinutes?: number; canWatch?: boolean } = {},
 ): Promise<Harness> {
-  const dir = await mkdtemp(join(tmpdir(), 'bbebee-scan-'))
+  const dir = await tempDir('bbebee-scan')
   const codec: FakeCodec = {
     metadataReads: [],
     artworkReads: [],
@@ -81,7 +80,7 @@ async function harness(
   }
 
   const ctx = new Context()
-  await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-scan-app-')) })
+  await ctx.plugin(PathsNode, { root: await tempDir('bbebee-scan-app') })
   await ctx.plugin(FsNode)
   await ctx.plugin(DbNode, { fileName: ':memory:' })
   await ctx.plugin(codecPlugin(codec))
@@ -281,6 +280,41 @@ describe('scanning', () => {
     const rows = await h.db.query<{ urn: string }>('SELECT urn FROM tracks')
     expect(rows.length, 'the file is still on disk, so its row stays').toBeGreaterThanOrEqual(1)
   }, 60_000)
+
+  it('never removes tracks after a folder it was not allowed to open', async () => {
+    /*
+     * The other half of the same data loss, and the one the loop test missed:
+     * a permission error is not a budget overrun, so it took a different path
+     * out of the walk and never set the flag. Measured before the fix — one
+     * `chmod 000` subdirectory, and the second scan reported `removed: 1` for
+     * a file still sitting on disk.
+     */
+    const h = await harness()
+    await mkdir(join(h.dir, 'private'), { recursive: true })
+    await writeFile(join(h.dir, 'private', 'keep-me.mp3'), 'x')
+    await h.scanner.addRoot(h.uri, { recursive: true })
+
+    const first = await h.scanner.scan()
+    expect(first.added, 'the file imports while the folder is readable').toBe(1)
+
+    await chmod(join(h.dir, 'private'), 0o000)
+    // Root ignores the mode bits, so the premise would be false there.
+    const blocked = await readdir(join(h.dir, 'private')).then(
+      () => false,
+      () => true,
+    )
+    if (!blocked) return
+
+    const second = await h.scanner.scan()
+
+    expect(second.incomplete, 'a folder it could not open is an unfinished walk').toBe(true)
+    expect(second.removed, 'the file is still there — it just could not be seen').toBe(0)
+    const rows = await h.db.query<{ urn: string }>('SELECT urn FROM tracks')
+    expect(rows).toHaveLength(1)
+
+    // Left readable so the temp directory can be cleaned up.
+    await chmod(join(h.dir, 'private'), 0o755)
+  })
 
   it('reports an incomplete scan through scan/finished', async () => {
     // A listener that cannot tell a complete scan from a truncated one will
@@ -525,7 +559,7 @@ describe('lifecycle', () => {
       failures: new Set(),
     }
     const ctx = new Context()
-    await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-scan-leak-')) })
+    await ctx.plugin(PathsNode, { root: await tempDir('bbebee-scan-leak') })
     await ctx.plugin(FsNode)
     await ctx.plugin(DbNode, { fileName: ':memory:' })
     await ctx.plugin(codecPlugin(codec))

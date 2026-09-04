@@ -6,8 +6,7 @@
  * answers — which is the point: the seams between them are what M1 is for.
  */
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -17,7 +16,7 @@ import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
 import sourcesPlugin from '@BBeBee/plugin-sources'
 import scannerPlugin from '@BBeBee/plugin-local-scanner'
-import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
+import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
 import type { AudioMetadata, Uri } from '@BBeBee/protocol'
 import plugin, { type SourceLocal } from './index.js'
 
@@ -70,12 +69,12 @@ function codecPlugin(dir: string) {
 }
 
 async function harness() {
-  const dir = await mkdtemp(join(tmpdir(), 'bbebee-local-'))
+  const dir = await tempDir('bbebee-local')
   for (const name of Object.keys(TAGS)) await writeFile(join(dir, name), 'audio')
   await writeFile(join(dir, 'readme.txt'), 'not audio')
 
   const ctx = new Context()
-  await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-local-app-')) })
+  await ctx.plugin(PathsNode, { root: await tempDir('bbebee-local-app') })
   await ctx.plugin(FsNode)
   await ctx.plugin(DbNode, { fileName: ':memory:' })
   await ctx.plugin(codecPlugin(dir))
@@ -220,9 +219,9 @@ describe('browse and search', () => {
 
 describe('lifecycle', () => {
   it('leaves nothing behind when unloaded', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'bbebee-local-leak-'))
+    const dir = await tempDir('bbebee-local-leak')
     const ctx = new Context()
-    await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-local-leak-app-')) })
+    await ctx.plugin(PathsNode, { root: await tempDir('bbebee-local-leak-app') })
     await ctx.plugin(FsNode)
     await ctx.plugin(DbNode, { fileName: ':memory:' })
     await ctx.plugin(codecPlugin(dir))

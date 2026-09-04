@@ -40,7 +40,7 @@ import type {
 } from '@BBeBee/protocol'
 import { formatUrn } from '@BBeBee/protocol'
 import { engineAvailable, parseRule, type TemplateScope } from '@BBeBee/source-rules'
-import { evaluateRule } from '@BBeBee/source-rules'
+import { evaluateRule, evaluateUrlTemplate } from '@BBeBee/source-rules'
 import { capabilitiesFor } from './capabilities.js'
 import { fetchDocument, parseUrlObject } from './fetch.js'
 import { evaluateListRule, rowToTrack } from './list-rule.js'
@@ -149,8 +149,14 @@ export class DocumentSource {
   private get searchable(): boolean {
     const doc = this.record.doc
     if (!doc.searchUrl || !doc.ruleSearch?.trackList) return false
+    // `searchUrl` is not in the list: it is a URL template rather than a
+    // selector, so there is no engine it could need.
     return rulesRunnable([
-      doc.searchUrl,
+      // `header` is rendered on every request this source makes, so a header
+      // rule needing a missing engine fails the search just as surely as the
+      // search rules would — and was passing the gate, producing exactly the
+      // over-declaration §1.3 exists to prevent.
+      ...(doc.header ? [doc.header] : []),
       ...Object.values(doc.ruleSearch).filter((r): r is string => typeof r === 'string'),
     ])
   }
@@ -215,7 +221,9 @@ export class DocumentSource {
       baseUrl: this.record.sourceUrl,
     }
 
-    const rendered = evaluateRule(doc.searchUrl, scope, {
+    // A URL template, not a selector: it builds the request rather than
+    // selecting out of a response, so `=` is optional (docs/06 §2.3).
+    const rendered = evaluateUrlTemplate(doc.searchUrl, scope, {
       block: 'searchUrl',
       field: 'searchUrl',
       sourceId: this.record.id,
@@ -223,12 +231,10 @@ export class DocumentSource {
     const target = parseUrlObject(rendered)
     this.assertAllowed(target.url)
 
-    const fetched = await fetchDocument(
-      this.deps.http,
-      target,
-      this.headers(scope),
-      this.record.id,
-    )
+    const fetched = await fetchDocument(this.deps.http, target, this.headers(scope), {
+      sourceId: this.record.id,
+      block: 'searchUrl',
+    })
 
     const { rows, dropped } = evaluateListRule(doc.ruleSearch, {
       document: fetched.value,

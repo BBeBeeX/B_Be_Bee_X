@@ -20,14 +20,11 @@
  * path returns and there is no way to tell them apart afterwards.
  */
 
-export class RuleSyntaxError extends Error {
-  override readonly name = 'RuleSyntaxError'
-  constructor(
-    readonly path: string,
-    reason: string,
-  ) {
-    super(`bad JSONPath ${JSON.stringify(path)}: ${reason}`)
-  }
+import { RuleSyntaxError } from './syntax-error.js'
+
+/** A malformed path. Same class as a malformed rule — see syntax-error.ts. */
+function pathError(path: string, reason: string): RuleSyntaxError {
+  return new RuleSyntaxError(path, reason, 'JSONPath')
 }
 
 type Step =
@@ -39,7 +36,7 @@ type Step =
 /** Tokenise a path once, so evaluation is a walk rather than a re-parse. */
 export function parseJsonPath(path: string): Step[] {
   const trimmed = path.trim()
-  if (!trimmed.startsWith('$')) throw new RuleSyntaxError(path, 'must start with $')
+  if (!trimmed.startsWith('$')) throw pathError(path, 'must start with $')
 
   const steps: Step[] = []
   let i = 1
@@ -50,8 +47,13 @@ export function parseJsonPath(path: string): Step[] {
     if (ch === '.') {
       // `..name` descends; `.name` is one level.
       if (trimmed[i + 1] === '.') {
-        const name = readName(trimmed, i + 2)
-        if (!name.value) throw new RuleSyntaxError(path, 'expected a name after ..')
+        // `..*` is a shape people write and this does not implement; saying so
+        // beats returning nothing, which reads as "the field is missing".
+        if (trimmed[i + 2] === '*') {
+          throw pathError(path, '..* is not supported; name the field you want')
+        }
+        const name = readName(trimmed, path, i + 2)
+        if (!name.value) throw pathError(path, 'expected a name after ..')
         steps.push({ kind: 'descend', name: name.value })
         i = name.next
         continue
@@ -61,8 +63,8 @@ export function parseJsonPath(path: string): Step[] {
         i += 2
         continue
       }
-      const name = readName(trimmed, i + 1)
-      if (!name.value) throw new RuleSyntaxError(path, `expected a name at ${i}`)
+      const name = readName(trimmed, path, i + 1)
+      if (!name.value) throw pathError(path, `expected a name at ${i}`)
       steps.push({ kind: 'property', name: name.value })
       i = name.next
       continue
@@ -70,7 +72,7 @@ export function parseJsonPath(path: string): Step[] {
 
     if (ch === '[') {
       const close = trimmed.indexOf(']', i)
-      if (close === -1) throw new RuleSyntaxError(path, 'unclosed [')
+      if (close === -1) throw pathError(path, 'unclosed [')
       const inner = trimmed.slice(i + 1, close).trim()
       i = close + 1
 
@@ -84,22 +86,42 @@ export function parseJsonPath(path: string): Step[] {
         continue
       }
       if (!/^-?\d+$/.test(inner)) {
-        throw new RuleSyntaxError(path, `[${inner}] is not an index, a name, or *`)
+        throw pathError(path, `[${inner}] is not an index, a name, or *`)
+      }
+      // RFC 9535 forbids leading zeros, and `[01]` is far likelier a typo
+      // than an intent.
+      if (/^-?0\d/.test(inner)) {
+        throw pathError(path, `[${inner}] has a leading zero`)
       }
       steps.push({ kind: 'index', index: Number(inner) })
       continue
     }
 
-    throw new RuleSyntaxError(path, `unexpected ${JSON.stringify(ch)} at ${i}`)
+    throw pathError(path, `unexpected ${JSON.stringify(ch)} at ${i}`)
   }
   return steps
 }
 
-function readName(input: string, from: number): { value: string; next: number } {
+/**
+ * Characters a property name may contain.
+ *
+ * Deliberately an allowlist. Accepting "anything but `.[]`" meant `$.a|b` — a
+ * mistyped `||` — parsed as a property literally named `a|b`, matched nothing,
+ * and looked exactly like a field the backend had removed. The tracer would
+ * then send the author hunting the wrong thing.
+ *
+ * Hyphens and `@` are in, because `subsonic-response` and `@attributes` are in
+ * real documents. `|`, `&`, `#`, `$`, `{`, `}` are out: each is an operator or
+ * directive character, and a name containing one is a typo.
+ */
+const NAME_CHAR = /[A-Za-z0-9_\-@:+~]/
+
+function readName(input: string, path: string, from: number): { value: string; next: number } {
   let i = from
-  // A property name runs to the next structural character. Source documents
-  // use hyphens routinely (`subsonic-response`), so those are name characters.
-  while (i < input.length && !'.[]'.includes(input[i]!)) i++
+  while (i < input.length && NAME_CHAR.test(input[i]!)) i++
+  if (i < input.length && !'.[]'.includes(input[i]!)) {
+    throw pathError(path, `unexpected ${JSON.stringify(input[i])} in a property name`)
+  }
   return { value: input.slice(from, i), next: i }
 }
 
@@ -128,11 +150,14 @@ export function queryJsonPath(root: unknown, path: string): unknown[] {
           break
         }
         case 'wildcard':
-          if (Array.isArray(value)) next.push(...value)
-          else if (isRecord(value)) next.push(...Object.values(value))
+          // Pushed in a loop, not spread: `push(...huge)` passes every element
+          // as an argument and blows the stack somewhere north of 100k, which
+          // a backend returning a large list reaches without trying.
+          if (Array.isArray(value)) for (const item of value) next.push(item)
+          else if (isRecord(value)) for (const item of Object.values(value)) next.push(item)
           break
         case 'descend':
-          collectDescendants(value, step.name, next)
+          collectDescendants(value, step.name, next, 0)
           break
       }
     }
@@ -143,9 +168,25 @@ export function queryJsonPath(root: unknown, path: string): unknown[] {
   return current
 }
 
-function collectDescendants(value: unknown, name: string, out: unknown[]): void {
+/**
+ * Depth a `..name` descent will walk.
+ *
+ * Recursion over a document from a stranger's backend is unbounded otherwise:
+ * a few thousand levels of nesting overflowed the stack, and the resulting
+ * `RangeError` carried no rule, block or source — a crash where an
+ * attributable "this source needs updating" belonged.
+ */
+const MAX_DESCENT_DEPTH = 512
+
+function collectDescendants(
+  value: unknown,
+  name: string,
+  out: unknown[],
+  depth: number,
+): void {
+  if (depth > MAX_DESCENT_DEPTH) return
   if (Array.isArray(value)) {
-    for (const item of value) collectDescendants(item, name, out)
+    for (const item of value) collectDescendants(item, name, out, depth + 1)
     return
   }
   if (!isRecord(value)) return
@@ -153,7 +194,7 @@ function collectDescendants(value: unknown, name: string, out: unknown[]): void 
   // — the same guarantee the property step makes explicitly.
   for (const [key, child] of Object.entries(value)) {
     if (key === name) out.push(child)
-    collectDescendants(child, name, out)
+    collectDescendants(child, name, out, depth + 1)
   }
 }
 

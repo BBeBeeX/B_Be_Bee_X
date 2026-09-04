@@ -8,11 +8,10 @@
  */
 
 import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
-import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
+import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { StoreFs } from '@BBeBee/core-store-fs'
 import { DbNode } from '@BBeBee/core-db-node'
@@ -24,7 +23,7 @@ import { FsNode } from '../src/index.js'
 let root: string
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), 'bbebee-leak-'))
+  root = await tempDir('bbebee-leak')
 })
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })

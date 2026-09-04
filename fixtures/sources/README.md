@@ -31,9 +31,11 @@ So `direct-url.json` and `subsonic.json` both run.
 
 Not yet: **`@css:`** and **`@xpath:`** need a markup parser, and **`@js:`**
 needs `ctx.js` (docs/04 §19). A document using one of them imports fine and
-reports the affected capability as absent — the runtime says
+reports the affected capability as absent — the runtime raises
 `RuleEngineUnavailableError` rather than returning nothing, because silence
-there reads as "the backend changed" and sends an author to the wrong fix.
+there reads as "the backend changed" and sends an author to the wrong fix. It
+is a `RuleError`, so it carries the block and field it came from and the
+tracer can point at the line rather than at the source as a whole.
 `ruleExplore`, `ruleAlbum`, `ruleTrackList` and `ruleLyric` are parsed and
 stored but not yet run.
 

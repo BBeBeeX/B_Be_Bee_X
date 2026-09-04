@@ -5,15 +5,12 @@
  * all happen in SQL — so a fake would test nothing worth knowing.
  */
 
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
-import { tick } from '@BBeBee/kernel/testing'
+import { tempDir, tick } from '@BBeBee/kernel/testing'
 import type { DbService } from '@BBeBee/protocol'
 import plugin, { type Sources } from './index.js'
 import { ftsQuery } from './catalog.js'
@@ -22,7 +19,7 @@ const SOURCE = 'local'
 
 async function fixture(): Promise<{ ctx: Context; sources: Sources; db: DbService }> {
   const ctx = new Context()
-  await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-catalog-')) })
+  await ctx.plugin(PathsNode, { root: await tempDir('bbebee-catalog') })
   await ctx.plugin(FsNode)
   await ctx.plugin(DbNode, { fileName: ':memory:' })
   await ctx.plugin(plugin, {})

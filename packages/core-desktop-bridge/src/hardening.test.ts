@@ -10,16 +10,16 @@
 
 import { existsSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createHost, type IpcHost } from './main.js'
 import { CH } from './protocol.js'
+import { tempDir } from '@BBeBee/kernel/testing'
 
 let root: string
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), 'bbebee-hard-'))
+  root = await tempDir('bbebee-hard')
 })
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })

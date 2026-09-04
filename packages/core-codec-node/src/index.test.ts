@@ -7,8 +7,7 @@
  * as a diff in expectations rather than in an opaque binary.
  */
 
-import { mkdtemp, stat, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -16,7 +15,7 @@ import { Context, Service } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { codecConformance } from '@BBeBee/protocol/conformance'
-import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
+import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
 import type { FsService, Uri } from '@BBeBee/protocol'
 import plugin, { type CodecNode } from './index.js'
 
@@ -142,7 +141,7 @@ function countingFs(real: FsService, counter: { bytes: number }) {
 }
 
 async function harness() {
-  const dir = await mkdtemp(join(tmpdir(), 'bbebee-codec-'))
+  const dir = await tempDir('bbebee-codec')
   const uri = (name: string) => pathToFileURL(join(dir, name)).href
 
   // 512 KB of padding, so "did it read the whole file" is a real question.
@@ -165,7 +164,7 @@ async function harness() {
   await writeFile(join(dir, 'garbage.mp3'), 'this is not audio at all')
 
   const ctx = new Context()
-  await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-codec-app-')) })
+  await ctx.plugin(PathsNode, { root: await tempDir('bbebee-codec-app') })
   await ctx.plugin(FsNode)
   await tick()
 
@@ -232,7 +231,7 @@ describe('core-codec-node', () => {
 
   it('leaves nothing behind when unloaded', async () => {
     const ctx = new Context()
-    await ctx.plugin(PathsNode, { root: await mkdtemp(join(tmpdir(), 'bbebee-codec-leak-')) })
+    await ctx.plugin(PathsNode, { root: await tempDir('bbebee-codec-leak') })
     await ctx.plugin(FsNode)
     await tick()
 

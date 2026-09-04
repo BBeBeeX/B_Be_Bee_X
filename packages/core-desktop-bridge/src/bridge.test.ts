@@ -8,7 +8,6 @@
  */
 
 import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -22,11 +21,12 @@ import {
 import { createHost, type IpcHost } from './main.js'
 import { DbBridge, FsBridge, PathsBridge, fetchPaths } from './index.js'
 import type { BridgeApi, BridgeEvent } from './protocol.js'
+import { tempDir } from '@BBeBee/kernel/testing'
 
 let root: string
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), 'bbebee-bridge-'))
+  root = await tempDir('bbebee-bridge')
 })
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })

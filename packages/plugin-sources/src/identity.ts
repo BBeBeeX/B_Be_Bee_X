@@ -82,6 +82,65 @@ export function allowedHostsFor(doc: SourceDocument): string[] {
   return [...hosts].sort()
 }
 
+/**
+ * Reject an `allowedHosts` entry that grants more than it says.
+ *
+ * The list governs egress, so nothing in it may be quietly reinterpreted as
+ * something broader than what was written. The matcher is asked about
+ * hostnames only — there is no port and no path anywhere in it — so anything
+ * else in an entry is dropped, and dropping it widens the grant:
+ *
+ *  - `nas:4533` reads as "this host on this port" and becomes *every* port.
+ *  - `https://api.example.org/v1` reads as "this endpoint" and becomes the
+ *    whole host.
+ *
+ * A scheme alone drops nothing, so `https://cdn.example.org` is accepted and
+ * normalised — refusing it would be friction with no safety behind it.
+ *
+ * Refused at import, where the author is present and the message can name the
+ * entry, rather than becoming a grant nobody wrote.
+ */
+function validateAllowedHosts(
+  entries: readonly string[],
+  at: (path: string, message: string) => void,
+): void {
+  entries.forEach((entry, i) => {
+    const value = entry.trim()
+    const path = `allowedHosts[${i}]`
+    if (!value) {
+      at(path, 'must not be empty')
+      return
+    }
+
+    const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(value)
+    const rest = scheme ? value.slice(scheme[0].length) : value
+
+    const slash = rest.indexOf('/')
+    if (slash !== -1 && rest.slice(slash + 1).length > 0) {
+      at(path, `"${value}" carries a path; the allowlist is per-host, so it would cover the whole host`)
+      return
+    }
+    const authority = slash === -1 ? rest : rest.slice(0, slash)
+    if (/[?#@]/.test(authority)) {
+      at(path, `"${value}" is not a hostname`)
+      return
+    }
+
+    // One colon outside brackets is a port. Two or more is an IPv6 literal,
+    // which is a host and is fine.
+    const outside = authority.startsWith('[')
+      ? authority.slice(authority.indexOf(']') + 1)
+      : authority
+    if ((outside.match(/:/g)?.length ?? 0) === 1) {
+      at(
+        path,
+        `"${value}" names a port; the allowlist is per-host, so the port would be ` +
+          'dropped and the entry would cover every port — write just the host',
+      )
+    }
+  })
+}
+
 function hostOf(value: string): string | undefined {
   try {
     return new URL(value).hostname.toLowerCase() || undefined
@@ -173,6 +232,8 @@ export function validateDocument(value: unknown, index = 0): SourceDocument {
   }
   if (doc.allowedHosts !== undefined && !isStringArray(doc.allowedHosts)) {
     at('allowedHosts', 'must be an array of hostnames')
+  } else if (doc.allowedHosts) {
+    validateAllowedHosts(doc.allowedHosts, at)
   }
 
   /* rule blocks */

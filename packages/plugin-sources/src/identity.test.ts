@@ -290,3 +290,51 @@ describe('recordFor', () => {
     expect(record.docHash).toBe(docHashOf('{"verbatim": true}'))
   })
 })
+
+describe('allowedHosts entries that would grant more than they say', () => {
+  const hosts = (allowedHosts: string[]) => () => validateDocument(doc({ allowedHosts }))
+
+  /** The message is in the issue list — that is what the import screen renders. */
+  const issuesFor = (allowedHosts: string[]): readonly { path: string; message: string }[] => {
+    try {
+      validateDocument(doc({ allowedHosts }))
+      return []
+    } catch (error) {
+      return (error as SourceFormatError).issues
+    }
+  }
+
+  it('refuses a port, because the matcher has none', () => {
+    // `nas:4533` reads as "this host on this port". The port is dropped, so
+    // the entry silently covers every port on that host.
+    expect(hosts(['nas:4533'])).toThrow(SourceFormatError)
+    expect(issuesFor(['nas:4533'])[0]?.message).toMatch(/names a port/)
+  })
+
+  it('refuses a path, for the same reason', () => {
+    expect(issuesFor(['https://api.example.org/v1'])[0]?.message).toMatch(/carries a path/)
+  })
+
+  it('accepts a scheme, which drops nothing', () => {
+    // Friction with no safety behind it is just friction.
+    expect(hosts(['https://cdn.example.org'])).not.toThrow()
+    expect(hosts(['https://cdn.example.org/'])).not.toThrow()
+  })
+
+  it('accepts an IPv6 literal, whose colons are part of the host', () => {
+    expect(hosts(['[::1]', '::ffff:127.0.0.1'])).not.toThrow()
+  })
+
+  it('accepts the ordinary shapes', () => {
+    expect(hosts(['cdn.example.org', '*.example.org', 'nas'])).not.toThrow()
+  })
+
+  it('names the entry by index, so the import screen can point at it', () => {
+    try {
+      validateDocument(doc({ allowedHosts: ['ok.example.org', 'nas:4533'] }))
+      expect.unreachable('should have thrown')
+    } catch (error) {
+      expect((error as SourceFormatError).issues[0]?.path).toBe('allowedHosts[1]')
+    }
+  })
+})
