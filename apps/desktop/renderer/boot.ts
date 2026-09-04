@@ -11,6 +11,9 @@ import { createApp, type App, type PluginRegistry } from '@BBeBee/kernel'
 // host — not the node implementations, which cannot load here (docs/02 §2).
 import { DbBridge, FsBridge, PathsBridge, fetchPaths } from '@BBeBee/core-desktop-bridge'
 import { StoreFs } from '@BBeBee/core-store-fs'
+import { DeviceElectron } from '@BBeBee/core-device-electron'
+import { BackgroundElectron } from '@BBeBee/core-background-electron'
+import { MediaSessionElectron } from '@BBeBee/core-media-session-electron'
 
 import ui from '@BBeBee/plugin-ui'
 import inspector from '@BBeBee/plugin-inspector'
@@ -21,9 +24,6 @@ import logConsole from '@BBeBee/plugin-log-console'
 import logBuffer from '@BBeBee/plugin-log-buffer'
 import logFile from '@BBeBee/plugin-log-file'
 
-import type { Context } from 'cordis'
-import type { DeviceService, NetworkState, Platform } from '@BBeBee/protocol'
-import { Service } from 'cordis'
 
 declare global {
   interface Window {
@@ -34,49 +34,6 @@ declare global {
       platform: string
       versions: { electron: string; node: string }
     }
-  }
-}
-
-/**
- * A minimal `ctx.device` for the desktop shell.
- *
- * The real `core-device-electron` arrives with M1's media keys and network
- * awareness; `plugin-hello` only needs `platform` and `formFactor`, and a
- * stub that says so is better than pulling an unbuilt package forward.
- */
-class DeviceDesktop extends Service implements DeviceService {
-  readonly platform: Platform
-  readonly formFactor = 'desktop' as const
-  readonly appVersion = '0.0.0'
-  readonly locale: string
-
-  constructor(ctx: Context) {
-    super(ctx, 'device')
-    const raw = window.BBeBee?.platform ?? 'linux'
-    this.platform = raw === 'darwin' ? 'macos' : raw === 'win32' ? 'windows' : 'linux'
-    this.locale = navigator.language ?? 'en'
-  }
-
-  async network(): Promise<NetworkState> {
-    return { online: navigator.onLine, type: 'unknown', metered: false }
-  }
-  onNetworkChange(cb: (s: NetworkState) => void) {
-    const handler = () => void this.network().then(cb)
-    window.addEventListener('online', handler)
-    window.addEventListener('offline', handler)
-    return () => {
-      window.removeEventListener('online', handler)
-      window.removeEventListener('offline', handler)
-    }
-  }
-  async battery() {
-    return undefined
-  }
-  onMediaKey() {
-    return () => {}
-  }
-  registerHotkey() {
-    return () => {}
   }
 }
 
@@ -108,6 +65,14 @@ export function registry(): PluginRegistry {
   ])
 }
 
+const APP_VERSION = '0.0.0'
+
+/** Electron's `process.platform`, as the protocol names it. */
+function hostPlatform(): 'macos' | 'windows' | 'linux' {
+  const raw = window.BBeBee?.platform ?? 'linux'
+  return raw === 'darwin' ? 'macos' : raw === 'win32' ? 'windows' : 'linux'
+}
+
 export async function boot(): Promise<App> {
   // Paths are fetched once, up front: `PathsService` promises synchronous
   // access and IPC cannot provide it.
@@ -120,7 +85,12 @@ export async function boot(): Promise<App> {
       FsBridge,
       StoreFs,
       DbBridge,
-      DeviceDesktop,
+      // The OS-facing trio. Each degrades to "no OS surface" rather than
+      // throwing when the platform does not provide one, so a Linux box with
+      // no MPRIS daemon still boots (docs/11 §4.3, §4.4).
+      [DeviceElectron, { appVersion: APP_VERSION, platform: hostPlatform() }],
+      BackgroundElectron,
+      MediaSessionElectron,
     ],
     registry: registry(),
     config: {

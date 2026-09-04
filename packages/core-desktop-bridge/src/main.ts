@@ -24,7 +24,7 @@ import { uriContains, type DbService, type FsService, type PathsService } from '
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
-import { CH, type BridgedService } from './protocol.js'
+import { CH, type BridgeEvent, type BridgedService } from './protocol.js'
 
 /**
  * The slice of `ipcMain` this host uses.
@@ -38,6 +38,12 @@ export interface IpcHost {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handle(channel: string, listener: (event: any, ...args: any[]) => unknown): void
   removeHandler(channel: string): void
+  /**
+   * Push to every renderer. Electron's `webContents.getAllWebContents()` loop,
+   * or a single window's `send` — the host decides which, because only it
+   * knows how many windows there are.
+   */
+  broadcast?(channel: string, payload: unknown): void
 }
 
 /** What the host can learn about a caller, when Electron provides it. */
@@ -46,6 +52,30 @@ interface CallerLike {
     id?: number
     once?(event: string, listener: () => void): void
   }
+}
+
+/**
+ * The OS integrations `main` owns and the renderer cannot reach.
+ *
+ * Supplied by the app rather than imported, for the same reason `IpcHost` is:
+ * this package stays testable without Electron, and the surface main exposes
+ * stays visible in one place. Every member is optional — a Linux box with no
+ * MPRIS daemon, or a build without `globalShortcut`, must cost a feature and
+ * not a boot.
+ */
+export interface SystemHost {
+  /** `powerSaveBlocker.start` / `.stop`, keyed by the renderer's lock id. */
+  acquireWakeLock?(id: number, reason: string): void
+  releaseWakeLock?(id: number): void
+  /** Bind or release the OS media keys. */
+  watchMediaKeys?(on: boolean): void
+  registerHotkey?(accelerator: string): void
+  unregisterHotkey?(accelerator: string): void
+  /** MPRIS on Linux, SMTC on Windows, Now Playing on macOS. */
+  publishNowPlaying?(nowPlaying: unknown): void
+  publishPlaybackState?(state: string): void
+  setSupportedCommands?(commands: string[]): void
+  clearNowPlaying?(): void
 }
 
 export interface HostOptions {
@@ -57,10 +87,20 @@ export interface HostOptions {
   maxOpenStreams?: number
   /** How long a renderer-driven transaction may stay open before rollback. */
   transactionIdleMs?: number
+  /** OS integrations. Absent members are simply unavailable to the renderer. */
+  system?: SystemHost
 }
 
 export interface Host {
   ctx: Context
+  /**
+   * Push an event to every attached renderer.
+   *
+   * The only main→renderer direction. `main` calls this when a media key is
+   * pressed or a suspend is imminent — things that originate here and cannot
+   * be polled.
+   */
+  emit(event: BridgeEvent): void
   dispose(): Promise<void>
 }
 
@@ -79,6 +119,11 @@ const ALLOWED: Record<BridgedService, ReadonlySet<string>> = {
   db: new Set(['query', 'get', 'exec', 'defineSchema']),
   paths: new Set([
     'appData', 'cache', 'temp', 'logs', 'downloads', 'music', 'pluginData', 'get',
+  ]),
+  system: new Set([
+    'acquireWakeLock', 'releaseWakeLock',
+    'watchMediaKeys', 'registerHotkey', 'unregisterHotkey',
+    'publishNowPlaying', 'publishPlaybackState', 'setSupportedCommands', 'clearNowPlaying',
   ]),
 }
 
@@ -113,10 +158,33 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
   await ctx.plugin(FsNode)
   await ctx.plugin(DbNode, { fileName: options.databaseFileName ?? 'BBeBee.db' })
 
-  const services: Record<BridgedService, () => FsService | DbService | PathsService> = {
+  /**
+   * The OS surface, with every absent member a no-op.
+   *
+   * Filled in rather than checked at the call site, so "this build has no
+   * MPRIS" reaches the renderer as a call that did nothing rather than as an
+   * exception it has to interpret.
+   */
+  const system: Required<SystemHost> = {
+    acquireWakeLock: options.system?.acquireWakeLock ?? (() => {}),
+    releaseWakeLock: options.system?.releaseWakeLock ?? (() => {}),
+    watchMediaKeys: options.system?.watchMediaKeys ?? (() => {}),
+    registerHotkey: options.system?.registerHotkey ?? (() => {}),
+    unregisterHotkey: options.system?.unregisterHotkey ?? (() => {}),
+    publishNowPlaying: options.system?.publishNowPlaying ?? (() => {}),
+    publishPlaybackState: options.system?.publishPlaybackState ?? (() => {}),
+    setSupportedCommands: options.system?.setSupportedCommands ?? (() => {}),
+    clearNowPlaying: options.system?.clearNowPlaying ?? (() => {}),
+  }
+
+  const services: Record<
+    BridgedService,
+    () => FsService | DbService | PathsService | Required<SystemHost>
+  > = {
     fs: () => ctx.fs,
     db: () => ctx.db,
     paths: () => ctx.paths,
+    system: () => system,
   }
 
   /**
@@ -320,6 +388,11 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
 
   return {
     ctx,
+    emit(event: BridgeEvent) {
+      // No-op where the host gave us no way to broadcast, which is what a
+      // headless test harness looks like.
+      ipc.broadcast?.(CH.event, event)
+    },
     async dispose() {
       for (const channel of Object.values(CH)) ipc.removeHandler(channel)
       for (const reader of readers.values()) await reader.cancel().catch(() => undefined)

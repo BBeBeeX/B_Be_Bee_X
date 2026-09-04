@@ -1,0 +1,20 @@
+{
+  "id": "@BBeBee/core-media-session-electron",
+  "version": "0.0.0",
+  "displayName": "Media session",
+  "description": "ctx.mediaSession — the OS now-playing surface on desktop.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "mediaSession"
+  ],
+  "contributes": {
+    "services": [
+      "mediaSession"
+    ]
+  }
+}

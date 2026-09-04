@@ -45,4 +45,16 @@ contextBridge.exposeInMainWorld('BBeBeeBridge', {
   streamClose: (handle: number) => ipcRenderer.invoke(CH.streamClose, handle),
   txBegin: () => ipcRenderer.invoke(CH.txBegin),
   txEnd: (token: string, commit: boolean) => ipcRenderer.invoke(CH.txEnd, token, commit),
+  /**
+   * The one main→renderer channel.
+   *
+   * The listener is wrapped rather than passed through, so the renderer never
+   * receives Electron's `IpcRendererEvent` — which carries `sender` and would
+   * hand a plugin a reference back across the boundary.
+   */
+  on: (handler: (event: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => handler(payload)
+    ipcRenderer.on(CH.event, listener)
+    return () => void ipcRenderer.removeListener(CH.event, listener)
+  },
 })

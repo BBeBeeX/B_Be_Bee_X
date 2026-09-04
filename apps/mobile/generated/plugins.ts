@@ -3,8 +3,11 @@
 
 import type { PluginRegistry } from '@BBeBee/kernel'
 import coreAudioWebaudio from '@BBeBee/core-audio-webaudio'
+import coreBackgroundElectron from '@BBeBee/core-background-electron'
 import coreCodecNode from '@BBeBee/core-codec-node'
+import coreDeviceElectron from '@BBeBee/core-device-electron'
 import coreHttpNode from '@BBeBee/core-http-node'
+import coreMediaSessionElectron from '@BBeBee/core-media-session-electron'
 import pluginHello from '@BBeBee/plugin-hello'
 import pluginHelloUi from '@BBeBee/plugin-hello-ui-mobile'
 import pluginInspector from '@BBeBee/plugin-inspector'
@@ -24,14 +27,29 @@ export const bundled: PluginRegistry = {
     manifest: {"id":"@BBeBee/core-audio-webaudio","version":"0.0.0","displayName":"Audio","description":"ctx.audio — the Web Audio graph, shared by every target.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["audio"]}},
     builtin: true,
   },
+  "@BBeBee/core-background-electron": {
+    plugin: coreBackgroundElectron,
+    manifest: {"id":"@BBeBee/core-background-electron","version":"0.0.0","displayName":"Background","description":"ctx.background — wake locks, scheduling and suspend hooks on desktop.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["background"],"contributes":{"services":["background"]}},
+    builtin: true,
+  },
   "@BBeBee/core-codec-node": {
     plugin: coreCodecNode,
     manifest: {"id":"@BBeBee/core-codec-node","version":"0.0.0","displayName":"Codec","description":"ctx.codec — tags, artwork and PCM, over music-metadata.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:all"],"contributes":{"services":["codec"]}},
     builtin: true,
   },
+  "@BBeBee/core-device-electron": {
+    plugin: coreDeviceElectron,
+    manifest: {"id":"@BBeBee/core-device-electron","version":"0.0.0","displayName":"Device","description":"ctx.device — network, battery, media keys and hotkeys on desktop.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["shell"],"contributes":{"services":["device"]}},
+    builtin: true,
+  },
   "@BBeBee/core-http-node": {
     plugin: coreHttpNode,
     manifest: {"id":"@BBeBee/core-http-node","version":"0.0.0","displayName":"HTTP","description":"ctx.http — outbound HTTP, the M1 slice.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:write:downloads"],"contributes":{"services":["http"]}},
+    builtin: true,
+  },
+  "@BBeBee/core-media-session-electron": {
+    plugin: coreMediaSessionElectron,
+    manifest: {"id":"@BBeBee/core-media-session-electron","version":"0.0.0","displayName":"Media session","description":"ctx.mediaSession — the OS now-playing surface on desktop.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["mediaSession"],"contributes":{"services":["mediaSession"]}},
     builtin: true,
   },
   "@BBeBee/plugin-hello": {

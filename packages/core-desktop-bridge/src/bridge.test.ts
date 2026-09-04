@@ -21,7 +21,7 @@ import {
 } from '@BBeBee/protocol/conformance'
 import { createHost, type IpcHost } from './main.js'
 import { DbBridge, FsBridge, PathsBridge, fetchPaths } from './index.js'
-import type { BridgeApi } from './protocol.js'
+import type { BridgeApi, BridgeEvent } from './protocol.js'
 
 let root: string
 
@@ -64,10 +64,16 @@ async function makeBridge(dir: string) {
     downloads: join(dir, 'downloads'),
     music: join(dir, 'music'),
   }
-  const mainHost = await createHost(host, {
-    appName: 'BBeBee',
-    resolvePath: (kind) => layout[kind],
-  })
+  const pushed = new Set<(e: BridgeEvent) => void>()
+  const mainHost = await createHost(
+    {
+      ...host,
+      broadcast: (_channel, payload) => {
+        for (const handler of [...pushed]) handler(payload as BridgeEvent)
+      },
+    },
+    { appName: 'BBeBee', resolvePath: (kind) => layout[kind] },
+  )
 
   const api: BridgeApi = {
     call: (service, method, args, token) =>
@@ -77,6 +83,12 @@ async function makeBridge(dir: string) {
     streamClose: (handle) => invoke('BBeBee:stream:close', handle) as Promise<void>,
     txBegin: () => invoke('BBeBee:tx:begin') as Promise<string>,
     txEnd: (token, commit) => invoke('BBeBee:tx:end', token, commit) as Promise<void>,
+    // The main→renderer direction. This harness has one "renderer", so a
+    // subscriber set is the whole implementation.
+    on: (handler) => {
+      pushed.add(handler)
+      return () => void pushed.delete(handler)
+    },
   }
   ;(globalThis as { window?: unknown }).window = { BBeBeeBridge: api }
 

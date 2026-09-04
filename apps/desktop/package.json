@@ -25,7 +25,10 @@
     "cordis": "4.0.0-rc.9",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "@BBeBee/core-desktop-bridge": "workspace:*"
+    "@BBeBee/core-desktop-bridge": "workspace:*",
+    "@BBeBee/core-device-electron": "workspace:*",
+    "@BBeBee/core-background-electron": "workspace:*",
+    "@BBeBee/core-media-session-electron": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",

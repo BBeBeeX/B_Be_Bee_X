@@ -212,3 +212,51 @@ describe('transaction lifecycle', () => {
     await expect(invoke(sender, CH.txBegin)).rejects.toThrow(/already open for this session/)
   })
 })
+
+describe('the system surface', () => {
+  it('routes a call to the OS integration the app supplied', async () => {
+    const held: { id: number; reason: string }[] = []
+    const { call } = await harness({
+      system: { acquireWakeLock: (id, reason) => void held.push({ id, reason }) },
+    })
+
+    await call('acquireWakeLock', [1, 'playing'], 'system')
+    expect(held).toEqual([{ id: 1, reason: 'playing' }])
+  })
+
+  it('is a no-op where the app supplied no integration', async () => {
+    // A Linux box with no MPRIS daemon, or a build without globalShortcut,
+    // must cost the feature and not the call — the renderer has nothing
+    // useful to do with an exception here.
+    const { call } = await harness()
+    await expect(call('publishNowPlaying', [{ title: 'x' }], 'system')).resolves.toBeUndefined()
+    await expect(call('registerHotkey', ['MediaPlayPause'], 'system')).resolves.toBeUndefined()
+  })
+
+  it('refuses a system method that is not on the allowlist', async () => {
+    // The allowlist is what stops the surface growing silently with every
+    // method someone adds to the host object.
+    const { call } = await harness({ system: {} })
+    await expect(call('constructor', [], 'system')).rejects.toThrow(/not callable/)
+    await expect(call('toString', [], 'system')).rejects.toThrow(/not callable/)
+  })
+
+  it('pushes an event to the renderer only through broadcast', async () => {
+    const seen: unknown[] = []
+    const { host, invoke } = fakeIpc()
+    const hostHandle = await createHost(
+      { ...host, broadcast: (_channel, payload) => void seen.push(payload) },
+      { appName: 'BBeBee', resolvePath: () => join(root, 'ev') },
+    )
+    hostHandle.emit({ topic: 'will-suspend' })
+    expect(seen).toEqual([{ topic: 'will-suspend' }])
+    void invoke
+    await hostHandle.dispose()
+  })
+
+  it('emitting without a broadcast channel is harmless', async () => {
+    // A headless host — every test harness — has no renderer to push to.
+    const { hostHandle } = await harness()
+    expect(() => hostHandle.emit({ topic: 'media-key', key: 'next' })).not.toThrow()
+  })
+})

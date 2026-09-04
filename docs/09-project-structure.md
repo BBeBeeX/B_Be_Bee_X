@@ -44,6 +44,12 @@ B_Be_Bee/
 │  ├─ core-http-rn/                 │
 │  ├─ core-js-quickjs-node/         │ ctx.js — the source sandbox (04 §19)
 │  ├─ core-js-quickjs-rn/           │
+│  ├─ core-device-electron/ ✅      │ ctx.device — network, battery, media keys
+│  ├─ core-device-expo/             │
+│  ├─ core-background-electron/ ✅  │ ctx.background — wake locks, suspend
+│  ├─ core-background-expo/         │
+│  ├─ core-media-session-electron/ ✅ ctx.mediaSession — the OS now-playing surface
+│  ├─ core-media-session-rn/        │
 │  ├─ core-secrets-electron/        │
 │  ├─ core-secrets-expo/            │
 │  ├─ core-audio-webaudio/          │ (shared: react-native-audio-api on both)

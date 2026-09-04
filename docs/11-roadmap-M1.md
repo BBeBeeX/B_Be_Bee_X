@@ -181,13 +181,14 @@ core-codec-node             ✅  ctx.codec — music-metadata over ctx.fs, bound
 core-codec-rn               +   ctx.codec — AudioDecoder plus a native tag reader
 core-http-node              ✅  ctx.http (M1 slice) — fetch-shaped, transport is a seam
 core-http-rn                +   ctx.http (M1 slice) — RN fetch / XHR
-core-media-session-electron +   ctx.mediaSession — navigator.mediaSession + MPRIS/SMTC/Now Playing
+core-media-session-electron ✅  ctx.mediaSession — navigator.mediaSession + MPRIS/SMTC/Now Playing
 core-media-session-rn       +   ctx.mediaSession — lock screen and media notification
-core-device-electron        +   ctx.device — network, battery, media keys, hotkeys
+core-device-electron        ✅  ctx.device — network, battery, media keys, hotkeys
 core-device-expo            +   ctx.device
-core-background-electron    +   ctx.background — powerSaveBlocker, intervals, suspend hooks
+core-background-electron    ✅  ctx.background — powerSaveBlocker, intervals, suspend hooks
 core-background-expo        +   ctx.background — audio session, expo-background-task
-core-desktop-bridge         ~   hosts for codec, http, media session, device; preload surface
+core-desktop-bridge         ~   hosts for codec, http, media session, device; preload surface;
+                                the main→renderer event channel the last two need
 core-fs-node / -expo        ✅  toPlayableUri and canWatch get their first real consumer
 core-db-node / -expo        ~   the db:write:core verb check (MD-4)
 

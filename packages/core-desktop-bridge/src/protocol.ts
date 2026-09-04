@@ -18,10 +18,33 @@ export const CH = {
   /** `() => token` — begins a db transaction that later calls join. */
   txBegin: 'BBeBee:tx:begin',
   txEnd: 'BBeBee:tx:end',
+  /**
+   * `main → renderer`, the only direction that is not request/response.
+   *
+   * Needed because some things originate in `main` and cannot be polled: a
+   * media key was pressed, the OS is about to suspend. Everything else stays
+   * a call, so this channel carries a *topic* and a payload and nothing else.
+   */
+  event: 'BBeBee:event',
 } as const
 
 /** Services reachable over the bridge. */
-export type BridgedService = 'fs' | 'db' | 'paths'
+export type BridgedService = 'fs' | 'db' | 'paths' | 'system'
+
+/**
+ * Topics `main` may push to the renderer.
+ *
+ * Enumerated rather than open, so the renderer cannot be made to dispatch on
+ * a topic nothing registered — and so the whole main→renderer surface is one
+ * list to read.
+ */
+export type BridgeEvent =
+  /** Exactly `MediaKey` from the protocol — main does the OS-name mapping. */
+  | { topic: 'media-key'; key: 'play-pause' | 'next' | 'previous' | 'stop' }
+  | { topic: 'hotkey'; accelerator: string }
+  | { topic: 'will-suspend' }
+  | { topic: 'power'; charging: boolean; level: number }
+  | { topic: 'transport'; command: string; positionMs?: number }
 
 export interface BridgeApi {
   call(
@@ -37,6 +60,8 @@ export interface BridgeApi {
   /** Returns a token; subsequent `call`s pass it to join the transaction. */
   txBegin(): Promise<string>
   txEnd(token: string, commit: boolean): Promise<void>
+  /** Subscribe to `main`'s pushes. Returns an unsubscribe. */
+  on(handler: (event: BridgeEvent) => void): () => void
 }
 
 declare global {
