@@ -14,14 +14,28 @@ Two uses:
 
 ## What is expressible today
 
-The runtime ships as the M1 slice (docs/11 MD-7): a document is stored, given a
-fiber, and resolved to a stream. Only `=` templates and `ruleStream` work.
-`direct-url.json` is therefore the only document here that runs.
+- **`=` templates** with `{{ }}` interpolation.
+- **`@json:` / `$.…`** — JSONPath over a JSON response. Properties, indices
+  (negative counts from the end), `[*]`, and `..name` descent. Filter
+  expressions are deliberately refused: they are a scripting surface inside
+  the declarative half of the language.
+- **`:regex`** over the response text.
+- **Combinators** — `||` (first non-empty), `&&` (concatenate), `%%`
+  (interleave) — and `##pattern##replacement` post-processing, with `###` for
+  replace-first.
+- **`@put:{k:rule}` / `@get:{k}`** for a value lifted out of one field and used
+  in another.
+- **`searchUrl` + `ruleSearch`**, and **`ruleStream`**.
 
-The selector engines (`@css:`, `@json:`, `@xpath:`), the combinators, `@js:`
-and its sandbox, `searchUrl`/`exploreUrl` and every other rule block land with
-M2 — and with them the Subsonic and podcast-feed documents this directory is
-meant to hold.
+So `direct-url.json` and `subsonic.json` both run.
+
+Not yet: **`@css:`** and **`@xpath:`** need a markup parser, and **`@js:`**
+needs `ctx.js` (docs/04 §19). A document using one of them imports fine and
+reports the affected capability as absent — the runtime says
+`RuleEngineUnavailableError` rather than returning nothing, because silence
+there reads as "the backend changed" and sends an author to the wrong fix.
+`ruleExplore`, `ruleAlbum`, `ruleTrackList` and `ruleLyric` are parsed and
+stored but not yet run.
 
 Adding a document here is not how a *user* adds a source: they paste a string
 into Settings → Sources → Import (docs/06 §9).

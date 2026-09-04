@@ -34,12 +34,27 @@ function hasRules(block: object | undefined): boolean {
 
 export function capabilitiesFor(
   doc: SourceDocument,
-  opts: { seekable?: boolean } = {},
+  opts: { seekable?: boolean; searchable?: boolean } = {},
 ): Capabilities {
   const rateLimit = parseRate(doc.concurrentRate)
+  /*
+   * Search is derived from *two* things, not one: the document has to
+   * describe it, and this build has to be able to run the rules it describes
+   * it with. A document whose `ruleSearch` needs `@css:` is a perfectly good
+   * document — it just cannot be served here, and declaring the capability
+   * anyway offers the UI a button the runtime would fail.
+   */
+  const searchable = opts.searchable ?? false
   return {
-    // Not yet servable by this slice, however the document is written.
-    search: { tracks: false, albums: false, artists: false, playlists: false, fullText: false },
+    search: {
+      tracks: searchable,
+      albums: false,
+      artists: false,
+      playlists: false,
+      // Whether the *backend* does full-text is unknowable from a rule; the
+      // honest answer is no rather than a guess the UI would act on.
+      fullText: false,
+    },
     browse: false,
     lyrics: false,
     artwork: false,

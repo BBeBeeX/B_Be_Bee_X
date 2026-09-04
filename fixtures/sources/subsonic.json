@@ -1,0 +1,23 @@
+{
+  "sourceUrl": "https://music.example.org",
+  "sourceName": "Navidrome — example",
+  "sourceGroup": "self-hosted,subsonic",
+  "sourceComment": "A Subsonic-compatible server. Set the source variable to user:password.",
+  "variableComment": "username:password",
+  "concurrentRate": "5/1000",
+  "searchUrl": "={{source.url}}/rest/search3?query={{key}}&songCount=50&f=json&v=1.16.1&c=BBeBee",
+  "ruleSearch": {
+    "trackList": "$.subsonic-response.searchResult3.song[*]",
+    "trackId": "$.id",
+    "title": "$.title",
+    "artist": "$.artist",
+    "album": "$.album",
+    "albumId": "$.albumId",
+    "durationMs": "$.duration##$##000",
+    "quality": "$.suffix"
+  },
+  "ruleStream": {
+    "url": "={{source.url}}/rest/stream?id={{track.id}}&f=json&v=1.16.1&c=BBeBee",
+    "seekable": "=true"
+  }
+}

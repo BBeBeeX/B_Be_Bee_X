@@ -179,6 +179,7 @@ export class SourceRuntime {
     const source = new DocumentSource(record, {
       http: sourceCtx.http,
       trackPayload: (id) => this.trackPayload(record.id, id),
+      log: (message) => this.ctx.logger.info(message),
     })
 
     const off = sourceCtx.sources.register(this.reporting(source.provider()))

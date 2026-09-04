@@ -24,6 +24,9 @@ import {
 } from '@BBeBee/protocol'
 import type {
   AuthFlow,
+  PageRequest,
+  SearchQuery,
+  SearchResult,
   AuthStatus,
   Capabilities,
   Disposable,
@@ -36,14 +39,25 @@ import type {
   Track,
 } from '@BBeBee/protocol'
 import { formatUrn } from '@BBeBee/protocol'
-import { evaluateRule, type TemplateScope } from '@BBeBee/source-rules'
+import { engineAvailable, parseRule, type TemplateScope } from '@BBeBee/source-rules'
+import { evaluateRule } from '@BBeBee/source-rules'
 import { capabilitiesFor } from './capabilities.js'
+import { fetchDocument, parseUrlObject } from './fetch.js'
+import { evaluateListRule, rowToTrack } from './list-rule.js'
 
 /** What the runtime needs from its context. Kept narrow so tests need no kernel. */
 export interface SourceDeps {
   http: HttpService
   /** The track payload a search stored, keyed by track id. */
   trackPayload?(id: string): Promise<Record<string, unknown> | undefined>
+  /**
+   * Where a note about a rule that half-worked goes.
+   *
+   * Optional so a test can construct a source without a context, but supplied
+   * in production: a rule dropping rows is the kind of thing that otherwise
+   * only shows up as "the search is missing things".
+   */
+  log?(message: string): void
 }
 
 /**
@@ -112,6 +126,7 @@ export class DocumentSource {
   get capabilities(): Capabilities {
     return capabilitiesFor(this.record.doc, {
       ...(this.seekable !== undefined ? { seekable: this.seekable } : {}),
+      searchable: this.searchable,
     })
   }
 
@@ -122,6 +137,24 @@ export class DocumentSource {
    * required core and nothing else, which makes it the regression test that
    * every screen checks `capabilities` before reaching for a member.
    */
+  /**
+   * Whether this document's search rules can actually run in this build.
+   *
+   * A document may describe a search whose rules need an engine this build
+   * does not have — `@css:` without a markup parser, `@js:` without `ctx.js`.
+   * Declaring `search: true` then produces a capability the UI offers and the
+   * runtime cannot honour, which is exactly the over-declaration deriving
+   * capabilities exists to prevent (docs/06 §1.3).
+   */
+  private get searchable(): boolean {
+    const doc = this.record.doc
+    if (!doc.searchUrl || !doc.ruleSearch?.trackList) return false
+    return rulesRunnable([
+      doc.searchUrl,
+      ...Object.values(doc.ruleSearch).filter((r): r is string => typeof r === 'string'),
+    ])
+  }
+
   provider(): MediaProvider {
     // `capabilities` is a getter, not a value. Snapshotting it at registration
     // froze `streaming.seekable` at its default of true, so what the HEAD
@@ -138,6 +171,10 @@ export class DocumentSource {
       getTrack: (id) => this.getTrack(id),
       resolveStream: (id, prefs) => this.resolveStream(id, prefs),
       ping: () => this.ping(),
+      // Absent, not stubbed, when the document does not describe a search or
+      // this build cannot run its rules. `ctx.sources` skips a provider whose
+      // `search` is missing rather than calling one that throws.
+      ...(this.searchable ? { search: (q, page) => this.search(q, page) } : {}),
     }
   }
 
@@ -149,6 +186,97 @@ export class DocumentSource {
       title,
       artists: [],
       available: true,
+    }
+  }
+
+  /**
+   * Search the backend.
+   *
+   * Render `searchUrl`, fetch it, run `ruleSearch` over what came back. The
+   * page number is 1-based and reaches the template as `{{page}}`; a document
+   * that ignores it simply returns the same page, which is why the runtime
+   * stops when a page repeats rather than trusting `hasMore`.
+   */
+  async search(query: SearchQuery, page?: PageRequest): Promise<SearchResult> {
+    const doc = this.record.doc
+    if (!doc.searchUrl || !doc.ruleSearch) {
+      throw new RuleError(
+        'this source has no searchUrl or ruleSearch',
+        { block: 'ruleSearch', field: 'trackList' },
+        this.record.id,
+      )
+    }
+
+    const pageNumber = pageNumberOf(page)
+    const scope: TemplateScope = {
+      source: { url: this.record.sourceUrl, name: this.record.name },
+      key: query.text,
+      page: pageNumber,
+      baseUrl: this.record.sourceUrl,
+    }
+
+    const rendered = evaluateRule(doc.searchUrl, scope, {
+      block: 'searchUrl',
+      field: 'searchUrl',
+      sourceId: this.record.id,
+    })
+    const target = parseUrlObject(rendered)
+    this.assertAllowed(target.url)
+
+    const fetched = await fetchDocument(
+      this.deps.http,
+      target,
+      this.headers(scope),
+      this.record.id,
+    )
+
+    const { rows, dropped } = evaluateListRule(doc.ruleSearch, {
+      document: fetched.value,
+      scope: { ...scope, baseUrl: fetched.baseUrl },
+      sourceId: this.record.id,
+      block: 'ruleSearch',
+    })
+    if (dropped > 0) {
+      // Counted rather than hidden: a search quietly returning three of
+      // twenty results reads as a thin backend, not as a broken rule.
+      this.deps.log?.(
+        `${this.record.id}: ruleSearch dropped ${dropped} result(s) missing trackId or title`,
+      )
+    }
+
+    const tracks = rows.map((row) => rowToTrack(row, this.record.id, 'ruleSearch'))
+    return {
+      tracks: {
+        items: tracks,
+        // The backend rarely says, and inventing a total produces a progress
+        // bar that lies (docs/06 §4.3).
+        hasMore: tracks.length > 0,
+        ...(tracks.length > 0 ? { cursor: String(pageNumber + 1) } : {}),
+      },
+    }
+  }
+
+  /** Headers the document declares, rendered against the current scope. */
+  private headers(scope: TemplateScope): Record<string, string> | undefined {
+    const rule = this.record.doc.header
+    if (!rule) return undefined
+    const rendered = evaluateRule(rule, scope, {
+      block: 'header',
+      field: 'header',
+      sourceId: this.record.id,
+    })
+    try {
+      const parsed: unknown = JSON.parse(rendered)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+      const out: Record<string, string> = {}
+      for (const [k, v] of Object.entries(parsed)) if (typeof v === 'string') out[k] = v
+      return Object.keys(out).length > 0 ? out : undefined
+    } catch {
+      throw new RuleError(
+        'header must render to a JSON object',
+        { block: 'header', field: 'header' },
+        this.record.id,
+      )
     }
   }
 
@@ -328,6 +456,21 @@ export class DocumentSource {
     }
     throw new ProviderError(`${head.status} for ${url}`, this.record.id)
   }
+}
+
+/** A page cursor is an opaque string that happens to be a number here. */
+function pageNumberOf(page: PageRequest | undefined): number {
+  const parsed = Number(page?.cursor ?? '1')
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1
+}
+
+/** Whether every rule in a set uses only engines this build can run. */
+function rulesRunnable(rules: string[]): boolean {
+  return rules.every((rule) =>
+    parseRule(rule).alternatives.every((alt) =>
+      alt.parts.every((part) => part.atoms.every((atom) => engineAvailable(atom.engine))),
+    ),
+  )
 }
 
 function numberOr(value: string | undefined): number | undefined {

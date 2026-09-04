@@ -45,6 +45,14 @@ export interface TemplateScope {
   key?: string
   page?: number
   baseUrl?: string
+  /**
+   * The current list element, while a `ListRule`'s fields are evaluated.
+   *
+   * This is what lets a field build a URL out of a sibling field —
+   * `{{item.coverArt}}` — which the selector engines cannot do, because a
+   * selector reaches *into* the element rather than across it.
+   */
+  item?: Record<string, unknown>
 }
 
 const TEMPLATE_PREFIX = '='

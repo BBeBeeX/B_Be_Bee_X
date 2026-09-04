@@ -10,6 +10,26 @@
  */
 
 export {
+  RuleEngineUnavailableError,
+  engineAvailable,
+  evaluate,
+  evaluateNodes,
+  evaluateParsed,
+  toText,
+  type RuleContext,
+} from './evaluate.js'
+export { RuleSyntaxError, parseJsonPath, queryJsonPath } from './jsonpath.js'
+export {
+  inferEngine,
+  parseRule,
+  type Atom,
+  type Concat,
+  type Engine,
+  type Interleave,
+  type ParsedRule,
+  type Replacement,
+} from './parse.js'
+export {
   evaluateRule,
   isTemplate,
   renderTemplate,
