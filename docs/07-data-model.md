@@ -22,8 +22,8 @@ Examples:
 
 ```
 BBeBee:local:track:9f2c8a1e
-BBeBee:music-example-org-4f1a:album:41af02
-BBeBee:jelly-nas-7b02:playlist:7c11
+BBeBee:music-example-org-35be9fe2:album:41af02
+BBeBee:jellyfin-nas-local-1bb03370:playlist:7c11
 ```
 
 ### Why the source, not the backend kind
@@ -135,7 +135,7 @@ travel when the source is shared.
 
 ```sql
 CREATE TABLE sources (
-  id            TEXT PRIMARY KEY,          -- 'music-example-org-4f1a', derived (06 §1.2)
+  id            TEXT PRIMARY KEY,          -- 'music-example-org-35be9fe2', derived (06 §1.2)
   source_url    TEXT NOT NULL UNIQUE,      -- the document's identity; dedup key on import
   name          TEXT NOT NULL,             -- denormalised from doc_json for list rendering
   source_group  TEXT,                      -- comma-separated, free text
@@ -198,6 +198,16 @@ reason.
 hash, skip), updated (different hash, show the field diff), or conflicting (different hash *and*
 `locally_modified`, require confirmation) — see
 [06 §9](./06-music-sources.md#9-importing-updating-and-sharing).
+
+It is a **full SHA-256**, and `id`'s suffix is the first 32 bits of one. The short non-cryptographic
+hash this started as was wrong twice over: `id` is a primary key, so a collision makes one source's
+row overwrite another's, and `doc_hash` decides whether an update happens at all, so a collision
+there classifies a changed document as "unchanged" and skips it in silence.
+
+> **`enabled` is the user's, not the document's.** An import writes every other column but never
+> this one. An author publishing a fix must not switch a source back on that the user turned off —
+> and a disabled row is indistinguishable from one removed with its library kept
+> ([06 §4.1](./06-music-sources.md#41-a-sources-lifetime)), so the import path does not guess.
 
 > **No readable credential is ever in this database.** Tokens, passwords and the per-source
 > variable live in `ctx.secrets` under `namespace(sourceId)`; `source_vars` holds only what a rule

@@ -84,7 +84,7 @@ from.
 - **Source** — one music backend as the user configured it, identified by its `sourceUrl` and
   addressed by a derived **source id**. A *source string* is its importable text form.
 - **URN** — a stable identifier for a catalog entity, e.g.
-  `BBeBee:music-example-org-4f1a:track:8f1a2c`. Defined in [07](./07-data-model.md).
+  `BBeBee:music-example-org-35be9fe2:track:8f1a2c`. Defined in [07](./07-data-model.md).
 - TypeScript blocks are **contracts**, not illustrations. They are intended to compile.
 - Tables named in `snake_case` are SQLite tables. Types in `PascalCase` are TypeScript.
 - ⚠️ marks a place where the two platforms genuinely differ and the abstraction leaks. These are

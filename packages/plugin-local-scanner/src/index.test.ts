@@ -7,7 +7,7 @@
  * what gets written, and what happens when a file disappears.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -227,6 +227,29 @@ describe('scanning', () => {
     )
     expect(entry?.status).toBe('error')
     expect(entry?.error, 'with the reason, for the "could not import" list').toMatch(/unsupported/)
+  })
+
+  it('survives a directory symlink cycle', async () => {
+    // `ln -s . loop` inside a music folder — or two folders linking to each
+    // other, which real collections do have — made the BFS queue never empty
+    // and `found` grow without bound. The scan did not fail; it ran until the
+    // process died, which is the worst shape a bug can take.
+    const h = await harness()
+    await h.write('a.mp3')
+    await mkdir(join(h.dir, 'sub'), { recursive: true })
+    await writeFile(join(h.dir, 'sub', 'b.mp3'), 'x')
+    await symlink(h.dir, join(h.dir, 'sub', 'loop'), 'dir')
+
+    await h.scanner.addRoot(h.uri, { recursive: true })
+    const summary = await h.scanner.scan()
+
+    // The guarantee is termination and a bounded result — not perfect
+    // de-duplication, which needs canonical-path identity `ctx.fs` does not
+    // expose. Both real files are found, and the loop does not run forever.
+    const rows = await h.db.query<{ urn: string }>('SELECT urn FROM tracks')
+    expect(rows.length).toBeGreaterThanOrEqual(2)
+    expect(rows.length, 'the walk is depth-bounded, not unbounded').toBeLessThan(200)
+    expect(summary.errors).toBe(0)
   })
 
   it('walks subdirectories, and stops at the top when told not to', async () => {

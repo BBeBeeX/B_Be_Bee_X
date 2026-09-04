@@ -25,6 +25,7 @@ import {
   MEDIATED_SERVICES,
   allowsFs,
   allowsHost,
+  hostAllowedBy,
   type Capability,
   type FsScope,
   type MediatedService,
@@ -169,19 +170,12 @@ export function assertHost(config: unknown, url: string): void {
   // declare is refused whether the URL was written literally or built at
   // runtime — which is what turns the sandbox from a reach boundary into an
   // egress one (docs/06 §8).
-  if (gate.allowedHosts && !gate.allowedHosts.some((allowed) => hostMatches(host, allowed))) {
+  if (gate.allowedHosts && !hostAllowedBy(host, gate.allowedHosts)) {
     throw new CapabilityError(
       `net:host/${host}`,
       `${gate.scopeId} did not declare ${host}; add it to allowedHosts and re-import`,
     )
   }
-}
-
-/** Exact hostname, or a subdomain of a declared one. Never a bare suffix match. */
-function hostMatches(host: string, allowed: string): boolean {
-  const a = allowed.trim().toLowerCase().replace(/\.$/, '')
-  if (!a) return false
-  return host === a || host.endsWith(`.${a}`)
 }
 
 /** WebSocket connections are governed by the same `net:host/` grants. */

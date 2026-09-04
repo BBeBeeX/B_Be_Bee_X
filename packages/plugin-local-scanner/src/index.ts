@@ -77,6 +77,13 @@ interface EntryRow {
   track_urn: string | null
 }
 
+/**
+ * How deep a scan will go.
+ *
+ * No real music library is 24 directories deep; a symlink loop is unbounded.
+ */
+const MAX_SCAN_DEPTH = 24
+
 export class Scanner extends Service implements ScannerService {
   static inject = ['fs', 'db', 'codec']
 
@@ -403,29 +410,66 @@ export class Scanner extends Service implements ScannerService {
     if (removed.length > 0) this.ctx.emit('library/changed', 'track', removed)
   }
 
+  /**
+   * Breadth-first walk of a scan root.
+   *
+   * ⚠️ **Bounded on purpose.** `ctx.fs.list` follows directory symlinks, so a
+   * library containing `ln -s . loop` — or two directories linking to each
+   * other, which real collections do have — produced a queue that never
+   * emptied. The scan did not fail; it ran until the process died, which is
+   * the worst shape a bug can take.
+   *
+   * `visited` catches a path repeating exactly; the depth cap catches the
+   * general case, where every hop through the link yields a *new* path
+   * (`sub/loop/sub/loop/…`) that no URI-keyed set can recognise.
+   *
+   * Residual, stated rather than hidden: files under a symlinked duplicate
+   * directory are still imported once per reachable path, as separate tracks.
+   * Collapsing those needs canonical-path identity — `realpath`, or a device
+   * and inode — which `ctx.fs` does not expose and Expo's filesystem cannot
+   * generally provide. The cap keeps the damage finite and visible.
+   */
   private async walk(uri: Uri, recursive: boolean, signal: AbortSignal): Promise<FileStat[]> {
-    const found: FileStat[] = []
-    const queue: Uri[] = [uri]
+    const found = new Map<Uri, FileStat>()
+    const visited = new Set<Uri>([uri])
+    let queue: Uri[] = [uri]
+    let depth = 0
 
-    while (queue.length > 0) {
-      if (signal.aborted) break
-      const dir = queue.shift()!
-      let listing: FileStat[]
-      try {
-        listing = await this.ctx.fs.list(dir)
-      } catch {
-        // An unreadable directory is not a scan failure: skip it and carry on.
-        continue
-      }
-      for (const entry of listing) {
-        if (entry.isDirectory) {
-          if (recursive) queue.push(entry.uri)
+    while (queue.length > 0 && depth <= MAX_SCAN_DEPTH) {
+      const next: Uri[] = []
+      for (const dir of queue) {
+        if (signal.aborted) return [...found.values()]
+        let listing: FileStat[]
+        try {
+          listing = await this.ctx.fs.list(dir)
+        } catch {
+          // An unreadable directory is not a scan failure: skip it, carry on.
           continue
         }
-        if (this.isAudio(entry.uri)) found.push(entry)
+        for (const entry of listing) {
+          if (entry.isDirectory) {
+            if (!recursive || visited.has(entry.uri)) continue
+            visited.add(entry.uri)
+            next.push(entry.uri)
+            continue
+          }
+          if (this.isAudio(entry.uri)) found.set(entry.uri, entry)
+        }
       }
+      queue = next
+      depth++
     }
-    return found
+
+    if (queue.length > 0) {
+      // Say so rather than silently truncating: a library legitimately deeper
+      // than this is a bug report worth getting, and a symlink loop is a
+      // problem the user can fix once they know it is there.
+      this.ctx.logger.warn(
+        `scanner: stopped at depth ${MAX_SCAN_DEPTH} under ${uri} — ` +
+          'a directory symlink loop, or a tree deeper than any real library',
+      )
+    }
+    return [...found.values()]
   }
 
   private isAudio(uri: Uri): boolean {

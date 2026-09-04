@@ -70,9 +70,19 @@ export function tryParseUrn(urn: string): Urn | undefined {
   }
 }
 
+/**
+ * Build a URN.
+ *
+ * Validates everything `parseUrn` would reject, so a malformed URN cannot be
+ * *written*. Without this the failure surfaces much later, as a row whose
+ * `urn` primary key no consumer can parse — and by then the write that made it
+ * is long gone from the logs.
+ */
 export function formatUrn(urn: Urn): string {
   if (!urn.sourceId) throw new UrnError('<object>', 'empty source id')
   if (urn.sourceId.includes(':')) throw new UrnError(urn.sourceId, 'source id may not contain ":"')
+  if (/\s/.test(urn.sourceId)) throw new UrnError(urn.sourceId, 'source id may not contain whitespace')
+  if (!isUrnKind(urn.kind)) throw new UrnError(String(urn.kind), `unknown kind "${String(urn.kind)}"`)
   if (!urn.id) throw new UrnError('<object>', 'empty id')
   return `${URN_SCHEME}:${urn.sourceId}:${urn.kind}:${urn.id}`
 }

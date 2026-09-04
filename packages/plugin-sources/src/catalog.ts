@@ -157,6 +157,23 @@ function paged<T>(items: T[], offset: number, limit: number): Paged<T> {
   return { items: hasMore ? items.slice(0, limit) : items, hasMore, ...(hasMore ? { cursor: String(offset + limit) } : {}) }
 }
 
+/**
+ * Resolve a sort key to a SQL fragment.
+ *
+ * `Object.hasOwn`, not a plain lookup: `sort` arrives from a UI and later from
+ * a smart-playlist rule tree, so it is untrusted input. A plain
+ * `TRACK_ORDER[sort]` finds inherited members — `sort: 'toString'` returns a
+ * function, which interpolates into ORDER BY as source code and takes the
+ * statement down with a syntax error. The `??` fallback never fires for those,
+ * because an inherited member is not nullish.
+ */
+function trackOrder(sort: string | undefined): string {
+  if (sort && Object.hasOwn(TRACK_ORDER, sort)) {
+    return TRACK_ORDER[sort as keyof typeof TRACK_ORDER]
+  }
+  return TRACK_ORDER.title
+}
+
 export class Catalog {
   constructor(private readonly db: DbService) {}
 
@@ -165,10 +182,7 @@ export class Catalog {
   async listTracks(query: CatalogQuery = {}): Promise<Paged<Track>> {
     const limit = limitOf(query)
     const offset = offsetOf(query.page?.cursor)
-    // `?? title` on the *lookup*, not just the key: `sort` arrives from a UI,
-    // and later from a smart-playlist rule tree, so an unrecognised value must
-    // fall back rather than interpolate `undefined` into the statement.
-    const order = TRACK_ORDER[query.sort ?? 'title'] ?? TRACK_ORDER.title
+    const order = trackOrder(query.sort)
     const direction = query.desc ? 'DESC' : 'ASC'
     const filter = sourceFilter('t', query.sourceIds)
 

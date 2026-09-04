@@ -71,6 +71,25 @@ describe('renderTemplate', () => {
       expect((error as RuleError).message).toContain('a.missing')
     }
   })
+
+  it('refuses an unbalanced placeholder rather than emitting it verbatim', () => {
+    // Passing `{{track.id` through as literal text is how it becomes a URL
+    // containing a brace that fails three steps later as an unexplained 404.
+    expect(() => renderTemplate('https://x/{{track.id', { track: { id: '1' } }, site)).toThrow(
+      RuleError,
+    )
+    expect(() => renderTemplate('https://x/track.id}}', {}, site)).toThrow(RuleError)
+  })
+
+  it('accepts adjacent placeholders', () => {
+    expect(renderTemplate('{{a.b}}{{a.c}}', { a: { b: '1', c: '2' } } as never, site)).toBe('12')
+  })
+
+  it('interpolates verbatim, which callers must know', () => {
+    // Documented, not accidental: encoding here would corrupt the many rules
+    // that interpolate a whole URL or a query fragment. See the module note.
+    expect(renderTemplate('?q={{track.id}}', { track: { id: 'a&b=c' } }, site)).toBe('?q=a&b=c')
+  })
 })
 
 describe('evaluateRule', () => {

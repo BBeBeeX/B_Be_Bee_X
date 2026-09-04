@@ -25,7 +25,13 @@ import type { Context } from 'cordis'
 // Pulls the service and event augmentations (`ctx.sources`, `source/*`) into
 // this program. Without it a consumer compiling in isolation sees a bare Context.
 import type {} from '@BBeBee/protocol'
-import { ProviderError, SourceError, SourceFormatError, tryParseUrn } from '@BBeBee/protocol'
+import {
+  assertSafeForTrace,
+  ProviderError,
+  SourceError,
+  SourceFormatError,
+  tryParseUrn,
+} from '@BBeBee/protocol'
 import type {
   AggregatedSearch,
   AggregatedSearchEntry,
@@ -52,8 +58,8 @@ import type {
 import { Catalog } from './catalog.js'
 import {
   changedFields,
+  docHashOf,
   exportableDocument,
-  hash32,
   parseSourceInput,
   recordFor,
   validateDocument,
@@ -71,6 +77,29 @@ export interface SourcesConfig {
 }
 
 const DEFAULT_SEARCH_TIMEOUT_MS = 10_000
+
+/** Per-step deadline for a health check. */
+const DEFAULT_CHECK_TIMEOUT_MS = 15_000
+
+/**
+ * Reject if a promise has not settled in time.
+ *
+ * The underlying work is not cancelled — there is no channel for that — but
+ * the check stops waiting on it, which is what the caller needs.
+ */
+async function withDeadline<T>(work: Promise<T>, timeoutMs: number, step: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`${step} timed out after ${timeoutMs}ms`)), timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 /**
  * A provider that can explain itself.
@@ -230,8 +259,12 @@ export class Sources extends Service implements SourcesService {
     const { sourceId } = provider
     const startedAt = Date.now()
 
-    // `search` is optional; `canSearch` established it is here.
-    const inFlight = Promise.resolve(provider.search!(query)).then(
+    // `Promise.resolve(provider.search(q))` evaluates the call *first*, so a
+    // synchronous throw escapes the handler and rejects the whole fan-out —
+    // the one thing searchAll promises never to do.
+    const inFlight = Promise.resolve()
+      .then(() => provider.search!(query))
+      .then(
       (result) => ({ ok: true as const, result }),
       (error: unknown) => ({ ok: false as const, error: asSourceError(error, sourceId) }),
     )
@@ -287,78 +320,121 @@ export class Sources extends Service implements SourcesService {
       conflicts: [],
     }
 
+    // Parsing the whole input first means a malformed *string* is one error,
+    // not a partial import. Individual malformed entries are handled below.
     const entries = parseSourceInput(input)
     const now = Date.now()
     const selected = opts.select && new Set(opts.select)
 
-    for (const [index, entry] of entries.entries()) {
-      let doc
-      try {
-        doc = validateDocument(entry, index)
-      } catch (error) {
-        const issue = error instanceof SourceFormatError ? error : undefined
-        report.rejected.push({
-          index,
-          ...(nameOf(entry) ? { sourceName: nameOf(entry)! } : {}),
-          message: issue
-            ? `${issue.message}: ${issue.issues.map((i) => `${i.path} ${i.message}`).join('; ')}`
-            : String(error),
-        })
-        continue
+    // One transaction for the whole set. Without it, a failure on entry k
+    // leaves entries 0..k-1 already committed while the call rejects and the
+    // report — the only record of what happened — is lost. The protocol
+    // promise is "one malformed entry never rejects the rest", and half-
+    // applying the rest is not that.
+    await this.ctx.db.transaction(async (tx) => {
+      const store = new SourceStore(tx)
+
+      for (const [index, entry] of entries.entries()) {
+        try {
+          await this.importOne(store, entry, index, { now, selected, opts, report })
+        } catch (error) {
+          // A write that fails for this entry — a value SQLite will not bind,
+          // a constraint — must not take the other thirty-nine with it.
+          report.rejected.push({
+            index,
+            ...(nameOf(entry.value) ? { sourceName: nameOf(entry.value)! } : {}),
+            error:
+              error instanceof SourceFormatError
+                ? error
+                : new SourceFormatError(
+                    error instanceof Error ? error.message : String(error),
+                    [{ path: '', message: 'could not be stored' }],
+                    { cause: error },
+                  ),
+          })
+        }
       }
-
-      if (selected && !selected.has(doc.sourceUrl)) continue
-
-      const docJson = JSON.stringify(entry)
-      const existing = await this.store.byUrl(doc.sourceUrl)
-
-      if (!existing) {
-        const record = recordFor(doc, {
-          docJson,
-          now,
-          ...(opts.group ? { group: opts.group } : {}),
-          ...(opts.originUri ? { originUri: opts.originUri } : {}),
-        })
-        await this.store.put(record)
-        report.added.push(record)
-        continue
-      }
-
-      if (existing.docHash === hash32(docJson)) {
-        report.unchanged.push(existing)
-        continue
-      }
-
-      const changed = changedFields(existing.doc, doc)
-
-      // A source the user fixed themselves must not be silently replaced by a
-      // re-import of the version that was broken.
-      if (existing.locallyModified && !opts.overwrite) {
-        report.conflicts.push({ record: existing, changedFields: changed })
-        continue
-      }
-
-      const record = recordFor(doc, {
-        docJson,
-        now,
-        importedAt: existing.importedAt,
-        sortOrder: existing.sortOrder,
-        ...(opts.group ?? existing.group ? { group: opts.group ?? existing.group! } : {}),
-        ...(opts.originUri ? { originUri: opts.originUri } : {}),
-      })
-      await this.store.put(record)
-      report.updated.push({ record, changedFields: changed })
-    }
+    })
 
     await this.refresh()
 
-    const touched = [...report.added, ...report.updated.map((u) => u.record)]
-    if (touched.length) this.ctx.emit('source/imported', touched.map((r) => r.id))
+    // Only one event per source. Emitting `imported` *and* `changed` for an
+    // update made the runtime stop and start that source twice, with
+    // duplicate registration events on the way through.
+    const added = report.added.map((r) => r.id)
+    if (added.length) this.ctx.emit('source/imported', added)
     for (const { record, changedFields: fields } of report.updated) {
       this.ctx.emit('source/changed', record.id, fields)
     }
 
     return report
+  }
+
+  /** One entry of an import. Throws only what the caller turns into `rejected`. */
+  private async importOne(
+    store: SourceStore,
+    entry: { value: unknown; text: string },
+    index: number,
+    ctx: {
+      now: number
+      selected: Set<string> | undefined
+      opts: ImportOptions
+      report: ImportReport
+    },
+  ): Promise<void> {
+    const { now, selected, opts, report } = ctx
+    const doc = validateDocument(entry.value, index)
+    if (selected && !selected.has(doc.sourceUrl)) return
+
+    // The verbatim slice, not a re-serialisation: export must emit what was
+    // imported, down to key order and spacing (docs/07 §4.1).
+    const docJson = entry.text
+    const existing = await store.byUrl(doc.sourceUrl)
+
+    if (!existing) {
+      const record = recordFor(doc, {
+        docJson,
+        now,
+        ...(opts.group ? { group: opts.group } : {}),
+        ...(opts.originUri ? { originUri: opts.originUri } : {}),
+      })
+      await store.put(record)
+      report.added.push(record)
+      return
+    }
+
+    if (existing.docHash === docHashOf(docJson)) {
+      // Deliberately does not touch `enabled`. A disabled row is either a
+      // source the user switched off or one they removed while keeping its
+      // library, and nothing distinguishes the two — so re-importing must not
+      // guess. It stays off; the source list is where it goes back on.
+      report.unchanged.push(existing)
+      return
+    }
+
+    const changed = changedFields(existing.doc, doc)
+
+    // A source the user fixed themselves must not be silently replaced by a
+    // re-import of the version that was broken.
+    if (existing.locallyModified && !opts.overwrite) {
+      report.conflicts.push({ record: existing, changedFields: changed })
+      return
+    }
+
+    const record = recordFor(doc, {
+      docJson,
+      now,
+      importedAt: existing.importedAt,
+      sortOrder: existing.sortOrder,
+      // The user's own switch wins over the document's.
+      enabled: existing.enabled,
+      ...(opts.group ?? existing.group ? { group: opts.group ?? existing.group! } : {}),
+      ...(opts.originUri ? { originUri: opts.originUri } : existing.originUri
+        ? { originUri: existing.originUri }
+        : {}),
+    })
+    await store.put(record)
+    report.updated.push({ record, changedFields: changed })
   }
 
   /**
@@ -396,25 +472,33 @@ export class Sources extends Service implements SourcesService {
    * result updates the row, so the source list can sort by health and the
    * stale badge stays honest.
    */
-  async check(ids?: string[], opts: { signal?: AbortSignal } = {}): Promise<CheckReport[]> {
+  async check(
+    ids?: string[],
+    opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+  ): Promise<CheckReport[]> {
     const wanted = ids && new Set(ids)
     const targets = this.providers.filter((p) => !wanted || wanted.has(p.sourceId))
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_CHECK_TIMEOUT_MS
     const reports: CheckReport[] = []
 
     for (const provider of targets) {
       if (opts.signal?.aborted) break
-      reports.push(await this.checkOne(provider))
+      reports.push(await this.checkOne(provider, timeoutMs))
     }
     return reports
   }
 
-  private async checkOne(provider: MediaProvider): Promise<CheckReport> {
+  private async checkOne(provider: MediaProvider, timeoutMs: number): Promise<CheckReport> {
     const sourceId = provider.sourceId
     const startedAt = Date.now()
     let failedStep: CheckReport['failedStep'] = 'ping'
 
     try {
-      const reachable = await provider.ping()
+      // Every step gets a deadline. A source whose server accepts the
+      // connection and then says nothing would otherwise hold the whole run —
+      // and "check all my sources" is exactly when one bad source is most
+      // likely, and least acceptable, to hang the app.
+      const reachable = await withDeadline(provider.ping(), timeoutMs, 'ping')
       const respondTimeMs = Date.now() - startedAt
       if (!reachable) {
         return await this.recordCheck({
@@ -429,7 +513,7 @@ export class Sources extends Service implements SourcesService {
 
       if (canSearch(provider)) {
         failedStep = 'search'
-        await provider.search!({ text: 'a' })
+        await withDeadline(provider.search!({ text: 'a' }), timeoutMs, 'search')
       }
 
       return await this.recordCheck({
@@ -471,12 +555,18 @@ export class Sources extends Service implements SourcesService {
    */
   debug(id: string, step: DebugStep): AsyncIterable<TraceEvent> {
     const provider = this.registry.get(id)
-    if (!provider) return once({ at: Date.now(), kind: 'error', message: `no source "${id}"` })
+    if (!provider) {
+      return once({
+        at: Date.now(),
+        kind: 'error',
+        message: assertSafeForTrace(`no source "${id}"`),
+      })
+    }
     if (!isDebuggable(provider)) {
       return once({
         at: Date.now(),
         kind: 'error',
-        message: `source "${id}" has no rules to trace`,
+        message: assertSafeForTrace(`source "${id}" has no rules to trace`),
       })
     }
     return provider.debug(step)

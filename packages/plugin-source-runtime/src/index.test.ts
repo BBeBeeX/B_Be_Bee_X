@@ -29,8 +29,21 @@ let acceptRanges = true
 
 beforeAll(async () => {
   server = createServer((req, res) => {
-    if (req.url === '/missing') {
+    const path = (req.url ?? '/').split('?')[0]
+    const code = Number(new URL(req.url ?? '/', 'http://x').searchParams.get('code') ?? 0)
+    if (path === '/missing') {
       res.writeHead(404)
+      res.end()
+      return
+    }
+    if (path === '/no-head' && req.method === 'HEAD') {
+      // Plenty of real servers do this; it must not read as a dead URL.
+      res.writeHead(405)
+      res.end()
+      return
+    }
+    if (path === '/status') {
+      res.writeHead(code || 500)
       res.end()
       return
     }
@@ -204,6 +217,113 @@ describe('resolution', () => {
     await expect(ctx.sources.providers[0]!.resolveStream('t1', prefs)).rejects.toMatchObject({
       code: 'rule',
     })
+  })
+})
+
+describe('egress and failure classification', () => {
+  const prefs = { quality: 'normal' as const, saveData: false, acceptFormats: [] }
+
+  it('refuses a stream URL to a host the document did not declare', async () => {
+    // The stream target is the one artifact that leaves this package and is
+    // fetched by something else — `ctx.audio` loads it directly, outside the
+    // source's scoped http. Without this check the allowlist would govern one
+    // optional HEAD and nothing that actually moves bytes (docs/06 §8).
+    const { ctx } = await harness([
+      {
+        sourceUrl: `${origin}/t.mp3`,
+        sourceName: 'Sneaky',
+        ruleStream: { url: '=http://169.254.169.254/latest/meta-data/', seekable: '=true' },
+      },
+    ])
+    await expect(ctx.sources.providers[0]!.resolveStream('t1', prefs)).rejects.toMatchObject({
+      code: 'unavailable',
+    })
+  })
+
+  it('allows a stream URL on a declared host', async () => {
+    const { ctx } = await harness([
+      {
+        sourceUrl: `${origin}/t.mp3`,
+        sourceName: 'CDN user',
+        allowedHosts: ['localhost'],
+        ruleStream: { url: '=http://localhost/a.mp3', seekable: '=true' },
+      },
+    ])
+    const handle = await ctx.sources.providers[0]!.resolveStream('t1', prefs)
+    expect(handle.target).toBe('http://localhost/a.mp3')
+  })
+
+  it('does not evaluate any rule while constructing the source', async () => {
+    // A rule needing a scope — `seekable: '={{prefs.saveData}}'` — used to be
+    // rendered in the constructor against an empty one. The RuleError went up
+    // through `apply`, the loader marked the whole plugin FAILED, and every
+    // source became unusable on every boot.
+    const { ctx } = await harness([
+      radio('/t.mp3', {
+        ruleStream: { url: '={{source.url}}', seekable: '={{prefs.saveData}}' },
+      }),
+    ])
+    expect(ctx.sources.providers, 'the plugin loaded').toHaveLength(1)
+
+    // `prefs.saveData` is false, so the rule renders "false" — different from
+    // the default of true, which is what proves it was evaluated at all, and
+    // evaluated against a real scope.
+    const handle = await ctx.sources.providers[0]!.resolveStream('t1', prefs)
+    expect(handle.seekable, 'the rule is evaluated when it has a scope').toBe(false)
+  })
+
+  it('reports a rotted rule so the stale badge can appear', async () => {
+    // `source/rule-failed` drives fail_count and the badge (docs/06 §7). It
+    // was declared and never emitted, so the one signal telling a user to
+    // re-import their source could not appear.
+    const { ctx } = await harness([
+      radio('/t.mp3', { ruleStream: { url: '={{track.missingField}}' } }),
+    ])
+    const seen: { block: string; field: string }[] = []
+    ctx.on('source/rule-failed', (_id, rule) => void seen.push(rule))
+
+    await expect(ctx.sources.providers[0]!.resolveStream('t1', prefs)).rejects.toMatchObject({
+      code: 'rule',
+    })
+    expect(seen).toEqual([{ block: 'ruleStream', field: 'url' }])
+  })
+
+  it('distinguishes a HEAD-refusing server from a dead URL', async () => {
+    // 405 used to become NotFoundError, so a perfectly playable source was
+    // reported as a dead link — and a health check would kill it.
+    const { ctx } = await harness([radio('/no-head')])
+    const handle = await ctx.sources.providers[0]!.resolveStream('t1', prefs)
+    expect(handle.target).toBe(`${origin}/no-head`)
+  })
+
+  it('maps an auth failure to AuthError, not not-found', async () => {
+    const { ctx } = await harness([radio('/status?code=401')])
+    await expect(ctx.sources.providers[0]!.resolveStream('t1', prefs)).rejects.toMatchObject({
+      code: 'auth',
+    })
+  })
+
+  it('maps a server error to a retryable NetworkError', async () => {
+    // A transient 500 used to be non-retryable, so a blip halted playback.
+    const { ctx } = await harness([radio('/status?code=503')])
+    await expect(ctx.sources.providers[0]!.resolveStream('t1', prefs)).rejects.toMatchObject({
+      code: 'network',
+      retryable: true,
+    })
+  })
+
+  it('reports what the probe learned, not what registration assumed', async () => {
+    // `capabilities` was snapshotted into the provider object at
+    // registration, so what the HEAD discovered never reached the UI.
+    acceptRanges = false
+    try {
+      const { ctx } = await harness([radio('/noranges.mp3')])
+      const provider = ctx.sources.providers[0]!
+      await provider.resolveStream('t1', prefs)
+      expect(provider.capabilities.streaming.seekable).toBe(false)
+    } finally {
+      acceptRanges = true
+    }
   })
 })
 

@@ -16,45 +16,19 @@ export const CORE_MIGRATIONS: Migration[] = [
   {
     version: 1,
     up: [
-      /* ── Sources, accounts, sessions ───────────────────────────────── */
-      // The imported document *is* the row. `doc_json` is the string
-      // verbatim rather than shredded into columns, because export must emit
-      // what was imported: reordered keys or a dropped unknown field would
-      // mean a user's document came back changed, and the first time that
-      // happens they stop trusting export. See docs/07 §4.1.
-      `CREATE TABLE sources (
-        id                 TEXT PRIMARY KEY,
-        source_url         TEXT NOT NULL UNIQUE,
-        name               TEXT NOT NULL,
-        source_group       TEXT,
-        source_type        TEXT NOT NULL DEFAULT 'music',
-        doc_json           TEXT NOT NULL,
-        doc_hash           TEXT NOT NULL,
-        enabled            INTEGER NOT NULL DEFAULT 1,
-        sort_order         INTEGER NOT NULL DEFAULT 0,
-        capabilities_json  TEXT,
-        allowed_hosts_json TEXT,
-        locally_modified   INTEGER NOT NULL DEFAULT 0,
-        origin_uri         TEXT,
-        imported_at        INTEGER NOT NULL,
-        updated_at         INTEGER NOT NULL,
-        last_check_at      INTEGER,
-        last_error         TEXT,
-        fail_count         INTEGER NOT NULL DEFAULT 0,
-        respond_time_ms    INTEGER
-      )`,
-      `CREATE INDEX idx_sources_enabled ON sources(enabled, sort_order)`,
-      // Per-source state a rule persisted via `src.vars`. Credential-grade:
-      // never exported, cleared by signOut(). See docs/06 §3.4.
-      `CREATE TABLE source_vars (
-        source_id  TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
-        key        TEXT NOT NULL,
-        value      TEXT NOT NULL,
-        updated_at INTEGER NOT NULL,
-        PRIMARY KEY (source_id, key)
+      /* ── Providers, accounts, sessions ─────────────────────────────── */
+      `CREATE TABLE providers (
+        instance_id       TEXT PRIMARY KEY,
+        plugin_id         TEXT NOT NULL,
+        display_name      TEXT NOT NULL,
+        enabled           INTEGER NOT NULL DEFAULT 1,
+        capabilities_json TEXT,
+        sort_order        INTEGER NOT NULL DEFAULT 0,
+        created_at        INTEGER NOT NULL,
+        last_seen_at      INTEGER
       )`,
       `CREATE TABLE accounts (
-        source_id      TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+        instance_id    TEXT PRIMARY KEY REFERENCES providers(instance_id) ON DELETE CASCADE,
         remote_user_id TEXT,
         display_name   TEXT,
         status         TEXT NOT NULL,
@@ -89,7 +63,7 @@ export const CORE_MIGRATIONS: Migration[] = [
       /* ── Catalogue ─────────────────────────────────────────────────── */
       `CREATE TABLE artists (
         urn         TEXT PRIMARY KEY,
-        source_id   TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        instance_id TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
         remote_id   TEXT NOT NULL,
         name        TEXT NOT NULL,
         sort_name   TEXT,
@@ -98,12 +72,12 @@ export const CORE_MIGRATIONS: Migration[] = [
         fetched_at  INTEGER NOT NULL,
         raw_json    TEXT
       )`,
-      `CREATE INDEX idx_artists_source ON artists(source_id)`,
+      `CREATE INDEX idx_artists_instance ON artists(instance_id)`,
       `CREATE INDEX idx_artists_sort ON artists(sort_name)`,
 
       `CREATE TABLE albums (
         urn          TEXT PRIMARY KEY,
-        source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        instance_id  TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
         remote_id    TEXT NOT NULL,
         title        TEXT NOT NULL,
         sort_title   TEXT,
@@ -117,12 +91,12 @@ export const CORE_MIGRATIONS: Migration[] = [
         fetched_at   INTEGER NOT NULL,
         raw_json     TEXT
       )`,
-      `CREATE INDEX idx_albums_source ON albums(source_id)`,
+      `CREATE INDEX idx_albums_instance ON albums(instance_id)`,
       `CREATE INDEX idx_albums_year ON albums(year)`,
 
       `CREATE TABLE tracks (
         urn               TEXT PRIMARY KEY,
-        source_id         TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        instance_id       TEXT NOT NULL REFERENCES providers(instance_id) ON DELETE CASCADE,
         remote_id         TEXT NOT NULL,
         title             TEXT NOT NULL,
         sort_title        TEXT,
@@ -143,7 +117,7 @@ export const CORE_MIGRATIONS: Migration[] = [
         raw_json          TEXT
       )`,
       `CREATE INDEX idx_tracks_album ON tracks(album_urn, disc_no, track_no)`,
-      `CREATE INDEX idx_tracks_source ON tracks(source_id)`,
+      `CREATE INDEX idx_tracks_instance ON tracks(instance_id)`,
       `CREATE INDEX idx_tracks_title ON tracks(sort_title)`,
 
       // A join with a role, not an artist string: "Artist feat. Other" as free
@@ -238,7 +212,7 @@ export const CORE_MIGRATIONS: Migration[] = [
       /* ── Playlists and library ─────────────────────────────────────── */
       `CREATE TABLE playlists (
         urn              TEXT PRIMARY KEY,
-        source_id        TEXT REFERENCES sources(id) ON DELETE CASCADE,
+        instance_id      TEXT REFERENCES providers(instance_id) ON DELETE CASCADE,
         remote_id        TEXT,
         name             TEXT NOT NULL,
         description      TEXT,
@@ -271,7 +245,7 @@ export const CORE_MIGRATIONS: Migration[] = [
       `CREATE TABLE library_items (
         urn         TEXT PRIMARY KEY,
         kind        TEXT NOT NULL,
-        source_id   TEXT NOT NULL,
+        instance_id TEXT NOT NULL,
         added_at    INTEGER NOT NULL,
         pinned      INTEGER NOT NULL DEFAULT 0,
         sort_key    TEXT
@@ -435,7 +409,7 @@ export const CORE_MIGRATIONS: Migration[] = [
       /* ── Lyrics and cache ──────────────────────────────────────────── */
       `CREATE TABLE lyrics (
         track_urn    TEXT NOT NULL,
-        source_id    TEXT NOT NULL,
+        instance_id  TEXT NOT NULL,
         format       TEXT NOT NULL,
         content      TEXT NOT NULL,
         synced       INTEGER NOT NULL DEFAULT 0,
@@ -443,7 +417,7 @@ export const CORE_MIGRATIONS: Migration[] = [
         language     TEXT NOT NULL DEFAULT '',
         is_preferred INTEGER NOT NULL DEFAULT 0,
         fetched_at   INTEGER NOT NULL,
-        PRIMARY KEY (track_urn, source_id, language)
+        PRIMARY KEY (track_urn, instance_id, language)
       )`,
       // LRU within a class, each with its own quota: evicting artwork costs a
       // re-fetch, evicting a partial stream costs the user their place.
@@ -489,6 +463,243 @@ export const CORE_MIGRATIONS: Migration[] = [
         urn   TEXT NOT NULL UNIQUE REFERENCES tracks(urn) ON DELETE CASCADE
       )`,
       `CREATE INDEX idx_tracks_fts_map_urn ON tracks_fts_map(urn)`,
+    ],
+  },
+  {
+    version: 3,
+    // ADR-5: a music backend stopped being a plugin and became an imported
+    // document, so `providers` (keyed on a configured instance id) becomes
+    // `sources` (keyed on a document's derived id), and every catalogue table
+    // renames `instance_id` to `source_id`.
+    //
+    // Forward-only, as docs/07 §6 requires: v1 is NOT edited. Editing it left
+    // any database that had already recorded core@1 computing pending=[] and
+    // never receiving the new tables — every later boot hitting "no such
+    // table: sources" with nothing to investigate.
+    //
+    // ⚠️ **DROP TABLE fires foreign key actions.** SQLite performs an implicit
+    // DELETE FROM before removing a table, so dropping `albums` sets every
+    // `tracks.album_urn` to NULL and dropping `tracks` cascades away every
+    // track_artists, track_genres, media_binding and FTS map row. The obvious
+    // create-copy-drop-rename therefore silently destroys the catalogue while
+    // reporting success. `PRAGMA foreign_keys = OFF` is not available either:
+    // SQLite ignores it inside a transaction, and the runner's transaction is
+    // load-bearing (a half-applied migration that records its version is
+    // unrecoverable).
+    //
+    // So: snapshot every row a cascade would take, rebuild, restore. The
+    // snapshots are `CREATE TABLE … AS SELECT`, which produces a table with no
+    // foreign keys of its own and is therefore untouched by any of this.
+    up: [
+      /* ── 1. sources, from providers ────────────────────────────────── */
+      `CREATE TABLE sources (
+        id                 TEXT PRIMARY KEY,
+        source_url         TEXT NOT NULL UNIQUE,
+        name               TEXT NOT NULL,
+        source_group       TEXT,
+        source_type        TEXT NOT NULL DEFAULT 'music',
+        doc_json           TEXT NOT NULL,
+        doc_hash           TEXT NOT NULL,
+        enabled            INTEGER NOT NULL DEFAULT 1,
+        sort_order         INTEGER NOT NULL DEFAULT 0,
+        capabilities_json  TEXT,
+        allowed_hosts_json TEXT,
+        locally_modified   INTEGER NOT NULL DEFAULT 0,
+        origin_uri         TEXT,
+        imported_at        INTEGER NOT NULL,
+        updated_at         INTEGER NOT NULL,
+        last_check_at      INTEGER,
+        last_error         TEXT,
+        fail_count         INTEGER NOT NULL DEFAULT 0,
+        respond_time_ms    INTEGER
+      )`,
+      // Existing providers predate the document format, so there is no
+      // document to recover. Each gets a minimal one that says exactly that,
+      // rather than a fabricated set of rules that would fail confusingly.
+      `INSERT INTO sources (id, source_url, name, source_type, doc_json, doc_hash,
+                            enabled, sort_order, capabilities_json, imported_at, updated_at)
+       SELECT instance_id,
+              'bbebee://migrated/' || instance_id,
+              display_name,
+              'music',
+              json_object('sourceUrl', 'bbebee://migrated/' || instance_id,
+                          'sourceName', display_name,
+                          'sourceComment',
+                          'Migrated from a pre-ADR-5 provider. Re-import the document to restore its rules.'),
+              'migrated-' || instance_id,
+              enabled,
+              sort_order,
+              capabilities_json,
+              created_at,
+              created_at
+       FROM providers`,
+      `CREATE INDEX idx_sources_enabled ON sources(enabled, sort_order)`,
+      `CREATE TABLE source_vars (
+        source_id  TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        key        TEXT NOT NULL,
+        value      TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (source_id, key)
+      )`,
+
+      /* ── 2. Snapshot everything a cascade would take ───────────────── */
+      `CREATE TABLE _mig3_track_album AS
+         SELECT urn, album_urn FROM tracks WHERE album_urn IS NOT NULL`,
+      `CREATE TABLE _mig3_track_artists AS SELECT * FROM track_artists`,
+      `CREATE TABLE _mig3_album_artists AS SELECT * FROM album_artists`,
+      `CREATE TABLE _mig3_track_genres AS SELECT * FROM track_genres`,
+      `CREATE TABLE _mig3_media_bindings AS SELECT * FROM media_bindings`,
+      `CREATE TABLE _mig3_scan_track AS
+         SELECT uri, track_urn FROM scan_entries WHERE track_urn IS NOT NULL`,
+      `CREATE TABLE _mig3_fts_map AS SELECT rowid AS rowid_, urn FROM tracks_fts_map`,
+      `CREATE TABLE _mig3_playlist_items AS SELECT * FROM playlist_items`,
+
+      /* ── 3. Rebuild each table that named providers ────────────────── */
+      `CREATE TABLE accounts_new (
+        source_id      TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+        remote_user_id TEXT,
+        display_name   TEXT,
+        status         TEXT NOT NULL,
+        expires_at     INTEGER,
+        updated_at     INTEGER NOT NULL
+      )`,
+      `INSERT INTO accounts_new SELECT instance_id, remote_user_id, display_name, status,
+                                      expires_at, updated_at FROM accounts`,
+      `DROP TABLE accounts`,
+      `ALTER TABLE accounts_new RENAME TO accounts`,
+
+      `CREATE TABLE artists_new (
+        urn         TEXT PRIMARY KEY,
+        source_id   TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        remote_id   TEXT NOT NULL,
+        name        TEXT NOT NULL,
+        sort_name   TEXT,
+        artwork_id  TEXT REFERENCES artworks(id),
+        bio         TEXT,
+        fetched_at  INTEGER NOT NULL,
+        raw_json    TEXT
+      )`,
+      `INSERT INTO artists_new SELECT urn, instance_id, remote_id, name, sort_name,
+                                     artwork_id, bio, fetched_at, raw_json FROM artists`,
+      `DROP TABLE artists`,
+      `ALTER TABLE artists_new RENAME TO artists`,
+      `CREATE INDEX idx_artists_source ON artists(source_id)`,
+      `CREATE INDEX idx_artists_sort ON artists(sort_name)`,
+
+      `CREATE TABLE albums_new (
+        urn          TEXT PRIMARY KEY,
+        source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        remote_id    TEXT NOT NULL,
+        title        TEXT NOT NULL,
+        sort_title   TEXT,
+        album_type   TEXT,
+        release_date TEXT,
+        year         INTEGER,
+        track_count  INTEGER,
+        disc_count   INTEGER,
+        artwork_id   TEXT REFERENCES artworks(id),
+        is_various   INTEGER NOT NULL DEFAULT 0,
+        fetched_at   INTEGER NOT NULL,
+        raw_json     TEXT
+      )`,
+      `INSERT INTO albums_new SELECT urn, instance_id, remote_id, title, sort_title, album_type,
+                                    release_date, year, track_count, disc_count, artwork_id,
+                                    is_various, fetched_at, raw_json FROM albums`,
+      `DROP TABLE albums`,
+      `ALTER TABLE albums_new RENAME TO albums`,
+      `CREATE INDEX idx_albums_source ON albums(source_id)`,
+      `CREATE INDEX idx_albums_year ON albums(year)`,
+
+      `CREATE TABLE tracks_new (
+        urn               TEXT PRIMARY KEY,
+        source_id         TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+        remote_id         TEXT NOT NULL,
+        title             TEXT NOT NULL,
+        sort_title        TEXT,
+        album_urn         TEXT REFERENCES albums(urn) ON DELETE SET NULL,
+        track_no          INTEGER,
+        disc_no           INTEGER,
+        duration_ms       INTEGER,
+        year              INTEGER,
+        explicit          INTEGER NOT NULL DEFAULT 0,
+        bpm               REAL,
+        replay_gain_track REAL,
+        replay_gain_album REAL,
+        peak_track        REAL,
+        available         INTEGER NOT NULL DEFAULT 1,
+        qualities_json    TEXT,
+        artwork_id        TEXT REFERENCES artworks(id),
+        fetched_at        INTEGER NOT NULL,
+        raw_json          TEXT
+      )`,
+      // album_urn comes from the snapshot: the live column was nulled when
+      // `albums` was dropped a few statements ago.
+      `INSERT INTO tracks_new
+         SELECT t.urn, t.instance_id, t.remote_id, t.title, t.sort_title,
+                (SELECT s.album_urn FROM _mig3_track_album s WHERE s.urn = t.urn),
+                t.track_no, t.disc_no, t.duration_ms, t.year, t.explicit, t.bpm,
+                t.replay_gain_track, t.replay_gain_album, t.peak_track, t.available,
+                t.qualities_json, t.artwork_id, t.fetched_at, t.raw_json
+         FROM tracks t`,
+      `DROP TABLE tracks`,
+      `ALTER TABLE tracks_new RENAME TO tracks`,
+      `CREATE INDEX idx_tracks_album ON tracks(album_urn, disc_no, track_no)`,
+      `CREATE INDEX idx_tracks_source ON tracks(source_id)`,
+      `CREATE INDEX idx_tracks_title ON tracks(sort_title)`,
+
+      `CREATE TABLE playlists_new (
+        urn              TEXT PRIMARY KEY,
+        source_id        TEXT REFERENCES sources(id) ON DELETE CASCADE,
+        remote_id        TEXT,
+        name             TEXT NOT NULL,
+        description      TEXT,
+        artwork_id       TEXT REFERENCES artworks(id),
+        owner            TEXT,
+        is_public        INTEGER NOT NULL DEFAULT 0,
+        is_smart         INTEGER NOT NULL DEFAULT 0,
+        smart_query_json TEXT,
+        track_count      INTEGER,
+        duration_ms      INTEGER,
+        revision         INTEGER NOT NULL DEFAULT 0,
+        remote_revision  TEXT,
+        sync_state       TEXT NOT NULL DEFAULT 'clean',
+        created_at       INTEGER NOT NULL,
+        updated_at       INTEGER NOT NULL
+      )`,
+      `INSERT INTO playlists_new SELECT urn, instance_id, remote_id, name, description, artwork_id,
+                                       owner, is_public, is_smart, smart_query_json, track_count,
+                                       duration_ms, revision, remote_revision, sync_state,
+                                       created_at, updated_at FROM playlists`,
+      `DROP TABLE playlists`,
+      `ALTER TABLE playlists_new RENAME TO playlists`,
+
+      // No foreign key on either, so a column rename is enough.
+      `ALTER TABLE library_items RENAME COLUMN instance_id TO source_id`,
+      `ALTER TABLE lyrics RENAME COLUMN instance_id TO source_id`,
+
+      /* ── 4. Restore what the cascades emptied ──────────────────────── */
+      `INSERT INTO track_artists SELECT * FROM _mig3_track_artists`,
+      `INSERT INTO album_artists SELECT * FROM _mig3_album_artists`,
+      `INSERT INTO track_genres SELECT * FROM _mig3_track_genres`,
+      `INSERT INTO media_bindings SELECT * FROM _mig3_media_bindings`,
+      `INSERT INTO playlist_items SELECT * FROM _mig3_playlist_items`,
+      `INSERT INTO tracks_fts_map (rowid, urn) SELECT rowid_, urn FROM _mig3_fts_map`,
+      `UPDATE scan_entries
+          SET track_urn = (SELECT s.track_urn FROM _mig3_scan_track s WHERE s.uri = scan_entries.uri)
+        WHERE track_urn IS NULL
+          AND EXISTS (SELECT 1 FROM _mig3_scan_track s WHERE s.uri = scan_entries.uri)`,
+
+      /* ── 5. Clean up ───────────────────────────────────────────────── */
+      `DROP TABLE _mig3_track_album`,
+      `DROP TABLE _mig3_track_artists`,
+      `DROP TABLE _mig3_album_artists`,
+      `DROP TABLE _mig3_track_genres`,
+      `DROP TABLE _mig3_media_bindings`,
+      `DROP TABLE _mig3_scan_track`,
+      `DROP TABLE _mig3_fts_map`,
+      `DROP TABLE _mig3_playlist_items`,
+      // Last: nothing references it any more.
+      `DROP TABLE providers`,
     ],
   },
 ]

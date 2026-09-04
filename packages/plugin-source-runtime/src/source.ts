@@ -12,7 +12,16 @@
  * from whatever produced the track, and resolution must still work.
  */
 
-import { NetworkError, NotFoundError, RuleError } from '@BBeBee/protocol'
+import {
+  AuthError,
+  hostAllowedBy,
+  NetworkError,
+  NotFoundError,
+  ProviderError,
+  RateLimitError,
+  RuleError,
+  UnavailableError,
+} from '@BBeBee/protocol'
 import type {
   AuthFlow,
   AuthStatus,
@@ -26,6 +35,7 @@ import type {
   StreamPrefs,
   Track,
 } from '@BBeBee/protocol'
+import { formatUrn } from '@BBeBee/protocol'
 import { evaluateRule, type TemplateScope } from '@BBeBee/source-rules'
 import { capabilitiesFor } from './capabilities.js'
 
@@ -87,8 +97,12 @@ export class DocumentSource {
     private readonly deps: SourceDeps,
   ) {
     this.auth = new DocumentAuth(record)
-    const declared = record.doc.ruleStream?.seekable
-    if (declared) this.seekable = this.renderOptional('seekable', declared, {}) !== 'false'
+    // ⚠️ No rule is evaluated here. `seekable` used to be rendered in the
+    // constructor against an empty scope, so a perfectly reasonable document
+    // — `seekable: '={{prefs.saveData}}'` — threw a RuleError during
+    // construction, which propagated through `startOne` out of `apply` and
+    // marked the *whole plugin* FAILED. Every source became unusable, on
+    // every boot. A rule is evaluated when it has a scope to be evaluated in.
   }
 
   get sourceId(): string {
@@ -109,10 +123,17 @@ export class DocumentSource {
    * every screen checks `capabilities` before reaching for a member.
    */
   provider(): MediaProvider {
+    // `capabilities` is a getter, not a value. Snapshotting it at registration
+    // froze `streaming.seekable` at its default of true, so what the HEAD
+    // probe learned never reached the UI — an over-declaration of exactly the
+    // kind deriving capabilities exists to prevent (docs/11 §4.10).
+    const capabilities = () => this.capabilities
     return {
       sourceId: this.record.id,
       displayName: this.record.name,
-      capabilities: this.capabilities,
+      get capabilities() {
+        return capabilities()
+      },
       auth: this.auth,
       getTrack: (id) => this.getTrack(id),
       resolveStream: (id, prefs) => this.resolveStream(id, prefs),
@@ -124,7 +145,7 @@ export class DocumentSource {
     const payload = await this.payloadFor(id)
     const title = typeof payload?.title === 'string' ? payload.title : lastSegment(this.record.sourceUrl)
     return {
-      urn: `BBeBee:${this.record.id}:track:${id}`,
+      urn: formatUrn({ sourceId: this.record.id, kind: 'track', id }),
       title,
       artists: [],
       available: true,
@@ -157,6 +178,12 @@ export class DocumentSource {
       sourceId: this.record.id,
     })
 
+    // The one artifact that leaves this package and is fetched by something
+    // else: `ctx.audio` loads it directly, outside the source's scoped http.
+    // Without this check the egress allowlist would govern one optional HEAD
+    // and nothing that actually moves bytes — nominal, not real.
+    this.assertAllowed(target)
+
     const declaredSeekable = rules.seekable
       ? this.renderOptional('seekable', rules.seekable, scope) !== 'false'
       : undefined
@@ -182,7 +209,13 @@ export class DocumentSource {
     }
   }
 
-  /** Cheap by contract: one HEAD against the base URL, and no rules run. */
+  /**
+   * Cheap by contract: one HEAD against the base URL, and no rules run.
+   *
+   * "Reachable" is the question, not "healthy". A server that refuses HEAD or
+   * demands credentials is reachable — reporting it unreachable would make the
+   * source list say the network is down when the network is fine.
+   */
   async ping(): Promise<boolean> {
     try {
       const res = await this.deps.http({
@@ -190,7 +223,9 @@ export class DocumentSource {
         method: 'HEAD',
         timeoutMs: 5000,
       })
-      return res.status < 400
+      if (res.status === 405 || res.status === 501) return true
+      if (res.status === 401 || res.status === 403) return true
+      return res.status < 500
     } catch {
       return false
     }
@@ -225,21 +260,46 @@ export class DocumentSource {
     })
   }
 
+  /** Refuse a URL to a host this source did not declare. */
+  private assertAllowed(target: string): void {
+    let host: string
+    try {
+      host = new URL(target).hostname.toLowerCase()
+    } catch {
+      throw new ProviderError(`ruleStream.url produced a malformed URL`, this.record.id)
+    }
+    if (!hostAllowedBy(host, this.record.allowedHosts)) {
+      throw new UnavailableError(
+        `${this.record.id} did not declare ${host}; add it to allowedHosts and re-import`,
+        this.record.id,
+      )
+    }
+  }
+
   /**
    * Ask the server what it will serve.
    *
-   * A server that refuses HEAD is common, so a failure here is not fatal —
-   * playback is attempted anyway and the player's own error path deals with it.
-   * A 4xx *is* fatal, because it names a URL that will not play.
+   * ⚠️ A status code is not a diagnosis, and collapsing them all into
+   * `NotFoundError` made three separate lies: a HEAD-refusing server (405/501,
+   * which the code itself called common) was reported as a dead URL; an
+   * expired session (401/403) skipped the re-login path; and a transient 500
+   * became non-retryable, so a blip halted playback and a health check killed
+   * a live source.
    */
   private async probe(
     url: string,
   ): Promise<{ seekable: boolean; byteLength?: number; mimeType?: string } | undefined> {
+    let head
     try {
-      const head = await this.deps.http({ url, method: 'HEAD' })
-      if (head.status >= 400) {
-        throw new NotFoundError(`${head.status} for ${url}`, this.record.id)
-      }
+      head = await this.deps.http({ url, method: 'HEAD' })
+    } catch (error) {
+      // Transport failure. Not fatal: plenty of servers dislike HEAD, and the
+      // player's own error path handles a target that turns out to be dead.
+      if (error instanceof NetworkError) return undefined
+      throw error
+    }
+
+    if (head.status < 400) {
       const length = Number(head.headers['content-length'] ?? '')
       const mimeType = head.headers['content-type']
       return {
@@ -247,11 +307,23 @@ export class DocumentSource {
         ...(Number.isFinite(length) && length > 0 ? { byteLength: length } : {}),
         ...(mimeType ? { mimeType } : {}),
       }
-    } catch (error) {
-      if (error instanceof NotFoundError) throw error
-      if (!(error instanceof NetworkError)) throw error
-      return undefined
     }
+
+    // The server answered, and what it said matters.
+    if (head.status === 405 || head.status === 501) return undefined // no HEAD; assume playable
+    if (head.status === 404 || head.status === 410) {
+      throw new NotFoundError(`${head.status} for ${url}`, this.record.id)
+    }
+    if (head.status === 401 || head.status === 403) {
+      throw new AuthError(`${head.status} for ${url}`, this.record.id)
+    }
+    if (head.status === 429) {
+      throw new RateLimitError(`rate limited by ${new URL(url).hostname}`, 60_000, this.record.id)
+    }
+    if (head.status >= 500) {
+      throw new NetworkError(`${head.status} from ${url}`, this.record.id)
+    }
+    throw new ProviderError(`${head.status} for ${url}`, this.record.id)
   }
 }
 

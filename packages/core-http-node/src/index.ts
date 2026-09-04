@@ -18,7 +18,7 @@ import { Service } from 'cordis'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import { assertHost } from '@BBeBee/kernel'
-import { NetworkError } from '@BBeBee/protocol'
+import { CapabilityError, NetworkError } from '@BBeBee/protocol'
 import type {
   Cookie,
   CookieJar,
@@ -44,6 +44,14 @@ export interface HttpNodeConfig {
   /** Sent on every request unless overridden. */
   userAgent?: string
 }
+
+/**
+ * Redirect hops we will follow before giving up.
+ *
+ * Matches what `fetch` allows, so raising the check to our own loop does not
+ * change behaviour for honest servers.
+ */
+const MAX_REDIRECTS = 20
 
 export class HttpNode extends Service {
   static inject = ['fs']
@@ -158,11 +166,6 @@ export class HttpNode extends Service {
   }
 
   private async send(req: HttpRequest): Promise<HttpResponse> {
-    // Re-checked after the waterfall: a listener may legitimately rewrite the
-    // URL (a redirect policy, a proxy), and the rewritten host must be granted
-    // too.
-    assertHost(this[Service.resolveConfig](), req.url)
-
     const controller = new AbortController()
     const timeoutMs = req.timeoutMs ?? this.config.defaultTimeoutMs
     const timer =
@@ -171,17 +174,14 @@ export class HttpNode extends Service {
     req.signal?.addEventListener('abort', onAbort)
 
     try {
-      const response = await this.config.fetch(req.url, {
-        method: req.method ?? 'GET',
-        headers: { 'user-agent': this.config.userAgent, ...req.headers },
-        ...(req.body !== undefined ? { body: req.body as BodyInit } : {}),
-        redirect: req.redirect ?? 'follow',
-        signal: controller.signal,
-      })
-      return wrap(response, req.onProgress)
+      return await this.followRedirects(req, controller)
     } catch (error) {
-      // Transport failures are `NetworkError`, which is the one class the
-      // player retries with backoff (docs/06 §6).
+      // A capability refusal is not a transport failure. It has to propagate
+      // as itself: `NetworkError` is the one class the player retries with
+      // backoff (docs/06 §7), so wrapping it would turn a blocked request into
+      // an endlessly retried one and hide *why* it was blocked. This matters
+      // now that the host check runs per redirect hop, inside this try.
+      if (error instanceof CapabilityError) throw error
       throw new NetworkError(
         error instanceof Error ? error.message : String(error),
         undefined,
@@ -191,6 +191,51 @@ export class HttpNode extends Service {
       if (timer) clearTimeout(timer)
       req.signal?.removeEventListener('abort', onAbort)
     }
+  }
+
+  private async followRedirects(
+    req: HttpRequest,
+    controller: AbortController,
+  ): Promise<HttpResponse> {
+    const mode = req.redirect ?? 'follow'
+    let url = req.url
+
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      // Every hop, not just the first. A listener may also have rewritten the
+      // URL during the waterfall, and the rewritten host must be granted too.
+      assertHost(this[Service.resolveConfig](), url)
+
+      const response = await this.config.fetch(url, {
+        method: req.method ?? 'GET',
+        headers: { 'user-agent': this.config.userAgent, ...req.headers },
+        ...(req.body !== undefined ? { body: req.body as BodyInit } : {}),
+        // Always manual: following internally would skip the check above.
+        redirect: 'manual',
+        signal: controller.signal,
+      })
+
+      const location = response.headers.get('location')
+      const isRedirect = response.status >= 300 && response.status < 400 && location
+
+      if (!isRedirect || mode !== 'follow') {
+        if (isRedirect && mode === 'error') {
+          throw new NetworkError(`unexpected redirect from ${url}`)
+        }
+        return wrap(response, req.onProgress)
+      }
+
+      let next: string
+      try {
+        next = new URL(location, url).href
+      } catch {
+        throw new NetworkError(`malformed redirect from ${url}: ${location}`)
+      }
+      // Draining keeps the socket reusable; a redirect body is never read.
+      await response.body?.cancel().catch(() => {})
+      url = next
+    }
+
+    throw new NetworkError(`too many redirects: ${req.url}`)
   }
 }
 

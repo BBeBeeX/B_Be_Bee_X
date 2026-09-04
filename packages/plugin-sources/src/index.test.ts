@@ -216,3 +216,172 @@ describe('searchAll', () => {
     await expect(sources.searchAll(query)).resolves.toEqual({ bySource: [] })
   })
 })
+
+describe('importing documents', () => {
+  const doc = (extra: Record<string, unknown> = {}) => ({
+    sourceUrl: 'https://music.example.org',
+    sourceName: 'Example',
+    ruleStream: { url: '={{source.url}}' },
+    ...extra,
+  })
+
+  it('adds a source, and reports it', async () => {
+    const { sources } = await withSources()
+    const report = await sources.import(JSON.stringify(doc()))
+
+    expect(report.added).toHaveLength(1)
+    expect(report.rejected).toEqual([])
+    expect(sources.sources).toHaveLength(1)
+    expect(sources.source(report.added[0]!.id)).toBeDefined()
+  })
+
+  it('round-trips byte for byte through export', async () => {
+    // The promise in docs/07 §4.1: export emits what was imported. A
+    // re-serialisation would reorder keys and normalise spacing, and the first
+    // time a user's document comes back different they stop trusting export.
+    const original = '{\n  "sourceName": "Example",\n  "sourceUrl": "https://music.example.org",\n  "ruleStream": {"url": "={{source.url}}"},\n  "unknownFutureField": [1, 2]\n}'
+    const { sources } = await withSources()
+    await sources.import(original)
+
+    const exported = await sources.export()
+    const parsed = JSON.parse(exported) as unknown[]
+    expect(parsed).toHaveLength(1)
+    // The stored text is the exact slice that came in.
+    expect(sources.sources[0]!.docJson).toBe(original)
+    // And an unknown field from a newer document version survived.
+    expect((parsed[0] as Record<string, unknown>).unknownFutureField).toEqual([1, 2])
+  })
+
+  it('re-importing the same document is an update, not a duplicate', async () => {
+    const { sources } = await withSources()
+    const first = await sources.import(JSON.stringify(doc()))
+    const again = await sources.import(JSON.stringify(doc()))
+
+    expect(again.added).toEqual([])
+    expect(again.unchanged).toHaveLength(1)
+    expect(sources.sources).toHaveLength(1)
+    // Identity is preserved, so every URN and cached row still resolves.
+    expect(again.unchanged[0]!.id).toBe(first.added[0]!.id)
+  })
+
+  it('reports which fields an update changed', async () => {
+    const { sources } = await withSources()
+    await sources.import(JSON.stringify(doc()))
+    const report = await sources.import(JSON.stringify(doc({ sourceName: 'Renamed' })))
+
+    expect(report.updated).toHaveLength(1)
+    expect(report.updated[0]!.changedFields).toEqual(['sourceName'])
+  })
+
+  it('does not re-enable a source the user switched off', async () => {
+    // An author publishing an update must not undo the user's own decision.
+    const { sources } = await withSources()
+    const report = await sources.import(JSON.stringify(doc()))
+    const id = report.added[0]!.id
+    await sources.setEnabled(id, false)
+
+    await sources.import(JSON.stringify(doc({ sourceName: 'Renamed' })))
+    expect(sources.source(id)!.enabled).toBe(false)
+  })
+
+  it('one malformed entry never rejects the rest of a set', async () => {
+    const { sources } = await withSources()
+    const set = JSON.stringify([
+      doc({ sourceUrl: 'https://a.test' }),
+      { sourceName: 'no url, no rules' },
+      doc({ sourceUrl: 'https://b.test' }),
+    ])
+
+    const report = await sources.import(set)
+    expect(report.added).toHaveLength(2)
+    expect(report.rejected).toHaveLength(1)
+    expect(report.rejected[0]!.index).toBe(1)
+    // The structured issues survive, so the screen can list them per path.
+    expect(report.rejected[0]!.error.issues.length).toBeGreaterThan(0)
+    expect(sources.sources).toHaveLength(2)
+  })
+
+  it('reports a storage failure on one entry without losing the others', async () => {
+    // Two distinct guarantees, and they pull in different directions. The
+    // documented one is *partial* import: one bad entry in a set of forty
+    // must not cost the other thirty-nine. What was broken is what happened
+    // around it — a `put` that threw rejected the whole call, so the report
+    // was lost, `refresh()` never ran, and the in-memory list went stale
+    // while rows sat committed in the database.
+    //
+    // So: the write is one transaction (a crash mid-import cannot leave half
+    // a set), and each entry has its own catch (a bad entry is data, not an
+    // outage).
+    const { ctx, sources } = await withSources()
+    const set = JSON.stringify([doc({ sourceUrl: 'https://a.test' }), doc({ sourceUrl: 'https://b.test' })])
+
+    // The write happens on the transaction handle, so that is what fails.
+    let inserts = 0
+    const realTransaction = ctx.db.transaction.bind(ctx.db)
+    ;(ctx.db as { transaction: unknown }).transaction = <T,>(fn: (tx: never) => Promise<T>) =>
+      realTransaction(async (tx) => {
+        const guarded = {
+          ...tx,
+          exec: async (sql: string, params?: never[]) => {
+            if (sql.includes('INSERT INTO sources') && ++inserts === 2) {
+              throw new Error('disk full')
+            }
+            return tx.exec(sql, params)
+          },
+        }
+        return fn(guarded as never)
+      })
+
+    const report = await sources.import(set)
+    ;(ctx.db as { transaction: unknown }).transaction = realTransaction
+
+    // The call resolves with a report rather than throwing it away, the good
+    // entry is stored, and the failure is attributable to its position.
+    expect(report.added).toHaveLength(1)
+    expect(report.added[0]!.sourceUrl).toBe('https://a.test')
+    expect(report.rejected).toHaveLength(1)
+    expect(report.rejected[0]!.index).toBe(1)
+    // And the in-memory list matches the database, which is what went stale.
+    expect(sources.sources).toHaveLength(1)
+  })
+
+  it('selects a subset of a set when asked', async () => {
+    const { sources } = await withSources()
+    const set = JSON.stringify([doc({ sourceUrl: 'https://a.test' }), doc({ sourceUrl: 'https://b.test' })])
+    const report = await sources.import(set, { select: ['https://b.test'] })
+
+    expect(report.added).toHaveLength(1)
+    expect(report.added[0]!.sourceUrl).toBe('https://b.test')
+  })
+
+  it('emits one event per source, not two', async () => {
+    // Emitting `imported` *and* `changed` for an update made the runtime stop
+    // and start that source twice, with duplicate registration events.
+    const { ctx, sources } = await withSources()
+    await sources.import(JSON.stringify(doc()))
+
+    const events: string[] = []
+    ctx.on('source/imported', () => void events.push('imported'))
+    ctx.on('source/changed', () => void events.push('changed'))
+    await sources.import(JSON.stringify(doc({ sourceName: 'Renamed' })))
+
+    expect(events).toEqual(['changed'])
+  })
+
+  it('records the egress allowlist the user was shown', async () => {
+    const { sources } = await withSources()
+    await sources.import(JSON.stringify(doc({ allowedHosts: ['cdn.example.org'] })))
+    expect(sources.sources[0]!.allowedHosts).toEqual(['cdn.example.org', 'music.example.org'])
+  })
+
+  it('removing keeps the library unless asked otherwise', async () => {
+    const { sources } = await withSources()
+    const id = (await sources.import(JSON.stringify(doc()))).added[0]!.id
+
+    await sources.remove(id)
+    expect(sources.source(id)?.enabled, 'kept, disabled').toBe(false)
+
+    await sources.remove(id, { forgetCatalogue: true })
+    expect(sources.source(id)).toBeUndefined()
+  })
+})

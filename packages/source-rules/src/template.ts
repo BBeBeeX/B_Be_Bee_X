@@ -48,7 +48,9 @@ export interface TemplateScope {
 }
 
 const TEMPLATE_PREFIX = '='
-const PLACEHOLDER = /\{\{([^{}]*)\}\}/g
+const PLACEHOLDER = /[{]{2}([^{}]*)[}]{2}/g
+/** A brace left over after every well-formed placeholder was consumed. */
+const STRAY_BRACE = /[{]{2}|[}]{2}/
 
 /** Whether a rule is a `=` template, and so within this module's slice. */
 export function isTemplate(rule: string): boolean {
@@ -82,7 +84,16 @@ export function evaluateRule(rule: string, scope: TemplateScope, site: RuleSite)
  * language runs expressions inside `ctx.js`; there is no sandbox in this
  * slice, so there is no `eval` either. A path this cannot resolve is a
  * `RuleError`, not an empty string: a stream URL with a silently missing id
- * fails minutes later in a way nobody can diagnose.
+ * fails minutes later in a way nobody can diagnose. So is an unbalanced
+ * placeholder, for the same reason.
+ *
+ * ⚠️ Interpolation is **verbatim**, not URL-encoded. A value containing `&`,
+ * `#` or a space rewrites the structure of the URL it lands in, which is
+ * parameter smuggling within the source's own host. Encoding here would
+ * corrupt the many rules that interpolate a whole URL or a query fragment, so
+ * the encoding filter belongs in the full language (`{{x|url}}`); until it
+ * exists, a document interpolating attacker-influenced text into a URL is
+ * relying on its backend to be sane about it.
  */
 export function renderTemplate(template: string, scope: TemplateScope, site: RuleSite): string {
   let failure: RuleError | undefined
@@ -90,7 +101,7 @@ export function renderTemplate(template: string, scope: TemplateScope, site: Rul
   const out = template.replace(PLACEHOLDER, (_match, expr: string) => {
     const path = expr.trim()
     if (!path) {
-      failure ??= ruleError(`empty {{ }} placeholder`, site)
+      failure ??= ruleError('empty {{ }} placeholder', site)
       return ''
     }
 
@@ -107,6 +118,15 @@ export function renderTemplate(template: string, scope: TemplateScope, site: Rul
   })
 
   if (failure) throw failure
+
+  // An unbalanced placeholder is a typo, and passing it through as literal
+  // text is how it becomes a URL containing "{{track.id" that fails three
+  // steps later as an unexplained 404. The module's own promise is to refuse
+  // what it does not understand, and that has to include this.
+  if (STRAY_BRACE.test(out)) {
+    throw ruleError(`unbalanced {{ }} in ${JSON.stringify(template)}`, site)
+  }
+
   return out
 }
 

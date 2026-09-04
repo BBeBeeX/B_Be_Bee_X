@@ -37,6 +37,18 @@ export const DEFAULT_JS_LIMITS: JsLimits = {
   maxResultBytes: 1024 * 1024,
 }
 
+/** A script threw. Distinct from a limit breach, which is not the author's bug. */
+export class JsScriptError extends Error {
+  override readonly name = 'JsScriptError'
+  constructor(
+    message: string,
+    /** The realm-side stack, if the engine could produce one. Untrusted text. */
+    readonly scriptStack?: string,
+  ) {
+    super(message)
+  }
+}
+
 export interface JsRealm {
   /**
    * Evaluate `code` with `scope` bound as globals.
@@ -47,18 +59,50 @@ export interface JsRealm {
    */
   eval<T = unknown>(code: string, scope?: Record<string, unknown>): Promise<T>
 
-  /** Install a host function callable from inside. Arguments arrive cloned. */
-  expose(name: string, fn: (...args: never[]) => unknown): Disposable
+  /**
+   * Install a host function callable from inside.
+   *
+   * Arguments arrive **structured-cloned and unvalidated** — they are whatever
+   * the script passed, so the host function validates its own inputs. The
+   * parameter type is `unknown[]`, not `never[]`: `never[]` would let a host
+   * function declare `(url: string)` and be silently wrong at runtime.
+   *
+   * ⚠️ A returned promise is awaited by driving the realm's job queue. The
+   * implementation must pump that queue while awaiting, or a script that
+   * awaits a host call deadlocks — the single most common way to get a QuickJS
+   * embedding wrong.
+   */
+  expose(name: string, fn: (...args: unknown[]) => unknown | Promise<unknown>): Disposable
 
-  /** Evaluate once at realm creation — a source document's `jsLib`. */
+  /**
+   * Evaluate once at realm creation — a source document's `jsLib`.
+   *
+   * Ordering is part of the contract: every `preload` completes, in call
+   * order, before the first `eval` runs. A `jsLib` that defines a helper the
+   * first rule uses would otherwise fail intermittently.
+   */
   preload(code: string): Promise<void>
 
-  /** Registered through `ctx.effect()` by the caller: this is a native handle. */
+  /**
+   * Dispose the realm and its native handle. **Idempotent.**
+   *
+   * Every later call rejects with `JsRealmDisposedError` rather than crashing
+   * or, worse, resurrecting the realm. Registered through `ctx.effect()` by
+   * the caller, so a leaked realm is a leaked native handle the leak test
+   * catches.
+   */
   dispose(): void
 }
 
 export interface JsService {
-  /** A fresh realm with ECMAScript builtins and nothing else. */
+  /**
+   * A fresh realm with ECMAScript builtins and nothing else.
+   *
+   * A realm that breached a limit is **poisoned**: its state after an
+   * interrupt is undefined, so the implementation must reject every later
+   * `eval` on it rather than continue. Callers create a new realm; they do not
+   * retry into the old one.
+   */
   createRealm(limits?: Partial<JsLimits>): Promise<JsRealm>
   /**
    * Reported so a rule can branch on it and a trace can record it. Two QuickJS
@@ -85,6 +129,14 @@ export class JsMemoryError extends Error {
 /** A value crossed the boundary that structured clone cannot carry. */
 export class JsBridgeError extends Error {
   override readonly name = 'JsBridgeError'
+}
+
+/** The realm is gone — disposed, or poisoned by a limit breach. */
+export class JsRealmDisposedError extends Error {
+  override readonly name = 'JsRealmDisposedError'
+  constructor(readonly reason: 'disposed' | 'timeout' | 'memory' = 'disposed') {
+    super(`the realm is no longer usable (${reason})`)
+  }
 }
 
 declare module 'cordis' {

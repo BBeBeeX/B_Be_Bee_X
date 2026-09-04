@@ -1,3 +1,5 @@
+import type { SourceFormatError } from '../errors.js'
+
 /**
  * The **source document** — a music backend, as a string a user can import.
  *
@@ -219,9 +221,20 @@ export interface ImportReport {
   added: SourceRecord[]
   updated: { record: SourceRecord; changedFields: string[] }[]
   unchanged: SourceRecord[]
-  /** One malformed entry never rejects the rest of a set. */
-  rejected: { index: number; sourceName?: string; message: string }[]
-  /** Would overwrite locally-modified fields; needs `overwrite` to proceed. */
+  /**
+   * One malformed entry never rejects the rest of a set.
+   *
+   * Carries the `SourceFormatError` itself, not a flattened string: the import
+   * screen lists issues per path, and fixing a document one message at a time
+   * is exactly the misery the multi-issue error exists to avoid.
+   */
+  rejected: { index: number; sourceName?: string; error: SourceFormatError }[]
+  /**
+   * Would overwrite a document the user edited in the app. Needs `overwrite`.
+   *
+   * Separate from `rejected` because nothing is wrong with these documents —
+   * the user is being asked a question, not shown a failure.
+   */
   conflicts: { record: SourceRecord; changedFields: string[] }[]
 }
 
@@ -245,18 +258,29 @@ export type DebugStep =
   | { kind: 'stream'; urn: string }
 
 /**
+ * Text that has been through the trace redactor.
+ *
+ * A distinct type rather than a comment, because "remember to redact" is the
+ * kind of obligation that survives exactly one refactor. Anything assigned to
+ * one of these fields has to come from `redactForTrace`, so a `url` carrying
+ * `{{source.var}}` — the common case, not the exotic one — cannot reach a
+ * trace by being forgotten about.
+ */
+export type Redacted = string & { readonly __redacted: unique symbol }
+
+/**
  * One line of a rule trace.
  *
- * `input` and `output` are truncated *and redacted* before they leave the
- * runtime: a trace is the thing users paste into a forum thread asking for
- * help, so a cookie in one is a credential leak with a helpful UI on top.
+ * Every field that can carry user data is `Redacted` and truncated before it
+ * leaves the runtime: a trace is the thing users paste into a forum thread
+ * asking for help, so a credential in one is a leak with a helpful UI on top.
  */
 export type TraceEvent =
   | {
       at: number
       kind: 'http'
       method: string
-      url: string
+      url: Redacted
       status: number
       ms: number
       bytes: number
@@ -267,10 +291,10 @@ export type TraceEvent =
       block: string
       field: string
       engine: string
-      rule: string
-      input: string
-      output: string
+      rule: Redacted
+      input: Redacted
+      output: Redacted
       ms: number
     }
-  | { at: number; kind: 'error'; message: string; block?: string; field?: string }
-  | { at: number; kind: 'result'; summary: string }
+  | { at: number; kind: 'error'; message: Redacted; block?: string; field?: string }
+  | { at: number; kind: 'result'; summary: Redacted }

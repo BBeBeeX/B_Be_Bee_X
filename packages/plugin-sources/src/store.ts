@@ -10,7 +10,7 @@
  */
 
 import type { DbService, SourceDocument, SourceRecord, SourceType, SqlValue } from '@BBeBee/protocol'
-import { hash32 } from './identity.js'
+import { docHashOf } from './identity.js'
 
 interface SourceRow {
   id: string
@@ -42,7 +42,7 @@ export class SourceStore {
 
   async all(): Promise<SourceRecord[]> {
     const rows = await this.db.query<SourceRow>(
-      `SELECT ${COLUMNS} FROM sources ORDER BY sort_order, name`,
+      `SELECT ${COLUMNS} FROM sources ORDER BY sort_order, name COLLATE NOCASE`,
     )
     return rows.map(toRecord).filter((r): r is SourceRecord => r !== undefined)
   }
@@ -58,9 +58,14 @@ export class SourceStore {
   /**
    * Insert or replace one source.
    *
-   * `capabilities_json` is written by the runtime once it has derived them;
-   * this only stores what the document itself determines, so a row is never
-   * left claiming a capability its rules cannot back.
+   * `capabilities_json` is deliberately not written here.
+   *
+   * It exists so the source list can render before a source connects, and it
+   * is a *cache* of something derived — so the only honest writer is whatever
+   * did the deriving. Nothing does yet: the runtime computes capabilities live
+   * from the document on every read (docs/06 §1.3), which is cheap and cannot
+   * go stale. A setter with no caller would be a column that looks maintained
+   * and is not.
    */
   async put(record: SourceRecord): Promise<void> {
     await this.db.exec(
@@ -73,7 +78,9 @@ export class SourceStore {
          source_type = excluded.source_type,
          doc_json = excluded.doc_json,
          doc_hash = excluded.doc_hash,
-         enabled = excluded.enabled,
+         -- NOTE: enabled is deliberately absent. It is the user's switch, not
+         -- the document's: an author publishing an update must not turn a
+         -- source back on that the user switched off. setEnabled owns it.
          sort_order = excluded.sort_order,
          allowed_hosts_json = excluded.allowed_hosts_json,
          locally_modified = excluded.locally_modified,
@@ -121,16 +128,32 @@ export class SourceStore {
    *
    *   forgetCatalogue: true   delete the row; the cascade drops its tracks,
    *                           albums, artists, account and vars
-   *   forgetCatalogue: false  keep the row as a disabled tombstone, so the
-   *                           library stays browsable and re-importing the
-   *                           same document revives it with the same id
+   *   forgetCatalogue: false  keep the row, disabled, so the library stays
+   *                           browsable and the switch in the source list
+   *                           brings the source back
    *
    * The default is `false`, because losing a library to a mis-tapped button is
-   * far worse than a stale row nothing reads.
+   * far worse than a stale row nothing reads. Re-importing the document does
+   * *not* re-enable it: a disabled row is either "removed, kept the library"
+   * or "switched off", nothing distinguishes them, and guessing wrong turns a
+   * source the user silenced back on.
    */
   async remove(id: string, opts: { forgetCatalogue?: boolean } = {}, now = Date.now()): Promise<void> {
     if (opts.forgetCatalogue) {
-      await this.db.exec(`DELETE FROM sources WHERE id = ?`, [id])
+      await this.db.transaction(async (tx) => {
+        // The FK cascade reaches tracks, albums, artists, accounts and vars.
+        // It does *not* reach these three, which key on the source or the
+        // track by value rather than by reference — so without this they
+        // accumulate forever: stale FTS hits for tracks that no longer exist,
+        // lyrics nothing can display, library rows pointing at dead URNs.
+        await tx.exec(
+          `DELETE FROM tracks_fts_map WHERE urn IN (SELECT urn FROM tracks WHERE source_id = ?)`,
+          [id],
+        )
+        await tx.exec(`DELETE FROM lyrics WHERE source_id = ?`, [id])
+        await tx.exec(`DELETE FROM library_items WHERE source_id = ?`, [id])
+        await tx.exec(`DELETE FROM sources WHERE id = ?`, [id])
+      })
       return
     }
     await this.db.exec(
@@ -152,13 +175,6 @@ export class SourceStore {
     )
   }
 
-  /** Written by the runtime once capabilities are derived from the document. */
-  async setCapabilities(id: string, capabilitiesJson: string): Promise<void> {
-    await this.db.exec(`UPDATE sources SET capabilities_json = ? WHERE id = ?`, [
-      capabilitiesJson,
-      id,
-    ])
-  }
 }
 
 function toRecord(row: SourceRow): SourceRecord | undefined {
@@ -178,7 +194,7 @@ function toRecord(row: SourceRow): SourceRecord | undefined {
     type: (row.source_type as SourceType) ?? 'music',
     doc,
     docJson: row.doc_json,
-    docHash: row.doc_hash || hash32(row.doc_json),
+    docHash: row.doc_hash || docHashOf(row.doc_json),
     enabled: row.enabled === 1,
     sortOrder: row.sort_order,
     allowedHosts: parseHosts(row.allowed_hosts_json),

@@ -48,7 +48,7 @@ import type { Uri, Disposable } from '@BBeBee/protocol'
 
 /** Internal. Two implementations: the source runtime, and plugin-source-local. */
 export interface MediaProvider {
-  readonly sourceId: string             // 'music-example-org-4f1a'
+  readonly sourceId: string             // 'music-example-org-35be9fe2'
   readonly displayName: string
   readonly capabilities: Capabilities   // derived — see §1.3
   readonly auth: ProviderAuth           // synthesised from the document — see §5
@@ -82,11 +82,18 @@ misconfigured one.
 
 ```
 sourceUrl  https://music.example.org
-       ↓   slugified host + 4 hex of sha256(sourceUrl)
-id         music-example-org-4f1a
+       ↓   slugified host + the first 8 hex of sha256(sourceUrl)
+id         music-example-org-35be9fe2
        ↓
-URN        BBeBee:music-example-org-4f1a:track:8f1a2c
+URN        BBeBee:music-example-org-35be9fe2:track:8f1a2c
 ```
+
+> The digest is **SHA-256**, and the suffix is 32 bits of it. Not decoration:
+> the id is a primary key, so a collision does not merely confuse a listing —
+> it makes one source's row overwrite another's. `doc_hash`
+> ([07 §4.1](./07-data-model.md#41-sources-accounts-and-sessions)) is the full
+> digest for the same reason, one step worse: it decides whether a re-import is
+> an update or a no-op, so a collision there silently skips the update.
 
 The id is derived, stable, and short enough to read in a log line. It occupies the URN's second
 segment, which is the segment [07 §1](./07-data-model.md#1-identity-the-urn) always reserved for
@@ -499,8 +506,29 @@ export interface SourcesService {
   import(input: string, opts?: ImportOptions): Promise<ImportReport>
   export(ids?: string[]): Promise<string>
   setEnabled(id: string, on: boolean): Promise<void>
+  /**
+   * Remove a source.
+   *
+   * ⚠️ The two modes differ in what survives, and the difference is forced by
+   * the schema rather than chosen: catalogue rows are `ON DELETE CASCADE`, so
+   * deleting the row *necessarily* takes the library with it. There is no
+   * third option where the row is gone and the tracks remain — those would be
+   * orphans with unresolvable URNs.
+   *
+   *   forgetCatalogue: true   delete the row; the cascade drops its tracks,
+   *                           albums, artists, account and vars
+   *   forgetCatalogue: false  (default) keep the row, disabled, so the library
+   *                           stays browsable and the source list brings it back
+   *
+   * The default is the safe one: losing a library to a mis-tapped button is
+   * far worse than a stale row nothing reads.
+   */
   remove(id: string, opts?: { forgetCatalogue?: boolean }): Promise<void>
-  check(ids?: string[], opts?: { signal?: AbortSignal }): Promise<CheckReport[]>
+  /** Every step gets `timeoutMs`, so one hanging source cannot hold the run. */
+  check(
+    ids?: string[],
+    opts?: { signal?: AbortSignal; timeoutMs?: number },
+  ): Promise<CheckReport[]>
   debug(id: string, step: DebugStep): AsyncIterable<TraceEvent>
 }
 
@@ -944,7 +972,15 @@ export interface ImportReport {
   added: SourceRecord[]
   updated: { record: SourceRecord; changedFields: string[] }[]
   unchanged: SourceRecord[]
+  /** One malformed entry never rejects the rest of a set. */
   rejected: { index: number; sourceName?: string; error: SourceFormatError }[]
+  /**
+   * Would overwrite a document the user edited in the app. Needs `overwrite`.
+   *
+   * Separate from `rejected` because nothing is wrong with these documents —
+   * the user is being asked a question, not shown a failure.
+   */
+  conflicts: { record: SourceRecord; changedFields: string[] }[]
 }
 ```
 
@@ -971,7 +1007,11 @@ Rules that make this survivable in practice:
   catalogue, the jar and the login. The diff names which fields changed, so re-importing a source
   set from a friend does not silently replace a rule the user fixed themselves.
 - **Local edits are marked.** A source edited in the app carries a `locallyModified` flag;
-  re-importing over it requires an explicit confirmation naming the fields that would be lost.
+  re-importing over it lands in `conflicts` rather than `updated`, naming the fields that would be
+  lost, and proceeds only with `overwrite`.
+- **The user's switch is theirs.** An update never changes `enabled`. An author publishing a fix
+  must not turn a source back on that the user switched off — and a disabled row is
+  indistinguishable from one removed with its library kept, so re-import does not guess.
 - **Export is symmetrical and clean.** `export()` emits the same array format, sorted, with
   app-maintained fields (`respondTime`, `lastUpdated`, `weight`) and every credential
   ([§5](#5-authentication-and-session)) stripped. Export → import round-trips to an identical set.
@@ -1020,7 +1060,10 @@ long it took. Three properties are what make it useful rather than decorative:
 - **It is editable in place.** The debug screen is the source editor: change a rule, re-run the
   step, keep the rest of the trace. A fix is seconds, not a re-import cycle.
 - **It redacts.** Credentials, cookies, and `source.var` never appear in a trace, because the
-  trace is the thing users paste into a forum thread asking for help.
+  trace is the thing users paste into a forum thread asking for help. This is a **type**
+  obligation, not a convention: every user-derived field of `TraceEvent` is `Redacted`, which only
+  the redactor produces, so a URL carrying `{{source.var}}` — the common case, not the exotic one
+  — cannot reach a trace by being forgotten about.
 
 **Reporting upstream.** "Copy trace" produces the source's id, the failing rule, the redacted
 input excerpt, and the app version — everything a source author needs to fix their document, and
@@ -1035,9 +1078,9 @@ different URNs**, related by rows in `track_links`.
 
 ```mermaid
 flowchart LR
-    A["BBeBee:music-example-org-4f1a:track:a1<br/>FLAC, server"]
+    A["BBeBee:music-example-org-35be9fe2:track:a1<br/>FLAC, server"]
     B["BBeBee:local:track:f9<br/>MP3, on disk"]
-    C["BBeBee:jelly-nas-7b02:track:7c<br/>FLAC, server"]
+    C["BBeBee:jellyfin-nas-local-1bb03370:track:7c<br/>FLAC, server"]
     A ---|"isrc · 1.0"| B
     A ---|"isrc · 1.0"| C
     B ---|"fuzzy · 0.86"| C

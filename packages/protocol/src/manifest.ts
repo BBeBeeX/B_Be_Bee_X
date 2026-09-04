@@ -123,6 +123,41 @@ export interface PluginManifest {
  * `net:host/…` governs both `http` and `ws` — one grant covers HTTP and
  * WebSocket to the same host, per docs/03 §7.
  */
+/**
+ * Whether a hostname is covered by an entry in a source's `allowedHosts`.
+ *
+ * Distinct from `hostMatches` above, which matches a `net:host/<glob>` grant.
+ * This one governs the *second*, narrower list a source declares about itself
+ * (docs/06 §8), and its rules differ deliberately:
+ *
+ *  - An entry covers itself and its subdomains, so `example.org` admits
+ *    `cdn.example.org` — but never `notexample.org`, which a bare suffix
+ *    comparison would wave through.
+ *  - `*.example.org` is accepted as a synonym for subdomains only, because
+ *    an author who writes it should not silently get a fail-closed source.
+ *  - A single-label entry is **refused**. `allowedHosts: ["org"]` reads as a
+ *    modest declaration and would mean "anywhere in .org"; `localhost` is the
+ *    one exception, since it is a real host and a common self-hosted target.
+ */
+export function declaredHostMatches(host: string, declared: string): boolean {
+  const entry = declared.trim().toLowerCase().replace(/\.$/, '')
+  if (!entry) return false
+
+  if (entry.startsWith('*.')) {
+    const base = entry.slice(2)
+    if (!base.includes('.') && base !== 'localhost') return false
+    return host.endsWith(`.${base}`)
+  }
+
+  if (!entry.includes('.') && entry !== 'localhost') return false
+  return host === entry || host.endsWith(`.${entry}`)
+}
+
+/** Whether any entry in a source's `allowedHosts` covers this host. */
+export function hostAllowedBy(host: string, declared: readonly string[]): boolean {
+  return declared.some((entry) => declaredHostMatches(host, entry))
+}
+
 export function servicesForCapability(cap: string): MediatedService[] {
   if (cap.startsWith('fs:')) return ['fs']
   if (cap.startsWith('net:')) return ['http', 'ws']

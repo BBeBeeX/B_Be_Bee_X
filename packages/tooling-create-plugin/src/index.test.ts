@@ -19,6 +19,15 @@ describe('naming', () => {
     expect(packageNameFor('effect', 'eq10')).toBe('plugin-effect-eq10')
   })
 
+  it('rejects an unknown kind rather than scaffolding the wrong package', () => {
+    expect(() => render({ ...base, kind: 'source' as never })).toThrow(/--kind must be one of/)
+    expect(() => render({ ...base, kind: 'source' as never })).toThrow(/imported document/)
+  })
+
+  it('rejects an unknown ui target', () => {
+    expect(() => render({ ...base, ui: 'web' as never })).toThrow(/--ui must be one of/)
+  })
+
   it('camel-cases the service key', () => {
     expect(serviceNameFor('log-buffer')).toBe('logBuffer')
   })

@@ -64,9 +64,24 @@ export function classNameFor(name: string): string {
  * Pure, so the generator is testable without touching the filesystem — the
  * scaffolder's own output is checked in `create-plugin.test.ts`.
  */
+export const PLUGIN_KINDS: readonly PluginKind[] = ['feature', 'effect']
+export const UI_TARGETS: readonly UiTarget[] = ['none', 'desktop', 'mobile', 'both']
+
 export function render(options: CreateOptions): CreatedFile[] {
   if (!SLUG.test(options.name)) {
     throw new Error(`plugin name must match ${SLUG} (lowercase, hyphenated), got "${options.name}"`)
+  }
+  // A typo used to fall through the `as PluginKind` cast and scaffold a
+  // *feature* package under whatever prefix the switch defaulted to — the
+  // wrong package, created silently, discovered later.
+  if (!PLUGIN_KINDS.includes(options.kind)) {
+    throw new Error(
+      `--kind must be one of ${PLUGIN_KINDS.join(' | ')}, got "${String(options.kind)}". ` +
+        'A music backend is an imported document, not a package (docs/06).',
+    )
+  }
+  if (!UI_TARGETS.includes(options.ui ?? 'none')) {
+    throw new Error(`--ui must be one of ${UI_TARGETS.join(' | ')}, got "${String(options.ui)}"`)
   }
 
   const pkg = packageNameFor(options.kind, options.name)

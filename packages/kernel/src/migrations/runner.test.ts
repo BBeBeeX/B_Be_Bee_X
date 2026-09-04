@@ -39,6 +39,41 @@ async function insertSource(
   )
 }
 
+/** A v1 database with one row in every table a v3 cascade could reach. */
+async function seedV1Catalogue(harness: {
+  exec(sql: string, params?: SqlValue[]): Promise<unknown>
+}) {
+  const stmts = [
+    `INSERT INTO providers (instance_id, plugin_id, display_name, enabled, sort_order, created_at)
+     VALUES ('nas', '@BBeBee/plugin-source-jellyfin', 'NAS', 1, 3, 1000)`,
+    `INSERT INTO artists (urn, instance_id, remote_id, name, fetched_at)
+     VALUES ('BBeBee:nas:artist:1', 'nas', '1', 'Björk', 1000)`,
+    `INSERT INTO albums (urn, instance_id, remote_id, title, fetched_at)
+     VALUES ('BBeBee:nas:album:1', 'nas', '1', 'Homogenic', 1000)`,
+    `INSERT INTO tracks (urn, instance_id, remote_id, title, album_urn, fetched_at)
+     VALUES ('BBeBee:nas:track:1', 'nas', '1', 'Jóga', 'BBeBee:nas:album:1', 1000)`,
+    `INSERT INTO lyrics (track_urn, instance_id, format, content, fetched_at)
+     VALUES ('BBeBee:nas:track:1', 'nas', 'lrc', 'la', 1000)`,
+    `INSERT INTO track_artists (track_urn, artist_urn, role, ordinal)
+     VALUES ('BBeBee:nas:track:1', 'BBeBee:nas:artist:1', 'main', 0)`,
+    `INSERT INTO album_artists (album_urn, artist_urn, ordinal)
+     VALUES ('BBeBee:nas:album:1', 'BBeBee:nas:artist:1', 0)`,
+    `INSERT INTO genres (id, name) VALUES ('g1', 'Trip Hop')`,
+    `INSERT INTO track_genres (track_urn, genre_id) VALUES ('BBeBee:nas:track:1', 'g1')`,
+    `INSERT INTO media_bindings (id, track_urn, uri, origin, created_at)
+     VALUES ('b1', 'BBeBee:nas:track:1', 'file:///a.flac', 'scan', 1000)`,
+    `INSERT INTO scan_roots (id, uri) VALUES ('r1', 'file:///music')`,
+    `INSERT INTO scan_entries (uri, root_id, size, mtime, track_urn, status, scanned_at)
+     VALUES ('file:///a.flac', 'r1', 1, 1, 'BBeBee:nas:track:1', 'ok', 1000)`,
+    `INSERT INTO tracks_fts_map (rowid, urn) VALUES (7, 'BBeBee:nas:track:1')`,
+    `INSERT INTO playlists (urn, instance_id, name, created_at, updated_at)
+     VALUES ('BBeBee:nas:playlist:1', 'nas', 'Mix', 1000, 1000)`,
+    `INSERT INTO playlist_items (id, playlist_urn, position, track_urn, added_at)
+     VALUES ('pi1', 'BBeBee:nas:playlist:1', 'a0', 'BBeBee:nas:track:1', 1000)`,
+  ]
+  for (const sql of stmts) await harness.exec(sql)
+}
+
 function memoryDb() {
   const db = new DatabaseSync(':memory:')
   db.exec('PRAGMA foreign_keys = ON')
@@ -370,6 +405,96 @@ describe('CORE_MIGRATIONS', () => {
     // Once done, the partial index no longer covers it, so a re-download is allowed.
     await harness.exec(`UPDATE download_tasks SET state='done' WHERE id='t1'`)
     await expect(insert('t3', 'queued')).resolves.toBeDefined()
+  })
+
+  it('upgrades a v1 database forward instead of leaving it half-built', async () => {
+    // The regression this exists for: v1 was once *edited in place* to rename
+    // providers→sources. A database that had already recorded core@1 computed
+    // pending=[] and never got the new tables, so every later boot hit
+    // "no such table: sources" with nothing to investigate. Forward-only is
+    // not a style preference (docs/07 §6).
+    const harness = memoryDb()
+    const runner = new MigrationRunner(harness)
+
+    // Exactly what an older build would have left behind.
+    await runner.apply('core', CORE_MIGRATIONS.filter((m) => m.version <= 2))
+    await seedV1Catalogue(harness)
+
+    // Now the current build starts up against it.
+    await runner.apply('core', CORE_MIGRATIONS)
+
+    const sources = await harness.query<{ id: string; name: string; enabled: number; sort_order: number }>(
+      'SELECT id, name, enabled, sort_order FROM sources',
+    )
+    expect(sources, 'the provider row became a source row').toEqual([
+      { id: 'nas', name: 'NAS', enabled: 1, sort_order: 3 },
+    ])
+
+    // The catalogue survived, under the new column name.
+    const track = await harness.query<{ urn: string; source_id: string; album_urn: string }>(
+      'SELECT urn, source_id, album_urn FROM tracks',
+    )
+    expect(track).toEqual([
+      { urn: 'BBeBee:nas:track:1', source_id: 'nas', album_urn: 'BBeBee:nas:album:1' },
+    ])
+    expect(await harness.query('SELECT source_id FROM artists')).toEqual([{ source_id: 'nas' }])
+    expect(await harness.query('SELECT source_id FROM albums')).toEqual([{ source_id: 'nas' }])
+    expect(await harness.query('SELECT source_id FROM lyrics')).toEqual([{ source_id: 'nas' }])
+
+    // And the FK now points at `sources`, so a delete still cascades.
+    await harness.exec(`DELETE FROM sources WHERE id = 'nas'`)
+    expect(await harness.query('SELECT urn FROM tracks')).toHaveLength(0)
+
+    const gone = await harness.query(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='providers'`,
+    )
+    expect(gone, 'providers is gone, not shadowed').toHaveLength(0)
+    const temps = await harness.query(
+      `SELECT name FROM sqlite_master WHERE name LIKE '_mig3%' OR name LIKE '%_new'`,
+    )
+    expect(temps, 'no scaffolding is left behind').toHaveLength(0)
+  })
+
+  it('carries every cascade-reachable row through the v3 rebuild', async () => {
+    // The bug this pins: DROP TABLE performs an implicit DELETE FROM, so
+    // dropping `albums` nulls tracks.album_urn and dropping `tracks` cascades
+    // away its artists, genres, bindings and FTS map. The first version of
+    // this migration did exactly that and still reported success.
+    const harness = memoryDb()
+    const runner = new MigrationRunner(harness)
+    await runner.apply('core', CORE_MIGRATIONS.filter((m) => m.version <= 2))
+    await seedV1Catalogue(harness)
+
+    await runner.apply('core', CORE_MIGRATIONS)
+
+    const rows = async (sql: string) => (await harness.query(sql)).length
+    expect(await rows('SELECT 1 FROM track_artists'), 'track_artists').toBe(1)
+    expect(await rows('SELECT 1 FROM album_artists'), 'album_artists').toBe(1)
+    expect(await rows('SELECT 1 FROM track_genres'), 'track_genres').toBe(1)
+    expect(await rows('SELECT 1 FROM media_bindings'), 'media_bindings').toBe(1)
+    expect(await rows('SELECT 1 FROM playlist_items'), 'playlist_items').toBe(1)
+
+    // The FTS map keeps its rowid, or every indexed row would point at the
+    // wrong track and search would return confident nonsense.
+    expect(await harness.query('SELECT rowid, urn FROM tracks_fts_map')).toEqual([
+      { rowid: 7, urn: 'BBeBee:nas:track:1' },
+    ])
+    // The two SET NULL columns kept their values.
+    expect(await harness.query('SELECT album_urn FROM tracks')).toEqual([
+      { album_urn: 'BBeBee:nas:album:1' },
+    ])
+    expect(await harness.query('SELECT track_urn FROM scan_entries')).toEqual([
+      { track_urn: 'BBeBee:nas:track:1' },
+    ])
+  })
+
+  it('is idempotent across a restart at the new version', async () => {
+    const harness = memoryDb()
+    await new MigrationRunner(harness).apply('core', CORE_MIGRATIONS)
+    await insertSource(harness, 'a')
+    // A second boot must be a no-op, not a re-run of the rebuild.
+    await new MigrationRunner(harness).apply('core', CORE_MIGRATIONS)
+    expect(await harness.query('SELECT id FROM sources')).toEqual([{ id: 'a' }])
   })
 
   it('cascades source deletion to its catalogue rows and its vars', async () => {

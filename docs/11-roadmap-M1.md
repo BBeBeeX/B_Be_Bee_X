@@ -46,7 +46,8 @@ Deferred deliberately, with where each lands. Nothing here is blocked by an M1 d
 
 | Deferred | Lands in | Why it can wait |
 |---|---|---|
-| The rule language, `ctx.js`, `@js:`, search/explore/album rules, import UI, the tracer | M2 | MD-7. M1 needs a playable URL, which is one template; everything else in [06](./06-music-sources.md) needs a backend to point at and a sandbox to run in, and neither is on M1's critical path |
+| The rule language, `@js:`, search/explore/album rules, import UI, the tracer | M2 | MD-7. M1 needs a playable URL, which is one template; everything else in [06](./06-music-sources.md) needs a backend to point at and a sandbox to run in, and neither is on M1's critical path |
+| `ctx.js` — the **implementation** | M2 | The contract lands in `@BBeBee/protocol` with the docs, because [04 §19](./04-core-services.md#19-ctxjs--the-sandboxed-evaluator) is what M2 is built against and a contract nobody can read is not a plan. No `core-js-quickjs-*` package exists, nothing injects `js`, and no M1 code path evaluates a script |
 | Authentication, `ctx.secrets`, persistent cookie jars | M2 | No M1 source has credentials. Building the jar with no backend to sign into tests nothing ([06 §5.1](./06-music-sources.md#51-session-persistence--cookies-survive-the-app)) |
 | Cross-source fan-out in anger, `track_links`, identity linking | M2 | `searchAll` exists and is exercised, but two sources — one of which cannot search — is not a fan-out. `ctx.sources.searchLocal` covers the catalogue in the meantime |
 | `plugin-library` / `ctx.library` — playlists, favourites, collections | M2 | MD-3. None of M1's five screens curates anything, and the catalogue reads that used to justify the package now live on `ctx.sources` |

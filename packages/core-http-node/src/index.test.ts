@@ -26,6 +26,9 @@ const PAYLOAD = Buffer.from(
 
 let server: Server
 let origin: string
+/** A second server, standing in for an internal host a source may not reach. */
+let secretServer: Server
+let secretOrigin: string
 /** Requests seen, so tests can assert what actually went out. */
 const seen: { url: string; headers: Record<string, string | string[] | undefined> }[] = []
 
@@ -46,6 +49,18 @@ beforeAll(async () => {
     if (url.pathname === '/status') {
       res.writeHead(Number(url.searchParams.get('code') ?? 500))
       res.end('nope')
+      return
+    }
+    if (url.pathname === '/redirect') {
+      // The attack shape: a server the document author controls answers a
+      // 302 pointing anywhere it likes.
+      res.writeHead(302, { location: url.searchParams.get('to') ?? '/json' })
+      res.end()
+      return
+    }
+    if (url.pathname === '/loop') {
+      res.writeHead(302, { location: '/loop' })
+      res.end()
       return
     }
 
@@ -75,10 +90,25 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   origin = typeof address === 'object' && address ? `http://127.0.0.1:${address.port}` : ''
+
+  secretServer = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain' })
+    res.end('INTERNAL-SECRET')
+  })
+  await new Promise<void>((resolve) => secretServer.listen(0, '127.0.0.1', resolve))
+  const secretAddress = secretServer.address()
+  // Addressed as `localhost`, not `127.0.0.1`: host matching ignores ports, so
+  // two ports on one address would make the redirect test pass without the
+  // second hop ever being checked.
+  secretOrigin =
+    typeof secretAddress === 'object' && secretAddress
+      ? `http://localhost:${secretAddress.port}`
+      : ''
 })
 
 afterAll(() => {
   server.close()
+  secretServer.close()
 })
 
 async function harness() {
@@ -218,6 +248,77 @@ describe('the net:host gate', () => {
       requested: ['net:host/127.0.0.1'] as never,
     })
     await expect(scoped.http({ url: `${origin}/json` })).rejects.toThrow(/may not reach/)
+  })
+
+  it('re-checks the host on every redirect hop', async () => {
+    // The bypass this pins: `fetch` follows a 3xx internally, so the gate saw
+    // only the URL we asked for. A source server — which the document author
+    // controls — answered one 302 pointing at an internal address, and the
+    // per-source allowlist, the only egress control in the import trust model,
+    // never saw it (docs/06 §8).
+    const { ctx } = await harness()
+    const scoped = scopeContext(ctx, {
+      pluginId: '@BBeBee/plugin-source-runtime',
+      scopeId: 'a-source',
+      requested: ['net:host/*'] as never,
+      // The source's *own* host is allowed, so hop 1 passes and the test is
+      // about hop 2 rather than about the first URL.
+      allowedHosts: ['127.0.0.1'],
+    })
+
+    await expect(
+      scoped.http({ url: `${origin}/json` }),
+      'the source may reach its own host',
+    ).resolves.toMatchObject({ status: 200 })
+
+    await expect(
+      scoped.http({ url: `${origin}/redirect?to=${encodeURIComponent(secretOrigin)}` }),
+    ).rejects.toThrow(CapabilityError)
+  })
+
+  it('does not leak the redirect target body when the hop is refused', async () => {
+    const { ctx } = await harness()
+    const scoped = scopeContext(ctx, {
+      pluginId: '@BBeBee/plugin-source-runtime',
+      scopeId: 'a-source',
+      requested: ['net:host/*'] as never,
+      allowedHosts: ['127.0.0.1'],
+    })
+    let body = ''
+    try {
+      const res = await scoped.http({
+        url: `${origin}/redirect?to=${encodeURIComponent(secretOrigin)}`,
+      })
+      body = await res.text()
+    } catch {
+      // expected
+    }
+    expect(body).not.toContain('INTERNAL-SECRET')
+  })
+
+  it('still follows a redirect the caller is allowed to reach', async () => {
+    // The fix must not break ordinary redirects — CDNs and login flows use
+    // them constantly.
+    const { ctx } = await harness()
+    const response = await ctx.http({
+      url: `${origin}/redirect?to=${encodeURIComponent('/json')}`,
+    })
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({ hello: 'world' })
+  })
+
+  it('gives up on a redirect loop instead of hanging', async () => {
+    const { ctx } = await harness()
+    await expect(ctx.http({ url: `${origin}/loop` })).rejects.toThrow(/too many redirects/)
+  })
+
+  it('honours redirect: manual, returning the 3xx unfollowed', async () => {
+    const { ctx } = await harness()
+    const response = await ctx.http({
+      url: `${origin}/redirect?to=${encodeURIComponent('/json')}`,
+      redirect: 'manual',
+    })
+    expect(response.status).toBe(302)
   })
 
   it('leaves ungated callers alone', async () => {
