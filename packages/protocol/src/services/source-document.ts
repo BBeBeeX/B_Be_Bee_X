@@ -261,10 +261,16 @@ export type DebugStep =
  * Text that has been through the trace redactor.
  *
  * A distinct type rather than a comment, because "remember to redact" is the
- * kind of obligation that survives exactly one refactor. Anything assigned to
- * one of these fields has to come from `redactForTrace`, so a `url` carrying
- * `{{source.var}}` — the common case, not the exotic one — cannot reach a
- * trace by being forgotten about.
+ * kind of obligation that survives exactly one refactor. Assigning to one of
+ * these fields requires a value from `redactForTrace` or
+ * `assertSafeForTrace`, so a `url` carrying `{{source.var}}` — the common
+ * case, not the exotic one — is unlikely to reach a trace by being forgotten
+ * about.
+ *
+ * ⚠️ It is a **convention the compiler helps with, not a proof**: a `as
+ * Redacted` cast forges one, and `assertSafeForTrace` exists precisely so
+ * that vouching for a string is a deliberate, greppable act. Treat an
+ * unexplained cast to `Redacted` in review the way you would treat `any`.
  */
 export type Redacted = string & { readonly __redacted: unique symbol }
 

@@ -24,6 +24,14 @@ import { formatUrn, RuleError } from '@BBeBee/protocol'
 import type { Disposable, MediaProvider, SourceRecord, StreamPrefs } from '@BBeBee/protocol'
 import { DocumentSource } from './source.js'
 
+/**
+ * How long one rotted rule stays "already reported".
+ *
+ * Long enough to cover playing through a queue, short enough that a source
+ * still broken an hour later says so again.
+ */
+const RULE_FAILURE_WINDOW_MS = 60_000
+
 export interface SourceRuntimeConfig {
   /**
    * Applied to a source whose document states no `concurrentRate`.
@@ -48,6 +56,8 @@ interface LiveSource {
 
 export class SourceRuntime {
   private readonly live = new Map<string, LiveSource>()
+  /** `sourceId\0block.field` → when it was last reported. See §7. */
+  private readonly reportedFailures = new Map<string, number>()
 
   constructor(
     private readonly ctx: Context,
@@ -102,7 +112,14 @@ export class SourceRuntime {
       else if (next.docHash !== current.record.docHash) this.replace(next)
     }
     for (const [id, record] of wanted) {
-      if (!this.live.has(id)) this.startOne(record)
+      if (this.live.has(id)) continue
+      try {
+        this.startOne(record)
+      } catch (error) {
+        // Same guard as `replace`: one source that will not start must not
+        // stop the rest of the set from starting.
+        this.ctx.logger.warn(`source-runtime: ${id} would not start: ${String(error)}`)
+      }
     }
   }
 
@@ -181,12 +198,14 @@ export class SourceRuntime {
    * appear and the one signal telling a user to go and re-import their source
    * did not exist. The wrapper is the only place that sees every RuleError
    * from every entry point.
+   *
+   * Emission is **coalesced per source and rule**, as docs/07 §5 says: one
+   * rotted rule against a hundred-track queue is one fact, not a hundred
+   * events, and the badge needs the fact.
    */
   private reporting(provider: MediaProvider): MediaProvider {
     const report = (error: unknown): never => {
-      if (error instanceof RuleError) {
-        this.ctx.emit('source/rule-failed', provider.sourceId, error.rule)
-      }
+      if (error instanceof RuleError) this.reportRuleFailure(provider.sourceId, error)
       throw error
     }
     return {
@@ -200,10 +219,37 @@ export class SourceRuntime {
     }
   }
 
+  /**
+   * Emit `source/rule-failed`, at most once per rule per window.
+   *
+   * Without this, playing a queue through a source whose `ruleStream.url` has
+   * rotted emits one event per track — a hundred identical events for a badge
+   * that only needs to appear once, each of them waking every listener.
+   */
+  private reportRuleFailure(sourceId: string, error: RuleError): void {
+    const key = `${sourceId}\u0000${error.rule.block}.${error.rule.field}`
+    const now = Date.now()
+    const last = this.reportedFailures.get(key)
+    if (last !== undefined && now - last < RULE_FAILURE_WINDOW_MS) return
+
+    this.reportedFailures.set(key, now)
+    this.ctx.emit('source/rule-failed', sourceId, error.rule)
+  }
+
+  /** Forget a stopped source's coalescing state, so a fix reports again. */
+  private forgetFailures(sourceId: string): void {
+    for (const key of [...this.reportedFailures.keys()]) {
+      if (key.startsWith(`${sourceId}\u0000`)) this.reportedFailures.delete(key)
+    }
+  }
+
   private stop(id: string): void {
     const current = this.live.get(id)
     if (!current) return
     this.live.delete(id)
+    // An edited or restarted source starts clean: the user may have just
+    // fixed the rule, and the next failure is news again.
+    this.forgetFailures(id)
     current.dispose()
   }
 

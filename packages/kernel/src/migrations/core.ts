@@ -514,10 +514,20 @@ export const CORE_MIGRATIONS: Migration[] = [
         respond_time_ms    INTEGER
       )`,
       // Existing providers predate the document format, so there is no
-      // document to recover. Each gets a minimal one that says exactly that,
-      // rather than a fabricated set of rules that would fail confusingly.
+      // document to recover — and none can be: the id was derived from a
+      // plugin instance, not from a `sourceUrl`, so no legal import will ever
+      // produce a matching row and reattach this catalogue.
+      //
+      // The row exists only to keep the catalogue's foreign keys valid, so it
+      // is written **disabled** with the reason in `last_error`. Carrying the
+      // old `enabled` across would start a source with no rules, which fails
+      // every call with a RuleError and looks like a bug rather than like a
+      // migration that needs the user's attention. The source list shows it
+      // as needing a document; deleting it takes its old library with it,
+      // which is the honest choice to put in front of the user.
       `INSERT INTO sources (id, source_url, name, source_type, doc_json, doc_hash,
-                            enabled, sort_order, capabilities_json, imported_at, updated_at)
+                            enabled, sort_order, capabilities_json,
+                            imported_at, updated_at, last_error)
        SELECT instance_id,
               'bbebee://migrated/' || instance_id,
               display_name,
@@ -525,13 +535,14 @@ export const CORE_MIGRATIONS: Migration[] = [
               json_object('sourceUrl', 'bbebee://migrated/' || instance_id,
                           'sourceName', display_name,
                           'sourceComment',
-                          'Migrated from a pre-ADR-5 provider. Re-import the document to restore its rules.'),
+                          'Migrated from a pre-ADR-5 provider. Import this backend as a source document to replace it.'),
               'migrated-' || instance_id,
-              enabled,
+              0,
               sort_order,
               capabilities_json,
               created_at,
-              created_at
+              created_at,
+              'Migrated from a plugin-era provider and has no rules. Import a source document for this backend.'
        FROM providers`,
       `CREATE INDEX idx_sources_enabled ON sources(enabled, sort_order)`,
       `CREATE TABLE source_vars (

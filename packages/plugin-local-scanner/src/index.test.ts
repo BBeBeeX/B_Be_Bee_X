@@ -252,6 +252,27 @@ describe('scanning', () => {
     expect(summary.errors).toBe(0)
   })
 
+  it('survives two directories that link to each other', async () => {
+    // The case the depth cap alone does not cover: mutual links multiply
+    // paths exponentially (2^depth), so a 24-deep walk would still cost
+    // millions of listings and mint a ghost track per path.
+    const h = await harness()
+    await mkdir(join(h.dir, 'a'), { recursive: true })
+    await mkdir(join(h.dir, 'b'), { recursive: true })
+    await writeFile(join(h.dir, 'a', 'one.mp3'), 'x')
+    await writeFile(join(h.dir, 'b', 'two.mp3'), 'x')
+    await symlink(join(h.dir, 'b'), join(h.dir, 'a', 'to-b'), 'dir')
+    await symlink(join(h.dir, 'a'), join(h.dir, 'b', 'to-a'), 'dir')
+
+    await h.scanner.addRoot(h.uri, { recursive: true })
+    const summary = await h.scanner.scan()
+
+    expect(summary.errors).toBe(0)
+    const rows = await h.db.query<{ urn: string }>('SELECT urn FROM tracks')
+    // Bounded by the directory budget rather than by 2^24.
+    expect(rows.length).toBeLessThan(2000)
+  }, 30_000)
+
   it('walks subdirectories, and stops at the top when told not to', async () => {
     const h = await harness()
     await h.write('top.mp3')

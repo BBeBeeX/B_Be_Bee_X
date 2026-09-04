@@ -84,6 +84,19 @@ interface EntryRow {
  */
 const MAX_SCAN_DEPTH = 24
 
+/**
+ * How many directories one scan will list, whatever their depth.
+ *
+ * The depth cap alone is not enough: two directories that link to each other
+ * produce 2^depth distinct paths, so a 24-deep walk still costs ~16 million
+ * listings and mints a ghost track row per path. This is the budget that makes
+ * the blow-up finite in *both* dimensions.
+ *
+ * 20,000 directories is far beyond any real music library and far below the
+ * point where a cycle hurts.
+ */
+const MAX_SCAN_DIRS = 20_000
+
 export class Scanner extends Service implements ScannerService {
   static inject = ['fs', 'db', 'codec']
 
@@ -419,9 +432,11 @@ export class Scanner extends Service implements ScannerService {
    * emptied. The scan did not fail; it ran until the process died, which is
    * the worst shape a bug can take.
    *
-   * `visited` catches a path repeating exactly; the depth cap catches the
-   * general case, where every hop through the link yields a *new* path
-   * (`sub/loop/sub/loop/…`) that no URI-keyed set can recognise.
+   * `visited` catches a path repeating exactly. The depth cap and the total
+   * directory budget together catch the general case, where every hop through
+   * the link yields a *new* path (`sub/loop/sub/loop/…`) that no URI-keyed set
+   * can recognise — and where two mutually-linked directories multiply paths
+   * exponentially rather than merely deepening them.
    *
    * Residual, stated rather than hidden: files under a symlinked duplicate
    * directory are still imported once per reachable path, as separate tracks.
@@ -435,10 +450,12 @@ export class Scanner extends Service implements ScannerService {
     let queue: Uri[] = [uri]
     let depth = 0
 
-    while (queue.length > 0 && depth <= MAX_SCAN_DEPTH) {
+    let listed = 0
+    while (queue.length > 0 && depth <= MAX_SCAN_DEPTH && listed < MAX_SCAN_DIRS) {
       const next: Uri[] = []
       for (const dir of queue) {
         if (signal.aborted) return [...found.values()]
+        if (++listed > MAX_SCAN_DIRS) break
         let listing: FileStat[]
         try {
           listing = await this.ctx.fs.list(dir)
@@ -460,13 +477,15 @@ export class Scanner extends Service implements ScannerService {
       depth++
     }
 
-    if (queue.length > 0) {
-      // Say so rather than silently truncating: a library legitimately deeper
-      // than this is a bug report worth getting, and a symlink loop is a
-      // problem the user can fix once they know it is there.
+    if (queue.length > 0 || listed >= MAX_SCAN_DIRS) {
+      // Say so rather than silently truncating: a library legitimately this
+      // large is a bug report worth getting, and a symlink loop is a problem
+      // the user can fix once they know it is there.
+      const limit =
+        listed >= MAX_SCAN_DIRS ? `${MAX_SCAN_DIRS} directories` : `depth ${MAX_SCAN_DEPTH}`
       this.ctx.logger.warn(
-        `scanner: stopped at depth ${MAX_SCAN_DEPTH} under ${uri} — ` +
-          'a directory symlink loop, or a tree deeper than any real library',
+        `scanner: stopped at ${limit} under ${uri} — a directory symlink loop, ` +
+          'or a tree larger than any real library',
       )
     }
     return [...found.values()]

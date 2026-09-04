@@ -106,7 +106,12 @@ const RULE_FIELDS: Record<string, readonly string[]> = {
   ruleStream: ['url', 'headers', 'mimeType', 'codec', 'bitrateKbps', 'sampleRate', 'byteLength',
     'seekable', 'expiresAt'],
   ruleLyric: ['lyric', 'format', 'offsetMs'],
+  ruleLibrary: ['list', 'setSaved', 'createPlaylist', 'addToPlaylist', 'removeFromPlaylist',
+    'deletePlaylist'],
 }
+
+/** Top-level fields that are rules, and so must be strings like any other. */
+const TOP_LEVEL_RULES = ['header', 'searchUrl', 'exploreUrl'] as const
 
 /**
  * Validate a parsed document.
@@ -145,6 +150,15 @@ export function validateDocument(value: unknown, index = 0): SourceDocument {
     'concurrentRate', 'loginUrl', 'loginCheckJs'] as const) {
     if (doc[key] !== undefined && typeof doc[key] !== 'string') at(key, 'must be a string')
   }
+  // `header: { "User-Agent": "…" }` is the single most likely authoring
+  // mistake — the field looks like an object and is a *rule* that produces
+  // one. Unchecked, it reached the evaluator as a raw TypeError.
+  for (const key of TOP_LEVEL_RULES) {
+    if (doc[key] !== undefined && typeof doc[key] !== 'string') {
+      at(key, 'must be a rule string (use "=" for a literal, e.g. =\u007b"X":"y"\u007d)')
+    }
+  }
+  if (doc.loginUi !== undefined) validateLoginUi(doc.loginUi, at)
   if (doc.sortOrder !== undefined && !Number.isInteger(doc.sortOrder)) {
     at('sortOrder', 'must be an integer')
   }
@@ -164,7 +178,13 @@ export function validateDocument(value: unknown, index = 0): SourceDocument {
       continue
     }
     for (const [field, rule] of Object.entries(rules as Record<string, unknown>)) {
-      if (!fields.includes(field)) continue
+      if (!fields.includes(field)) {
+        // A typo in a rule name is silent otherwise: the block validates, the
+        // field is never read, and the source half-works in a way that looks
+        // like the backend changed.
+        at(`${block}.${field}`, `is not a known rule (expected one of: ${fields.join(', ')})`)
+        continue
+      }
       if (typeof rule !== 'string') at(`${block}.${field}`, 'must be a rule string')
     }
   }
@@ -210,6 +230,33 @@ function validateSourceUrl(sourceUrl: string, at: (path: string, message: string
     // travels with it — the one thing export must never do (docs/06 §5).
     at('sourceUrl', 'must not embed credentials — put them in the source variable, not the URL')
   }
+}
+
+/** `loginUi` is a form spec the shell renders; a malformed one breaks sign-in. */
+function validateLoginUi(value: unknown, at: (path: string, message: string) => void): void {
+  if (!Array.isArray(value)) {
+    at('loginUi', 'must be an array of fields')
+    return
+  }
+  const types = new Set(['text', 'password', 'checkbox', 'select'])
+  value.forEach((field, i) => {
+    if (field === null || typeof field !== 'object' || Array.isArray(field)) {
+      at(`loginUi[${i}]`, 'must be an object')
+      return
+    }
+    const f = field as Record<string, unknown>
+    if (typeof f.id !== 'string' || !f.id.trim()) at(`loginUi[${i}].id`, 'required')
+    if (typeof f.label !== 'string' || !f.label.trim()) at(`loginUi[${i}].label`, 'required')
+    if (f.type !== undefined && !types.has(f.type as string)) {
+      at(`loginUi[${i}].type`, `must be one of ${[...types].join(', ')}`)
+    }
+    if (f.options !== undefined && !isStringArray(f.options)) {
+      at(`loginUi[${i}].options`, 'must be an array of strings')
+    }
+    if (f.placeholder !== undefined && typeof f.placeholder !== 'string') {
+      at(`loginUi[${i}].placeholder`, 'must be a string')
+    }
+  })
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -347,6 +394,52 @@ export function exportableDocument(doc: SourceDocument): SourceDocument {
   const out = { ...doc } as unknown as Record<string, unknown>
   for (const key of APP_MAINTAINED) delete out[key]
   return out as unknown as SourceDocument
+}
+
+/**
+ * Whether a source is one a user could share.
+ *
+ * Not every row is a document someone typed. `plugin-source-local` writes a
+ * placeholder for the files on this device, and the ADR-5 migration writes one
+ * per pre-existing provider — both with a `bbebee://` URL, because neither is
+ * a backend anyone can reach. Emitting those from `export()` would produce a
+ * file that `import()` then rejects, which is the one thing a round trip must
+ * never do.
+ */
+export function isShareable(record: { sourceUrl: string }): boolean {
+  try {
+    return ALLOWED_SCHEMES.has(new URL(record.sourceUrl).protocol)
+  } catch {
+    return false
+  }
+}
+
+/** Whether a stored document carries any field export would have to strip. */
+export function needsStripping(doc: SourceDocument): boolean {
+  const record = doc as unknown as Record<string, unknown>
+  return APP_MAINTAINED.some((key) => record[key] !== undefined)
+}
+
+/**
+ * The text to export for one source.
+ *
+ * Returns the **verbatim slice** whenever nothing needs stripping, which is
+ * the overwhelmingly common case. Re-serialising unconditionally was the one
+ * place the byte-for-byte promise (docs/07 §4.1) failed on its only
+ * user-facing path: an export/re-import round trip reordered keys, changed
+ * spacing, rewrote `doc_hash`, and so came back reported as an *update* with
+ * an empty change list — plus a needless source restart. Large integers lose
+ * precision through `JSON.parse` too.
+ *
+ * Only a document carrying app-maintained fields is rebuilt, because there is
+ * no way to remove a key from text without reformatting it.
+ */
+export function exportTextFor(record: {
+  doc: SourceDocument
+  docJson: string
+}): string {
+  if (!needsStripping(record.doc)) return record.docJson
+  return JSON.stringify(exportableDocument(record.doc), null, 2)
 }
 
 /**

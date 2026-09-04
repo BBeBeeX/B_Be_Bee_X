@@ -146,6 +146,19 @@ export class SourceStore {
         // track by value rather than by reference — so without this they
         // accumulate forever: stale FTS hits for tracks that no longer exist,
         // lyrics nothing can display, library rows pointing at dead URNs.
+        // Order matters and is not obvious: the FTS index is addressed by
+        // rowid, and the map is the only thing that can turn this source's
+        // URNs into rowids. Deleting the map first would strand every indexed
+        // row permanently — searches returning tracks that no longer exist,
+        // with no code path left that could ever find them again.
+        await tx.exec(
+          `DELETE FROM tracks_fts WHERE rowid IN (
+             SELECT m.rowid FROM tracks_fts_map m
+             JOIN tracks t ON t.urn = m.urn
+             WHERE t.source_id = ?
+           )`,
+          [id],
+        )
         await tx.exec(
           `DELETE FROM tracks_fts_map WHERE urn IN (SELECT urn FROM tracks WHERE source_id = ?)`,
           [id],

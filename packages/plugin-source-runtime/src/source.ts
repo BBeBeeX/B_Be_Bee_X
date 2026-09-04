@@ -264,7 +264,10 @@ export class DocumentSource {
   private assertAllowed(target: string): void {
     let host: string
     try {
-      host = new URL(target).hostname.toLowerCase()
+      // `hostname` keeps IPv6 brackets and may carry a trailing FQDN dot;
+      // `declaredHostMatches` normalises both, so `example.org.` cannot get
+      // one verdict here and another at the HTTP gate.
+      host = new URL(target).hostname
     } catch {
       throw new ProviderError(`ruleStream.url produced a malformed URL`, this.record.id)
     }

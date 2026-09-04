@@ -30,6 +30,20 @@ describe('sha256Hex', () => {
     }
   })
 
+  it('accepts bytes as well as a string', () => {
+    const bytes = new TextEncoder().encode('abc')
+    expect(sha256Hex(bytes)).toBe(sha256Hex('abc'))
+    expect(sha256Hex(new Uint8Array(0))).toBe(sha256Hex(''))
+  })
+
+  it('is self-consistent on a lone surrogate, where it diverges from UTF-8', () => {
+    // Documented divergence: TextEncoder substitutes U+FFFD, this encodes
+    // WTF-8. Identity only needs the same input to give the same digest.
+    const lone = 'a\uD800b'
+    expect(sha256Hex(lone)).toBe(sha256Hex(lone))
+    expect(sha256Hex(lone)).not.toBe(sha256Hex('ab'))
+  })
+
   it('agrees on the URLs it actually hashes', () => {
     for (const url of [
       'https://music.example.org',

@@ -53,6 +53,9 @@ export interface HttpNodeConfig {
  */
 const MAX_REDIRECTS = 20
 
+/** Schemes a redirect may lead to. Anything else is refused, not followed. */
+const FOLLOWABLE_SCHEMES = new Set(['http:', 'https:'])
+
 export class HttpNode extends Service {
   static inject = ['fs']
 
@@ -214,25 +217,40 @@ export class HttpNode extends Service {
         signal: controller.signal,
       })
 
+      const status = response.status
+      const isRedirectStatus = status >= 300 && status < 400 && status !== 304
       const location = response.headers.get('location')
-      const isRedirect = response.status >= 300 && response.status < 400 && location
 
-      if (!isRedirect || mode !== 'follow') {
-        if (isRedirect && mode === 'error') {
-          throw new NetworkError(`unexpected redirect from ${url}`)
-        }
+      // `redirect: 'error'` rejects on *any* redirect status, with or without
+      // a Location — that is what `fetch` does, and a caller who asked to be
+      // told about redirects is not served by silently handing back a 302 that
+      // happened to be malformed.
+      if (isRedirectStatus && mode === 'error') {
+        throw new NetworkError(`unexpected ${status} redirect from ${url}`)
+      }
+      if (!isRedirectStatus || !location || mode !== 'follow') {
         return wrap(response, req.onProgress)
       }
 
-      let next: string
+      let next: URL
       try {
-        next = new URL(location, url).href
+        next = new URL(location, url)
       } catch {
         throw new NetworkError(`malformed redirect from ${url}: ${location}`)
       }
-      // Draining keeps the socket reusable; a redirect body is never read.
+      // A redirect may move hosts; it may not move *schemes* into something
+      // that reads local state. `file:` and `data:` are refused by undici
+      // today, but this transport is meant to be swappable — and a scheme
+      // check is one line against a class of bug that is very hard to see.
+      if (!FOLLOWABLE_SCHEMES.has(next.protocol)) {
+        throw new NetworkError(`refusing a ${next.protocol} redirect from ${url}`)
+      }
+      // Discard the redirect body — it is never read, and leaving it
+      // unconsumed pins the connection until GC. `cancel()` releases the
+      // stream; it does not drain it, so the socket may or may not be
+      // reusable, which is the transport's business rather than ours.
       await response.body?.cancel().catch(() => {})
-      url = next
+      url = next.href
     }
 
     throw new NetworkError(`too many redirects: ${req.url}`)

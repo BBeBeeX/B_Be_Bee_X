@@ -288,6 +288,42 @@ describe('egress and failure classification', () => {
     expect(seen).toEqual([{ block: 'ruleStream', field: 'url' }])
   })
 
+  it('coalesces the report, so one rotted rule is one event', async () => {
+    // Playing a hundred-track queue through a source whose ruleStream has
+    // rotted used to emit a hundred identical events for a badge that only
+    // needs to appear once (docs/07 §5 says "coalesced per source").
+    const { ctx } = await harness([
+      radio('/t.mp3', { ruleStream: { url: '={{track.missingField}}' } }),
+    ])
+    let count = 0
+    ctx.on('source/rule-failed', () => void count++)
+
+    const provider = ctx.sources.providers[0]!
+    for (let i = 0; i < 20; i++) {
+      await provider.resolveStream(`t${i}`, prefs).catch(() => undefined)
+    }
+    expect(count).toBe(1)
+  })
+
+  it('reports again after the source is restarted', async () => {
+    // The user may have just fixed the rule; the next failure is news again.
+    const { ctx } = await harness([
+      radio('/t.mp3', { ruleStream: { url: '={{track.missingField}}' } }),
+    ])
+    let count = 0
+    ctx.on('source/rule-failed', () => void count++)
+    const id = ctx.sources.sources[0]!.id
+
+    await ctx.sources.providers[0]!.resolveStream('a', prefs).catch(() => undefined)
+    await ctx.sources.setEnabled(id, false)
+    await tick()
+    await ctx.sources.setEnabled(id, true)
+    await tick()
+    await ctx.sources.providers[0]!.resolveStream('b', prefs).catch(() => undefined)
+
+    expect(count).toBe(2)
+  })
+
   it('distinguishes a HEAD-refusing server from a dead URL', async () => {
     // 405 used to become NotFoundError, so a perfectly playable source was
     // reported as a dead link — and a health check would kill it.

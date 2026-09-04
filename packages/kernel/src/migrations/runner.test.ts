@@ -426,9 +426,17 @@ describe('CORE_MIGRATIONS', () => {
     const sources = await harness.query<{ id: string; name: string; enabled: number; sort_order: number }>(
       'SELECT id, name, enabled, sort_order FROM sources',
     )
-    expect(sources, 'the provider row became a source row').toEqual([
-      { id: 'nas', name: 'NAS', enabled: 1, sort_order: 3 },
+    expect(sources, 'the provider row became a source row, disabled').toEqual([
+      { id: 'nas', name: 'NAS', enabled: 0, sort_order: 3 },
     ])
+    // Disabled with a reason: it has no rules and no import can ever produce
+    // a row matching its id, so starting it would fail every call and look
+    // like a bug rather than like a migration awaiting a document.
+    const [migrated] = await harness.query<{ last_error: string | null }>(
+      'SELECT last_error FROM sources WHERE id = ?',
+      ['nas'],
+    )
+    expect(migrated!.last_error).toMatch(/import a source document/i)
 
     // The catalogue survived, under the new column name.
     const track = await harness.query<{ urn: string; source_id: string; album_urn: string }>(
@@ -612,5 +620,44 @@ describe('CORE_MIGRATIONS', () => {
     // Deleting the track cascades the mapping, so a stale row cannot linger.
     await harness.exec('DELETE FROM tracks WHERE urn = ?', ['BBeBee:nas:track:1'])
     expect(await harness.query('SELECT rowid FROM tracks_fts_map')).toHaveLength(0)
+  })
+})
+
+describe('the SQLite version gate', () => {
+  it('accepts the version this host actually has', async () => {
+    // Node 22 and Electron 44 both ship newer than the floor; if this fails,
+    // the floor moved or the host did.
+    const harness = memoryDb()
+    await expect(new MigrationRunner(harness).assertSqliteVersion()).resolves.toBeUndefined()
+  })
+
+  it('refuses a host too old for the schema, naming why', async () => {
+    // The alternative is a syntax error thrown from the middle of migration
+    // v2 that names `contentless_delete` rather than the SDK (docs/11 §8).
+    const harness = memoryDb()
+    await expect(new MigrationRunner(harness).assertSqliteVersion('99.0.0')).rejects.toThrow(
+      /needs SQLite >= 99\.0\.0/,
+    )
+  })
+
+  it('compares numerically, not lexically', async () => {
+    // '3.9.0' > '3.43.0' as strings, which is exactly the wrong answer.
+    const harness = memoryDb()
+    await expect(new MigrationRunner(harness).assertSqliteVersion('3.9.0')).resolves.toBeUndefined()
+  })
+
+  it('trusts a driver that cannot answer', async () => {
+    // Being unable to check is not evidence of being too old, and refusing to
+    // boot over it would be worse than the risk.
+    const stub = {
+      exec: async () => ({ changes: 0, lastInsertRowid: 0 }),
+      query: async () => {
+        throw new Error('no such function: sqlite_version')
+      },
+      transaction: async <T>(fn: (tx: never) => Promise<T>) => fn(undefined as never),
+    }
+    await expect(
+      new MigrationRunner(stub as never).assertSqliteVersion(),
+    ).resolves.toBeUndefined()
   })
 })

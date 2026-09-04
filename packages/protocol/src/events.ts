@@ -4,7 +4,14 @@
  * The dispatch mode is part of the contract, because it determines whether a
  * listener can block, transform, or veto:
  *
- *   emit      fire-and-forget notification; listener errors never reach the emitter
+ *   emit      fire-and-forget notification
+ *
+ * ⚠️ **`emit` does not isolate the emitter from a throwing listener.** Cordis
+ * dispatches synchronously, so a listener that throws propagates straight out
+ * of `ctx.emit(...)` and into whatever was emitting — which for
+ * `source/imported` is the middle of an import whose report the caller is
+ * waiting for. "Fire and forget" describes the *return value*, not the
+ * failure mode. Emit sites on a path that must not fail wrap the call.
  *   parallel  all listeners awaited; one failing does not block the others
  *   serial    ordered; the first non-nullish return short-circuits
  *   waterfall middleware — listeners transform the value and control `next`

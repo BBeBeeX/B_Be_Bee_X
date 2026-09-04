@@ -312,6 +312,25 @@ describe('the net:host gate', () => {
     await expect(ctx.http({ url: `${origin}/loop` })).rejects.toThrow(/too many redirects/)
   })
 
+  it('redirect: error rejects any redirect status, Location or not', async () => {
+    const { ctx } = await harness()
+    await expect(
+      ctx.http({ url: `${origin}/redirect?to=${encodeURIComponent('/json')}`, redirect: 'error' }),
+    ).rejects.toThrow(/redirect/)
+    // A 302 with no Location is still a redirect a caller asked to hear about.
+    await expect(
+      ctx.http({ url: `${origin}/status?code=302`, redirect: 'error' }),
+    ).rejects.toThrow(/redirect/)
+  })
+
+  it('does not treat 304 as a redirect', async () => {
+    // Not Modified shares the 3xx range and is an answer, not a hop.
+    const { ctx } = await harness()
+    await expect(
+      ctx.http({ url: `${origin}/status?code=304`, redirect: 'error' }),
+    ).resolves.toMatchObject({ status: 304 })
+  })
+
   it('honours redirect: manual, returning the 3xx unfollowed', async () => {
     const { ctx } = await harness()
     const response = await ctx.http({

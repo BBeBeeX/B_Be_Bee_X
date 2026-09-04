@@ -102,12 +102,64 @@ export class NamespaceCollisionError extends Error {
   }
 }
 
+/**
+ * The oldest SQLite the core schema can run on.
+ *
+ * Set by what the migrations actually use, not by taste:
+ *
+ *   3.25  `ALTER TABLE … RENAME COLUMN`, in v3
+ *   3.38  `json_object()` built in rather than an optional extension, in v3
+ *   3.43  `contentless_delete=1`, in v2 — without it a renamed or removed
+ *         track leaves its row in the FTS index forever and search returns
+ *         stale hits without bound
+ *
+ * Node 22 and Electron 44 both ship newer. `expo-sqlite` is the one to watch:
+ * an older SDK would fail deep inside migration v2 with a syntax error that
+ * names none of this (docs/11 §8).
+ */
+export const MIN_SQLITE_VERSION = '3.43.0'
+
+/** `'3.43.0'` → 3043000, SQLite's own `sqlite_version()` ordering. */
+function versionNumber(version: string): number {
+  const [major = 0, minor = 0, patch = 0] = version.split('.').map((p) => Number(p) || 0)
+  return major * 1_000_000 + minor * 1000 + patch
+}
+
 export class MigrationRunner {
   constructor(private readonly db: MigrationDb) {}
 
   async init(): Promise<void> {
     await this.db.exec(MIGRATIONS_TABLE)
     await this.db.exec(NAMESPACES_TABLE)
+  }
+
+  /**
+   * Refuse to migrate on a SQLite too old for the schema.
+   *
+   * Loud and early, because the alternative is a syntax error thrown from the
+   * middle of a migration on a device, naming a pragma rather than the SDK
+   * that is actually too old. A driver that cannot answer `sqlite_version()`
+   * is trusted rather than refused — being unable to *check* is not evidence
+   * of being too old, and refusing to boot over it would be worse.
+   */
+  async assertSqliteVersion(minimum = MIN_SQLITE_VERSION): Promise<void> {
+    let actual: string | undefined
+    try {
+      const rows = await this.db.query<{ v: string }>('SELECT sqlite_version() AS v')
+      actual = rows[0]?.v
+    } catch {
+      return
+    }
+    if (!actual) return
+
+    if (versionNumber(actual) < versionNumber(minimum)) {
+      throw new Error(
+        `BBeBee needs SQLite >= ${minimum} but this host has ${actual}. ` +
+          'The core schema uses contentless_delete=1 (3.43) for the search ' +
+          'index and RENAME COLUMN (3.25) in the ADR-5 migration. On mobile ' +
+          'this means the Expo SDK is too old; see docs/11 §8.',
+      )
+    }
   }
 
   async appliedVersions(namespace: string): Promise<number[]> {

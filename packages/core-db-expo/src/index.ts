@@ -52,7 +52,12 @@ export class DbExpo extends Service implements DbService {
     await this.db.execAsync('PRAGMA foreign_keys = ON')
 
     if (!this.config.skipCoreMigrations) {
-      await new MigrationRunner(this).apply('core', CORE_MIGRATIONS)
+      const runner = new MigrationRunner(this)
+      // Before anything runs: a SQLite too old for the schema fails deep
+      // inside a migration with an error that names a pragma rather than the
+      // SDK that is actually the problem.
+      await runner.assertSqliteVersion()
+      await runner.apply('core', CORE_MIGRATIONS)
     }
 
     // Close behind whatever is still queued — see core-db-node.

@@ -237,19 +237,94 @@ describe('importing documents', () => {
 
   it('round-trips byte for byte through export', async () => {
     // The promise in docs/07 §4.1: export emits what was imported. A
-    // re-serialisation would reorder keys and normalise spacing, and the first
+    // re-serialisation reorders keys and normalises spacing, and the first
     // time a user's document comes back different they stop trusting export.
-    const original = '{\n  "sourceName": "Example",\n  "sourceUrl": "https://music.example.org",\n  "ruleStream": {"url": "={{source.url}}"},\n  "unknownFutureField": [1, 2]\n}'
+    const original =
+      '{\n  "sourceName": "Example",\n  "sourceUrl": "https://music.example.org",\n' +
+      '  "ruleStream": {"url": "={{source.url}}"},\n  "unknownFutureField": [1, 2]\n}'
     const { sources } = await withSources()
     await sources.import(original)
 
     const exported = await sources.export()
-    const parsed = JSON.parse(exported) as unknown[]
-    expect(parsed).toHaveLength(1)
-    // The stored text is the exact slice that came in.
+    // The stored text is the exact slice that came in...
     expect(sources.sources[0]!.docJson).toBe(original)
-    // And an unknown field from a newer document version survived.
-    expect((parsed[0] as Record<string, unknown>).unknownFutureField).toEqual([1, 2])
+    // ...and export emits that slice, not a rebuilt copy of it.
+    expect(exported).toContain('"sourceName": "Example"')
+    expect(exported.indexOf('"sourceName"')).toBeLessThan(exported.indexOf('"sourceUrl"'))
+
+    const parsed = JSON.parse(exported) as Record<string, unknown>[]
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0]!.unknownFutureField).toEqual([1, 2])
+  })
+
+  it('export → import is a no-op, not a phantom update', async () => {
+    // The only user-facing path the byte-for-byte promise exists for. A
+    // re-serialised export came back as `updated` with an *empty* change
+    // list, rewrote doc_hash, and restarted the source for nothing.
+    const original =
+      '{\n  "sourceName": "Example",\n  "sourceUrl": "https://music.example.org",\n' +
+      '  "ruleStream": {"url": "={{source.url}}"}\n}'
+    const { sources } = await withSources()
+    await sources.import(original)
+    const before = sources.sources[0]!
+
+    const report = await sources.import(await sources.export())
+
+    expect(report.updated, 'nothing changed, so nothing was updated').toEqual([])
+    expect(report.added).toEqual([])
+    expect(report.unchanged).toHaveLength(1)
+    expect(sources.sources[0]!.docHash, 'the hash is stable').toBe(before.docHash)
+  })
+
+  it('survives arbitrary formatting through a full round trip', async () => {
+    const original =
+      '[\n\n  {"sourceUrl":"https://a.test","sourceName":"A",\n' +
+      '   "ruleStream":{"url":"=x"}},\n' +
+      '  {   "sourceName" : "B" ,  "sourceUrl" : "https://b.test" ,\n' +
+      '      "ruleStream" : { "url" : "=y" }   }\n]'
+    const { sources } = await withSources()
+    await sources.import(original)
+
+    const first = await sources.export()
+    const report = await sources.import(first)
+    expect(report.unchanged).toHaveLength(2)
+    // And exporting again is idempotent, which is what makes the round trip
+    // safe to repeat.
+    expect(await sources.export()).toBe(first)
+  })
+
+  it('rebuilds only a document carrying app-maintained fields', async () => {
+    // There is no way to remove a key from text without reformatting it, so
+    // this one case is honestly re-serialised — and the stripped field is
+    // gone, which is the point.
+    const { sources } = await withSources()
+    await sources.import(
+      JSON.stringify({ ...doc(), respondTime: 180, weight: 3 }),
+    )
+    const exported = await sources.export()
+    expect(exported).not.toContain('respondTime')
+    expect(exported).not.toContain('weight')
+    expect(JSON.parse(exported)).toHaveLength(1)
+  })
+
+  it('omits sources nobody could import', async () => {
+    // The local-files placeholder and a migration leftover are rows, not
+    // documents: exporting them produces a file `import()` rejects.
+    const { ctx, sources } = await withSources()
+    await ctx.db.exec(
+      `INSERT INTO sources (id, source_url, name, doc_json, doc_hash, imported_at, updated_at)
+       VALUES ('local', 'bbebee://local/local', 'This device', '{}', 'h', 0, 0)`,
+    )
+    await sources.import(JSON.stringify(doc()))
+
+    const exported = JSON.parse(await sources.export()) as Record<string, unknown>[]
+    expect(exported).toHaveLength(1)
+    expect(exported[0]!.sourceUrl).toBe('https://music.example.org')
+  })
+
+  it('exports an empty set as an empty array', async () => {
+    const { sources } = await withSources()
+    expect(JSON.parse(await sources.export())).toEqual([])
   })
 
   it('re-importing the same document is an update, not a duplicate', async () => {

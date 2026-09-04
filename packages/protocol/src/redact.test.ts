@@ -51,6 +51,61 @@ describe('redactForTrace', () => {
     expect(redactForTrace('a'.repeat(5000))).toHaveLength(2000 + '… (truncated)'.length)
   })
 
+  it('leaves a redacted url parseable', () => {
+    // The header regex used to read `https://host` as the header `https` with
+    // value `//host`, rebuild it with a space, and hand back `https: //host` —
+    // unparseable. A trace exists to be pasted somewhere.
+    for (const url of [
+      'https://host/x?t=1',
+      'http://127.0.0.1:4533/rest?u=a&t=b',
+      'ws://example.org/socket?token=abc',
+    ]) {
+      const out = redactForTrace(url)
+      expect(() => new URL(out), out).not.toThrow()
+      expect(out, out).not.toContain(': //')
+    }
+  })
+
+  it('redacts the query but keeps the url structure intact', () => {
+    const out = redactForTrace('https://music.example.org/rest?u=revers&t=abc&s=def')
+    const parsed = new URL(out)
+    expect(parsed.hostname).toBe('music.example.org')
+    expect(parsed.pathname).toBe('/rest')
+    expect(parsed.searchParams.get('u')).toBe('revers')
+    expect(parsed.searchParams.get('t')).not.toBe('abc')
+  })
+
+  it('covers the credential names that actually appear in the wild', () => {
+    // Each of these survived redaction until it was measured. `id_token` is a
+    // JWT; `client_secret` is exactly what it says.
+    const out = redactForTrace(
+      'https://x.test/a?key=K&x-api-key=X&client_secret=C&id_token=J&sessionid=S&pwd=P',
+    )
+    for (const leaked of ['K', 'X', 'C', 'J', 'S', 'P']) {
+      expect(out, `${leaked} survived`).not.toContain(`=${leaked}`)
+    }
+  })
+
+  it('redacts a JSON body, which no query or header rule can see', () => {
+    const out = redactForTrace('{"user":"revers","token":"abc123","password":"hunter2"}')
+    expect(out).toContain('"user":"revers"')
+    expect(out).not.toContain('abc123')
+    expect(out).not.toContain('hunter2')
+  })
+
+  it('redacts a quoted form value without destroying the quotes', () => {
+    const out = redactForTrace('token="abc123"&user="revers"')
+    expect(out).not.toContain('abc123')
+    expect(out).toContain('user="revers"')
+  })
+
+  it('redacts credential-named headers beyond Authorization', () => {
+    const out = redactForTrace('Api-Key: secret1\nPassword: secret2\nAccept: text/plain')
+    expect(out).not.toContain('secret1')
+    expect(out).not.toContain('secret2')
+    expect(out).toContain('Accept: text/plain')
+  })
+
   it('leaves ordinary text alone', () => {
     expect(redactForTrace('trackList matched 12 items')).toBe('trackList matched 12 items')
   })

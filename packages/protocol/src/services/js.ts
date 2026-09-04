@@ -84,12 +84,20 @@ export interface JsRealm {
   preload(code: string): Promise<void>
 
   /**
-   * Dispose the realm and its native handle. **Idempotent.**
+   * Dispose the realm and its native handle.
    *
-   * Every later call rejects with `JsRealmDisposedError` rather than crashing
-   * or, worse, resurrecting the realm. Registered through `ctx.effect()` by
-   * the caller, so a leaked realm is a leaked native handle the leak test
-   * catches.
+   * **`dispose()` itself is idempotent** — calling it twice is a no-op, not an
+   * error, because a disposer may legitimately run from both a fiber teardown
+   * and an explicit call. It returns `void` and never throws.
+   *
+   * **Every other method** on a disposed realm rejects with
+   * `JsRealmDisposedError` rather than crashing or, worse, resurrecting it.
+   * The two rules are about different methods and are easy to conflate; an
+   * implementation that got them backwards would be silently
+   * non-interchangeable with one that did not.
+   *
+   * Registered through `ctx.effect()` by the caller, so a leaked realm is a
+   * leaked native handle the leak test catches.
    */
   dispose(): void
 }

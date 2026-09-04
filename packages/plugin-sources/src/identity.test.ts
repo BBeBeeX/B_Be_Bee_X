@@ -20,6 +20,16 @@ import {
   validateDocument,
 } from './identity.js'
 
+/** The issue paths a document produced, or `[]` if it validated. */
+function issuePaths(value: unknown): string[] {
+  try {
+    validateDocument(value)
+    return []
+  } catch (error) {
+    return (error as SourceFormatError).issues.map((i) => i.path)
+  }
+}
+
 const doc = (extra: Record<string, unknown> = {}) => ({
   sourceUrl: 'https://music.example.org',
   sourceName: 'Example',
@@ -99,6 +109,48 @@ describe('validateDocument', () => {
     expect(() => validateDocument(doc({ ruleStream: { url: '=x', seekable: true } }))).toThrow(
       SourceFormatError,
     )
+  })
+
+  it('rejects an object where a rule string belongs', () => {
+    // `header: { "User-Agent": "…" }` is the most likely authoring mistake:
+    // the field looks like an object and is a *rule* that produces one.
+    expect(() => validateDocument(doc({ header: { 'User-Agent': 'x' } }))).toThrow(
+      SourceFormatError,
+    )
+    expect(() => validateDocument(doc({ searchUrl: { url: 'x' } }))).toThrow(SourceFormatError)
+    expect(() => validateDocument(doc({ exploreUrl: [] }))).toThrow(SourceFormatError)
+  })
+
+  it('accepts those fields as rule strings', () => {
+    expect(() =>
+      validateDocument(doc({ header: '={"User-Agent":"x"}', searchUrl: '=https://x/?q={{key}}' })),
+    ).not.toThrow()
+  })
+
+  it('rejects a misspelled rule name instead of ignoring it', () => {
+    // Silent otherwise: the block validates, the field is never read, and the
+    // source half-works in a way that looks like the backend changed.
+    expect(issuePaths(doc({ ruleSearch: { trackList: '=a', titel: '=b' } }))).toContain(
+      'ruleSearch.titel',
+    )
+  })
+
+  it('validates ruleLibrary, which was missing from the enumeration', () => {
+    expect(() => validateDocument(doc({ ruleLibrary: { list: 42 } }))).toThrow(SourceFormatError)
+    expect(() => validateDocument(doc({ ruleLibrary: { list: '=a' } }))).not.toThrow()
+  })
+
+  it('validates loginUi, which the shell has to render', () => {
+    expect(() => validateDocument(doc({ loginUi: 'not an array' }))).toThrow(SourceFormatError)
+    expect(issuePaths(doc({ loginUi: [{ label: 'User' }] }))).toContain('loginUi[0].id')
+    expect(issuePaths(doc({ loginUi: [{ id: 'u', label: 'User', type: 'wat' }] }))).toContain(
+      'loginUi[0].type',
+    )
+    expect(() =>
+      validateDocument(
+        doc({ loginUi: [{ id: 'u', label: 'User', type: 'password', placeholder: 'x' }] }),
+      ),
+    ).not.toThrow()
   })
 
   it('rejects a sourceUrl with surrounding whitespace', () => {

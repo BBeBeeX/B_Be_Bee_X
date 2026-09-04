@@ -67,5 +67,6 @@ export {
   expandNs,
   escapeLike,
 } from './migrations/runner.js'
+export { MIN_SQLITE_VERSION } from './migrations/runner.js'
 export type { MigrationDb, MigrationTx } from './migrations/runner.js'
 export { CORE_MIGRATIONS } from './migrations/core.js'

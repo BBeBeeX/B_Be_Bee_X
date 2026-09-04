@@ -59,7 +59,8 @@ import { Catalog } from './catalog.js'
 import {
   changedFields,
   docHashOf,
-  exportableDocument,
+  exportTextFor,
+  isShareable,
   parseSourceInput,
   recordFor,
   validateDocument,
@@ -361,10 +362,14 @@ export class Sources extends Service implements SourcesService {
     // Only one event per source. Emitting `imported` *and* `changed` for an
     // update made the runtime stop and start that source twice, with
     // duplicate registration events on the way through.
+    // ⚠️ Wrapped, because `emit` is synchronous: a listener that throws would
+    // otherwise propagate out of here and lose the report the caller is
+    // waiting for — after the rows were already written. The import is done;
+    // a broken listener is that listener's problem.
     const added = report.added.map((r) => r.id)
-    if (added.length) this.ctx.emit('source/imported', added)
+    if (added.length) this.safeEmit(() => this.ctx.emit('source/imported', added))
     for (const { record, changedFields: fields } of report.updated) {
-      this.ctx.emit('source/changed', record.id, fields)
+      this.safeEmit(() => this.ctx.emit('source/changed', record.id, fields))
     }
 
     return report
@@ -443,25 +448,38 @@ export class Sources extends Service implements SourcesService {
    * Symmetrical with `import`: app-maintained fields are stripped, and no
    * credential can be present because none was ever stored in the document.
    * Export → import round-trips to an identical set.
+   *
+   * Sources that are not documents anyone could import — the local-files
+   * placeholder, a row carried across by the ADR-5 migration — are omitted,
+   * because a file that `import()` would then reject is worse than a shorter
+   * one.
    */
   async export(ids?: string[]): Promise<string> {
     const wanted = ids && new Set(ids)
-    const docs = this.records
-      .filter((r) => !wanted || wanted.has(r.id))
-      .map((r) => exportableDocument(r.doc))
-    return Promise.resolve(`${JSON.stringify(docs, null, 2)}\n`)
+    // Each entry keeps its own verbatim text, so an export → import round
+    // trip is a no-op rather than a reported update with an empty change list.
+    //
+    // Entries are deliberately *not* re-indented to sit prettily inside the
+    // array: indenting rewrites the very bytes the round trip has to preserve,
+    // and — worse — it would indent again on every pass, so the text would
+    // never stabilise. A slightly ragged multi-source file is the price of an
+    // export a user can re-import without it counting as an edit.
+    const entries = this.records
+      .filter((r) => (!wanted || wanted.has(r.id)) && isShareable(r))
+      .map((r) => exportTextFor(r))
+    return Promise.resolve(entries.length ? `[\n${entries.join(',\n')}\n]\n` : '[]\n')
   }
 
   async setEnabled(id: string, on: boolean): Promise<void> {
     await this.store.setEnabled(id, on, Date.now())
     await this.refresh()
-    this.ctx.emit('source/changed', id, ['enabled'])
+    this.safeEmit(() => this.ctx.emit('source/changed', id, ['enabled']))
   }
 
   async remove(id: string, opts: { forgetCatalogue?: boolean } = {}): Promise<void> {
     await this.store.remove(id, opts)
     await this.refresh()
-    this.ctx.emit('source/removed', id, opts.forgetCatalogue === true)
+    this.safeEmit(() => this.ctx.emit('source/removed', id, opts.forgetCatalogue === true))
   }
 
   /**
@@ -570,6 +588,21 @@ export class Sources extends Service implements SourcesService {
       })
     }
     return provider.debug(step)
+  }
+
+  /**
+   * Emit without letting a listener's failure reach the caller.
+   *
+   * Only for emits on a path that has already committed: the work is done and
+   * the caller is owed its answer, so a subscriber throwing is a fault to log,
+   * not one to propagate.
+   */
+  private safeEmit(emit: () => void): void {
+    try {
+      emit()
+    } catch (error) {
+      this.ctx.logger.warn(`sources: an event listener threw: ${String(error)}`)
+    }
   }
 
   /** Re-read the table after a write. Cheap: the source list is tens of rows. */
