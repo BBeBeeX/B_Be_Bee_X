@@ -5,6 +5,9 @@
  * listener can block, transform, or veto:
  *
  *   emit      fire-and-forget notification
+ *   parallel  all listeners awaited; one failing does not block the others
+ *   serial    ordered; the first non-nullish return short-circuits
+ *   waterfall middleware — listeners transform the value and control `next`
  *
  * ⚠️ **`emit` does not isolate the emitter from a throwing listener.** Cordis
  * dispatches synchronously, so a listener that throws propagates straight out
@@ -12,9 +15,6 @@
  * `source/imported` is the middle of an import whose report the caller is
  * waiting for. "Fire and forget" describes the *return value*, not the
  * failure mode. Emit sites on a path that must not fail wrap the call.
- *   parallel  all listeners awaited; one failing does not block the others
- *   serial    ordered; the first non-nullish return short-circuits
- *   waterfall middleware — listeners transform the value and control `next`
  *
  * ⚠️ **`next` takes no arguments.** Cordis closes it over the original
  * argument list, so `next(somethingElse)` is silently the same as `next()`.
@@ -41,6 +41,7 @@ import type { HttpRequest, HttpResponse } from './services/http.js'
 import type { AuthStatus } from './services/sources.js'
 import type { CheckReport } from './services/source-document.js'
 import type { SourceError } from './errors.js'
+import type { ScanSummary } from './services/scanner.js'
 import type { UrnKind } from './urn.js'
 
 declare module 'cordis' {
@@ -116,10 +117,14 @@ declare module 'cordis' {
     'library/changed'(kind: UrnKind, urns: string[]): void
     'scan/started'(rootId: string): void
     'scan/progress'(rootId: string, done: number, total?: number): void
-    'scan/finished'(
-      rootId: string,
-      summary: { added: number; updated: number; errors: number },
-    ): void
+    /**
+     * A walk finished, or stopped early.
+     *
+     * The payload is the whole `ScanSummary`, `incomplete` included: a
+     * listener that cannot tell a complete scan from a truncated one will
+     * report "0 removed" as though the library were reconciled.
+     */
+    'scan/finished'(rootId: string, summary: ScanSummary): void
 
     /* ── dsp ───────────────────────────────────── waterfall ── */
     'dsp/build-chain'(segments: EffectSegment[], next: () => EffectSegment[]): EffectSegment[]

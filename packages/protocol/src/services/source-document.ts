@@ -180,7 +180,7 @@ export interface SourceDocument {
  * the first time that happens they stop trusting export (docs/07 §4.1).
  */
 export interface SourceRecord {
-  /** Derived from `sourceUrl`: slugified host + 4 hex of its hash. */
+  /** Derived from `sourceUrl`: slugified host + 8 hex of its SHA-256. */
   readonly id: string
   readonly sourceUrl: string
   readonly name: string

@@ -36,12 +36,20 @@ describe('sha256Hex', () => {
     expect(sha256Hex(new Uint8Array(0))).toBe(sha256Hex(''))
   })
 
-  it('is self-consistent on a lone surrogate, where it diverges from UTF-8', () => {
-    // Documented divergence: TextEncoder substitutes U+FFFD, this encodes
-    // WTF-8. Identity only needs the same input to give the same digest.
+  it('encodes a lone surrogate as WTF-8, diverging from TextEncoder', () => {
+    // A documented divergence (see the module note), pinned against a real
+    // vector rather than against itself: `sha256Hex(x) === sha256Hex(x)` would
+    // pass for any implementation, including a broken one.
+    //
+    // 'a' + U+D800 + 'b' is 61 ED A0 80 62 in WTF-8. `TextEncoder` would
+    // substitute U+FFFD and produce a different digest entirely.
     const lone = 'a\uD800b'
-    expect(sha256Hex(lone)).toBe(sha256Hex(lone))
-    expect(sha256Hex(lone)).not.toBe(sha256Hex('ab'))
+    expect(sha256Hex(lone)).toBe(
+      '45e334b6c74ca5db8d8f8fcd1157fb31a2ebc9953e0d8d182e37b6b67e6a1705',
+    )
+    expect(sha256Hex(lone), 'not the UTF-8 replacement encoding').not.toBe(
+      ref('a\uFFFDb'),
+    )
   })
 
   it('agrees on the URLs it actually hashes', () => {

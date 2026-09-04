@@ -233,13 +233,16 @@ export class Sources extends Service implements SourcesService {
     }
 
     this.registry.set(sourceId, provider)
-    this.ctx.emit('source/registered', sourceId)
+    // Wrapped: the map is already updated, so a listener that throws must not
+    // unwind past `register` and leave the caller believing it failed — the
+    // disposer it never received is what unregisters the provider.
+    this.safeEmit(() => this.ctx.emit('source/registered', sourceId))
 
     return () => {
       // Identity-checked so a late disposer cannot unregister its replacement.
       if (this.registry.get(sourceId) !== provider) return
       this.registry.delete(sourceId)
-      this.ctx.emit('source/unregistered', sourceId)
+      this.safeEmit(() => this.ctx.emit('source/unregistered', sourceId))
     }
   }
 
@@ -593,7 +596,11 @@ export class Sources extends Service implements SourcesService {
       at: report.checkedAt,
     })
     await this.refresh()
-    this.ctx.emit('source/checked', report.sourceId, report)
+    // Wrapped like the other post-commit emits: a throwing listener here used
+    // to propagate out of `checkOne`, be caught by its own error handler, and
+    // rewrite a source that had just passed as failed — then reject `check()`
+    // as well.
+    this.safeEmit(() => this.ctx.emit('source/checked', report.sourceId, report))
     return report
   }
 

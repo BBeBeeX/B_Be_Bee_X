@@ -191,8 +191,14 @@ Why `doc_json` is stored whole rather than shredded into columns: the document i
 user owns. Round-tripping it through a normalised schema would mean export producing something
 subtly different from what was imported — reordered keys, dropped unknown fields, a rule
 reformatted — and the first time a user's edited document came back changed, they would stop
-trusting export. Unknown fields from a newer document version survive an older app for the same
-reason.
+trusting export.
+
+**Unknown *top-level* fields survive an older app**, for the same reason: a document written for a
+newer runtime is stored and re-exported intact, and the fields this build does not understand are
+simply not read. An unknown field **inside a rule block** is refused at import instead
+([06 §2.2](./06-music-sources.md#22-the-rule-blocks)) — and the asymmetry is deliberate. A stray
+top-level key is forward compatibility; `ruleSearch.titel` is a typo that would otherwise validate,
+never be read, and leave the source half-working in a way that looks like the backend changed.
 
 `doc_hash` is what makes re-import a three-way answer rather than a coin flip: unchanged (same
 hash, skip), updated (different hash, show the field diff), or conflicting (different hash *and*

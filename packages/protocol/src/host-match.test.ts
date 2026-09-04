@@ -62,6 +62,25 @@ describe('subdomains', () => {
   })
 })
 
+describe('internationalised names', () => {
+  it('matches a unicode declaration against the punycode host a URL yields', () => {
+    // `new URL(…).hostname` always punycodes, so an author writing their own
+    // host in unicode declared something that could never match — and the
+    // stored allowlist was a mixed-script list nobody could reconcile.
+    expect(hostAllowedBy('xn--msik-0ra.example', ['müsik.example'])).toBe(true)
+    expect(hostAllowedBy('xn--msik-0ra.example', ['xn--msik-0ra.example'])).toBe(true)
+  })
+
+  it('matches a punycode subdomain of a unicode declaration', () => {
+    expect(hostAllowedBy('cdn.xn--msik-0ra.example', ['müsik.example'])).toBe(true)
+  })
+
+  it('canonicalises IPv6 spellings', () => {
+    expect(declaredHostMatches('[::1]', '[0:0:0:0:0:0:0:1]')).toBe(true)
+    expect(declaredHostMatches('::1', '[::1]')).toBe(true)
+  })
+})
+
 describe('what must never match', () => {
   it('refuses a bare suffix that is not a subdomain', () => {
     // The classic: `example.org` must not admit `notexample.org`.
@@ -72,6 +91,18 @@ describe('what must never match', () => {
   it('refuses an unrelated host', () => {
     expect(hostAllowedBy('169.254.169.254', ['music.example.org'])).toBe(false)
     expect(hostAllowedBy('evil.test', ['music.example.org'])).toBe(false)
+  })
+
+  it('refuses a single-label wildcard base', () => {
+    // `*.org` is a wildcard over a whole TLD wearing a small word. It was
+    // allowed for one round, after the exact-match fix moved the single-label
+    // check onto the wrong arm.
+    expect(hostAllowedBy('example.org', ['*.org'])).toBe(false)
+    expect(hostAllowedBy('anything.com', ['*.com'])).toBe(false)
+    // …including with the trailing-dot spelling an FQDN habit produces.
+    expect(hostAllowedBy('example.org', ['*.org.'])).toBe(false)
+    // A real domain still works as a wildcard base.
+    expect(hostAllowedBy('cdn.example.org', ['*.example.org'])).toBe(true)
   })
 
   it('refuses a single-label entry as a suffix', () => {

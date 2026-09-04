@@ -154,9 +154,15 @@ export function validateDocument(value: unknown, index = 0): SourceDocument {
   // mistake — the field looks like an object and is a *rule* that produces
   // one. Unchecked, it reached the evaluator as a raw TypeError.
   for (const key of TOP_LEVEL_RULES) {
-    if (doc[key] !== undefined && typeof doc[key] !== 'string') {
+    if (doc[key] === undefined) continue
+    if (typeof doc[key] !== 'string') {
       at(key, 'must be a rule string (use "=" for a literal, e.g. =\u007b"X":"y"\u007d)')
+      continue
     }
+    // Symmetrical with `ruleStream.url`: a present-but-empty rule declares a
+    // capability the source cannot serve, and derived capabilities would then
+    // promise a search that returns nothing.
+    if (!(doc[key] as string).trim()) at(key, 'must not be empty')
   }
   if (doc.loginUi !== undefined) validateLoginUi(doc.loginUi, at)
   if (doc.sortOrder !== undefined && !Number.isInteger(doc.sortOrder)) {
@@ -179,9 +185,17 @@ export function validateDocument(value: unknown, index = 0): SourceDocument {
     }
     for (const [field, rule] of Object.entries(rules as Record<string, unknown>)) {
       if (!fields.includes(field)) {
-        // A typo in a rule name is silent otherwise: the block validates, the
-        // field is never read, and the source half-works in a way that looks
-        // like the backend changed.
+        /*
+         * Refused, deliberately — and asymmetric with unknown *top-level*
+         * fields, which are kept so a document written for a newer runtime
+         * still round-trips (docs/07 §4.1).
+         *
+         * A stray top-level key is forward compatibility. `ruleSearch.titel`
+         * is a typo that would otherwise validate, never be read, and leave
+         * the source half-working in a way that looks like the backend
+         * changed — which is the single most expensive kind of bug for a
+         * user to diagnose in a document they did not write.
+         */
         at(`${block}.${field}`, `is not a known rule (expected one of: ${fields.join(', ')})`)
         continue
       }
@@ -467,7 +481,11 @@ function canonical(value: unknown): string {
   if (value === undefined) return ' undefined'
   return JSON.stringify(value, (_key, v: unknown) => {
     if (v === null || typeof v !== 'object' || Array.isArray(v)) return v
-    const sorted: Record<string, unknown> = {}
+    // `Object.create(null)`, not `{}`: assigning a key literally named
+    // `__proto__` to an ordinary object sets its prototype instead of adding
+    // a property, so the key vanishes and two documents differing only there
+    // compare equal — a change reported as "no change".
+    const sorted = Object.create(null) as Record<string, unknown>
     for (const k of Object.keys(v as Record<string, unknown>).sort()) {
       sorted[k] = (v as Record<string, unknown>)[k]
     }

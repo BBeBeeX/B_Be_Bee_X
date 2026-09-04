@@ -252,6 +252,54 @@ describe('scanning', () => {
     expect(summary.errors).toBe(0)
   })
 
+  it('never removes tracks after a walk it could not finish', async () => {
+    /*
+     * The regression this exists for, and it is data loss: bounding the walk
+     * turned a hang into "terminate, then reconcile" — and reconciliation
+     * cannot tell "the walk did not reach it" from "the file is gone". A
+     * second scan of a library containing a symlink loop deleted the rows of
+     * files still sitting on disk, counted them in `removed`, and reported
+     * success.
+     */
+    const h = await harness()
+    await h.write('keep-me.mp3')
+    await h.scanner.addRoot(h.uri, { recursive: true })
+    const first = await h.scanner.scan()
+    expect(first.added).toBe(1)
+    expect(first.incomplete, 'a clean tree is complete').toBeFalsy()
+
+    // Now make the tree unwalkable in bounded time, and rescan.
+    await mkdir(join(h.dir, 'a'), { recursive: true })
+    await mkdir(join(h.dir, 'b'), { recursive: true })
+    await symlink(join(h.dir, 'b'), join(h.dir, 'a', 'to-b'), 'dir')
+    await symlink(join(h.dir, 'a'), join(h.dir, 'b', 'to-a'), 'dir')
+
+    const second = await h.scanner.scan()
+
+    expect(second.incomplete, 'the walk was bounded, and says so').toBe(true)
+    expect(second.removed, 'nothing may be removed on a partial view').toBe(0)
+    const rows = await h.db.query<{ urn: string }>('SELECT urn FROM tracks')
+    expect(rows.length, 'the file is still on disk, so its row stays').toBeGreaterThanOrEqual(1)
+  }, 60_000)
+
+  it('reports an incomplete scan through scan/finished', async () => {
+    // A listener that cannot tell a complete scan from a truncated one will
+    // render "0 removed" as though the library had been reconciled.
+    const h = await harness()
+    await h.write('one.mp3')
+    await mkdir(join(h.dir, 'a'), { recursive: true })
+    await mkdir(join(h.dir, 'b'), { recursive: true })
+    await symlink(join(h.dir, 'b'), join(h.dir, 'a', 'to-b'), 'dir')
+    await symlink(join(h.dir, 'a'), join(h.dir, 'b', 'to-a'), 'dir')
+    await h.scanner.addRoot(h.uri, { recursive: true })
+
+    const seen: { incomplete?: boolean }[] = []
+    h.ctx.on('scan/finished', (_rootId, summary) => void seen.push(summary))
+    await h.scanner.scan()
+
+    expect(seen.at(-1)?.incomplete).toBe(true)
+  }, 60_000)
+
   it('survives two directories that link to each other', async () => {
     // The case the depth cap alone does not cover: mutual links multiply
     // paths exponentially (2^depth), so a 24-deep walk would still cost

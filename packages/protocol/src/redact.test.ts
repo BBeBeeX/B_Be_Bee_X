@@ -106,6 +106,37 @@ describe('redactForTrace', () => {
     expect(out).toContain('Accept: text/plain')
   })
 
+  it('redacts a JSON value containing an escaped quote', () => {
+    // `[^"]*` stopped at the `\"` and left the tail of the secret in the
+    // trace — the one outcome this function exists to prevent.
+    const out = redactForTrace('{"token":"ab\\"cd","user":"revers"}')
+    expect(out).not.toContain('cd')
+    expect(out).toContain('"user":"revers"')
+  })
+
+  it('does not let one pair swallow the next', () => {
+    // A `;`-separated query string put the following pair inside the first
+    // value, so the second secret was never examined.
+    const out = redactForTrace('a=1;token=SECRET;b=2')
+    expect(out).not.toContain('SECRET')
+    expect(out).toContain('a=1')
+  })
+
+  it('redacts a credential header whose value starts with //', () => {
+    // The scheme guard used to be "the value starts with //", which let a
+    // header genuinely called `cookie` skip redaction.
+    const out = redactForTrace('Cookie: //notaurl-but-secret')
+    expect(out).not.toContain('notaurl-but-secret')
+  })
+
+  it('stays fast on a long token that never becomes a url', () => {
+    // An unbounded scheme label backtracks quadratically before a `://` that
+    // never arrives.
+    const started = Date.now()
+    redactForTrace('a'.repeat(1500) + ' plain text')
+    expect(Date.now() - started).toBeLessThan(500)
+  })
+
   it('leaves ordinary text alone', () => {
     expect(redactForTrace('trackList matched 12 items')).toBe('trackList matched 12 items')
   })

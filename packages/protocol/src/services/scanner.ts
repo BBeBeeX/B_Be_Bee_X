@@ -34,6 +34,17 @@ export interface ScanSummary {
   errors: number
   /** True when the walk was cancelled before it finished. */
   cancelled?: boolean
+  /**
+   * True when the walk stopped early — cancelled, or bounded by the depth cap
+   * or directory budget that a symlink loop trips.
+   *
+   * ⚠️ Load-bearing, not informational. A scan that did not see everything
+   * **must not remove anything**: "absent from the walk" and "gone from disk"
+   * are indistinguishable on a partial view, and reconciling on one deletes
+   * the rows of files still sitting on disk. A consumer showing "N removed"
+   * should say the scan was incomplete instead.
+   */
+  incomplete?: boolean
 }
 
 export interface ScanProgress {

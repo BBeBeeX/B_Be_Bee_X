@@ -118,12 +118,6 @@ export interface PluginManifest {
 /* ── Capability matching ────────────────────────────────────────────────── */
 
 /**
- * Which services a capability governs, or an empty array if it governs none.
- *
- * `net:host/…` governs both `http` and `ws` — one grant covers HTTP and
- * WebSocket to the same host, per docs/03 §7.
- */
-/**
  * Whether a hostname is covered by an entry in a source's `allowedHosts`.
  *
  * Distinct from `hostMatches` (declared further down), which matches a
@@ -152,7 +146,11 @@ export function declaredHostMatches(host: string, declared: string): boolean {
 
   if (entry.startsWith('*.')) {
     const base = entry.slice(2)
-    return base.length > 0 && h.endsWith(`.${base}`)
+    // The single-label rule applies here too. `*.org` is a wildcard over a
+    // whole TLD wearing a small word, and it was allowed for one round after
+    // the exact-match fix moved the check to the wrong arm.
+    if (!base.includes('.') && base !== 'localhost') return false
+    return h.endsWith(`.${base}`)
   }
 
   // Exact first, and unconditionally: whatever the host is, the source that
@@ -175,7 +173,30 @@ export function declaredHostMatches(host: string, declared: string): boolean {
  */
 function normaliseHost(value: string): string {
   const trimmed = value.trim().toLowerCase().replace(/\.$/, '')
-  return trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed
+  const bare =
+    trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed
+  if (!bare) return ''
+
+  /*
+   * Round-trip through the URL parser, so a declaration is normalised the way
+   * the host it will be compared against already is.
+   *
+   * `new URL(…).hostname` always punycodes, so an author who writes their own
+   * host in unicode — `müsik.example` — declared something that could never
+   * match `xn--msik-0ra.example`, and `allowedHostsFor` stored a mixed-script
+   * list nobody could reconcile. The same pass canonicalises an IPv6 literal,
+   * so `[::1]`, `[0:0:0:0:0:0:0:1]` and `::1` agree.
+   */
+  try {
+    const parsed = new URL(`http://${bare.includes(':') && !bare.includes('.') ? `[${bare}]` : bare}`)
+    const host = parsed.hostname.toLowerCase()
+    return host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host
+  } catch {
+    // Not parseable as a host — a wildcard base, or something malformed. The
+    // trimmed form is still the honest answer, and an unmatchable entry is
+    // safer than a crash.
+    return bare
+  }
 }
 
 /** Whether any entry in a source's `allowedHosts` covers this host. */
@@ -183,6 +204,12 @@ export function hostAllowedBy(host: string, declared: readonly string[]): boolea
   return declared.some((entry) => declaredHostMatches(host, entry))
 }
 
+/**
+ * Which services a capability governs, or an empty array if it governs none.
+ *
+ * `net:host/…` governs both `http` and `ws` — one grant covers HTTP and
+ * WebSocket to the same host, per docs/03 §7.
+ */
 export function servicesForCapability(cap: string): MediatedService[] {
   if (cap.startsWith('fs:')) return ['fs']
   if (cap.startsWith('net:')) return ['http', 'ws']

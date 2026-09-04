@@ -322,6 +322,34 @@ describe('importing documents', () => {
     expect(exported[0]!.sourceUrl).toBe('https://music.example.org')
   })
 
+  it('omits a row the ADR-5 migration carried across', async () => {
+    // Shaped exactly as migration v3 writes it: a `bbebee://migrated/` URL
+    // and a document that says it has no rules. Exporting it would produce a
+    // file whose re-import fails on the scheme check — and the round-trip
+    // promise is that export → import is a no-op.
+    const { ctx, sources } = await withSources()
+    const migratedDoc = JSON.stringify({
+      sourceUrl: 'bbebee://migrated/nas',
+      sourceName: 'NAS',
+      sourceComment: 'Migrated from a pre-ADR-5 provider.',
+    })
+    await ctx.db.exec(
+      `INSERT INTO sources (id, source_url, name, doc_json, doc_hash, enabled,
+                            imported_at, updated_at, last_error)
+       VALUES ('nas', 'bbebee://migrated/nas', 'NAS', ?, 'migrated-nas', 0, 0, 0, 'needs a document')`,
+      [migratedDoc],
+    )
+    await sources.import(JSON.stringify(doc()))
+
+    const text = await sources.export()
+    expect(text, 'the placeholder never reaches a shared file').not.toContain('migrated')
+
+    // And what did come out still round-trips.
+    const report = await sources.import(text)
+    expect(report.rejected).toEqual([])
+    expect(report.unchanged).toHaveLength(1)
+  })
+
   it('exports an empty set as an empty array', async () => {
     const { sources } = await withSources()
     expect(JSON.parse(await sources.export())).toEqual([])

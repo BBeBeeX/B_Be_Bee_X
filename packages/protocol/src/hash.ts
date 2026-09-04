@@ -20,9 +20,9 @@
  *    survive `JSON.parse` anyway — and self-consistency is what identity
  *    needs. It does mean a digest of such a string will not match
  *    `node:crypto`.
- *  - **It buffers.** The padded copy is roughly the input's size again, so
- *    this is for URLs and documents, not for files. `ctx.crypto.digestStream`
- *    exists for anything large.
+ *  - **It buffers.** UTF-8 encoding and padding each allocate a copy, so peak
+ *    use is roughly three times the input. Fine for a URL or a document,
+ *    wrong for a file — `ctx.crypto.digestStream` exists for those.
  *
  * Why not the 32-bit FNV-1a this replaced: a source id truncates the digest,
  * and `doc_hash` decides whether a re-import is an update or a no-op. At

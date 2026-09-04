@@ -30,6 +30,9 @@ const SECRET_HEADERS =
 
 const PLACEHOLDER = '***'
 
+/** Schemes that may appear before `//` in a line that is a URL, not a header. */
+const URL_SCHEME = /^(?:https?|wss?|ftp|file|data|blob|bbebee)$/i
+
 /** Cap on any single trace field. A trace is for reading, not for archiving. */
 const MAX_LENGTH = 2000
 
@@ -79,7 +82,9 @@ export function assertSafeForTrace(value: string): Redacted {
 }
 
 function redactUrls(text: string): string {
-  return text.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi, (match) => {
+  // The scheme label is bounded: an unbounded run before a literal `://`
+  // backtracks quadratically on a long token that never reaches one.
+  return text.replace(/[a-z][a-z0-9+.-]{0,31}:\/\/[^\s"'<>]+/gi, (match) => {
     let parsed: URL
     try {
       parsed = new URL(match)
@@ -111,15 +116,16 @@ function redactStructured(text: string): string {
     .replace(
       /^([ \t]*[A-Za-z0-9-]+)([ \t]*:[ \t]*)(.+)$/gm,
       (match, name: string, sep: string, value: string) => {
-        // A scheme, not a header. `https://…` is the common case and the one
-        // that used to be mangled.
-        if (value.startsWith('//')) return match
+        // A scheme, not a header. Matched by name rather than by "the value
+        // starts with //", because a header genuinely called `cookie` whose
+        // value happened to begin `//` would otherwise skip redaction.
+        if (URL_SCHEME.test(name.trim()) && value.startsWith('//')) return match
         return SECRET_HEADERS.test(name.trim()) ? `${name}${sep}${PLACEHOLDER}` : match
       },
     )
     // `k=v` in a query string or form body, quoted or bare.
     .replace(
-      /\b([A-Za-z_][A-Za-z0-9_-]*)=("[^"]*"|'[^']*'|[^&\s"']+)/g,
+      /\b([A-Za-z_][A-Za-z0-9_-]*)=("[^"]*"|'[^']*'|[^&;\s"']+)/g,
       (match, key: string, value: string) => {
         if (!SECRET_KEYS.test(key)) return match
         const quote = value.startsWith('"') ? '"' : value.startsWith("'") ? "'" : ''
@@ -128,8 +134,11 @@ function redactStructured(text: string): string {
     )
     // `"k": "v"` in a JSON body — a login response is the obvious case, and
     // the colon channel is invisible to both regexes above.
+    // The value class has to understand escapes: `[^"]*` stops at the `\\"`
+    // inside `{"token":"a\\"b"}` and leaves the rest of the secret in the
+    // trace, which is the one outcome this function exists to prevent.
     .replace(
-      /("([A-Za-z_][A-Za-z0-9_-]*)"\s*:\s*)"[^"]*"/g,
+      /("([A-Za-z_][A-Za-z0-9_-]*)"\s*:\s*)"(?:\\.|[^"\\])*"/g,
       (match, prefix: string, key: string) =>
         SECRET_KEYS.test(key) ? `${prefix}"${PLACEHOLDER}"` : match,
     )

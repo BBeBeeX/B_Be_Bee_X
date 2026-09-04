@@ -230,7 +230,10 @@ export class SourceRuntime {
     const key = `${sourceId}\u0000${error.rule.block}.${error.rule.field}`
     const now = Date.now()
     const last = this.reportedFailures.get(key)
-    if (last !== undefined && now - last < RULE_FAILURE_WINDOW_MS) return
+    // `now - last` is compared as an absolute span: a clock that jumps
+    // backwards (an NTP correction, a timezone-naive host) would otherwise
+    // make the difference negative and reopen the window on every failure.
+    if (last !== undefined && Math.abs(now - last) < RULE_FAILURE_WINDOW_MS) return
 
     this.reportedFailures.set(key, now)
     this.ctx.emit('source/rule-failed', sourceId, error.rule)

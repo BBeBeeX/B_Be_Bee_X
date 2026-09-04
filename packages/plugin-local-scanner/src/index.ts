@@ -273,18 +273,27 @@ export class Scanner extends Service implements ScannerService {
     this.current = { rootId: root.id, done: 0 }
 
     let files: FileStat[]
+    let truncated: boolean
     try {
-      files = await this.walk(root.uri, root.recursive, opts.signal)
+      const walked = await this.walk(root.uri, root.recursive, opts.signal)
+      files = walked.files
+      truncated = walked.truncated
     } catch (error) {
       await this.ctx.db.exec('UPDATE scan_roots SET last_error = ? WHERE id = ?', [
         String(error),
         root.id,
       ])
       summary.errors++
+      summary.incomplete = true
+      // A root that could not be walked at all is maximally incomplete, and
+      // nothing was reconciled — say so rather than reporting a clean scan
+      // that happened to change nothing.
       this.ctx.emit('scan/finished', root.id, {
         added: summary.added,
         updated: summary.updated,
+        removed: summary.removed,
         errors: summary.errors,
+        incomplete: true,
       })
       return
     }
@@ -312,7 +321,26 @@ export class Scanner extends Service implements ScannerService {
       if (changed.length > 0) this.ctx.emit('library/changed', 'track', changed)
     }
 
-    if (!opts.signal.aborted) {
+    /*
+     * ⚠️ Reconciliation only runs on a *complete* view of the root.
+     *
+     * "Not in `seen`" means "gone from disk" only if the walk actually
+     * reached everywhere. A walk stopped by the depth cap or the directory
+     * budget looks identical — and deleting on that basis removes the rows of
+     * files that are still sitting on disk, silently, with `removed` counting
+     * up as though it were correct. That is worse than the hang the budget
+     * replaced: a hang is visible.
+     *
+     * So a truncated or cancelled walk imports what it saw and removes
+     * nothing. The library goes stale rather than wrong, and the warning
+     * above says why.
+     */
+    const complete = !opts.signal.aborted && !truncated
+    // Sticky across roots: one root that could not be fully walked makes the
+    // whole scan's reconciliation partial, and a caller must not read the
+    // aggregate as authoritative.
+    if (!complete) summary.incomplete = true
+    if (complete) {
       const gone = [...known.keys()].filter((uri) => !seen.has(uri))
       if (gone.length > 0) await this.forgetGone(gone, summary)
     }
@@ -325,7 +353,12 @@ export class Scanner extends Service implements ScannerService {
     this.ctx.emit('scan/finished', root.id, {
       added: summary.added,
       updated: summary.updated,
+      // Reported rather than inferred: a caller cannot tell a complete scan
+      // that removed nothing from an incomplete one that was not allowed to.
+      removed: summary.removed,
       errors: summary.errors,
+      ...(complete ? {} : { incomplete: true }),
+      ...(opts.signal.aborted ? { cancelled: true } : {}),
     })
   }
 
@@ -457,7 +490,11 @@ export class Scanner extends Service implements ScannerService {
    * and inode — which `ctx.fs` does not expose and Expo's filesystem cannot
    * generally provide. The cap keeps the damage finite and visible.
    */
-  private async walk(uri: Uri, recursive: boolean, signal: AbortSignal): Promise<FileStat[]> {
+  private async walk(
+    uri: Uri,
+    recursive: boolean,
+    signal: AbortSignal,
+  ): Promise<{ files: FileStat[]; truncated: boolean }> {
     const found = new Map<Uri, FileStat>()
     const visited = new Set<Uri>([uri])
     let queue: Uri[] = [uri]
@@ -467,7 +504,7 @@ export class Scanner extends Service implements ScannerService {
     while (queue.length > 0 && depth <= MAX_SCAN_DEPTH && listed < MAX_SCAN_DIRS) {
       const next: Uri[] = []
       for (const dir of queue) {
-        if (signal.aborted) return [...found.values()]
+        if (signal.aborted) return { files: [...found.values()], truncated: true }
         if (++listed > MAX_SCAN_DIRS) break
         let listing: FileStat[]
         try {
@@ -490,7 +527,8 @@ export class Scanner extends Service implements ScannerService {
       depth++
     }
 
-    if (queue.length > 0 || listed >= MAX_SCAN_DIRS) {
+    const truncated = queue.length > 0 || listed >= MAX_SCAN_DIRS
+    if (truncated) {
       // Say so rather than silently truncating: a library legitimately this
       // large is a bug report worth getting, and a symlink loop is a problem
       // the user can fix once they know it is there.
@@ -498,10 +536,11 @@ export class Scanner extends Service implements ScannerService {
         listed >= MAX_SCAN_DIRS ? `${MAX_SCAN_DIRS} directories` : `depth ${MAX_SCAN_DEPTH}`
       this.ctx.logger.warn(
         `scanner: stopped at ${limit} under ${uri} — a directory symlink loop, ` +
-          'or a tree larger than any real library',
+          'or a tree larger than any real library. This scan will not remove ' +
+          'anything, because it did not see everything.',
       )
     }
-    return [...found.values()]
+    return { files: [...found.values()], truncated }
   }
 
   private isAudio(uri: Uri): boolean {
