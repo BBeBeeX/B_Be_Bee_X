@@ -27,6 +27,7 @@ export { dbConformance, type DbSubject } from './db.js'
 export { dbScopeConformance, type DbScopeSubject } from './db-scope.js'
 export { fsConformance, type FsSubject } from './fs.js'
 export { fsScopeConformance, type FsScopeSubject } from './fs-scope.js'
+export { httpConformance, type HttpSubject } from './http.js'
 export { jsConformance, type JsSubject } from './js.js'
 export {
   mediaSessionConformance,

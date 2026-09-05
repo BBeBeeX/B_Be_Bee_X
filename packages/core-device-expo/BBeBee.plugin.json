@@ -1,0 +1,21 @@
+{
+  "id": "@BBeBee/core-device-expo",
+  "platforms": [
+    "mobile"
+  ],
+  "version": "0.0.0",
+  "displayName": "Device",
+  "description": "ctx.device for iOS and Android — network, battery, locale.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [],
+  "contributes": {
+    "services": [
+      "device"
+    ]
+  }
+}

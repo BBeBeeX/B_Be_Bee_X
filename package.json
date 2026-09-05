@@ -1,5 +1,5 @@
 {
-  "name": "@BBeBee/core-codec-node",
+  "name": "bbebee",
   "version": "0.0.0",
   "private": true,
   "type": "module",

@@ -1,6 +1,22 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      /*
+       * The mobile packages import their native module at module scope, which
+       * Metro resolves and Node cannot. Aliasing it to a stub is what lets the
+       * *logic* in those packages — the command mapping, the control
+       * enabling, the artwork policy — be tested at all; the stub throws on
+       * anything genuinely native, so a test that strays there fails rather
+       * than passing against a fake.
+       */
+      'react-native-audio-api': fileURLToPath(
+        new URL('./test/stubs/react-native-audio-api.ts', import.meta.url),
+      ),
+    },
+  },
   test: {
     // `.tsx` too: the kits' tests render components, and a pattern that
     // silently matched nothing would report "no test files" as success.

@@ -11,9 +11,12 @@
     "start": "electron-vite preview"
   },
   "dependencies": {
+    "@BBeBee/core-audio-webaudio": "workspace:*",
     "@BBeBee/core-background-electron": "workspace:*",
+    "@BBeBee/core-codec-node": "workspace:*",
     "@BBeBee/core-desktop-bridge": "workspace:*",
     "@BBeBee/core-device-electron": "workspace:*",
+    "@BBeBee/core-http-node": "workspace:*",
     "@BBeBee/core-js-quickjs-node": "workspace:*",
     "@BBeBee/core-media-session-electron": "workspace:*",
     "@BBeBee/core-secrets-node": "workspace:*",

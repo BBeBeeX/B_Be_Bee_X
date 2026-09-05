@@ -1,0 +1,24 @@
+{
+  "id": "@BBeBee/core-http-rn",
+  "platforms": [
+    "mobile"
+  ],
+  "version": "0.0.0",
+  "displayName": "HTTP",
+  "description": "ctx.http for iOS and Android — the M1 slice over expo/fetch.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "net:host/*",
+    "fs:write:downloads"
+  ],
+  "contributes": {
+    "services": [
+      "http"
+    ]
+  }
+}

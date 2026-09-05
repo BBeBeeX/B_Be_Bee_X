@@ -20,7 +20,7 @@
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { AudioMetadata, CodecService, Uri } from '@BBeBee/protocol'
+import type { AudioMetadata, CodecService, DecodedAudio, Uri } from '@BBeBee/protocol'
 import { parseBuffer, selectCover, type IAudioMetadata, type IOptions } from 'music-metadata'
 
 export interface CodecNodeConfig {
@@ -75,7 +75,7 @@ export class CodecNode extends Service implements CodecService {
    * through `ctx.audio`; the method stays on the contract so the shells can
    * provide it where they have it.
    */
-  async decode(): Promise<{ sampleRate: number; channels: number; pcm: Float32Array[] }> {
+  async decode(_data?: Uint8Array | Uri): Promise<DecodedAudio> {
     throw new Error(
       'codec: PCM decoding is provided by the audio engine, not the tag reader. ' +
         'Load through ctx.audio instead.',
@@ -113,7 +113,7 @@ export class CodecNode extends Service implements CodecService {
     if (size > TAG_WINDOW_BYTES) {
       const head = await this.readWindow(uri, TAG_WINDOW_BYTES)
       try {
-        const parsed = await parseBuffer(head, { mimeType: mimeFor(uri) }, options)
+        const parsed = await this.parseBytes(head, uri, undefined, options)
         if (hasUsableTags(parsed)) return parsed
       } catch {
         // The window cut through something the parser needed.
@@ -121,7 +121,50 @@ export class CodecNode extends Service implements CodecService {
     }
 
     const whole = await this.ctx.fs.readBytes(uri)
-    return parseBuffer(whole, { size, mimeType: mimeFor(uri) }, options)
+    const parsed = await this.parseBytes(whole, uri, size, options)
+
+    /*
+     * A parse that found nothing at all is a failure, not a tagless track.
+     *
+     * ⚠️ This used to return whatever came back. Passing the extension's mime
+     * type made the parser trust it, so a zero-byte file, a truncated header
+     * and a JPEG renamed `.mp3` all "parsed" — into `{ codec: 'mp3' }`, from
+     * the *hint*, with no bytes behind it. The scanner then imported three
+     * phantom tracks named after their filenames, which is worse than either
+     * of the two honest outcomes: docs/11 §4.7 says a file that will not
+     * decode gets `scan_entries.status = 'error'` with a reason, and is never
+     * silently absent. It was silently *present* instead.
+     */
+    if (!hasUsableTags(parsed)) {
+      throw new Error(`codec: nothing readable in ${this.ctx.fs.basename(uri)}`)
+    }
+    return parsed
+  }
+
+  /**
+   * Parse bytes, letting the *content* decide the container.
+   *
+   * The extension is a hint of last resort, not the answer: a `.mp3` holding
+   * FLAC is a thing real libraries contain, and dispatching on the name reads
+   * it with the wrong parser and reports it as untagged. Content sniffing gets
+   * it right; the hint is retried only when sniffing fails outright, which is
+   * the case of a container music-metadata cannot recognise from its magic
+   * bytes but can parse once told.
+   */
+  private async parseBytes(
+    bytes: Uint8Array,
+    uri: Uri,
+    size: number | undefined,
+    options: IOptions,
+  ): Promise<IAudioMetadata> {
+    const base = size === undefined ? {} : { size }
+    try {
+      return await parseBuffer(bytes, base, options)
+    } catch (error) {
+      const hint = mimeFor(uri)
+      if (!hint) throw error
+      return parseBuffer(bytes, { ...base, mimeType: hint }, options)
+    }
   }
 
   private async readWindow(uri: Uri, bytes: number): Promise<Uint8Array> {
@@ -160,7 +203,16 @@ export class CodecNode extends Service implements CodecService {
 function hasUsableTags(parsed: IAudioMetadata): boolean {
   const { common, format } = parsed
   return Boolean(
-    common.title ?? common.artist ?? common.album ?? format.codec ?? format.sampleRate,
+    common.title ??
+      common.artist ??
+      common.album ??
+      // Format-level facts count: a FLAC with no tags at all is still
+      // legitimately tagless, and the scanner falls back to its filename.
+      // These come from the bytes now that no mime hint is volunteered, so
+      // `codec` is evidence rather than an echo of the extension.
+      format.sampleRate ??
+      format.duration ??
+      format.numberOfChannels,
   )
 }
 

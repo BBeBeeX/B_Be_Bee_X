@@ -3,24 +3,57 @@
 
 import type { PluginRegistry } from '@BBeBee/kernel'
 import coreAudioWebaudio from '@BBeBee/core-audio-webaudio'
+import coreBackgroundExpo from '@BBeBee/core-background-expo'
+import coreCodecRn from '@BBeBee/core-codec-rn'
+import coreDeviceExpo from '@BBeBee/core-device-expo'
+import coreHttpRn from '@BBeBee/core-http-rn'
+import coreMediaSessionRn from '@BBeBee/core-media-session-rn'
 import coreSecretsExpo from '@BBeBee/core-secrets-expo'
 import pluginHello from '@BBeBee/plugin-hello'
 import pluginHelloUi from '@BBeBee/plugin-hello-ui-mobile'
 import pluginInspector from '@BBeBee/plugin-inspector'
 import pluginLocalScanner from '@BBeBee/plugin-local-scanner'
+import pluginLocalScannerUi from '@BBeBee/plugin-local-scanner-ui-mobile'
 import pluginLogBuffer from '@BBeBee/plugin-log-buffer'
 import pluginLogConsole from '@BBeBee/plugin-log-console'
 import pluginLogFile from '@BBeBee/plugin-log-file'
 import pluginPlayer from '@BBeBee/plugin-player'
+import pluginPlayerUi from '@BBeBee/plugin-player-ui-mobile'
 import pluginSourceLocal from '@BBeBee/plugin-source-local'
 import pluginSourceRuntime from '@BBeBee/plugin-source-runtime'
 import pluginSources from '@BBeBee/plugin-sources'
+import pluginSourcesUi from '@BBeBee/plugin-sources-ui-mobile'
 import pluginUi from '@BBeBee/plugin-ui'
 
 export const bundled: PluginRegistry = {
   "@BBeBee/core-audio-webaudio": {
     plugin: coreAudioWebaudio,
     manifest: {"id":"@BBeBee/core-audio-webaudio","version":"0.0.0","displayName":"Audio","description":"ctx.audio — the Web Audio graph, shared by every target.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["audio"]}},
+    builtin: true,
+  },
+  "@BBeBee/core-background-expo": {
+    plugin: coreBackgroundExpo,
+    manifest: {"id":"@BBeBee/core-background-expo","platforms":["mobile"],"version":"0.0.0","displayName":"Background","description":"ctx.background for iOS and Android — audio session, wake locks, deferred work.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["background"],"contributes":{"services":["background"]}},
+    builtin: true,
+  },
+  "@BBeBee/core-codec-rn": {
+    plugin: coreCodecRn,
+    manifest: {"id":"@BBeBee/core-codec-rn","platforms":["mobile"],"version":"0.0.0","displayName":"Codec","description":"ctx.codec for iOS and Android — tags over ctx.fs, PCM via AudioDecoder.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:all"],"contributes":{"services":["codec"]}},
+    builtin: true,
+  },
+  "@BBeBee/core-device-expo": {
+    plugin: coreDeviceExpo,
+    manifest: {"id":"@BBeBee/core-device-expo","platforms":["mobile"],"version":"0.0.0","displayName":"Device","description":"ctx.device for iOS and Android — network, battery, locale.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["device"]}},
+    builtin: true,
+  },
+  "@BBeBee/core-http-rn": {
+    plugin: coreHttpRn,
+    manifest: {"id":"@BBeBee/core-http-rn","platforms":["mobile"],"version":"0.0.0","displayName":"HTTP","description":"ctx.http for iOS and Android — the M1 slice over expo/fetch.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:write:downloads"],"contributes":{"services":["http"]}},
+    builtin: true,
+  },
+  "@BBeBee/core-media-session-rn": {
+    plugin: coreMediaSessionRn,
+    manifest: {"id":"@BBeBee/core-media-session-rn","platforms":["mobile"],"version":"0.0.0","displayName":"Media Session","description":"ctx.mediaSession for iOS and Android — lock screen and media notification.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["mediaSession"],"contributes":{"services":["mediaSession"]}},
     builtin: true,
   },
   "@BBeBee/core-secrets-expo": {
@@ -30,27 +63,32 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-hello": {
     plugin: pluginHello,
-    manifest: {"id":"@BBeBee/plugin-hello","version":"0.0.0","displayName":"Hello","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:own","secrets:own"]},
+    manifest: {"id":"@BBeBee/plugin-hello","version":"0.0.0","displayName":"Hello","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:own","secrets:own"],"contributes":{"services":["hello"]}},
     builtin: true,
   },
   "@BBeBee/plugin-hello-ui-mobile": {
     plugin: pluginHelloUi,
-    manifest: {"id":"@BBeBee/plugin-hello-ui-mobile","version":"0.0.0","displayName":"Hello (mobile views)","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
+    manifest: {"id":"@BBeBee/plugin-hello-ui-mobile","version":"0.0.0","displayName":"Hello (mobile views)","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["hello"]}},
     builtin: true,
   },
   "@BBeBee/plugin-inspector": {
     plugin: pluginInspector,
-    manifest: {"id":"@BBeBee/plugin-inspector","version":"0.0.0","displayName":"Plugin Inspector","description":"Fiber tree and labelled effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[]},
+    manifest: {"id":"@BBeBee/plugin-inspector","version":"0.0.0","displayName":"Plugin Inspector","description":"Fiber tree and labelled effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["inspector"]}},
     builtin: true,
   },
   "@BBeBee/plugin-local-scanner": {
     plugin: pluginLocalScanner,
-    manifest: {"id":"@BBeBee/plugin-local-scanner","version":"0.0.0","displayName":"Local Scanner","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:media","fs:read:all","db:read:core","db:write:core","background"],"contributes":{"services":["scanner"]}},
+    manifest: {"id":"@BBeBee/plugin-local-scanner","version":"0.0.0","displayName":"Local Scanner","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["fs:read:media","fs:read:all","db:read:core","db:write:core","background"],"contributes":{"services":["scanner"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-local-scanner-ui-mobile": {
+    plugin: pluginLocalScannerUi,
+    manifest: {"id":"@BBeBee/plugin-local-scanner-ui-mobile","version":"0.0.0","displayName":"Local Scanner (mobile views)","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["scanner"]}},
     builtin: true,
   },
   "@BBeBee/plugin-log-buffer": {
     plugin: pluginLogBuffer,
-    manifest: {"id":"@BBeBee/plugin-log-buffer","version":"0.0.0","displayName":"Log Buffer","description":"In-app log ring buffer.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
+    manifest: {"id":"@BBeBee/plugin-log-buffer","version":"0.0.0","displayName":"Log Buffer","description":"In-app log ring buffer.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["logBuffer"]}},
     builtin: true,
   },
   "@BBeBee/plugin-log-console": {
@@ -65,7 +103,12 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-player": {
     plugin: pluginPlayer,
-    manifest: {"id":"@BBeBee/plugin-player","version":"0.0.0","displayName":"Player","description":"ctx.player — transport, queue, resolution, history.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio","mediaSession","background","db:read:core","db:write:core"],"contributes":{"services":["player"]}},
+    manifest: {"id":"@BBeBee/plugin-player","version":"0.0.0","displayName":"Player","description":"ctx.player — transport, queue, resolution, history.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["audio","mediaSession","background","db:read:core","db:write:core"],"contributes":{"services":["player"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-player-ui-mobile": {
+    plugin: pluginPlayerUi,
+    manifest: {"id":"@BBeBee/plugin-player-ui-mobile","version":"0.0.0","displayName":"Player (mobile views)","description":"ctx.player — transport, queue, resolution, history.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["player"]}},
     builtin: true,
   },
   "@BBeBee/plugin-source-local": {
@@ -75,17 +118,22 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-source-runtime": {
     plugin: pluginSourceRuntime,
-    manifest: {"id":"@BBeBee/plugin-source-runtime","version":"0.0.0","displayName":"Music sources","description":"plugin-source-runtime — interprets imported source strings.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","db:read:core"],"contributes":{"slots":["settings.sources"]}},
+    manifest: {"id":"@BBeBee/plugin-source-runtime","version":"0.0.0","displayName":"Music sources","description":"plugin-source-runtime — interprets imported source strings.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","db:read:core","db:write:core"],"contributes":{"slots":["settings.sources"]}},
     builtin: true,
   },
   "@BBeBee/plugin-sources": {
     plugin: pluginSources,
-    manifest: {"id":"@BBeBee/plugin-sources","version":"0.0.0","displayName":"Sources","description":"ctx.sources — imported source documents, the registry, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["sources"]}},
+    manifest: {"id":"@BBeBee/plugin-sources","version":"0.0.0","displayName":"Sources","description":"ctx.sources — imported source documents, the registry, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["sources"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-sources-ui-mobile": {
+    plugin: pluginSourcesUi,
+    manifest: {"id":"@BBeBee/plugin-sources-ui-mobile","version":"0.0.0","displayName":"Sources (mobile views)","description":"ctx.sources — imported source documents, the registry, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["sources"]}},
     builtin: true,
   },
   "@BBeBee/plugin-ui": {
     plugin: pluginUi,
-    manifest: {"id":"@BBeBee/plugin-ui","version":"0.0.0","displayName":"UI Registry","description":"The ctx.ui contribution registry.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
+    manifest: {"id":"@BBeBee/plugin-ui","version":"0.0.0","displayName":"UI Registry","description":"The ctx.ui contribution registry.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["ui"]}},
     builtin: true,
   },
 }

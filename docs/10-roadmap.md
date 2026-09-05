@@ -50,6 +50,23 @@ and control playback. Media session integration.
 - Headphone unplug pauses ([05 §5](./05-audio-playback.md#5-interruptions-focus-and-routes)).
 - Queue and position restore across a restart, without auto-playing.
 
+**Where it stands.** Built and under test: `core-audio-webaudio` with its conformance suite,
+`core-codec-node` and `core-codec-rn`, `core-http-node` and `core-http-rn` with the M1-slice
+conformance suite running against a real byte-serving socket, `ctx.device`, `ctx.background` and
+`ctx.mediaSession` on both targets, the scanner, the catalogue, the player with gapless, crossfade,
+prefetch and the interruption table, both UI kits with the parity check, and the five screens on
+both shells. Both shells load the **generated** registry, so a package is bundled by declaring a
+manifest rather than by being added to two hand-written lists that can disagree. Criterion 1 is
+checked at the size it names: a generated 5,000-file corpus, read by the real codec, through an
+instrumented `ctx.fs` that asserts the second pass opens no file.
+
+Still open, and every one of them needs hardware: **the Stage 0 spike has not been run** on an iOS
+device, an Android device, or in Electron, so ADR-4's verdict below is still a hypothesis; the
+device smoke matrix has not been run; and **`load({ strategy: 'stream' })` has no mobile
+implementation** — React Native has no `HTMLMediaElement`, so a long remote track is buffered or
+not played, which is the gap `StreamerNode` closes and the one piece of M1 that is architecture
+rather than wiring.
+
 ---
 
 ### M2 — Sources are strings
@@ -103,6 +120,15 @@ dev-client rebuild, which is why it was always listed as the one native dependen
 end to end on real hardware. Until the first lands, a scripted document on mobile reports its
 affected capabilities as absent rather than offering a button that cannot work, which is the
 designed degradation rather than a break.
+
+⚠️ **What "built" did and did not mean until recently.** Every package listed above was built and
+green, and *neither shell ran any of it*: the desktop bootstrap omitted `ctx.audio`, `ctx.codec`
+and `ctx.http`, so `plugin-player` was commented out and the scanner and the source runtime sat
+PENDING, and the mobile shell was still M0 — four core services and the hello plugin. That is now
+fixed, and it is worth recording as the failure mode it was: a milestone can be complete
+package-by-package and deliver nothing, because the exit criteria are about the *app*. The check
+that would have caught it earlier is a boot test per shell, which is the obvious next thing to
+write.
 
 **Why second.** M1 plays files. M2 is where the model that the whole design now rests on is either
 true — a stranger's string plays music, safely, and can be repaired by the person holding it — or

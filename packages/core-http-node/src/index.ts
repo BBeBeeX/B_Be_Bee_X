@@ -224,9 +224,34 @@ export class HttpNode extends Service {
     const onAbort = () => controller.abort(req.signal?.reason)
     req.signal?.addEventListener('abort', onAbort)
 
+    /*
+     * ⚠️ The caller's signal has to outlive the *headers*.
+     *
+     * This used to be a `finally`, which detached the moment the response
+     * resolved — and a response resolves when the headers arrive, with the
+     * body still streaming. So `AbortSignal` worked for a request that had not
+     * answered yet and silently did nothing for one that had, which is the
+     * case that matters: the player cancels a prefetch mid-download when the
+     * queue changes (MD-5), and cancelling a download that has already started
+     * is the entire point.
+     *
+     * The header timeout *is* done when the headers arrive — that is what
+     * `timeoutMs` means here — so it is cleared separately below.
+     */
+    let detached = false
+    const detach = () => {
+      if (detached) return
+      detached = true
+      if (timer) clearTimeout(timer)
+      req.signal?.removeEventListener('abort', onAbort)
+    }
+
     try {
-      return await this.followRedirects(req, controller)
+      const response = await this.followRedirects(req, controller, detach)
+      if (timer) clearTimeout(timer)
+      return response
     } catch (error) {
+      detach()
       // A capability refusal is not a transport failure. It has to propagate
       // as itself: `NetworkError` is the one class the player retries with
       // backoff (docs/06 §7), so wrapping it would turn a blocked request into
@@ -238,15 +263,14 @@ export class HttpNode extends Service {
         undefined,
         { cause: error },
       )
-    } finally {
-      if (timer) clearTimeout(timer)
-      req.signal?.removeEventListener('abort', onAbort)
     }
   }
 
   private async followRedirects(
     req: HttpRequest,
     controller: AbortController,
+    /** Called once the response body has settled, so `send` can detach. */
+    onSettled: () => void,
   ): Promise<HttpResponse> {
     const mode = req.redirect ?? 'follow'
     let url = req.url
@@ -300,7 +324,7 @@ export class HttpNode extends Service {
         throw new NetworkError(`unexpected ${status} redirect from ${url}`)
       }
       if (!isRedirectStatus || !location || mode !== 'follow') {
-        return wrap(response, req.onProgress)
+        return wrap(response, req.onProgress, onSettled)
       }
 
       let next: URL
@@ -360,8 +384,19 @@ function contentLengthOf(response: HttpResponse, alreadyHave: number): number | 
   return Number.isFinite(length) ? length + alreadyHave : undefined
 }
 
-/** `Response` → the contract's shape, with progress if anyone asked. */
-function wrap(response: Response, onProgress?: HttpRequest['onProgress']): HttpResponse {
+/**
+ * `Response` → the contract's shape, with progress if anyone asked.
+ *
+ * `onSettled` fires once the body is finished with — read to the end,
+ * cancelled, or failed — which is what tells `send` it may finally stop
+ * bridging the caller's `AbortSignal`. Every path that consumes a body calls
+ * it, because the one that does not is the one that leaks a listener.
+ */
+function wrap(
+  response: Response,
+  onProgress?: HttpRequest['onProgress'],
+  onSettled: () => void = () => {},
+): HttpResponse {
   const headers: Record<string, string> = {}
   response.headers.forEach((value, key) => {
     headers[key.toLowerCase()] = value
@@ -369,27 +404,76 @@ function wrap(response: Response, onProgress?: HttpRequest['onProgress']): HttpR
 
   const total = Number(response.headers.get('content-length') ?? '') || undefined
 
+  let settled = false
+  const settle = () => {
+    if (settled) return
+    settled = true
+    onSettled()
+  }
+
+  /*
+   * A response with no body has nothing left to abort.
+   *
+   * Settling here rather than waiting for a read closes a leak on the calls
+   * that never read one: `ping()` and the `Accept-Ranges` probe are HEADs that
+   * look only at `status`, so nothing would ever have detached the caller's
+   * `AbortSignal` listener — and a source that pings on a timer would
+   * accumulate one per tick on a signal it holds for its whole lifetime.
+   */
+  if (!response.body) settle()
+
+  const whole = async <T>(read: () => Promise<T>): Promise<T> => {
+    try {
+      return await read()
+    } finally {
+      settle()
+    }
+  }
+
   return {
     status: response.status,
     headers,
     url: response.url,
-    text: () => response.text(),
-    json: <T>() => response.json() as Promise<T>,
-    bytes: async () => new Uint8Array(await response.arrayBuffer()),
+    text: () => whole(() => response.text()),
+    json: <T>() => whole(() => response.json() as Promise<T>),
+    bytes: () => whole(async () => new Uint8Array(await response.arrayBuffer())),
+    /*
+     * Always wrapped, even with no `onProgress`.
+     *
+     * Handing back `response.body` directly is cheaper but gives no hook for
+     * "the caller stopped reading", and cancellation is exactly what a
+     * prefetch abandoned by a queue change needs to be observable.
+     */
     stream: () => {
       const body = response.body
-      if (!body) return emptyStream()
-      if (!onProgress) return body
+      if (!body) {
+        settle()
+        return emptyStream()
+      }
+      const reader = body.getReader()
       let loaded = 0
-      return body.pipeThrough(
-        new TransformStream<Uint8Array, Uint8Array>({
-          transform(chunk, controller) {
-            loaded += chunk.byteLength
-            onProgress(loaded, total)
-            controller.enqueue(chunk)
-          },
-        }),
-      )
+      return new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            const { done, value } = await reader.read()
+            if (done) {
+              settle()
+              controller.close()
+              return
+            }
+            loaded += value.byteLength
+            onProgress?.(loaded, total)
+            controller.enqueue(value)
+          } catch (error) {
+            settle()
+            controller.error(error)
+          }
+        },
+        cancel(reason) {
+          settle()
+          return reader.cancel(reason)
+        },
+      })
     },
   }
 }

@@ -51,9 +51,10 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        // Config files belong to no package tsconfig program.
+        // Config files — and the test stubs the vitest config aliases to —
+        // belong to no package tsconfig program.
         projectService: {
-          allowDefaultProject: ['*.ts', '*.js', 'apps/*/*.config.ts'],
+          allowDefaultProject: ['*.ts', '*.js', 'apps/*/*.config.ts', 'test/stubs/*.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -68,8 +69,17 @@ export default tseslint.config(
     // docs/02 §1 — THE invariant. Only packages/core-* may touch a platform
     // SDK; everything else reaches the platform through a ctx.* service.
     // Widening this list is almost always the wrong fix: add a core service.
-    files: ['packages/plugin-*/**/*.ts', 'packages/ui-*/**/*.ts', 'packages/protocol/**/*.ts'],
-    ignores: ['packages/plugin-*-ui-*/**/*.ts'],
+    // `.tsx` as well as `.ts`: every view package is `.tsx`, so a glob that
+    // stopped at `.ts` exempted from THE invariant exactly the packages most
+    // likely to reach for a platform SDK.
+    files: [
+      'packages/plugin-*/**/*.ts',
+      'packages/plugin-*/**/*.tsx',
+      'packages/ui-*/**/*.ts',
+      'packages/ui-*/**/*.tsx',
+      'packages/protocol/**/*.ts',
+    ],
+    ignores: ['packages/plugin-*-ui-*/**/*.ts', 'packages/plugin-*-ui-*/**/*.tsx'],
     rules: {
       'no-restricted-imports': ['error', { patterns: PLATFORM_SDKS }],
     },
@@ -95,12 +105,35 @@ export default tseslint.config(
     // docs/08 §1 — UI packages may render, but may not reach the platform.
     // `react-native` is allowed here (ADR-2 accepts a per-target view layer);
     // its capability modules are not.
-    files: ['packages/plugin-*-ui-mobile/**/*.ts', 'packages/ui-kit-mobile/**/*.ts'],
+    files: [
+      'packages/plugin-*-ui-mobile/**/*.ts',
+      'packages/plugin-*-ui-mobile/**/*.tsx',
+      'packages/ui-kit-mobile/**/*.ts',
+      'packages/ui-kit-mobile/**/*.tsx',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',
         { patterns: PLATFORM_SDKS.filter((p) => !p.startsWith('react-native')) },
       ],
+    },
+  },
+
+  {
+    // The desktop half of the same rule, which was missing entirely: the block
+    // above exempts every `plugin-*-ui-*` package from the invariant and only
+    // puts `-ui-mobile` back under one, so a desktop view package could
+    // `import { ipcRenderer } from 'electron'` and nothing would say a word.
+    // Its render target is `react-dom`, which is not a platform SDK, so this
+    // one bans the whole list.
+    files: [
+      'packages/plugin-*-ui-desktop/**/*.ts',
+      'packages/plugin-*-ui-desktop/**/*.tsx',
+      'packages/ui-kit-desktop/**/*.ts',
+      'packages/ui-kit-desktop/**/*.tsx',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: PLATFORM_SDKS }],
     },
   },
 
@@ -143,7 +176,7 @@ export default tseslint.config(
     // Tests are not shipped, so the platform-SDK ban does not apply to them:
     // a conformance harness legitimately needs `node:fs` to build a scratch
     // directory. Source files in the same packages are still covered above.
-    files: ['**/*.test.ts'],
+    files: ['**/*.test.ts', '**/*.test.tsx'],
     rules: {
       'no-restricted-imports': 'off',
       '@typescript-eslint/no-explicit-any': 'off',

@@ -8,8 +8,36 @@
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "platforms": ["ios", "android"],
-    "ios": { "supportsTablet": true, "bundleIdentifier": "org.bbebee.app" },
-    "android": { "package": "org.bbebee.app" },
-    "plugins": ["expo-dev-client"]
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "org.bbebee.app",
+      "infoPlist": {
+        "UIBackgroundModes": ["audio"]
+      }
+    },
+    "android": {
+      "package": "org.bbebee.app",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.WAKE_LOCK",
+        "android.permission.ACCESS_NETWORK_STATE"
+      ]
+    },
+    "plugins": [
+      "expo-dev-client",
+      "expo-background-task",
+      [
+        "react-native-audio-api",
+        {
+          "iosBackgroundMode": true,
+          "androidForegroundService": true,
+          "androidFSTypes": ["mediaPlayback"],
+          "androidPermissions": [
+            "android.permission.FOREGROUND_SERVICE",
+            "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+          ]
+        }
+      ]
+    ]
   }
 }

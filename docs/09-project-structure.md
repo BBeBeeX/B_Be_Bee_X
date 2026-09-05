@@ -37,33 +37,35 @@ B_Be_Bee/
 │  ├─ core-paths-expo/     ✅       │ The ONLY packages allowed to
 │  ├─ core-fs-node/        ✅       │ import a platform SDK.
 │  ├─ core-fs-expo/        ✅       │
-│  ├─ core-db-node/        ✅       │ ✅ = built (M0)
+│  ├─ core-db-node/        ✅       │ ✅ = built
 │  ├─ core-db-expo/        ✅       │
 │  ├─ core-store-fs/       ✅       │ shared: one impl, via ctx.fs (04 §4)
-│  ├─ core-http-node/               │
-│  ├─ core-http-rn/                 │
-│  ├─ core-js-quickjs-node/         │ ctx.js — the source sandbox (04 §19)
-│  ├─ core-js-quickjs-rn/           │
+│  ├─ core-http-node/      ✅       │ the transport is a seam; desktop fills it
+│  ├─ core-http-rn/        ✅       │ with Electron's net, mobile with expo/fetch
+│  ├─ core-js-quickjs-node/ ✅      │ ctx.js — the source sandbox (04 §19)
+│  ├─ core-js-quickjs-expo/         │ ⚠️ the one M2 gap: Hermes has no WASM
 │  ├─ core-device-electron/ ✅      │ ctx.device — network, battery, media keys
-│  ├─ core-device-expo/             │
+│  ├─ core-device-expo/    ✅       │
 │  ├─ core-background-electron/ ✅  │ ctx.background — wake locks, suspend
-│  ├─ core-background-expo/         │
+│  ├─ core-background-expo/ ✅      │
 │  ├─ core-media-session-electron/ ✅ ctx.mediaSession — the OS now-playing surface
-│  ├─ core-media-session-rn/        │
-│  ├─ core-secrets-electron/        │
-│  ├─ core-secrets-expo/            │
-│  ├─ core-audio-webaudio/          │ (shared: react-native-audio-api on both)
+│  ├─ core-media-session-rn/ ✅     │
+│  ├─ core-codec-node/     ✅       │ ctx.codec — tags via music-metadata over
+│  ├─ core-codec-rn/       ✅       │ ctx.fs; -rn adds the device's decoder
+│  ├─ core-secrets-node/   ✅       │
+│  ├─ core-secrets-expo/   ✅       │
+│  ├─ core-audio-webaudio/ ✅       │ (shared: react-native-audio-api on both)
 │  └─ core-…                        ┘
 │
-│  ├─ source-rules/                 ┐ the rule language: parser, engines,
+│  ├─ source-rules/         ✅      ┐ the rule language: parser, engines,
 │  │                                │ combinators, coercion. Pure logic —
 │  │                                │ no Cordis, no platform, no I/O (06 §3)
-│  ├─ plugin-source-runtime/        │ binds source-rules to ctx.http · ctx.js
-│  ├─ plugin-player/                │ headless feature plugins.
+│  ├─ plugin-source-runtime/ ✅     │ binds source-rules to ctx.http · ctx.js
+│  ├─ plugin-player/       ✅       │ headless feature plugins.
 │  ├─ plugin-dsp/                   │ Import @BBeBee/protocol
 │  ├─ plugin-effect-eq10/           │ and nothing else.
-│  ├─ plugin-source-local/          │ the one provider that is not a string
-│  ├─ plugin-local-scanner/         │
+│  ├─ plugin-source-local/ ✅       │ the one provider that is not a string
+│  ├─ plugin-local-scanner/ ✅      │
 │  ├─ plugin-download/              │
 │  ├─ plugin-library/               │
 │  ├─ plugin-lyrics/                │
@@ -89,11 +91,18 @@ B_Be_Bee/
 │  ├─ ui-kit-desktop/     ✅       React DOM components
 │  ├─ plugin-hello-ui-desktop/ ✅   ┐ per-target view packages
 │  ├─ plugin-hello-ui-mobile/  ✅   ┘
-│  ├─ plugin-source-runtime-ui-desktop/ ┐ source list, import review,
-│  ├─ plugin-source-runtime-ui-mobile/  ┘ editor, rule tracer (08 §4)
+│  ├─ plugin-player-ui-desktop/ ✅  ┐ now playing, transport, queue
+│  ├─ plugin-player-ui-mobile/  ✅  ┘
+│  ├─ plugin-sources-ui-desktop/ ✅ ┐ library, album detail, source list,
+│  ├─ plugin-sources-ui-mobile/  ✅ ┘ import review, editor, rule tracer (08 §4)
+│  ├─ plugin-local-scanner-ui-desktop/ ✅ ┐ settings: scan roots
+│  ├─ plugin-local-scanner-ui-mobile/  ✅ ┘
 │  │
 │  ├─ tooling-gen-plugins/  ✅      the static registry codegen (pnpm gen:plugins)
-│  └─ tooling-create-plugin/ ✅     the scaffolder (pnpm new:plugin)
+│  ├─ tooling-create-plugin/ ✅     the scaffolder (pnpm new:plugin)
+│  └─ tooling-fixtures/     ✅      dev-only: the ≥5,000-file corpus generator,
+│                                   an instrumented ctx.fs, and the byte-serving
+│                                   http fixture the conformance suite runs on
 │
 ├─ fixtures/sources/                example source documents; the golden corpus (§6)
 ├─ docs/                            these documents
@@ -275,7 +284,11 @@ these move weekly.
 | `expo-file-system` | ~57.0.6 | `File`/`Directory` API; legacy at `expo-file-system/legacy` |
 | `expo-sqlite` | ~57.0.2 | |
 | `expo-secure-store` | ~57.0.2 | |
-| `expo-background-task` | ~57.0.14 | Replaces `expo-background-fetch` |
+| `expo-background-task` | ~57.0.16 | Replaces `expo-background-fetch`. With `expo-task-manager` ~57.0.16 |
+| `expo-network` | ~57.0.1 | `ctx.device.network()` |
+| `expo-battery` | ~57.0.2 | `ctx.device.battery()` |
+| `expo-application` | ~57.0.2 | The app version `ctx.device` reports |
+| `expo-keep-awake` | ~57.0.1 | `ctx.background.acquireWakeLock` |
 | `expo-crypto` | ~57.0.2 | |
 | `expo-dev-client` | ~57.0.16 | Required — Expo Go cannot host the native modules |
 | `react-native-audio-api` | **0.13.3** | ⚠️ Pre-1.0 — see §5.2. Peer: `react-native-worklets >= 0.6.0` |
@@ -289,7 +302,7 @@ these move weekly.
 | `turbo` | 2.10.12 | |
 | `@shopify/flash-list` | 2.3.2 | Mobile list virtualisation |
 | `@tanstack/react-virtual` | 3.14.10 | Desktop list virtualisation |
-| `music-metadata` | 11.15.0 | Desktop tag reading, in `main` only |
+| `music-metadata` | 11.15.0 | Tag reading on **both** targets — it is pure JS over `ctx.fs`, so `core-codec-rn` inherits it rather than adding a native reader that would have to agree with it |
 | `quickjs-emscripten` | **0.31.0** | ⚠️ `ctx.js` on desktop. Pin exactly; the WASM asset is bundled, not fetched (04 §19) |
 | `react-native-quickjs` | **0.4.x** | ⚠️ `ctx.js` on mobile — a native module, so it forces a dev-client rebuild. See §5.3 |
 

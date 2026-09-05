@@ -24,7 +24,13 @@ import { uriContains, type DbService, type FsService, type PathsService } from '
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
-import { CH, type BridgeEvent, type BridgedService } from './protocol.js'
+import {
+  CH,
+  type BridgeEvent,
+  type BridgeHttpHead,
+  type BridgeHttpRequest,
+  type BridgedService,
+} from './protocol.js'
 
 /**
  * The slice of `ipcMain` this host uses.
@@ -89,6 +95,43 @@ export interface HostOptions {
   transactionIdleMs?: number
   /** OS integrations. Absent members are simply unavailable to the renderer. */
   system?: SystemHost
+  /**
+   * The transport for renderer-issued HTTP.
+   *
+   * Supplied by the app — Electron's `net.fetch` — rather than imported, for
+   * the same reason `IpcHost` is structural: this package stays testable
+   * without Electron. Absent means the renderer's own `fetch` keeps being
+   * used, which works for same-origin and CORS-friendly hosts and fails for
+   * every music server that has never heard of this app.
+   */
+  httpFetch?: (input: string, init: HttpFetchInit) => Promise<HttpFetchResponse>
+  /** Concurrent in-flight bridged requests. Bounds sockets held by one renderer. */
+  maxOpenRequests?: number
+}
+
+/** The slice of `RequestInit` the host forwards. Structural, like `IpcHost`. */
+export interface HttpFetchInit {
+  method: string
+  headers: Record<string, string>
+  body?: Uint8Array
+  redirect?: 'follow' | 'manual' | 'error'
+  signal?: AbortSignal
+  /** Always `'omit'`: cookies are `ctx.http`'s job, not the session's. */
+  credentials?: 'omit'
+  /** Electron's non-standard opt-out from the app's own protocol handlers. */
+  bypassCustomProtocolHandlers?: boolean
+}
+
+/** The slice of `Response` the host reads. */
+export interface HttpFetchResponse {
+  status: number
+  statusText: string
+  url: string
+  headers: {
+    forEach(cb: (value: string, key: string) => void): void
+    getSetCookie?(): string[]
+  }
+  body?: { getReader(): ReadableStreamDefaultReader<Uint8Array> } | null
 }
 
 export interface Host {
@@ -148,6 +191,7 @@ const URI_ARGS: Record<string, number[]> = {
 
 export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promise<Host> {
   const maxOpenStreams = options.maxOpenStreams ?? 64
+  const maxOpenRequests = options.maxOpenRequests ?? 32
   const transactionIdleMs = options.transactionIdleMs ?? 30_000
 
   const ctx = new Context()
@@ -297,6 +341,137 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     readers.delete(handle)
   })
 
+  /* ── HTTP, performed here rather than in the renderer ─────────────── */
+
+  /**
+   * ⚠️ **This is an un-gated egress point.** Anything in the renderer can call
+   * it, so it is *not* where a source's `net:host/<glob>` allowlist is
+   * enforced — that gate lives in `ctx.http`, which knows which source is
+   * asking, and this host cannot (see the security note at the top of this
+   * file). What is enforced here is the part that does not need a caller
+   * identity: the scheme, and a bound on how many sockets one renderer holds.
+   */
+  interface OpenRequest {
+    reader?: ReadableStreamDefaultReader<Uint8Array>
+    abort: AbortController
+  }
+  const requests = new Map<number, OpenRequest>()
+
+  function closeRequest(handle: number): void {
+    const open = requests.get(handle)
+    if (!open) return
+    requests.delete(handle)
+    open.abort.abort()
+    void open.reader?.cancel().catch(() => undefined)
+  }
+
+  ipc.handle(CH.httpOpen, async (_event, ...rest): Promise<BridgeHttpHead> => {
+    const [request] = rest as unknown as [BridgeHttpRequest]
+    const httpFetch = options.httpFetch
+    if (!httpFetch) throw new Error('bridge: no http transport was configured')
+    if (!request || typeof request.url !== 'string') {
+      throw new TypeError('bridge: expected an http request')
+    }
+
+    // `file:` would turn this into an unbounded file read that skips every
+    // containment check above it; custom schemes reach OS protocol handlers.
+    const scheme = new URL(request.url).protocol
+    if (scheme !== 'http:' && scheme !== 'https:') {
+      throw new Error(`bridge: refusing to fetch ${scheme}//`)
+    }
+    if (requests.size >= maxOpenRequests) {
+      throw new Error(`bridge: too many open requests (${maxOpenRequests}); close some first`)
+    }
+
+    const abort = new AbortController()
+    const timer =
+      typeof request.timeoutMs === 'number' && request.timeoutMs > 0
+        ? setTimeout(() => abort.abort(), request.timeoutMs)
+        : undefined
+
+    let response: HttpFetchResponse
+    try {
+      response = await httpFetch(request.url, {
+        method: request.method || 'GET',
+        headers: request.headers ?? {},
+        ...(request.body ? { body: base64ToBytes(request.body) } : {}),
+        ...(request.redirect ? { redirect: request.redirect } : {}),
+        signal: abort.signal,
+        /*
+         * Defence in depth for an un-gated egress point.
+         *
+         * Electron's `net.fetch` reaches `file:` and any registered custom
+         * protocol by default. The scheme check above stops a *direct* attempt;
+         * this stops one arriving through a protocol handler the app registered
+         * for its own purposes — which the check cannot see, because by then the
+         * URL is `https:`.
+         */
+        bypassCustomProtocolHandlers: true,
+        // Cookies belong to `ctx.http`'s per-source jars. Letting the session
+        // hold them too would send one source's cookies to another, which is
+        // precisely the isolation docs/06 §5.1 promises.
+        credentials: 'omit',
+      })
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+
+    const headers: Record<string, string> = {}
+    response.headers.forEach((value, key) => {
+      headers[key.toLowerCase()] = value
+    })
+    // `Headers.forEach` folds repeated `set-cookie` into one comma-joined
+    // string, which is unparseable — an `Expires=Mon, 01 Jan…` contains the
+    // separator. `getSetCookie` is the only faithful reading.
+    const setCookies = response.headers.getSetCookie?.() ?? []
+    if (setCookies.length > 0) headers['set-cookie'] = setCookies.join('\n')
+
+    const handle = nextHandle++
+    const reader = response.body?.getReader()
+    requests.set(handle, { ...(reader ? { reader } : {}), abort })
+
+    return {
+      handle,
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+      /*
+       * The requested URL, not the transport's idea of it.
+       *
+       * Electron documents `net.fetch`'s returned `Response.url` as *incorrect*
+       * — in as many words — so trusting it would put a wrong base under every
+       * relative link a source document resolves. `ctx.http` follows redirects
+       * itself, one hop at a time under `redirect: 'manual'`, so the URL that
+       * was asked for *is* the URL that answered. A caller that opts into
+       * `redirect: 'follow'` gives that up and gets the first hop back, which
+       * is the honest answer available here.
+       */
+      url: request.url,
+      hasBody: Boolean(reader),
+    }
+  })
+
+  ipc.handle(CH.httpPull, async (_event, ...rest) => {
+    const [handle] = rest as unknown as [number]
+    const open = requests.get(handle)
+    if (!open) throw new Error(`bridge: unknown request ${handle}`)
+    if (!open.reader) {
+      requests.delete(handle)
+      return null
+    }
+    const { done, value } = await open.reader.read()
+    if (done) {
+      requests.delete(handle)
+      return null
+    }
+    return value
+  })
+
+  ipc.handle(CH.httpClose, async (_event, ...rest) => {
+    const [handle] = rest as unknown as [number]
+    closeRequest(handle)
+  })
+
   /* ── Transactions ─────────────────────────────────────────────────── */
 
   interface OpenTx {
@@ -397,8 +572,25 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
       for (const channel of Object.values(CH)) ipc.removeHandler(channel)
       for (const reader of readers.values()) await reader.cancel().catch(() => undefined)
       readers.clear()
+      // Each open request holds a socket and an abort controller. Left behind,
+      // they keep `main` alive after the window that opened them is gone.
+      for (const handle of [...requests.keys()]) closeRequest(handle)
       for (const open of transactions.values()) open.finish(false)
       transactions.clear()
     },
   }
+}
+
+/**
+ * Decode a request body.
+ *
+ * `Buffer` is not assumed: this module is imported by `main`, where it exists,
+ * but the package is also unit-tested in environments that do not guarantee
+ * it, and a transport helper is the wrong place to acquire a Node dependency.
+ */
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value)
+  const out = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i)
+  return out
 }

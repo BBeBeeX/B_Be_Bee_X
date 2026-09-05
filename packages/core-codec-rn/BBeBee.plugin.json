@@ -1,0 +1,23 @@
+{
+  "id": "@BBeBee/core-codec-rn",
+  "platforms": [
+    "mobile"
+  ],
+  "version": "0.0.0",
+  "displayName": "Codec",
+  "description": "ctx.codec for iOS and Android — tags over ctx.fs, PCM via AudioDecoder.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "fs:read:all"
+  ],
+  "contributes": {
+    "services": [
+      "codec"
+    ]
+  }
+}

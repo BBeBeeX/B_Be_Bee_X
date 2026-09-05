@@ -178,23 +178,26 @@ defers UI.
 ```
 core-audio-webaudio         ✅  ctx.audio — shared implementation, all three targets
 core-codec-node             ✅  ctx.codec — music-metadata over ctx.fs, bounded head read
-core-codec-rn               +   ctx.codec — AudioDecoder plus a native tag reader
+core-codec-rn               ✅  ctx.codec — inherits the tag reader (it is pure JS over ctx.fs
+                                and a second one would have to agree with it), adds the device's
+                                decodeAudioData and its own supportedFormats
 core-http-node              ✅  ctx.http (M1 slice) — fetch-shaped, transport is a seam
-core-http-rn                +   ctx.http (M1 slice) — RN fetch / XHR
+core-http-rn                ✅  ctx.http (M1 slice) — the same engine over expo/fetch, which is
+                                the only RN fetch with a real ReadableStream
 core-media-session-electron ✅  ctx.mediaSession — navigator.mediaSession + MPRIS/SMTC/Now Playing
-core-media-session-rn       +   ctx.mediaSession — lock screen and media notification
+core-media-session-rn       ✅  ctx.mediaSession — lock screen and media notification
 core-device-electron        ✅  ctx.device — network, battery, media keys, hotkeys
-core-device-expo            +   ctx.device
+core-device-expo            ✅  ctx.device — expo-network, expo-battery
 core-background-electron    ✅  ctx.background — powerSaveBlocker, intervals, suspend hooks
-core-background-expo        +   ctx.background — audio session, expo-background-task
-core-desktop-bridge         ~   hosts for codec, http, media session, device; preload surface;
-                                the main→renderer event channel the last two need
+core-background-expo        ✅  ctx.background — audio session, keep-awake, expo-background-task
+core-desktop-bridge         ✅  hosts for fs, db, paths, system and http; preload surface;
+                                the main→renderer event channel the OS services need
 core-fs-node / -expo        ✅  toPlayableUri and canWatch get their first real consumer
-core-db-node / -expo        ~   the db:write:core verb check (MD-4)
+core-db-node / -expo        ✅  the db:write:core verb check (MD-4)
 
 plugin-sources              ✅  ctx.sources — registry, discovery, catalogue cache, FTS index
 plugin-source-local         ✅  MediaProvider over the filesystem, source id 'local'
-plugin-source-runtime       +   MD-7 slice: a source row, a fiber, a `=` template, a stream
+plugin-source-runtime       ✅  grown past the MD-7 slice into M2's full runtime
 plugin-local-scanner        ✅  ctx.scanner — roots, incremental walk, tag and artwork import
 plugin-player               ✅  ctx.player — transport, queue, resolution, history, persistence
 plugin-ui                   ✅  gets its first non-trivial contributions
@@ -210,9 +213,10 @@ plugin-sources-ui-*         ✅  library, album detail
 plugin-local-scanner-ui-*   ✅  settings: scan roots
 
 protocol                    ✅  catalogue reads on ctx.sources, ctx.scanner, the fractional index,
-                                the audio/codec conformance suites, the mock AudioService
-kernel                      ~   db:write:core, bootstrap sets for the new core services
-tooling-fixtures            +   dev-only: the 5,000-file corpus generator (§7)
+                                the audio/codec/http conformance suites, the mock AudioService
+kernel                      ✅  db:write:core, bootstrap sets for the new core services
+tooling-fixtures            ✅  dev-only: the ≥5,000-file corpus generator, the instrumented
+                                ctx.fs, and the byte-serving http fixture (§7)
 ```
 
 Dependency direction — every arrow is an `inject`, and load order is derived from them, never
@@ -343,7 +347,7 @@ taking minutes and taking an afternoon.
 - [ ] New `codecConformance` suite in `packages/protocol/src/conformance/`, run in Node and on
       device: tags, embedded artwork, duration probe, PCM decode, non-empty `supportedFormats()`.
 - [ ] A conformance case asserts `readMetadata` stays under a byte ceiling on a large file.
-- [ ] `supportedFormats()` reflects reality per platform; the ⚠️ in
+- [x] `supportedFormats()` reflects reality per platform; the ⚠️ in
       [04 §13](./04-core-services.md#13-ctxcodec--decoding-and-metadata) is honoured by
       *reporting* what could not be decoded, never by skipping it silently.
 - [ ] The new bridge methods are capability-tagged and path-contained like every other host
@@ -391,9 +395,9 @@ honest, a pass-through chain is a lie that later has to be un-built.
 by the mobile scan poller, since `ctx.fs.canWatch` is false there) and `onWillSuspend`, which is
 where the player checkpoints.
 
-- [ ] Desktop's `canRunInBackground()` is `true`; mobile's is `true` only while audio holds the
+- [x] Desktop's `canRunInBackground()` is `true`; mobile's is `true` only while audio holds the
       process, and the value is derived rather than hardcoded.
-- [ ] `acquireWakeLock` maps to `powerSaveBlocker` on desktop and is released promptly; a leaked
+- [x] `acquireWakeLock` maps to `powerSaveBlocker` on desktop and is released promptly; a leaked
       lock is caught by the leak test.
 - [ ] `onWillSuspend` fires before a real suspension on both platforms, verified on device — a
       hook that never fires is worse than no hook, because everything downstream trusts it.
@@ -408,10 +412,16 @@ foreground service and its media notification.
 Artwork must be a local `Uri` on mobile, so the order is fixed: publish metadata immediately with
 no artwork, then update when the image lands. Never delay the whole update on an image fetch.
 
-- [ ] `setSupportedCommands` genuinely changes which buttons the OS surface shows.
-- [ ] `onCommand` round-trips: a lock-screen press reaches `ctx.player`, and the result is
+⚠️ `setPlaybackState('stopped')` is a **transport state**, not `clear()`. The two implementations
+disagreed about this for exactly as long as nothing asked: desktop set the session to `none` and
+kept the track, mobile hid the notification and dropped it — so a queue that ran to the end lost
+its lock screen on one platform and kept it on the other. Removing the surface has its own member,
+and the conformance suite now holds both to it.
+
+- [x] `setSupportedCommands` genuinely changes which buttons the OS surface shows.
+- [x] `onCommand` round-trips: a lock-screen press reaches `ctx.player`, and the result is
       reflected back within one update.
-- [ ] `clear()` removes the OS surface, so a disabled `plugin-player` leaves no ghost lock screen.
+- [x] `clear()` removes the OS surface, so a disabled `plugin-player` leaves no ghost lock screen.
 
 ### 4.5 `core-http-node` · `core-http-rn` — the M1 slice
 
@@ -422,16 +432,29 @@ the renderer, for the CORS and header reasons in [02 §2](./02-architecture.md#d
 `cookies` and `download()` are **absent, not stubbed** — a member that throws is a lie about the
 contract, which is the same principle that makes a source's capabilities derived rather than
 declared ([06 §1.3](./06-music-sources.md#13-capabilities-are-derived-not-declared)).
+
+⚠️ **Never normalise a request through `new Request()` on the way to the bridge.** A `Request`'s
+header list carries the *request guard*, and in a browser that guard silently drops every
+forbidden request header — `Cookie` among them. The renderer-side transport exists to send
+`Cookie`. Normalising through a `Request` therefore deletes the one header the bridge was built
+for, and deletes it quietly: signing in appears to work and never sticks. It is also a bug no test
+in this repository can see by default, because Node's `fetch` does not implement the guard — so
+the check that covers it stands a strict `Request` in first. `Headers` on its own carries the
+"none" guard and is safe.
 The `http/request` waterfall is dispatched with no listeners, so M2's auth plugins arrive to a
 hook that already works.
 
-- [ ] `httpConformance` covers only the M1 slice, written so M2 adds cases rather than rewrites it.
+- [x] `httpConformance` covers only the M1 slice, written so M2 adds cases rather than rewrites it.
 - [x] `net:host/<glob>` is enforced here, before and after the waterfall — the grant was a manifest
       string with no meaning, exactly as `db:own` once was
       ([03 §7](./03-plugin-system.md#enforcement)).
-- [ ] `ReadableStream` availability verified on RN 0.86, with `web-streams-polyfill` in the mobile
-      entry if absent ([04 §17](./04-core-services.md#17-runtime-compatibility-checklist)).
-- [ ] Range requests and progress are exercised against a real byte-serving fixture, not a mock.
+- [x] `ReadableStream` on RN 0.86 — resolved by **`expo/fetch`** rather than by a polyfill.
+      React Native's own `fetch` is XHR-backed and its `Response.body` is `null`, so a polyfilled
+      stream over it would be a stream in shape only: no `Range` seek that plays before the file
+      arrives, no `onProgress`, no stall distinguishable from a slow response. `expo/fetch` is
+      WinterCG-compliant and returns a real one ([04 §17](./04-core-services.md#17-runtime-compatibility-checklist)).
+      ⚠️ Verified by construction, not on a device.
+- [x] Range requests and progress are exercised against a real byte-serving fixture, not a mock.
 
 ### 4.6 `plugin-sources` · `plugin-source-local`
 
@@ -673,10 +696,10 @@ nothing else.
 | Native | Rebuild the custom dev client — every M1 core service adds native code | New bridge hosts in `main` for codec, http, media session and device |
 | Routing | Contributed routes as dynamic `expo-router` routes; `placement` decides tab bar vs. more-menu | Sidebar entries from `ctx.ui.routes`, ordered by `order` |
 
-- [ ] `pnpm gen:plugins` re-run and its output committed
+- [x] `pnpm gen:plugins` re-run and its output committed
       ([09 §4](./09-project-structure.md#4-build-pipelines)).
-- [ ] The desktop CSP is unchanged — nothing in M1 needs it widened.
-- [ ] `main` still holds no domain logic; every new host is mechanical
+- [x] The desktop CSP is unchanged — nothing in M1 needs it widened.
+- [x] `main` still holds no domain logic; every new host is mechanical
       ([02 §2](./02-architecture.md#desktop)).
 
 ---
@@ -822,7 +845,7 @@ criterion with no named check is an intention, not a criterion.
 
 | # | Criterion | How it is checked | Automated |
 |---|---|---|---|
-| 1 | Scan ≥ 5,000 files; incremental rescan of an unchanged library costs stat calls only | The corpus generator (§7) builds 5,000 tagged files; an instrumented `ctx.fs` counts calls; the second pass must issue `n` stats, zero `readBytes`, and zero `readMetadata`. Repeated on device against a real library | ✅ Node · device run per release |
+| 1 | Scan ≥ 5,000 files; incremental rescan of an unchanged library costs stat calls only | The corpus generator (§7) builds 5,000 tagged files; an instrumented `ctx.fs` counts calls; the second pass must issue `n` stats, zero `readBytes`, and zero `readMetadata`. Runs against the **real** `core-codec-node`, in `plugin-local-scanner/src/corpus.test.ts`. Repeated on device against a real library | ✅ Node · device run per release |
 | 2 | Play, pause, seek, next, previous, queue reorder — on all three platforms | Transport unit tests against a mock `AudioService` (every transition in [05 §2](./05-audio-playback.md#transport-state-machine)); an integration test in a real context with fake core services; the device smoke matrix for the real thing | ✅ + device |
 | 3 | Lock-screen and notification controls on iOS and Android; MPRIS/SMTC/Now Playing on desktop | `mediaSessionConformance` round-trips `update` / `setPlaybackState` / `onCommand` per implementation; the OS surfaces themselves are manual | Partly — surfaces are manual |
 | 4 | Playback survives backgrounding on mobile and window-hide on desktop | Desktop: an automated check that closing hides rather than destroys and that the wake lock is held while playing. Mobile: device smoke, since no harness can background an app faithfully | Partly |
@@ -836,19 +859,42 @@ criterion with no named check is an intention, not a criterion.
 
 Built once, in Stage 1, because every later stage leans on them.
 
-- **`tooling-fixtures`** (dev-only, not published, not bundled). Generates the 5,000-file corpus:
-  short encodes across `mp3`, `flac`, `m4a` and `opus`, with tags, embedded artwork, ReplayGain
-  values, and a realistic album/artist distribution. It also emits the pathological cases that a
-  real library always contains — no tags at all, a truncated header, a zero-byte file, unicode and
-  emoji in filenames, a file whose extension lies about its codec, and one very long track — so
-  the scanner's error path is exercised by default rather than by luck.
-- **Instrumented `ctx.fs`** — a wrapper counting calls per method, used by criterion 1 and by the
-  scanner's own tests. It lives beside the existing conformance harness.
+- **`tooling-fixtures`** (dev-only, not published, not bundled). Generates the 5,000-file corpus,
+  with tags, embedded artwork, ReplayGain values and a realistic album/artist distribution. It
+  also emits the pathological cases that a real library always contains — no tags at all, a
+  truncated header, a zero-byte file, unicode and emoji in filenames, a file whose extension lies
+  about its codec, and one very long track — so the scanner's error path is exercised by default
+  rather than by luck.
+
+  ⚠️ **The files are written byte by byte rather than encoded.** A valid ID3v2.4 tag over real
+  MPEG-1 Layer III frames, and a real FLAC metadata chain; `music-metadata` reads both exactly as
+  it reads a CD rip. Shelling out to an encoder was the obvious alternative and is worse on both
+  counts that matter: five thousand process spawns is minutes rather than seconds, and it makes
+  the scan criterion depend on whatever happens to be installed — green on one machine and
+  silently absent on another. What is given up is decodable audio, which nothing in the scanner
+  needs, and `m4a`/`opus` coverage, which is `codecConformance`'s job and not this corpus's.
+
+  Two of the pathological files earned their keep immediately: a zero-byte `.mp3` and a JPEG
+  behind an `.mp3` name were being *imported* — `core-codec-node` passed the extension's MIME type
+  to the parser, which trusted it and reported `{ codec: 'mp3' }` with no bytes behind it, so the
+  scanner wrote phantom tracks named after the files. Which is worse than either of the two honest
+  outcomes §4.7 allows. It now sniffs the container from the content, which also fixes the
+  `.mp3`-that-is-really-FLAC case in the other direction.
+- **Instrumented `ctx.fs`** — counts calls per method, used by criterion 1 and by the scanner's own
+  tests. It patches the service **instance** rather than wrapping it in a new object: one instance
+  is shared by every fiber and each fiber reaches it through its own scoped `Context`, so a
+  wrapper installed on the root context would be bypassed by every plugin and would report a
+  reassuring zero. Patching in place is what makes the count cover the scanner *and* the codec
+  reading tags through it, which is the pair the criterion is actually about.
 - **Mock `AudioService`** — a deterministic fake with controllable clock, `onEnded`, stalls and
   interruptions, so `plugin-player`'s tests never touch real audio. Exported from
   `@BBeBee/protocol/conformance` so both the player's tests and any future engine can use it.
 - **A byte-serving fixture** for §4.5 — a local server that honours `Range`, delays, and can stall
-  mid-response on demand.
+  mid-response on demand. `httpConformance` runs against it rather than against a mock, and the
+  stall route immediately found a real bug: `core-http-node` detached the caller's `AbortSignal`
+  in a `finally` that ran when the *headers* arrived, so aborting a request that had already
+  started streaming did nothing — which is the only case that matters, since MD-5's prefetch is
+  cancelled mid-download when the queue changes.
 - **The device smoke matrix** — one iOS device, one deliberately low-end Android device, and one
   machine per desktop OS. The list of checks is
   [05 §7](./05-audio-playback.md#7-testing-audio)'s, plus the gapless boundary from MD-5. It runs
@@ -858,6 +904,19 @@ One measurement is worth taking during M1 even though nothing depends on it yet:
 file library while playing** and watch for write contention on the single SQLite database. It is
 the cheapest possible probe of the risk in
 [10](./10-roadmap.md#-sqlite-as-the-single-store), and it costs one run.
+
+- **The shell wiring check** — `packages/kernel/src/shells.test.ts`. Reads each shell's allowlist,
+  its generated registry and the manifests, and asserts that every configured plugin is bundled,
+  that every service a configured plugin *requires* is provided by the bootstrap array or by
+  another configured plugin, and that the two shells run the same feature set.
+
+  ⚠️ It exists because its absence cost a milestone. Every M1 package was built and green while
+  the desktop shell had `plugin-player` commented out — `ctx.audio` was in no bootstrap array —
+  and the mobile shell was still running the M0 set: four core services and the hello plugin. Both
+  states are invisible from inside a package, and nearly invisible from outside one: a fiber
+  waiting for a service that will never arrive looks exactly like a fiber that is merely slow. The
+  runtime half of the same check is `await app.ready(BOOTSTRAP_SERVICES)` in each `boot()`, which
+  turns a missing service into a startup error that names it.
 
 ---
 
@@ -890,10 +949,10 @@ earlier and is not the same thing.
       the Expo ones.
 - [ ] The leak test passes for every new plugin, and `ctx.inspector` shows a clean tree after
       disabling and re-enabling `plugin-player` mid-playback.
-- [ ] `pnpm check` is green; `pnpm gen:plugins` produces no diff.
+- [x] `pnpm check` is green; `pnpm gen:plugins` produces no diff.
 - [ ] The `db-scope` suite covers MD-4 on both `ctx.db` implementations, and no plugin holds a
       capability it does not use.
-- [ ] `@BBeBee/protocol` still has zero runtime dependencies, and no package outside `core-*`
+- [x] `@BBeBee/protocol` still has zero runtime dependencies, and no package outside `core-*`
       imports a platform SDK — both mechanically checked
       ([09 §3](./09-project-structure.md#3-dependency-rules)).
 - [ ] The device smoke matrix is run and recorded, including the gapless listening test.
@@ -904,13 +963,24 @@ earlier and is not the same thing.
 
 ### What M1 knowingly leaves broken
 
-Worth stating, so nobody reports these as bugs: **a source string cannot be imported** — settings
-takes a URL and nothing more, so nothing in [06](./06-music-sources.md) beyond `ruleStream` works
-yet; there is no way to sign into anything; search covers only what has been scanned; nothing can
-be downloaded, and the download-substitution path has no listener; the equalizer does not exist
-and neither does the chain it would join; there are no playlists, ratings, or lyrics; desktop has
-no keyboard shortcuts, context menus, or command palette; nothing can be installed at runtime; and
-neither app has an installer.
+Worth stating, so nobody reports these as bugs: nothing can be downloaded, and the
+download-substitution path has no listener; the equalizer does not exist and neither does the
+chain it would join; there are no playlists, ratings, or lyrics; desktop has no keyboard
+shortcuts, context menus, or command palette; nothing can be installed at runtime; and neither app
+has an installer.
+
+Two entries that used to be on this list are gone, because M2's runtime overtook the MD-7 slice
+before M1's shells were wired: a source string **can** be imported, and there **is** a way to sign
+in. Two have replaced them, and both are about mobile rather than about scope:
+
+- **A long remote track does not stream on mobile.** `load({ strategy: 'stream' })` needs an
+  `HTMLMediaElement`, which React Native does not have, so the engine refuses it rather than
+  pretending. Local files and short remote ones are buffered and unaffected. `StreamerNode` is the
+  way out and it is device work.
+- **A scripted source document does nothing on mobile.** `core-js-quickjs-expo` does not exist —
+  Hermes has no WebAssembly, so it needs a native module and a dev-client rebuild. The runtime
+  reports the affected capabilities as absent rather than offering a button that cannot work,
+  which is the designed degradation ([10 §M2](./10-roadmap.md#m2--sources-are-strings)).
 
 ---
 

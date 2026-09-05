@@ -55,6 +55,16 @@ contextBridge.exposeInMainWorld('BBeBeeBridge', {
     ipcRenderer.invoke(CH.streamOpen, uri, range),
   streamPull: (handle: number) => ipcRenderer.invoke(CH.streamPull, handle),
   streamClose: (handle: number) => ipcRenderer.invoke(CH.streamClose, handle),
+  /**
+   * HTTP performed in `main`.
+   *
+   * Here rather than in the renderer because the renderer is a browser
+   * context: CORS applies, and `Cookie`/`User-Agent`/`Range` cannot be set.
+   * Neither is true of a music server's expectations (docs/02 §2).
+   */
+  httpOpen: (request: unknown) => ipcRenderer.invoke(CH.httpOpen, request),
+  httpPull: (handle: number) => ipcRenderer.invoke(CH.httpPull, handle),
+  httpClose: (handle: number) => ipcRenderer.invoke(CH.httpClose, handle),
   txBegin: () => ipcRenderer.invoke(CH.txBegin),
   txEnd: (token: string, commit: boolean) => ipcRenderer.invoke(CH.txEnd, token, commit),
   /**

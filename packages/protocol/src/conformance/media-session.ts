@@ -137,6 +137,26 @@ export const mediaSessionConformance: ConformanceSuite<MediaSessionSubject> = {
       },
     },
     {
+      name: 'stopping keeps the surface; only clear() removes it',
+      because:
+        'stopped is a transport state and clear() is a separate member — an implementation that ' +
+        'conflates them loses the lock screen when a queue runs out, and only on its platform',
+      async run({ service, published }) {
+        service.update(track)
+        service.setPlaybackState('playing')
+        service.setPlaybackState('stopped')
+
+        // The two implementations disagreed about this precisely because
+        // nothing asked. Desktop set the session to `none` and kept the track;
+        // mobile hid the notification and dropped it, so pressing play after a
+        // queue ended showed an empty lock screen on one platform and the
+        // track on the other.
+        const shown = published()
+        assert(shown !== undefined, 'stopping removed the surface — that is clear()’s job')
+        assertEqual(shown.nowPlaying?.title, 'Jóga', 'the track survives a stop')
+      },
+    },
+    {
       name: 'survives update() before any playback state is set',
       because: 'the player publishes metadata first and state a moment later',
       async run({ service, published }) {

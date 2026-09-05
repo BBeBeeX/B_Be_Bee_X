@@ -15,6 +15,19 @@ export const CH = {
   /** `(handle) => Uint8Array | null` — null ends the stream. */
   streamPull: 'BBeBee:stream:pull',
   streamClose: 'BBeBee:stream:close',
+  /**
+   * `(request) => head` — performs an HTTP request in `main`.
+   *
+   * The renderer is a browser context: its `fetch` is subject to CORS and
+   * cannot set `Cookie`, `User-Agent` or `Range` freely. A music server run by
+   * a stranger sends no `Access-Control-Allow-Origin`, so every remote source
+   * would fail for a reason that has nothing to do with the source. Main has
+   * no such rules, which is why the transport lives there (docs/02 §2).
+   */
+  httpOpen: 'BBeBee:http:open',
+  /** `(handle) => Uint8Array | null` — null ends the body. */
+  httpPull: 'BBeBee:http:pull',
+  httpClose: 'BBeBee:http:close',
   /** `() => token` — begins a db transaction that later calls join. */
   txBegin: 'BBeBee:tx:begin',
   txEnd: 'BBeBee:tx:end',
@@ -46,6 +59,30 @@ export type BridgeEvent =
   | { topic: 'power'; charging: boolean; level: number }
   | { topic: 'transport'; command: string; positionMs?: number }
 
+/** A request as it crosses the bridge. Plain data — no `Request`, no streams. */
+export interface BridgeHttpRequest {
+  url: string
+  method: string
+  headers: Record<string, string>
+  /** Base64, because a `Uint8Array` in a request body is rare and small. */
+  body?: string
+  timeoutMs?: number
+  redirect?: 'follow' | 'manual' | 'error'
+}
+
+/** What `main` answers before any byte of the body is pulled. */
+export interface BridgeHttpHead {
+  handle: number
+  status: number
+  statusText: string
+  /** Lowercased names. `set-cookie` is joined with `\n`, never dropped. */
+  headers: Record<string, string>
+  /** The final URL, after redirects. */
+  url: string
+  /** False when the response carried no body at all — a HEAD, or a 204. */
+  hasBody: boolean
+}
+
 export interface BridgeApi {
   call(
     service: BridgedService,
@@ -57,6 +94,15 @@ export interface BridgeApi {
   streamOpen(uri: string, range?: { start: number; end?: number }): Promise<number>
   streamPull(handle: number): Promise<Uint8Array | null>
   streamClose(handle: number): Promise<void>
+  /**
+   * Perform a request in `main`.
+   *
+   * Absent on a preload built before the http host existed, which is why every
+   * caller goes through `bridgeFetch()` rather than reaching for it directly.
+   */
+  httpOpen?(request: BridgeHttpRequest): Promise<BridgeHttpHead>
+  httpPull?(handle: number): Promise<Uint8Array | null>
+  httpClose?(handle: number): Promise<void>
   /** Returns a token; subsequent `call`s pass it to join the transaction. */
   txBegin(): Promise<string>
   txEnd(token: string, commit: boolean): Promise<void>

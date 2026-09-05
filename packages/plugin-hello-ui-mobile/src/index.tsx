@@ -14,6 +14,7 @@ import type { Context } from 'cordis'
 // Pulls the service augmentations (`ctx.db`, `ctx.ui`, …) into this program.
 // Without it a consumer compiling this package in isolation sees a bare Context.
 import type {} from '@BBeBee/protocol'
+import { nativePrimitives } from '@BBeBee/ui-kit-mobile'
 import { HELLO_VIEW, type HelloState } from '@BBeBee/plugin-hello'
 
 export interface NativeElements {
@@ -53,7 +54,12 @@ export function createHelloPanel(rn: NativeElements) {
 export const name = 'plugin-hello-ui-mobile'
 export const inject = ['ui', 'hello']
 
-/** The shell passes its `react-native` primitives in, so this file imports none. */
+/**
+ * Build the plugin over an explicit primitive set.
+ *
+ * Kept for tests, which supply their own elements rather than a configured
+ * kit. The shipped path is the default export below.
+ */
 export function createPlugin(rn: NativeElements) {
   const HelloPanel = createHelloPanel(rn)
   return {
@@ -68,4 +74,18 @@ export function createPlugin(rn: NativeElements) {
   }
 }
 
-export default createPlugin
+/**
+ * The shipped plugin.
+ *
+ * Primitives are read from `ui-kit-mobile` at *render* time rather than taken
+ * as a construction argument, which is what every other `-ui-mobile` package
+ * does — and what lets the generated registry import this module directly
+ * instead of the shell hand-calling a factory (docs/03 §6.1). The shell still
+ * owns `react-native`: it calls `configureNative` once at boot.
+ */
+export async function apply(ctx: Context) {
+  const HelloPanel = createHelloPanel(nativePrimitives())
+  return ctx.ui.registerView(HELLO_VIEW, () => h(HelloPanel, { ctx }))
+}
+
+export default { name, inject, apply }

@@ -36,7 +36,7 @@ import type {
   WellKnownDir,
   WriteOptions,
 } from '@BBeBee/protocol'
-import { requireBridge, type BridgeApi } from './protocol.js'
+import { requireBridge, type BridgeApi, type BridgeHttpRequest } from './protocol.js'
 
 export * from './protocol.js'
 
@@ -367,4 +367,166 @@ export class DbBridge extends Service implements DbService {
       throw error
     }
   }
+}
+
+/* ── HTTP over the bridge ─────────────────────────────────────────────── */
+
+/**
+ * A `fetch` that runs in `main`.
+ *
+ * `core-http-node` takes its transport as a seam, and on desktop this is what
+ * fills it. The renderer's own `fetch` cannot do the job: it is a browser
+ * context, so a cross-origin request needs the *server's* permission, and a
+ * Navidrome instance run by a stranger has never heard of this app. It also
+ * refuses to set `Cookie`, `User-Agent` and `Range` — the three headers a
+ * source needs most (docs/02 §2, docs/11 §4.5).
+ *
+ * The body is streamed rather than buffered, which is what keeps a seek by
+ * `Range` cheap and lets a 60 MB FLAC play before it has finished arriving.
+ *
+ * Returns `undefined` when the preload exposes no http host, so a caller can
+ * fall back to the platform `fetch` rather than fail to boot.
+ */
+export function bridgeFetch(bridge: BridgeApi = requireBridge()): typeof fetch | undefined {
+  const open = bridge.httpOpen?.bind(bridge)
+  const pull = bridge.httpPull?.bind(bridge)
+  const close = bridge.httpClose?.bind(bridge)
+  if (!open || !pull || !close) return undefined
+
+  return async function bridgedFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+    /*
+     * ⚠️ **Never `new Request(input, init)` here.**
+     *
+     * A `Request`'s header list carries the "request" guard, and in a browser
+     * that guard silently drops every *forbidden request header* — `Cookie`
+     * among them. This function exists to send `Cookie`. Normalising through a
+     * `Request` would therefore delete the one header the whole bridge was
+     * built for, and delete it *quietly*: signing in would appear to work and
+     * never stick, which is the failure docs/06 §5.1 is written against.
+     *
+     * It is also a bug no test in this repo can see. Node's `fetch` does not
+     * implement the guard, so a check that asserts `Cookie` survives passes in
+     * Node and would have failed in the renderer — the exact shape of leak the
+     * conformance suites exist to prevent. `Headers` on its own carries the
+     * "none" guard and strips nothing, so the parts are assembled by hand.
+     */
+    const source = typeof Request !== 'undefined' && input instanceof Request ? input : undefined
+    const url = source ? source.url : String(input)
+    const method = (init.method ?? source?.method ?? 'GET').toUpperCase()
+
+    const headers: Record<string, string> = {}
+    const absorb = (list: Headers) => {
+      list.forEach((value, key) => {
+        headers[key.toLowerCase()] = value
+      })
+    }
+    if (source) absorb(source.headers)
+    if (init.headers) absorb(new Headers(init.headers))
+
+    /*
+     * The body, encoded the way `fetch` would encode it.
+     *
+     * `Response` rather than `Request` for the same guard reason — and it is
+     * not just a workaround: it is what derives the `Content-Type` for a
+     * `FormData` body, boundary and all, which a caller cannot write by hand.
+     */
+    let bodyBytes: Uint8Array | undefined
+    if (method !== 'GET' && method !== 'HEAD') {
+      const raw = init.body ?? (source ? await source.arrayBuffer() : undefined)
+      if (raw !== undefined && raw !== null) {
+        const encoded = new Response(raw as BodyInit)
+        const contentType = encoded.headers.get('content-type')
+        // Only as a default: a caller that set its own knows something the
+        // encoder does not.
+        if (contentType && !headers['content-type']) headers['content-type'] = contentType
+        bodyBytes = new Uint8Array(await encoded.arrayBuffer())
+      }
+    }
+
+    const redirect = init.redirect ?? source?.redirect
+    const signal = init.signal ?? source?.signal
+
+    const wire: BridgeHttpRequest = {
+      url,
+      method,
+      headers,
+      ...(bodyBytes && bodyBytes.byteLength > 0 ? { body: bytesToBase64(bodyBytes) } : {}),
+      ...(redirect ? { redirect } : {}),
+    }
+
+    const head = await open(wire)
+
+    /*
+     * Abort has to reach `main`, not just this side.
+     *
+     * Dropping the stream locally would leave the socket open there until the
+     * server closed it — which for a stalled stream is never, and the wake
+     * lock a download holds would be held for exactly that long.
+     */
+    const onAbort = () => void close(head.handle).catch(() => undefined)
+    signal?.addEventListener('abort', onAbort, { once: true })
+
+    // `Response` throws on a body with these statuses rather than ignoring it,
+    // so the status the server actually sent would be lost to a TypeError.
+    const bodyForbidden = head.status === 204 || head.status === 205 || head.status === 304
+
+    const body =
+      head.hasBody && !bodyForbidden
+      ? new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const chunk = await pull(head.handle)
+              if (chunk === null) {
+                controller.close()
+                return
+              }
+              // IPC hands back a structured-cloned view; copying detaches it
+              // from a buffer the channel may reuse.
+              controller.enqueue(new Uint8Array(chunk))
+            } catch (error) {
+              controller.error(error)
+            }
+          },
+          cancel() {
+            return close(head.handle)
+          },
+        })
+      : null
+
+    // A forbidden-body response still holds a socket in main until told.
+    if (head.hasBody && bodyForbidden) void close(head.handle).catch(() => undefined)
+
+    const response = new Response(body, {
+      status: head.status,
+      statusText: head.statusText,
+      // `Response` refuses a body on 204/304 and would throw rather than
+      // return the status the server actually sent.
+      headers: toHeaderList(head.headers),
+    })
+
+    // `Response.url` is read-only and empty for a synthesised response, so the
+    // final URL after redirects would otherwise be lost — and that is what
+    // relative link resolution in a source document is built on.
+    Object.defineProperty(response, 'url', { value: head.url, configurable: true })
+    return response
+  }
+}
+
+/** `set-cookie` arrives newline-joined, because folding it loses cookies. */
+function toHeaderList(headers: Record<string, string>): [string, string][] {
+  const out: [string, string][] = []
+  for (const [name, value] of Object.entries(headers)) {
+    if (name === 'set-cookie') {
+      for (const cookie of value.split('\n')) out.push([name, cookie])
+    } else {
+      out.push([name, value])
+    }
+  }
+  return out
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
 }
