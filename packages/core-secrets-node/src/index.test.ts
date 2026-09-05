@@ -33,6 +33,57 @@ describe(`${secretsConformance.service} conformance`, () => {
   }
 })
 
+describe('whose filesystem budget the store spends', () => {
+  it('saves for a caller that holds secrets:own and no fs grant at all', async () => {
+    /*
+     * ⚠️ The invariant, and it is easy to break by accident.
+     *
+     * Inside a method reached through the service proxy, `this.ctx` is the
+     * *caller's* context — that is how the capability gate sees the caller's
+     * grants. So persisting through `this.ctx.fs` would bill the store's own
+     * file to whoever happened to call `set()`, and a plugin granted
+     * `secrets:own` and nothing else could not save a credential.
+     *
+     * This used to be guaranteed by opening the file with `node:fs`, which
+     * also made the package unloadable in the sandboxed Electron renderer.
+     * It is now guaranteed by the service holding the context it was
+     * *constructed* with. A refactor back to `this.ctx.fs` compiles, passes
+     * every other test here, and fails this one.
+     */
+    const ctx = await harness()
+    const caller = scopeContext(ctx, {
+      pluginId: '@BBeBee/no-fs',
+      requested: ['secrets:own'] as never,
+    })
+
+    await caller.secrets.set('token', 'abc123')
+    expect(await caller.secrets.get('token')).toBe('abc123')
+
+    // And the grant it does not hold is genuinely absent, so the check above
+    // is not passing because the gate is off.
+    await expect(caller.fs.writeFile('file:///tmp/nope', 'x')).rejects.toThrow()
+  })
+
+  it('persists that caller’s secret to disk, not just to memory', async () => {
+    // A `set()` that only reached the in-memory map would satisfy the check
+    // above and lose the session on the next launch.
+    const root = await tempDir('bbebee-secrets-budget')
+    const first = await harness(root)
+    const caller = scopeContext(first, {
+      pluginId: '@BBeBee/no-fs',
+      requested: ['secrets:own'] as never,
+    })
+    await caller.secrets.set('token', 'abc123')
+
+    const second = await harness(root)
+    const again = scopeContext(second, {
+      pluginId: '@BBeBee/no-fs',
+      requested: ['secrets:own'] as never,
+    })
+    expect(await again.secrets.get('token')).toBe('abc123')
+  })
+})
+
 describe('persistence', () => {
   it('survives a restart', async () => {
     // The whole point: force-quit and relaunch, and the session is still there.

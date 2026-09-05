@@ -699,6 +699,15 @@ nothing else.
 - [x] `pnpm gen:plugins` re-run and its output committed
       ([09 §4](./09-project-structure.md#4-build-pipelines)).
 - [x] The desktop CSP is unchanged — nothing in M1 needs it widened.
+- [x] **Every target bundles.** `expo export` for android and ios, and
+      `electron-vite build` for desktop. Cheap, and the only thing that catches a package that
+      typechecks and cannot be *loaded* — which is a different failure and, as it turned out, the
+      one actually present: `core-secrets-node` opened its own file with `node:fs`, which is
+      correct in `main` and impossible in a sandboxed renderer, so the desktop renderer could not
+      bundle it at all. It now persists through `ctx.fs` using the context it was **constructed**
+      with, which keeps the store's own file out of the *caller's* capability budget — the reason
+      the platform API was reached for in the first place (`core-secrets-node`'s own tests pin
+      that: a caller holding `secrets:own` and no `fs` grant must still be able to save).
 - [x] `main` still holds no domain logic; every new host is mechanical
       ([02 §2](./02-architecture.md#desktop)).
 

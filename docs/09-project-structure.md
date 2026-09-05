@@ -52,7 +52,9 @@ B_Be_Bee/
 │  ├─ core-media-session-rn/ ✅     │
 │  ├─ core-codec-node/     ✅       │ ctx.codec — tags via music-metadata over
 │  ├─ core-codec-rn/       ✅       │ ctx.fs; -rn adds the device's decoder
-│  ├─ core-secrets-node/   ✅       │
+│  ├─ core-secrets-node/   ✅       │ ⚠️ named `-node`, but platform-free: it
+│  │                                │ persists through ctx.fs, so it loads in
+│  │                                │ Electron's sandboxed renderer too
 │  ├─ core-secrets-expo/   ✅       │
 │  ├─ core-audio-webaudio/ ✅       │ (shared: react-native-audio-api on both)
 │  └─ core-…                        ┘
@@ -292,6 +294,9 @@ these move weekly.
 | `expo-crypto` | ~57.0.2 | |
 | `expo-dev-client` | ~57.0.16 | Required — Expo Go cannot host the native modules |
 | `react-native-audio-api` | **0.13.3** | ⚠️ Pre-1.0 — see §5.2. Peer: `react-native-worklets >= 0.6.0` |
+| `react-native-gesture-handler` | ~2.32.0 | ⚠️ Not used by us. `react-native-audio-api`'s barrel pulls in its `AudioControls` widget, which imports this and Reanimated **without declaring either** — so Metro cannot resolve the package root without them. See §5.2 |
+| `react-native-reanimated` | ~4.5.1 | ⚠️ Same reason. `babel-preset-expo` adds the worklets plugin on its own once these resolve, so `babel.config.js` needs no change |
+| `react-native-worklets` | ~0.10.1 | Reanimated 4's runtime, and `react-native-audio-api`'s optional peer |
 | `electron` | **44.0.0** | Requires Node ≥ 22.12, so `node:sqlite` is available |
 | `electron-vite` | 5.0.0 | |
 | `vite` | 8.2.2 | |
@@ -330,6 +335,24 @@ stable and may change without notice."* The entire architecture rests on it. Mit
 `ctx.audio` is a service, its contract is the *standard* Web Audio API rather than the library's
 own shape, and `core-audio-rntp` is a documented fallback
 ([05 §1](./05-audio-playback.md#escape-hatch)). Same pinning discipline as Cordis.
+
+⚠️ **Its barrel drags in a UI widget.** `react-native-audio-api/src/api.ts` imports
+`Audio/controls/AudioControls`, which imports `react-native-gesture-handler` and
+`react-native-reanimated` — neither of which the package declares. Importing the package root
+therefore fails to bundle until both are installed, and the widget's four icon PNGs end up in the
+bundle even though nothing renders it. Three ways out, in the order they were considered:
+
+1. **Install both** — what we do. They are ordinary Expo SDK packages, no Babel change is needed,
+   and M2's drag-to-reorder wants gesture-handler anyway. Cost: two native modules and ~2 KB of
+   icons for something unused.
+2. **Shim them in Metro's `resolveRequest`.** Cheaper, and safe *today* because nothing renders
+   `AudioControls` — but the first person to add a swipe gesture gets a baffling failure from a
+   resolver that lies.
+3. **Deep-import past the barrel** (`react-native-audio-api/lib/module/core/AudioContext` and
+   friends). Avoids both native modules; the package publishes no `exports` map so it works. Also
+   version-fragile, and it would spread across three of our packages.
+
+If the two native modules ever become a problem, 3 is the escape hatch and it is contained.
 
 ---
 

@@ -13,14 +13,12 @@
  * making.
  */
 
-import { readFile, writeFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import { storageNamespace } from '@BBeBee/kernel'
 import { base64Decode, base64Encode, sha256Hex } from '@BBeBee/protocol'
-import type { SecretsService } from '@BBeBee/protocol'
+import type { SecretsService, Uri } from '@BBeBee/protocol'
 
 /** Encrypt/decrypt for one platform. Electron supplies `safeStorage`. */
 /**
@@ -116,18 +114,26 @@ export class SecretsNode extends Service implements SecretsService {
   private codec!: SecretCrypto
   private entries = new Map<string, string>()
   /**
-   * The store's own file, read and written directly.
+   * This service's **own** context, captured at construction.
    *
-   * ⚠️ Not through `ctx.fs`. Inside a method reached via the service proxy,
+   * ⚠️ Not `this.ctx`. Inside a method reached through the service proxy,
    * `this.ctx` is the *caller's* context — that is how the capability gate
-   * sees the caller's grants at all — so the store's own persistence went
-   * through the caller's `fs` gate, and a plugin holding `secrets:own` but not
-   * `fs:write:all` could not save a secret. `core-db-node` sets the precedent:
-   * a core service's own storage is not a plugin-visible filesystem
-   * operation, and opening its own file with the platform API is what keeps it
-   * out of the caller's budget.
+   * sees the caller's grants at all — so persisting through it would put the
+   * store's own file in the caller's `fs` budget, and a plugin holding
+   * `secrets:own` but not `fs:write:all` could not save a secret.
+   *
+   * The previous answer to that was to open the file with `node:fs` directly.
+   * It kept the budget right and made this service **unloadable in the
+   * Electron renderer**, which is sandboxed and has no Node — so the desktop
+   * build could not even bundle, let alone run. The context handed to the
+   * constructor is the service's own, ungated one (the constructor and
+   * `Service.init` see the same object; a called method does not), so reading
+   * `home.fs` gets the budget the platform API was reached for *and* keeps
+   * this package to `ctx.*`, which is what lets it run wherever it is put.
    */
-  private file: string | undefined
+  private readonly home: Context
+  /** The store's own file, as a Uri — `ctx.fs` speaks Uris, not paths. */
+  private file: Uri | undefined
   /** Serialises writes: two `set`s racing would lose one of them. */
   private queue: Promise<void> = Promise.resolve()
 
@@ -136,6 +142,7 @@ export class SecretsNode extends Service implements SecretsService {
     private readonly config: SecretsNodeConfig = {},
   ) {
     super(ctx, 'secrets')
+    this.home = ctx
   }
 
   get isHardwareBacked(): boolean {
@@ -145,8 +152,8 @@ export class SecretsNode extends Service implements SecretsService {
   async [Service.init]() {
     // `dir()` is a lookup rather than an access, so it is not gated — and it
     // is the one thing only `ctx.fs` knows.
-    const dir = await this.ctx.fs.dir('data')
-    if (dir) this.file = fileURLToPath(this.ctx.fs.join(dir, this.config.fileName ?? 'secrets.json'))
+    const dir = await this.home.fs.dir('data')
+    if (dir) this.file = this.home.fs.join(dir, this.config.fileName ?? 'secrets.json')
 
     this.codec = this.config.crypto ?? new NoKeychainCodec(this.installKey())
     await this.load()
@@ -245,7 +252,7 @@ export class SecretsNode extends Service implements SecretsService {
   private async load(): Promise<void> {
     if (!this.file) return
     try {
-      const text = await readFile(this.file, 'utf8')
+      const text = await this.home.fs.readFile(this.file)
       const parsed: unknown = JSON.parse(text)
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         for (const [key, value] of Object.entries(parsed)) {
@@ -265,7 +272,7 @@ export class SecretsNode extends Service implements SecretsService {
     // one would win with a stale snapshot of the map.
     this.queue = this.queue.then(async () => {
       const body = JSON.stringify(Object.fromEntries(this.entries))
-      await writeFile(location, body, 'utf8')
+      await this.home.fs.writeFile(location, body)
     })
     return this.queue
   }
