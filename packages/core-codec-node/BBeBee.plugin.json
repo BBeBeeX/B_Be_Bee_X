@@ -1,8 +1,11 @@
 {
   "id": "@BBeBee/core-codec-node",
+  "platforms": [
+    "desktop"
+  ],
   "version": "0.0.0",
   "displayName": "Codec",
-  "description": "ctx.codec — tags, artwork and PCM, over music-metadata.",
+  "description": "ctx.codec \u2014 tags, artwork and PCM, over music-metadata.",
   "engines": {
     "BBeBee": "^0.1.0"
   },

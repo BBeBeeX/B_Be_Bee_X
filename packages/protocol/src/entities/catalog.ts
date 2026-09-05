@@ -50,8 +50,25 @@ export interface Album {
   isVarious?: boolean
 }
 
-export interface AlbumDetail extends Album {
+export interface AlbumDetail extends Album, WithPayloads {
   tracks: Track[]
+}
+
+/**
+ * A provider's answer, plus the cache material that came with it.
+ *
+ * Keyed by URN. `ctx.sources` writes each entry to that row's `raw_json`
+ * (07 §4.3); the source runtime reads it back as `{{track.*}}` when a stream
+ * is resolved, possibly days later and offline from the call that produced it
+ * (06 §4). Resolution never re-runs the query it came from.
+ *
+ * Deliberately not a member of `Track` or `Album`. It is backend-shaped and
+ * means nothing to any screen, and an entity that carried it would carry it
+ * only when it came fresh from a provider — a difference no caller can see
+ * and every caller would eventually come to depend on.
+ */
+export interface WithPayloads {
+  payloads?: Readonly<Record<string, unknown>>
 }
 
 export interface Track {

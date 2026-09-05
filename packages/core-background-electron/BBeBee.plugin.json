@@ -1,8 +1,11 @@
 {
   "id": "@BBeBee/core-background-electron",
+  "platforms": [
+    "desktop"
+  ],
   "version": "0.0.0",
   "displayName": "Background",
-  "description": "ctx.background — wake locks, scheduling and suspend hooks on desktop.",
+  "description": "ctx.background \u2014 wake locks, scheduling and suspend hooks on desktop.",
   "engines": {
     "BBeBee": "^0.1.0"
   },

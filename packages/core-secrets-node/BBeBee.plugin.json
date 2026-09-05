@@ -1,0 +1,24 @@
+{
+  "id": "@BBeBee/core-secrets-node",
+  "platforms": [
+    "desktop"
+  ],
+  "version": "0.0.0",
+  "displayName": "Secrets",
+  "description": "ctx.secrets \u2014 credential storage for desktop and Node.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "fs:read:own",
+    "fs:write:own"
+  ],
+  "contributes": {
+    "services": [
+      "secrets"
+    ]
+  }
+}

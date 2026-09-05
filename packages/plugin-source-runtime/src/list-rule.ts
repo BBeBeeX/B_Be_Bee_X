@@ -21,7 +21,7 @@ import {
   type RuleContext,
   type RuleSite,
 } from '@BBeBee/source-rules'
-import type { ParsedRule, TemplateScope } from '@BBeBee/source-rules'
+import type { JsEvaluator, ParsedRule, RuleTrace, TemplateScope } from '@BBeBee/source-rules'
 
 export interface ListRowsResult {
   rows: Record<string, unknown>[]
@@ -29,6 +29,10 @@ export interface ListRowsResult {
   dropped: number
   /** Elements sharing a `trackId` with an earlier one. Also surfaced. */
   duplicates: number
+  /** Optional fields whose rule failed. The row was kept without them. */
+  incomplete: number
+  /** The first such failure, for the log. A rule broken on every row is a bug. */
+  firstError?: unknown
 }
 
 export interface ListRuleContext {
@@ -36,6 +40,10 @@ export interface ListRuleContext {
   scope: TemplateScope
   sourceId: string
   block: string
+  /** The source's sandbox, when it has one. `@js:` rules need it. */
+  js?: JsEvaluator
+  /** Set only while a trace is running. See docs/06 §10. */
+  trace?: RuleTrace
 }
 
 /** Fields every row must have, whatever else the document declares. */
@@ -48,14 +56,19 @@ const REQUIRED: (keyof ListRule)[] = ['trackId', 'title']
  * namespace they belong to and what the raw payload should be stored as, and
  * this layer deliberately does not.
  */
-export function evaluateListRule(rule: ListRule, ctx: ListRuleContext): ListRowsResult {
+export async function evaluateListRule(
+  rule: ListRule,
+  ctx: ListRuleContext,
+): Promise<ListRowsResult> {
   const site = (field: string) => ({ block: ctx.block, field, sourceId: ctx.sourceId })
 
-  const elements = evaluateNodes(rule.trackList, {
+  const elements = await evaluateNodes(rule.trackList, {
     document: ctx.document,
     scope: ctx.scope,
     site: site('trackList'),
     vars: new Map(),
+    ...(ctx.js ? { js: ctx.js } : {}),
+    ...(ctx.trace ? { trace: ctx.trace } : {}),
   })
 
   /*
@@ -79,6 +92,8 @@ export function evaluateListRule(rule: ListRule, ctx: ListRuleContext): ListRows
   const seen = new Set<string>()
   let dropped = 0
   let duplicates = 0
+  let incomplete = 0
+  let firstError: unknown
 
   for (const element of elements) {
     // Each element is its own little document: a field rule selects *within*
@@ -88,13 +103,40 @@ export function evaluateListRule(rule: ListRule, ctx: ListRuleContext): ListRows
       scope: { ...ctx.scope, item: element as Record<string, unknown> },
       site: site('trackList'),
       vars: new Map(),
+      ...(ctx.js ? { js: ctx.js } : {}),
+      ...(ctx.trace ? { trace: ctx.trace } : {}),
     }
 
     const row: Record<string, unknown> = { raw: element }
     let usable = true
 
     for (const { field, parsed } of fields) {
-      const values = evaluateParsed(parsed, { ...rowCtx, site: site(field) })
+      /*
+       * A field rule that *fails* is not the same as one that matches nothing,
+       * and only the second is routine — but for an optional field both have
+       * the same right answer: leave it out.
+       *
+       * The case that forced this: `artwork` built from `{{item.coverArt}}`,
+       * on a backend that omits `coverArt` for albums with no cover. One such
+       * album made the whole listing throw, so a page of fifty was replaced by
+       * an error over a missing thumbnail. A required field is different — a
+       * row with no id or title cannot be used — so that still drops the row.
+       */
+      let values: string[]
+      try {
+        values = await evaluateParsed(parsed, { ...rowCtx, site: site(field) })
+      } catch (error) {
+        if ((REQUIRED as string[]).includes(field)) {
+          usable = false
+          continue
+        }
+        // Counted rather than swallowed: a rule broken for *every* row is a
+        // document bug, and it would otherwise look like a backend that
+        // stopped sending artwork.
+        incomplete++
+        firstError ??= error
+        continue
+      }
       const value = values[0]
 
       /*
@@ -130,7 +172,13 @@ export function evaluateListRule(rule: ListRule, ctx: ListRuleContext): ListRows
     rows.push(row)
   }
 
-  return { rows, dropped, duplicates }
+  return {
+    rows,
+    dropped,
+    duplicates,
+    incomplete,
+    ...(firstError === undefined ? {} : { firstError }),
+  }
 }
 
 /**

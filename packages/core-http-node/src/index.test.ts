@@ -17,7 +17,9 @@ import { CapabilityError } from '@BBeBee/protocol'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
-import plugin, { type HttpNode } from './index.js'
+import { SecretsNode } from '@BBeBee/core-secrets-node'
+import type { Cookie } from '@BBeBee/protocol'
+import plugin, { jarStore, type HttpNode } from './index.js'
 
 const PAYLOAD = Buffer.from(
   Array.from({ length: 5000 }, (_, i) => i % 251),
@@ -38,6 +40,35 @@ beforeAll(async () => {
 
     if (url.pathname === '/stall') {
       // Never responds: the timeout is the point.
+      return
+    }
+
+    if (url.pathname === '/set-cookie') {
+      res.writeHead(200, {
+        'set-cookie': [
+          'session=abc123; Path=/; Max-Age=3600; HttpOnly',
+          'csrf=tok; Path=/; Max-Age=3600',
+        ],
+      })
+      res.end('ok')
+      return
+    }
+    if (url.pathname === '/set-foreign-cookie') {
+      res.writeHead(200, { 'set-cookie': 'evil=1; Domain=evil.example; Max-Age=3600' })
+      res.end('ok')
+      return
+    }
+    if (url.pathname === '/login-redirect') {
+      res.writeHead(302, {
+        location: '/echo-cookie',
+        'set-cookie': 'session=viaredirect; Path=/; Max-Age=3600',
+      })
+      res.end()
+      return
+    }
+    if (url.pathname === '/echo-cookie') {
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end(req.headers.cookie ?? '')
       return
     }
     if (url.pathname === '/json') {
@@ -468,5 +499,304 @@ describe('lifecycle', () => {
 
     const problems = diffSnapshots(before, snapshotContext(ctx))
     expect(problems, problems?.join('; ')).toBeUndefined()
+  })
+})
+
+describe('cookie jars that survive a restart', () => {
+  /**
+   * "Sign in once, stay signed in" (docs/10 §M2) is a cookie-jar property
+   * before it is anything else, and the jar is credential material — so it is
+   * envelope-encrypted through `ctx.secrets` rather than left beside the
+   * database.
+   */
+  async function jarHarness(root: string) {
+    const ctx = new Context()
+    await ctx.plugin(PathsNode, { root })
+    await ctx.plugin(FsNode)
+    await ctx.plugin(SecretsNode, {})
+    await tick()
+    await ctx.plugin(plugin, { jars: jarStore(ctx.secrets, ctx.fs) })
+    await tick()
+    return ctx
+  }
+
+  const cookie = (over: Partial<Cookie> = {}): Cookie => ({
+    name: 'session',
+    value: 'abc123',
+    domain: 'music.example.org',
+    path: '/',
+    expiresAt: Date.now() + 86_400_000,
+    secure: true,
+    httpOnly: true,
+    ...over,
+  })
+
+  it('reloads a jar after a restart', async () => {
+    const root = await tempDir('bbebee-jar')
+    const first = await jarHarness(root)
+    const jar = first.http.cookies.jar('nav')
+    await jar.ready
+    await jar.set([cookie()])
+    await jar.flush()
+
+    const second = await jarHarness(root)
+    const reloaded = second.http.cookies.jar('nav')
+    await reloaded.ready
+    expect((await reloaded.get('https://music.example.org/x')).map((c) => c.value)).toEqual([
+      'abc123',
+    ])
+  })
+
+  it('does not resurrect a session cookie', async () => {
+    // A cookie with no expiry is defined to last for the session. Persisting
+    // it would restore a login the server already considers over.
+    const root = await tempDir('bbebee-jar-session')
+    const first = await jarHarness(root)
+    const jar = first.http.cookies.jar('nav')
+    await jar.ready
+    await jar.set([cookie({ expiresAt: undefined })])
+    await jar.flush()
+
+    const second = await jarHarness(root)
+    const reloaded = second.http.cookies.jar('nav')
+    await reloaded.ready
+    expect(await reloaded.all()).toEqual([])
+  })
+
+  it('keeps two sources’ jars apart', async () => {
+    // The documented case: two Navidrome servers, and a cookie set by one is
+    // never sent to the other.
+    const root = await tempDir('bbebee-jar-two')
+    const ctx = await jarHarness(root)
+    const a = ctx.http.cookies.jar('source-a')
+    const b = ctx.http.cookies.jar('source-b')
+    await Promise.all([a.ready, b.ready])
+
+    await a.set([cookie({ value: 'a-session' })])
+    expect(await b.get('https://music.example.org/x')).toEqual([])
+  })
+
+  it('leaves nothing behind when cleared', async () => {
+    // This is `signOut()`. "Nothing" has to include the stored copy.
+    const root = await tempDir('bbebee-jar-clear')
+    const first = await jarHarness(root)
+    const jar = first.http.cookies.jar('nav')
+    await jar.ready
+    await jar.set([cookie()])
+    await jar.clear()
+
+    const second = await jarHarness(root)
+    const reloaded = second.http.cookies.jar('nav')
+    await reloaded.ready
+    expect(await reloaded.all()).toEqual([])
+  })
+
+  it('does not leave the cookie readable on disk', async () => {
+    const root = await tempDir('bbebee-jar-disk')
+    const ctx = await jarHarness(root)
+    const jar = ctx.http.cookies.jar('nav')
+    await jar.ready
+    await jar.set([cookie({ value: 'hunter2secret' })])
+    await jar.flush()
+
+    const dir = await ctx.fs.dir('data')
+    const raw = await ctx.fs.readFile(ctx.fs.join(dir!, 'jar-nav.bin'))
+    expect(raw).not.toContain('hunter2secret')
+  })
+
+  it('forgets a jar whose key is gone', async () => {
+    // Envelope encryption's failure mode, and the one that matters: without
+    // the key the file is bytes, so losing the key *is* signing out.
+    const root = await tempDir('bbebee-jar-key')
+    const first = await jarHarness(root)
+    const jar = first.http.cookies.jar('nav')
+    await jar.ready
+    await jar.set([cookie()])
+    await jar.flush()
+    await first.secrets.delete('jar-key:nav')
+
+    const second = await jarHarness(root)
+    const reloaded = second.http.cookies.jar('nav')
+    await reloaded.ready
+    expect(await reloaded.all()).toEqual([])
+  })
+
+  it('still works with no credential store at all', async () => {
+    // A build with no secrets keeps jars in memory and is honest about it.
+    const ctx = new Context()
+    await ctx.plugin(PathsNode, { root: await tempDir('bbebee-jar-none') })
+    await ctx.plugin(FsNode)
+    await ctx.plugin(plugin, {})
+    await tick()
+
+    const jar = ctx.http.cookies.jar('nav')
+    await jar.ready
+    await jar.set([cookie()])
+    expect(await jar.all()).toHaveLength(1)
+  })
+})
+
+describe('cookies on the wire', () => {
+  /**
+   * The jar is per *scope*, and a scope is one imported source (docs/06 §4.1).
+   * That is what makes "two Navidrome servers, independent auth state" true
+   * rather than aspirational.
+   */
+  async function scoped(scopeId: string, root: string) {
+    const ctx = new Context()
+    await ctx.plugin(PathsNode, { root })
+    await ctx.plugin(FsNode)
+    await ctx.plugin(SecretsNode, {})
+    await tick()
+    await ctx.plugin(plugin, { jars: jarStore(ctx.secrets, ctx.fs) })
+    await tick()
+    // The same helper the kernel uses to scope a plugin, so the test exercises
+    // the real path rather than a hand-built config the service might read
+    // differently.
+    const scopedCtx = scopeContext(ctx, {
+      pluginId: '@BBeBee/plugin-source-runtime',
+      scopeId,
+      requested: ['net:host/*'] as never,
+    })
+    return { ctx, http: scopedCtx.http }
+  }
+
+  it('stores a set-cookie and sends it back', async () => {
+    const root = await tempDir('bbebee-wire')
+    const { http } = await scoped('src-a', root)
+    await http({ url: `${origin}/set-cookie` })
+    const echoed = await http({ url: `${origin}/echo-cookie` })
+    expect(await echoed.text()).toContain('session=abc123')
+  })
+
+  it('does not send one source’s cookie to another source', async () => {
+    const root = await tempDir('bbebee-wire-two')
+    const a = await scoped('src-a', root)
+    await a.http({ url: `${origin}/set-cookie` })
+
+    const b = await scoped('src-b', root)
+    const echoed = await b.http({ url: `${origin}/echo-cookie` })
+    expect(await echoed.text()).not.toContain('abc123')
+  })
+
+  it('reads a cookie set on a redirect, not only on the final response', async () => {
+    // A login flow sets its session cookie *on* the 302. Reading only the
+    // final response drops it, and the user appears never to have signed in.
+    const root = await tempDir('bbebee-wire-redirect')
+    const { http } = await scoped('src-a', root)
+    await http({ url: `${origin}/login-redirect` })
+    const echoed = await http({ url: `${origin}/echo-cookie` })
+    expect(await echoed.text()).toContain('session=viaredirect')
+  })
+
+  it('withholds a secure cookie from a plaintext request', async () => {
+    // A LAN server on http would otherwise have its session sent in the clear
+    // by a redirect it did not choose.
+    const root = await tempDir('bbebee-wire-secure')
+    const { ctx, http } = await scoped('src-a', root)
+    const jar = ctx.http.cookies.jar('src-a')
+    await jar.ready
+    await jar.set([
+      {
+        name: 'session',
+        value: 'secret',
+        domain: '127.0.0.1',
+        path: '/',
+        expiresAt: Date.now() + 60_000,
+        secure: true,
+        httpOnly: true,
+      },
+    ])
+    const echoed = await http({ url: `${origin}/echo-cookie` })
+    expect(await echoed.text()).not.toContain('secret')
+  })
+
+  it('refuses a Domain the server does not own', async () => {
+    // Cookie injection: a backend setting a cookie for an unrelated host, which
+    // the jar would then send there.
+    const root = await tempDir('bbebee-wire-domain')
+    const { ctx, http } = await scoped('src-a', root)
+    await http({ url: `${origin}/set-foreign-cookie` })
+    const stored = await ctx.http.cookies.jar('src-a').all()
+    expect(stored.map((c) => c.domain)).not.toContain('evil.example')
+  })
+
+  it('lets a request set its own Cookie header', async () => {
+    // The document knows something the jar does not.
+    const root = await tempDir('bbebee-wire-explicit')
+    const { http } = await scoped('src-a', root)
+    await http({ url: `${origin}/set-cookie` })
+    const echoed = await http({
+      url: `${origin}/echo-cookie`,
+      headers: { cookie: 'session=mine' },
+    })
+    expect(await echoed.text()).toContain('session=mine')
+  })
+})
+
+describe('wiring itself to the credential store', () => {
+  it('persists jars without the caller passing a store', async () => {
+    /*
+     * A shell that had to build the jar store by hand is a shell that can
+     * forget to — and forgetting produces an app where signing in appears to
+     * work and never sticks. So `ctx.http` adopts `ctx.secrets` itself when
+     * there is one.
+     */
+    const root = await tempDir('bbebee-selfwire')
+    const build = async () => {
+      const ctx = new Context()
+      await ctx.plugin(PathsNode, { root })
+      await ctx.plugin(FsNode)
+      await ctx.plugin(SecretsNode, {})
+      await tick()
+      // No `jars` config: the point is that none is needed.
+      await ctx.plugin(plugin, {})
+      await tick()
+      return ctx
+    }
+
+    const first = await build()
+    const jar = first.http.cookies.jar('src-a')
+    await jar.ready
+    await jar.set([
+      {
+        name: 'session',
+        value: 'persisted',
+        domain: 'music.example.org',
+        path: '/',
+        expiresAt: Date.now() + 60_000,
+        secure: false,
+        httpOnly: true,
+      },
+    ])
+    await jar.flush()
+
+    const second = await build()
+    const reloaded = second.http.cookies.jar('src-a')
+    await reloaded.ready
+    expect((await reloaded.all()).map((c) => c.value)).toEqual(['persisted'])
+  })
+
+  it('keeps working when there is no credential store', async () => {
+    const ctx = new Context()
+    await ctx.plugin(PathsNode, { root: await tempDir('bbebee-selfwire-none') })
+    await ctx.plugin(FsNode)
+    await ctx.plugin(plugin, {})
+    await tick()
+
+    const jar = ctx.http.cookies.jar('src-a')
+    await jar.ready
+    await jar.set([
+      {
+        name: 'session',
+        value: 'memory-only',
+        domain: 'music.example.org',
+        path: '/',
+        expiresAt: Date.now() + 60_000,
+        secure: false,
+        httpOnly: true,
+      },
+    ])
+    expect(await jar.all()).toHaveLength(1)
   })
 })

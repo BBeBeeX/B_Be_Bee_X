@@ -17,6 +17,8 @@ export {
   evaluateParsed,
   toText,
   type RuleContext,
+  type RuleTrace,
+  type RuleTraceEntry,
 } from './evaluate.js'
 export { parseJsonPath, queryJsonPath } from './jsonpath.js'
 export { RuleSyntaxError, type RuleDialect } from './syntax-error.js'
@@ -43,6 +45,7 @@ export {
   evaluateUrlTemplate,
   isTemplate,
   renderTemplate,
+  type JsEvaluator,
   type RuleSite,
   type TemplateScope,
 } from './template.js'

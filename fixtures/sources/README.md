@@ -25,19 +25,28 @@ Two uses:
   replace-first.
 - **`@put:{k:rule}` / `@get:{k}`** for a value lifted out of one field and used
   in another.
-- **`searchUrl` + `ruleSearch`**, and **`ruleStream`**.
+- **`searchUrl` + `ruleSearch`**, **`exploreUrl` + `ruleExplore` +
+  `ruleTrackList`**, and **`ruleStream`**.
+- **The catalogue round trip.** A search's rows are cached, and each item's
+  raw payload with them, so `ruleStream` still resolves after a restart
+  without re-running the search (docs/06 §4).
+- **`@js:` and `{{@js:…}}`**, with `jsLib` and the full `src` host surface
+  (docs/06 §8) — so a Subsonic document computes its own auth query.
+- **Sessions.** The source variable, a persistent per-source cookie jar, and
+  sign-out that leaves none of it behind.
 
-So `direct-url.json` and `subsonic.json` both run.
+So `direct-url.json`, `subsonic.json` and `podcast-json-feed.json` all run.
 
-Not yet: **`@css:`** and **`@xpath:`** need a markup parser, and **`@js:`**
-needs `ctx.js` (docs/04 §19). A document using one of them imports fine and
-reports the affected capability as absent — the runtime raises
+Not yet: **`@css:`** and **`@xpath:`** need a markup parser, and so do
+`src.parse.html` / `src.parse.xml` — which is why the podcast fixture is a
+JSON Feed rather than RSS. A fixture that cannot run is a fixture that stops
+telling the truth. A document using one of them imports fine
+and reports the affected capability as absent — the runtime raises
 `RuleEngineUnavailableError` rather than returning nothing, because silence
 there reads as "the backend changed" and sends an author to the wrong fix. It
 is a `RuleError`, so it carries the block and field it came from and the
 tracer can point at the line rather than at the source as a whole.
-`ruleExplore`, `ruleAlbum`, `ruleTrackList` and `ruleLyric` are parsed and
-stored but not yet run.
+Every rule block now runs.
 
 Adding a document here is not how a *user* adds a source: they paste a string
 into Settings → Sources → Import (docs/06 §9).

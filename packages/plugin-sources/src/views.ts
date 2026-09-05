@@ -12,9 +12,22 @@ export const SOURCES_VIEWS = {
   album: 'sources.album',
   /** The imported sources, in settings. */
   sourceList: 'sources.settings',
+  /** Paste a source string. */
+  sourceImport: 'sources.import',
+  /**
+   * One source, traced and edited in the same place.
+   *
+   * Deliberately one view rather than two: docs/06 §10 makes the debug screen
+   * *be* the editor, because the loop that repairs a rotted source is run a
+   * step, see which rule failed, change it, run it again. Two screens make
+   * that a navigation exercise.
+   */
+  sourceDebug: 'sources.debug',
 } as const
 
 export const SOURCES_ROUTES = {
   library: 'sources.library',
   album: 'sources.album',
+  sourceImport: 'sources.import',
+  sourceDebug: 'sources.debug',
 } as const

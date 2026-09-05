@@ -19,6 +19,7 @@ import {
   Sheet,
   Slider,
   Text,
+  TextField,
   Toast,
   TrackRow,
 } from './index.js'
@@ -200,5 +201,62 @@ describe('Text', () => {
 
   it('clamps to a line count when asked', () => {
     expect(html(h(Text, { numberOfLines: 1, children: 'x' }))).toContain('-webkit-line-clamp:1')
+  })
+})
+
+describe('TextField', () => {
+  it('renders a single-line input by default and a text area when multiline', () => {
+    // The two things users type here are a pasted document — hundreds of lines
+    // — and a one-line rule. One control cannot be both.
+    const single = renderToStaticMarkup(
+      h(TextField, { value: 'x', onChange: () => {}, accessibilityLabel: 'Rule' }),
+    )
+    expect(single).toContain('<input')
+
+    const many = renderToStaticMarkup(
+      h(TextField, { value: 'x', onChange: () => {}, multiline: true, accessibilityLabel: 'Doc' }),
+    )
+    expect(many).toContain('<textarea')
+  })
+
+  it('carries its accessible name', () => {
+    const html = renderToStaticMarkup(
+      h(TextField, { value: '', onChange: () => {}, accessibilityLabel: 'Source string' }),
+    )
+    expect(html).toContain('aria-label="Source string"')
+  })
+
+  it('hides a secure value', () => {
+    const html = renderToStaticMarkup(
+      h(TextField, { value: 'hunter2', onChange: () => {}, secure: true, accessibilityLabel: 'Password' }),
+    )
+    expect(html).toContain('type="password"')
+  })
+
+  it('renders an error rather than hiding it in a title', () => {
+    // An error only a hover reveals is one a touch user and a screen reader
+    // both never see.
+    const html = renderToStaticMarkup(
+      h(TextField, {
+        value: '{',
+        onChange: () => {},
+        error: 'sourceUrl: must be a string',
+        accessibilityLabel: 'Doc',
+      }),
+    )
+    expect(html).toContain('sourceUrl: must be a string')
+    expect(html).not.toContain('title="sourceUrl')
+  })
+
+  it('turns autocorrect off unless asked', () => {
+    // A rule silently autocorrected fails for a reason nothing on screen
+    // explains.
+    const html = renderToStaticMarkup(
+      h(TextField, { value: 'a', onChange: () => {}, accessibilityLabel: 'Rule' }),
+    )
+    // React omits `spellCheck={false}` from static markup because it is the
+    // DOM default; what matters is that nothing turns it *on*.
+    expect(html).not.toContain('spellcheck="true"')
+    expect(html).not.toContain('autocorrect="on"')
   })
 })

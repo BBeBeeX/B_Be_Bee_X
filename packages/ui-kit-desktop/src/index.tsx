@@ -26,6 +26,7 @@ import type {
   ListProps,
   SheetProps,
   SliderProps,
+  TextFieldProps,
   TextProps,
   Tone,
   ToastProps,
@@ -145,6 +146,67 @@ export function IconButton(props: IconButtonProps): ReactElement {
       },
     },
     props.icon,
+  )
+}
+
+/**
+ * A text input.
+ *
+ * Controlled, on both platforms. An uncontrolled input here and a controlled
+ * one on mobile would drift the moment either had to be reset — and the import
+ * screen resets it on every successful paste.
+ */
+export function TextField(props: TextFieldProps): ReactElement {
+  const scheme = c()
+  const invalid = props.error !== undefined
+  const style = {
+    width: '100%',
+    boxSizing: 'border-box' as const,
+    padding: `${tokens.space[2]}px ${tokens.space[3]}px`,
+    borderRadius: tokens.radius.sm,
+    border: `1px solid ${invalid ? scheme.state.error : scheme.border.strong}`,
+    background: scheme.bg.raised,
+    color: scheme.text.primary,
+    // Monospace for a rule and for a pasted document: alignment is how an
+    // author spots an unbalanced brace, and a proportional font hides it.
+    fontFamily: props.multiline ? tokens.font.family.mono : tokens.font.family.ui,
+    fontSize: tokens.font.size.md,
+    // Native resizing on a textarea a caller sized is a scrollbar fight.
+    resize: 'vertical' as const,
+    minHeight: props.multiline ? undefined : tokens.size.touchTarget,
+  }
+
+  const onChange = (e: { target: { value: string } }) => props.onChange(e.target.value)
+  const field = props.multiline
+    ? h('textarea', {
+        ...common(props),
+        value: props.value,
+        rows: props.rows ?? 8,
+        placeholder: props.placeholder,
+        disabled: props.disabled,
+        spellCheck: props.autoCorrect ?? false,
+        onChange,
+        style,
+      })
+    : h('input', {
+        ...common(props),
+        type: props.secure ? 'password' : 'text',
+        value: props.value,
+        placeholder: props.placeholder,
+        disabled: props.disabled,
+        spellCheck: props.autoCorrect ?? false,
+        onChange,
+        style,
+      })
+
+  if (!invalid) return field
+  return h(
+    'div',
+    { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[1] } },
+    field,
+    // Rendered, not a title attribute: an error only a hover reveals is one a
+    // touch user and a screen reader both never see.
+    h(Text, { variant: 'sm', tone: 'error' }, props.error),
   )
 }
 

@@ -57,6 +57,8 @@ export interface TemplateScope {
 
 const TEMPLATE_PREFIX = '='
 const PLACEHOLDER = /[{]{2}([^{}]*)[}]{2}/g
+/** `{{@js:expr}}` — the one placeholder that is not a path. */
+const JS_PREFIX = '@js:'
 /** A brace left over after every well-formed placeholder was consumed. */
 const STRAY_BRACE = /[{]{2}|[}]{2}/
 
@@ -72,7 +74,12 @@ export function isTemplate(rule: string): boolean {
  * the block and field, because the engine that would handle it does not exist
  * yet and pretending otherwise produces a wrong answer instead of a clear one.
  */
-export function evaluateRule(rule: string, scope: TemplateScope, site: RuleSite): string {
+export async function evaluateRule(
+  rule: string,
+  scope: TemplateScope,
+  site: RuleSite,
+  js?: JsEvaluator,
+): Promise<string> {
   if (!isTemplate(rule)) {
     throw new RuleError(
       `rule ${JSON.stringify(rule)} needs a selector engine, which this build does not have. ` +
@@ -81,7 +88,7 @@ export function evaluateRule(rule: string, scope: TemplateScope, site: RuleSite)
       site.sourceId,
     )
   }
-  return renderTemplate(rule.slice(TEMPLATE_PREFIX.length), scope, site)
+  return renderTemplate(rule.slice(TEMPLATE_PREFIX.length), scope, site, js)
 }
 
 /**
@@ -99,27 +106,40 @@ export function evaluateRule(rule: string, scope: TemplateScope, site: RuleSite)
  * given a `=` to make the integration test pass — the divergence hidden by
  * the thing that should have caught it.
  */
-export function evaluateUrlTemplate(
+export async function evaluateUrlTemplate(
   rule: string,
   scope: TemplateScope,
   site: RuleSite,
-): string {
+  js?: JsEvaluator,
+): Promise<string> {
   // A leading `=` is accepted and stripped, so documents written either way
   // work and neither spelling is a trap.
   const body = isTemplate(rule) ? rule.slice(TEMPLATE_PREFIX.length) : rule
-  return renderTemplate(body, scope, site)
+  return renderTemplate(body, scope, site, js)
 }
+
+/**
+ * Evaluating a `{{@js:…}}` placeholder.
+ *
+ * A function rather than the realm itself, so this module depends on the *idea*
+ * of a sandbox and not on a particular one — and so a caller with no sandbox
+ * simply passes nothing and gets the documented refusal.
+ */
+export type JsEvaluator = (expression: string, scope: TemplateScope) => Promise<unknown>
 
 /**
  * Render `{{ }}` placeholders in a literal string.
  *
  * The expression grammar is deliberately tiny — a dotted path, optionally
- * through array indices — rather than "JavaScript, evaluated". The full
- * language runs expressions inside `ctx.js`; there is no sandbox in this
- * slice, so there is no `eval` either. A path this cannot resolve is a
- * `RuleError`, not an empty string: a stream URL with a silently missing id
- * fails minutes later in a way nobody can diagnose. So is an unbalanced
- * placeholder, for the same reason.
+ * through array indices — rather than "JavaScript, evaluated", with one
+ * exception: `{{@js:expr}}` runs `expr` inside the source's sandbox
+ * (docs/06 §3.2). That is how a Subsonic document appends its auth query
+ * string to every URL, and it is the only place the template grammar reaches
+ * outside itself.
+ *
+ * A path this cannot resolve is a `RuleError`, not an empty string: a stream
+ * URL with a silently missing id fails minutes later in a way nobody can
+ * diagnose. So is an unbalanced placeholder, for the same reason.
  *
  * ⚠️ Interpolation is **verbatim**, not URL-encoded. A value containing `&`,
  * `#` or a space rewrites the structure of the URL it lands in, which is
@@ -129,29 +149,54 @@ export function evaluateUrlTemplate(
  * exists, a document interpolating attacker-influenced text into a URL is
  * relying on its backend to be sane about it.
  */
-export function renderTemplate(template: string, scope: TemplateScope, site: RuleSite): string {
-  let failure: RuleError | undefined
+export async function renderTemplate(
+  template: string,
+  scope: TemplateScope,
+  site: RuleSite,
+  js?: JsEvaluator,
+): Promise<string> {
+  /*
+   * Two passes, because a placeholder may need to `await`.
+   *
+   * `String.replace` cannot take an async callback — it would substitute
+   * `[object Promise]` into the URL and fail much later as a 404 nobody could
+   * explain — so the matches are collected, resolved, and then spliced back
+   * in by index.
+   */
+  const matches = [...template.matchAll(PLACEHOLDER)]
+  const resolved: string[] = []
 
-  const out = template.replace(PLACEHOLDER, (_match, expr: string) => {
-    const path = expr.trim()
-    if (!path) {
-      failure ??= ruleError('empty {{ }} placeholder', site)
-      return ''
+  for (const match of matches) {
+    const path = (match[1] ?? '').trim()
+    if (!path) throw ruleError('empty {{ }} placeholder', site)
+
+    if (path.startsWith(JS_PREFIX)) {
+      if (!js) {
+        throw ruleError(
+          `{{${path}}} needs the js engine, which this build does not have ` +
+            '(docs/04 §19)',
+          site,
+        )
+      }
+      const value = await js(path.slice(JS_PREFIX.length).trim(), scope)
+      resolved.push(scalar(value, path, site))
+      continue
     }
 
     const value = resolvePath(scope, path)
     if (value === undefined || value === null) {
-      failure ??= ruleError(`{{${path}}} resolved to nothing`, site)
-      return ''
+      throw ruleError(`{{${path}}} resolved to nothing`, site)
     }
-    if (typeof value === 'object') {
-      failure ??= ruleError(`{{${path}}} is an object; templates interpolate scalars`, site)
-      return ''
-    }
-    return String(value)
-  })
+    resolved.push(scalar(value, path, site))
+  }
 
-  if (failure) throw failure
+  let out = ''
+  let cursor = 0
+  for (const [i, match] of matches.entries()) {
+    out += template.slice(cursor, match.index) + resolved[i]
+    cursor = match.index + match[0].length
+  }
+  out += template.slice(cursor)
 
   /*
    * An unbalanced placeholder is a typo, and passing it through as literal
@@ -170,6 +215,17 @@ export function renderTemplate(template: string, scope: TemplateScope, site: Rul
   }
 
   return out
+}
+
+/** A placeholder interpolates a scalar. An object would stringify to nonsense. */
+function scalar(value: unknown, path: string, site: RuleSite): string {
+  if (value === undefined || value === null) {
+    throw ruleError(`{{${path}}} resolved to nothing`, site)
+  }
+  if (typeof value === 'object') {
+    throw ruleError(`{{${path}}} is an object; templates interpolate scalars`, site)
+  }
+  return String(value)
 }
 
 /**

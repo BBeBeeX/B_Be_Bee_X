@@ -28,7 +28,12 @@ import {
   boundInput,
   compileRuleRegex,
 } from './regex-guard.js'
-import { renderTemplate, type RuleSite, type TemplateScope } from './template.js'
+import {
+  renderTemplate,
+  type JsEvaluator,
+  type RuleSite,
+  type TemplateScope,
+} from './template.js'
 
 /** What a rule is evaluated against. */
 export interface RuleContext {
@@ -38,7 +43,39 @@ export interface RuleContext {
   site: RuleSite
   /** `@put` writes here and `@get` reads it. Lives for one evaluation. */
   vars?: Map<string, string>
+  /**
+   * The source's sandbox, when it has one.
+   *
+   * Optional because most rules never need it and a caller with no `ctx.js`
+   * must still be able to run them — a build without a sandbox loses `@js:`
+   * and nothing else. When it is absent, a `@js:` rule fails as an *engine*
+   * problem rather than as a rule problem, which is the difference between
+   * "this app cannot run your source" and "your source is broken".
+   */
+  js?: JsEvaluator
+  /**
+   * Where the tracer listens.
+   *
+   * Every atom reports what it received, what it produced and how long it
+   * took — including the ones that worked, because the step that broke is
+   * usually two before the empty result (docs/06 §10). Absent in normal
+   * operation, so tracing costs nothing when nobody is watching.
+   */
+  trace?: RuleTrace
 }
+
+/** One atom's contribution to a trace. Raw: the caller redacts. */
+export interface RuleTraceEntry {
+  block: string
+  field: string
+  engine: Engine
+  rule: string
+  input: unknown
+  output: unknown
+  ms: number
+}
+
+export type RuleTrace = (entry: RuleTraceEntry) => void
 
 /** An engine this build cannot run. Distinct from "the rule was wrong". */
 /**
@@ -63,11 +100,20 @@ export class RuleEngineUnavailableError extends RuleError {
   }
 }
 
-/** Engines this build can actually run. */
-const AVAILABLE: ReadonlySet<Engine> = new Set<Engine>(['template', 'json', 'regex', 'empty'])
+/** Engines that need nothing beyond this package. */
+const ALWAYS: ReadonlySet<Engine> = new Set<Engine>(['template', 'json', 'regex', 'empty'])
 
-export function engineAvailable(engine: Engine): boolean {
-  return AVAILABLE.has(engine)
+/**
+ * Whether an engine can run.
+ *
+ * `js` is conditional: it needs a sandbox, which is a *core service* the host
+ * may or may not provide (docs/04 §19). Reporting it as available when there
+ * is no realm would put a `search` button on a source whose first rule cannot
+ * run — the over-declaration deriving capabilities exists to prevent.
+ */
+export function engineAvailable(engine: Engine, opts: { js?: boolean } = {}): boolean {
+  if (engine === 'js') return opts.js === true
+  return ALWAYS.has(engine)
 }
 
 /**
@@ -77,12 +123,12 @@ export function engineAvailable(engine: Engine): boolean {
  * wanting the underlying objects — a list rule selecting elements — uses
  * `evaluateNodes`.
  */
-export function evaluate(rule: string, context: RuleContext): string[] {
-  return evaluateNodes(rule, context).map(toText)
+export async function evaluate(rule: string, context: RuleContext): Promise<string[]> {
+  return (await evaluateNodes(rule, context)).map(toText)
 }
 
 /** As `evaluate`, but keeping the selected values rather than stringifying. */
-export function evaluateNodes(rule: string, context: RuleContext): unknown[] {
+export async function evaluateNodes(rule: string, context: RuleContext): Promise<unknown[]> {
   return runParsed(parseOrFail(rule, context), context)
 }
 
@@ -104,13 +150,16 @@ function parseOrFail(rule: string, context: RuleContext): ParsedRule {
 }
 
 /** Evaluate an already-parsed rule. Saves a re-parse in a list of N items. */
-export function evaluateParsed(parsed: ParsedRule, context: RuleContext): string[] {
-  return runParsed(parsed, context).map(toText)
+export async function evaluateParsed(
+  parsed: ParsedRule,
+  context: RuleContext,
+): Promise<string[]> {
+  return (await runParsed(parsed, context)).map(toText)
 }
 
-function runParsed(parsed: ParsedRule, context: RuleContext): unknown[] {
+async function runParsed(parsed: ParsedRule, context: RuleContext): Promise<unknown[]> {
   for (const alternative of parsed.alternatives) {
-    const results = runInterleave(alternative.parts, context)
+    const results = await runInterleave(alternative.parts, context)
     // First *non-empty* wins: this is what lets a document carry a rule for
     // the field a backend renamed and the one it renamed it to, and keep
     // working through the change.
@@ -119,13 +168,16 @@ function runParsed(parsed: ParsedRule, context: RuleContext): unknown[] {
   return []
 }
 
-function runInterleave(
+async function runInterleave(
   parts: { atoms: Atom[] }[],
   context: RuleContext,
-): unknown[] {
+): Promise<unknown[]> {
   if (parts.length === 1) return runConcat(parts[0]!.atoms, context)
 
-  const lists = parts.map((part) => runConcat(part.atoms, context))
+  const lists: unknown[][] = []
+  // Sequential, not `Promise.all`: an atom may `@put` a variable a later one
+  // reads, so evaluation order is part of the language.
+  for (const part of parts) lists.push(await runConcat(part.atoms, context))
   const longest = Math.max(...lists.map((l) => l.length))
   const out: unknown[] = []
   for (let i = 0; i < longest; i++) {
@@ -136,17 +188,17 @@ function runInterleave(
   return out
 }
 
-function runConcat(atoms: Atom[], context: RuleContext): unknown[] {
+async function runConcat(atoms: Atom[], context: RuleContext): Promise<unknown[]> {
   const out: unknown[] = []
-  for (const atom of atoms) out.push(...runAtom(atom, context))
+  for (const atom of atoms) out.push(...(await runAtom(atom, context)))
   return out
 }
 
-function runAtom(atom: Atom, context: RuleContext): unknown[] {
+async function runAtom(atom: Atom, context: RuleContext): Promise<unknown[]> {
   // `@put` runs first: a later atom in the same rule can `@get` what it
   // stored, which is how a token lifted out of one field reaches another.
   for (const { key, rule } of atom.put) {
-    const captured = evaluate(rule, context)
+    const captured = await evaluate(rule, context)
     if (captured.length > 0) context.vars?.set(key, captured[0]!)
   }
 
@@ -155,13 +207,44 @@ function runAtom(atom: Atom, context: RuleContext): unknown[] {
     return value === undefined ? [] : [value]
   }
 
-  const selected = select(atom, context)
-  if (atom.replacements.length === 0) return selected
-  return selected.map((value) => applyReplacements(toText(value), atom, context))
+  if (!context.trace) {
+    const selected = await select(atom, context)
+    if (atom.replacements.length === 0) return selected
+    return selected.map((value) => applyReplacements(toText(value), atom, context))
+  }
+
+  // Traced: report the atom whether it succeeded or threw. A trace that shows
+  // only successful steps hides the one line the user is looking for.
+  const started = Date.now()
+  const report = (output: unknown) => {
+    context.trace?.({
+      block: context.site.block,
+      field: context.site.field,
+      engine: atom.engine,
+      rule: atom.selector,
+      input: context.document,
+      output,
+      ms: Date.now() - started,
+    })
+  }
+  try {
+    const selected = await select(atom, context)
+    const out =
+      atom.replacements.length === 0
+        ? selected
+        : selected.map((value) => applyReplacements(toText(value), atom, context))
+    report(out)
+    return out
+  } catch (error) {
+    report(`✗ ${String(error)}`)
+    throw error
+  }
 }
 
-function select(atom: Atom, context: RuleContext): unknown[] {
-  if (!engineAvailable(atom.engine)) throw new RuleEngineUnavailableError(atom.engine, context.site)
+async function select(atom: Atom, context: RuleContext): Promise<unknown[]> {
+  if (!engineAvailable(atom.engine, { js: context.js !== undefined })) {
+    throw new RuleEngineUnavailableError(atom.engine, context.site)
+  }
 
   switch (atom.engine) {
     // An empty atom contributes nothing, so an alternative chain falls
@@ -172,7 +255,7 @@ function select(atom: Atom, context: RuleContext): unknown[] {
     case 'template':
       // A template always produces exactly one value, even an empty one: it
       // is text, not a selection, and "no match" is not a thing it can mean.
-      return [renderTemplate(atom.selector, context.scope, context.site)]
+      return [await renderTemplate(atom.selector, context.scope, context.site, context.js)]
 
     case 'json':
       /*
@@ -198,6 +281,23 @@ function select(atom: Atom, context: RuleContext): unknown[] {
         if (error instanceof RuleSyntaxError) throw asRuleError(error.message, context)
         throw error
       }
+
+    case 'js': {
+      /*
+       * The document is bound as `result`, and the scope's members as globals.
+       *
+       * `result` rather than `document`: a `@js:` rule is a *post-processor*
+       * in legado's grammar — it runs on what the previous atom selected —
+       * and a document that names it otherwise would not port.
+       */
+      const value = await context.js!(atom.selector, {
+        ...context.scope,
+        result: context.document,
+      } as TemplateScope & { result: unknown })
+      // A script returning an array means several values, exactly as a
+      // selector matching several nodes does.
+      return Array.isArray(value) ? value : value === undefined || value === null ? [] : [value]
+    }
 
     case 'regex':
       return runRegex(atom.selector, context)

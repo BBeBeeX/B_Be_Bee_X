@@ -27,6 +27,7 @@ import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import {
   assertSafeForTrace,
+  formatUrn,
   ProviderError,
   SourceError,
   SourceFormatError,
@@ -49,13 +50,19 @@ import type {
   MediaProvider,
   Paged,
   SearchQuery,
+  BrowseEntry,
+  BrowseResult,
+  PageRequest,
   SearchResult,
+  TrackLink,
   SourceRecord,
   SourcesService,
   Track,
   TraceEvent,
 } from '@BBeBee/protocol'
 import { Catalog } from './catalog.js'
+import { cacheEntities } from './cache.js'
+import { linkManually, linkTracks, linksFor, unlink } from './links.js'
 import {
   changedFields,
   docHashOf,
@@ -117,6 +124,88 @@ interface DebuggableProvider extends MediaProvider {
 
 function isDebuggable(p: MediaProvider): p is DebuggableProvider {
   return typeof (p as Partial<DebuggableProvider>).debug === 'function'
+}
+
+/**
+ * A browse leaf as a `Track`.
+ *
+ * A `BrowseEntry` is deliberately thinner than a `Track` — it exists to be
+ * drawn in a list — so this fills in only what the entry actually knows.
+ * `subtitle` becomes the artist because that is what a list rule puts there
+ * (docs/06 §2.2), and an entry with no artist gets no credit rather than a
+ * credit called "Unknown", which would be a real artist row in the catalogue
+ * that nothing could ever clean up.
+ */
+function browsedTrack(
+  entry: BrowseEntry,
+  sourceId: string,
+  payload: Record<string, unknown> | undefined,
+): Track {
+  const track: Track = { urn: entry.urn!, title: entry.title, artists: [] }
+
+  /*
+   * Fields read off the payload, not off the entry.
+   *
+   * A `BrowseEntry` is drawn in a list, so it carries what a list row shows
+   * and nothing else — no duration, no album. The payload holds the *evaluated
+   * list rule*, whose field names are protocol (docs/06 §2.2 `ListRule`)
+   * rather than backend-specific, so reading them here is not this package
+   * knowing about a particular server. Without it a browsed track cached with
+   * no duration, and a scrubber that cannot move is indistinguishable from a
+   * broken one.
+   */
+  const durationMs = Number(payload?.durationMs)
+  if (Number.isFinite(durationMs) && durationMs > 0) track.durationMs = durationMs
+  if (typeof payload?.album === 'string') track.albumTitle = payload.album
+  if (typeof payload?.albumId === 'string') {
+    track.albumUrn = formatUrn({ sourceId, kind: 'album', id: payload.albumId })
+  }
+
+  if (entry.subtitle) {
+    track.artists = [
+      {
+        urn: formatUrn({ sourceId, kind: 'artist', id: artistSlug(entry.subtitle) }),
+        name: entry.subtitle,
+        role: 'main',
+        ordinal: 0,
+      },
+    ]
+  }
+  if (entry.artwork) track.artwork = entry.artwork
+  return track
+}
+
+/** One entry's payload, as an object or nothing. */
+function payloadFor(
+  result: BrowseResult,
+  urn: string,
+): Record<string, unknown> | undefined {
+  const value = result.payloads?.[urn]
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+/** A browse album as an `Album`. Thin, like the entry it came from. */
+function browsedAlbum(entry: BrowseEntry, sourceId: string): Album {
+  const album: Album = { urn: entry.urn!, title: entry.title, artists: [] }
+  if (entry.subtitle) {
+    album.artists = [
+      {
+        urn: formatUrn({ sourceId, kind: 'artist', id: artistSlug(entry.subtitle) }),
+        name: entry.subtitle,
+        role: 'main',
+        ordinal: 0,
+      },
+    ]
+  }
+  if (entry.artwork) album.artwork = entry.artwork
+  return album
+}
+
+/** The same slug the runtime mints, so one artist is one row. */
+function artistSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
 }
 
 /** Whether a source can answer a search at all — method *and* capability. */
@@ -194,6 +283,23 @@ export class Sources extends Service implements SourcesService {
           id: SOURCES_VIEWS.sourceList,
           section: 'sources',
           title: 'Music sources',
+        })
+        yield scoped.ui.contribute({
+          kind: 'route',
+          id: SOURCES_ROUTES.sourceImport,
+          path: '/sources/import',
+          title: 'Import a source',
+          // Reached from the source list, not from the chrome: importing is
+          // something you do once and then rarely, and a permanent tab for it
+          // would sit unused next to the ones people press every day.
+          order: 0,
+        })
+        yield scoped.ui.contribute({
+          kind: 'route',
+          id: SOURCES_ROUTES.sourceDebug,
+          path: '/sources/:id/debug',
+          title: 'Diagnose a source',
+          order: 0,
         })
       }, 'sources-ui-contributions'),
     )
@@ -319,11 +425,69 @@ export class Sources extends Service implements SourcesService {
       // cancelling would throw away a result the user may still want, and
       // there is no cancellation channel to do it politely.
       if (outcome.ok === 'timeout') return { sourceId, pending: true, tookMs }
-      if (outcome.ok) return { sourceId, result: outcome.result, pending: false, tookMs }
+      if (outcome.ok) {
+        await this.cache(sourceId, outcome.result)
+        return { sourceId, result: outcome.result, pending: false, tookMs }
+      }
       return { sourceId, error: outcome.error, pending: false, tookMs }
     } finally {
       clearTimeout(timer)
     }
+  }
+
+  /**
+   * Walk one source's hierarchy.
+   *
+   * Not a fan-out: browsing is a *place*, and the user is inside one folder on
+   * one server. The service owns the call rather than the shell talking to the
+   * provider directly, because this is where the leaves and their payloads get
+   * cached — a shell that went round it would show tracks that stop being
+   * playable the next time the app starts.
+   */
+  async browse(sourceId: string, nodeId?: string, page?: PageRequest): Promise<BrowseResult> {
+    const provider = this.registry.get(sourceId)
+    if (!provider) {
+      throw new ProviderError(`no source ${sourceId} is registered`, sourceId)
+    }
+    if (typeof provider.browse !== 'function' || !provider.capabilities.browse) {
+      // Not a thrown "not implemented": the capability is derived and visible,
+      // so a caller reaching this ignored it. Saying which source and that it
+      // cannot browse is more use than a stack trace.
+      throw new ProviderError(`source ${sourceId} cannot browse`, sourceId)
+    }
+
+    const result = await provider.browse(nodeId, page)
+    await this.cacheBrowsed(sourceId, result)
+    return result
+  }
+
+  /**
+   * Cache the playable leaves of a browse page.
+   *
+   * Entries without a URN are folders — places, not things — and there is
+   * nothing to store for them. The tracks go through the same writer a search
+   * result does, so a browsed track and a searched one are the same row.
+   */
+  private async cacheBrowsed(sourceId: string, result: BrowseResult): Promise<void> {
+    const tracks: Track[] = []
+    const albums: Album[] = []
+    for (const entry of result.items) {
+      if (!entry.urn) continue
+      // Albums are cached too, and for a reason beyond offline browsing: their
+      // payload carries the `childUrl` that `getAlbum` fetches. Nothing else
+      // in the app knows it, and it cannot be derived from an id.
+      if (entry.kind === 'album') albums.push(browsedAlbum(entry, sourceId))
+      else if (entry.kind === 'track') {
+        tracks.push(browsedTrack(entry, sourceId, payloadFor(result, entry.urn)))
+      }
+    }
+    if (tracks.length === 0 && albums.length === 0) return
+
+    await this.cache(sourceId, {
+      ...(tracks.length > 0 ? { tracks: { items: tracks, hasMore: false } } : {}),
+      ...(albums.length > 0 ? { albums: { items: albums, hasMore: false } } : {}),
+      ...(result.payloads ? { payloads: result.payloads } : {}),
+    })
   }
 
   /* ── sources as data ───────────────────────────────────────────────── */
@@ -637,6 +801,57 @@ export class Sources extends Service implements SourcesService {
    * the caller is owed its answer, so a subscriber throwing is a fault to log,
    * not one to propagate.
    */
+  /**
+   * Store what a provider answered.
+   *
+   * The step docs/06 §4's sequence diagram calls "cache rows, index FTS", and
+   * the reason a searched track is still playable after a restart: the
+   * per-track payload lands in `tracks.raw_json`, which is where `ruleStream`
+   * reads `{{track.*}}` from.
+   *
+   * ⚠️ A cache failure never fails the search. The user asked for results and
+   * has them; losing the write costs offline availability, and turning that
+   * into a failed search would be a strictly worse trade. It is logged at warn
+   * rather than swallowed, because a *persistent* failure here shows up much
+   * later as "this source can search but never play".
+   */
+  private async cache(sourceId: string, result: SearchResult): Promise<void> {
+    const tracks = result.tracks?.items
+    const albums = result.albums?.items
+    if (!tracks?.length && !albums?.length) return
+
+    try {
+      const written = await cacheEntities(this.ctx.db, sourceId, {
+        ...(tracks ? { tracks } : {}),
+        ...(albums ? { albums } : {}),
+        ...(result.payloads ? { payloads: result.payloads } : {}),
+      })
+      // The index listens for this; so does anything showing a library count.
+      // Emitted only for what was actually written, so a skipped row does not
+      // send the indexer looking for a URN that is not there.
+      if (written.trackUrns.length > 0) {
+        /*
+         * Linking runs over what was *just written*, not over the library. A
+         * full re-match on every search would be quadratic in a table that
+         * reaches six figures, and the answer for rows nobody touched cannot
+         * have changed.
+         */
+        const links = await linkTracks(this.ctx.db, written.trackUrns)
+        if (links > 0) {
+          this.ctx.logger.debug(`sources: linked ${links} track(s) across sources`)
+        }
+        this.safeEmit(() => this.ctx.emit('library/changed', 'track', written.trackUrns))
+      }
+      if (written.albumUrns.length > 0) {
+        this.safeEmit(() => this.ctx.emit('library/changed', 'album', written.albumUrns))
+      }
+    } catch (error) {
+      this.ctx.logger.warn(
+        `sources: could not cache results from ${sourceId}: ${String(error)}`,
+      )
+    }
+  }
+
   private safeEmit(emit: () => void): void {
     try {
       emit()
@@ -648,6 +863,28 @@ export class Sources extends Service implements SourcesService {
   /** Re-read the table after a write. Cheap: the source list is tens of rows. */
   private async refresh(): Promise<void> {
     this.records = await this.store.all()
+  }
+
+  /* ── cross-source identity (docs/06 §11) ───────────────────────────── */
+
+  /**
+   * Everything known to be the same recording as `urn`, best evidence first.
+   *
+   * Read rather than merged. A caller offering a fallback wants every link; a
+   * caller drawing a library row wants only the certain ones, and the
+   * confidence column is what lets each ask its own question.
+   */
+  linksFor(urn: string): Promise<TrackLink[]> {
+    return linksFor(this.ctx.db, urn)
+  }
+
+  /** The user says two URNs are the same recording. Never overwritten. */
+  link(a: string, b: string): Promise<void> {
+    return linkManually(this.ctx.db, a, b)
+  }
+
+  unlink(a: string, b: string): Promise<void> {
+    return unlink(this.ctx.db, a, b)
   }
 
   /* ── the catalogue cache ───────────────────────────────────────────── */
@@ -697,6 +934,16 @@ async function* once(event: TraceEvent): AsyncIterable<TraceEvent> {
 }
 
 export { Catalog } from './catalog.js'
+export { cacheEntities, MAX_PAYLOAD_BYTES } from './cache.js'
+export {
+  MERGE_CONFIDENCE,
+  linkManually,
+  linkTracks,
+  linksFor,
+  unlink,
+  writeExternalIds,
+} from './links.js'
+export type { CacheInput, CacheResult } from './cache.js'
 export { SourceStore } from './store.js'
 export {
   allowedHostsFor,

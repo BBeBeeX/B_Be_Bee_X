@@ -153,6 +153,30 @@ export const COMPONENT_CONTRACT: ComponentSpec[] = [
     ],
   },
   {
+    name: 'TextField',
+    purpose:
+      'Text entry. Controlled on both platforms, because an uncontrolled input on one ' +
+      'of them diverges the moment anything resets the field.',
+    props: [
+      { name: 'value' },
+      { name: 'onChange' },
+      { name: 'placeholder' },
+      {
+        name: 'multiline',
+        note: 'A pasted source document is hundreds of lines; a rule is one.',
+      },
+      { name: 'rows', note: 'Rows when multiline. Ignored otherwise.' },
+      { name: 'secure', note: 'Hides the value. A password field, not a styling choice.' },
+      { name: 'disabled' },
+      { name: 'error', note: 'Rendered beneath, not a hover title: touch has no hover.' },
+      {
+        name: 'autoCorrect',
+        note: 'Off by default. A rule silently autocorrected fails for a reason nothing explains.',
+      },
+      ...UNIVERSAL,
+    ],
+  },
+  {
     name: 'Text',
     purpose: 'Typography. The only place a font size is chosen.',
     props: [

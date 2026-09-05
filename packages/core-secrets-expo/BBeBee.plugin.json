@@ -1,0 +1,19 @@
+{
+  "id": "@BBeBee/core-secrets-expo",
+  "platforms": ["mobile"],
+  "version": "0.0.0",
+  "displayName": "Secrets",
+  "description": "ctx.secrets for iOS and Android, over expo-secure-store.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [],
+  "contributes": {
+    "services": [
+      "secrets"
+    ]
+  }
+}

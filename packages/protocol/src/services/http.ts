@@ -65,6 +65,15 @@ export interface CookieJar {
   remove(name: string, domain?: string): Promise<void>
   /** Empties the jar AND deletes its persisted copy. Called by `signOut()`. */
   clear(): Promise<void>
+  /**
+   * Resolve once every queued save has landed.
+   *
+   * Saves are queued rather than awaited by `set` — a slow disk must not slow
+   * a request — so anything that needs to *observe* the stored bytes has to
+   * wait for them: an export, a backup, a sign-out audit. An implementation
+   * that writes synchronously satisfies this with `Promise.resolve()`.
+   */
+  flush(): Promise<void>
 }
 
 export interface CookieJarService {

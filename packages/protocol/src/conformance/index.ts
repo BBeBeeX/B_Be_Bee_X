@@ -27,9 +27,11 @@ export { dbConformance, type DbSubject } from './db.js'
 export { dbScopeConformance, type DbScopeSubject } from './db-scope.js'
 export { fsConformance, type FsSubject } from './fs.js'
 export { fsScopeConformance, type FsScopeSubject } from './fs-scope.js'
+export { jsConformance, type JsSubject } from './js.js'
 export {
   mediaSessionConformance,
   type MediaSessionSubject,
 } from './media-session.js'
 export { pathsConformance, type PathsSubject } from './paths.js'
+export { secretsConformance, type SecretsSubject } from './secrets.js'
 export { storeConformance, type StoreSubject } from './store.js'

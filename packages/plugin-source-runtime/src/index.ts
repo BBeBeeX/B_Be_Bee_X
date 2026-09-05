@@ -12,8 +12,8 @@
  * allowlist) and its registration go when the fiber goes. See docs/06 §4.1.
  *
  * This is the M1 slice (docs/11 MD-7): documents are stored, given fibers, and
- * resolved to streams. The rule language beyond `=` templates, the sandbox,
- * login, search and the tracer land with M2.
+ * resolved to streams. Search, explore, the rule language and the sandbox are
+ * live; login and the tracer are the rest of M2.
  */
 
 import type { Context } from 'cordis'
@@ -21,8 +21,15 @@ import type { Context } from 'cordis'
 // this program. Without it a consumer compiling in isolation sees a bare Context.
 import type {} from '@BBeBee/protocol'
 import { formatUrn, RuleError } from '@BBeBee/protocol'
-import type { Disposable, MediaProvider, SourceRecord, StreamPrefs } from '@BBeBee/protocol'
-import { DocumentSource } from './source.js'
+import type {
+  Disposable,
+  JsService,
+  MediaProvider,
+  SecretsService,
+  SourceRecord,
+  StreamPrefs,
+} from '@BBeBee/protocol'
+import { DocumentSource, type SourceVars } from './source.js'
 
 /**
  * How long one rotted rule stays "already reported".
@@ -51,6 +58,8 @@ export interface SourceRuntimeConfig {
  */
 interface LiveSource {
   record: SourceRecord
+  /** Kept so a sign-out can drop the realm along with the credentials. */
+  source: DocumentSource
   dispose: Disposable
 }
 
@@ -58,6 +67,18 @@ export class SourceRuntime {
   private readonly live = new Map<string, LiveSource>()
   /** `sourceId\0block.field` → when it was last reported. See §7. */
   private readonly reportedFailures = new Map<string, number>()
+  /**
+   * In-memory mirror of `source_vars`, per source.
+   *
+   * `src.vars.get` has to be synchronous — a script calling it from inside a
+   * `{{ }}` placeholder has nowhere to await — so the table is read once at
+   * start and written through on every put.
+   */
+  private readonly vars = new Map<string, Map<string, string>>()
+  /** Set by `useJs` when `ctx.js` exists. See `apply`. */
+  private js: JsService | undefined
+  /** Set by `useSecrets`. Holds the cookie jar's key, so sign-out must reach it. */
+  private secrets: SecretsService | undefined
 
   constructor(
     private readonly ctx: Context,
@@ -98,6 +119,32 @@ export class SourceRuntime {
     }
   }
 
+  /**
+   * Adopt (or drop) the sandbox.
+   *
+   * Every live source is restarted, because a realm belongs to a source and
+   * capabilities are derived from what can run *now*: a document whose `@js:`
+   * rules just became runnable must re-derive `search` from `false` to `true`,
+   * and one that just lost the sandbox must do the reverse rather than keep
+   * offering a button that no longer works.
+   */
+  /**
+   * Adopt (or drop) the credential store.
+   *
+   * No restart: nothing derived from it is cached, and it is only read during
+   * sign-out. A build without one simply has nothing there to clear.
+   */
+  useSecrets(secrets: SecretsService | undefined): void {
+    this.secrets = secrets
+  }
+
+  useJs(js: JsService | undefined): void {
+    if (this.js === js) return
+    this.js = js
+    for (const id of [...this.live.keys()]) this.stop(id)
+    this.safely('adopting the js service', () => this.sync())
+  }
+
   /** Start what should be running, stop what should not. */
   private async sync(): Promise<void> {
     const wanted = new Map(
@@ -114,12 +161,51 @@ export class SourceRuntime {
     for (const [id, record] of wanted) {
       if (this.live.has(id)) continue
       try {
+        /*
+         * Vars before registration, not lazily on first script use.
+         *
+         * `auth.status` is derived from whether the source has its variable,
+         * and a UI reads it as soon as the provider appears — so a provider
+         * registered before its vars had loaded reported `anonymous` on every
+         * restart for a source the user had signed into. One indexed query per
+         * source is a cheap price for a correct first paint.
+         */
+        await this.loadVars(id)
         this.startOne(record)
       } catch (error) {
         // Same guard as `replace`: one source that will not start must not
         // stop the rest of the set from starting.
         this.ctx.logger.warn(`source-runtime: ${id} would not start: ${String(error)}`)
       }
+    }
+  }
+
+  /**
+   * Read one source's `source_vars` into the mirror.
+   *
+   * Called before a source is registered, and again before its realm is built.
+   *
+   * `src.vars.get` has to be synchronous — a script calling it inside a `{{ }}`
+   * placeholder has nowhere to await — so the values must be in memory before
+   * any script runs *and* before `auth.status` is first read. Idempotent, so
+   * the second call is free.
+   */
+  private async loadVars(sourceId: string): Promise<void> {
+    if (this.vars.has(sourceId)) return
+    const mirror = new Map<string, string>()
+    // Set before awaiting, so two concurrent realm builds share one mirror
+    // rather than the second replacing the first's loaded values.
+    this.vars.set(sourceId, mirror)
+    try {
+      const rows = await this.ctx.db.query<{ key: string; value: string }>(
+        'SELECT key, value FROM source_vars WHERE source_id = ?',
+        [sourceId],
+      )
+      for (const row of rows) mirror.set(row.key, row.value)
+    } catch (error) {
+      // A source with no vars still works; one whose vars failed to load asks
+      // the user to sign in again. Neither is worth failing a search over.
+      this.ctx.logger.warn(`source-runtime: could not load vars for ${sourceId}: ${String(error)}`)
     }
   }
 
@@ -178,17 +264,120 @@ export class SourceRuntime {
 
     const source = new DocumentSource(record, {
       http: sourceCtx.http,
+      // Optional: a build with no sandbox runs every document that does not
+      // need one, and derives the affected capabilities as absent for the
+      // rest rather than offering a button that cannot work.
+      ...(this.js ? { js: this.js } : {}),
+      vars: this.varsFor(record.id),
+      signOut: () => this.forget(record.id, sourceCtx),
       trackPayload: (id) => this.trackPayload(record.id, id),
+      albumPayload: (id) => this.albumPayload(record.id, id),
       log: (message) => this.ctx.logger.info(message),
+    })
+
+    /*
+     * Expiry is an event, not an error (docs/06 §5): the source stays
+     * registered and its cached catalogue stays browsable, so the shell can
+     * offer a re-login in place rather than making the source vanish.
+     */
+    const offAuth = source.provider().auth.onStatusChange((status) => {
+      if (status.state !== 'expired') return
+      this.safely('reporting an expired session', () =>
+        this.ctx.emit('source/auth-expired', record.id),
+      )
     })
 
     const off = sourceCtx.sources.register(this.reporting(source.provider()))
     this.live.set(record.id, {
       record,
+      source,
       // Wrapped in a local closure: the disposer that came back through the
       // service proxy is not the one a fiber would collect (docs/03 §2).
-      dispose: () => off(),
+      // `source.dispose()` frees the realm — a WASM allocation that nothing
+      // else will ever collect.
+      dispose: () => {
+        off()
+        offAuth()
+        source.dispose()
+      },
     })
+  }
+
+  /**
+   * Erase every trace of one source's session.
+   *
+   * Three stores, and forgetting any one of them leaves the user signed in
+   * through a route they cannot see (docs/06 §5.1):
+   *
+   *  - the **cookie jar**, emptied *and* forgotten, so a restart does not
+   *    rehydrate it;
+   *  - the **secrets namespace**, which holds the jar's encryption key;
+   *  - **`source_vars`**, which is where the password itself lives.
+   *
+   * The realm goes too: `src.cache` may hold a token minted from any of them.
+   */
+  private async forget(sourceId: string, scoped: Context): Promise<void> {
+    const failures: string[] = []
+
+    try {
+      await scoped.http.cookies.destroy(sourceId)
+    } catch (error) {
+      failures.push(`cookies: ${String(error)}`)
+    }
+    try {
+      await this.secrets?.namespace(sourceId).clear()
+    } catch (error) {
+      failures.push(`secrets: ${String(error)}`)
+    }
+    try {
+      await this.ctx.db.exec('DELETE FROM source_vars WHERE source_id = ?', [sourceId])
+      this.vars.delete(sourceId)
+    } catch (error) {
+      failures.push(`vars: ${String(error)}`)
+    }
+
+    // Rebuilt on next use, without whatever the old one had cached.
+    this.live.get(sourceId)?.source?.dispose()
+
+    /*
+     * Every store is attempted before anything is reported. A sign-out that
+     * stopped at the first failure would leave the *later* stores intact —
+     * and the later ones here are the password itself.
+     */
+    if (failures.length > 0) {
+      throw new Error(`sign-out did not fully complete — ${failures.join('; ')}`)
+    }
+  }
+
+  /**
+   * `src.vars` for one source, backed by `source_vars`.
+   *
+   * Read through a memory mirror so `src.vars.get` can stay synchronous — a
+   * script calling it inside a template placeholder cannot await — and written
+   * through to the table so it survives a restart. Cleared by sign-out and by
+   * removing the source (docs/06 §3.4).
+   */
+  private varsFor(sourceId: string): SourceVars {
+    return {
+      load: () => this.loadVars(sourceId),
+      get: (key) => this.vars.get(sourceId)?.get(key),
+      put: (key, value) => {
+        const mirror = this.vars.get(sourceId) ?? new Map<string, string>()
+        mirror.set(key, value)
+        this.vars.set(sourceId, mirror)
+        void this.ctx.db
+          .exec(
+            `INSERT INTO source_vars (source_id, key, value, updated_at) VALUES (?, ?, ?, ?)
+             ON CONFLICT(source_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+            [sourceId, key, value, Date.now()],
+          )
+          .catch((error: unknown) => {
+            // A failed write costs persistence, not correctness: the value is
+            // in the mirror and the session keeps working until a restart.
+            this.ctx.logger.warn(`sources: could not persist ${sourceId}.${key}: ${String(error)}`)
+          })
+      },
+    }
   }
 
   /**
@@ -263,13 +452,35 @@ export class SourceRuntime {
    * This is why `tracks.raw_json` exists: `ruleStream` runs hours after the
    * search that produced the track, possibly offline, and must not re-run it.
    */
-  private async trackPayload(
+  private trackPayload(
     sourceId: string,
     trackId: string,
   ): Promise<Record<string, unknown> | undefined> {
+    return this.payloadOf('tracks', formatUrn({ sourceId, kind: 'track', id: trackId }))
+  }
+
+  /**
+   * The payload a browse stored for an album.
+   *
+   * This is what makes `getAlbum` possible: it holds the `childUrl` — the URL
+   * of the album's own document — which nothing else in the app knows and
+   * which cannot be derived from an id.
+   */
+  private albumPayload(
+    sourceId: string,
+    albumId: string,
+  ): Promise<Record<string, unknown> | undefined> {
+    return this.payloadOf('albums', formatUrn({ sourceId, kind: 'album', id: albumId }))
+  }
+
+  private async payloadOf(
+    table: 'tracks' | 'albums',
+    urn: string,
+  ): Promise<Record<string, unknown> | undefined> {
+    // The table name is a literal from the two call sites above, never input.
     const row = await this.ctx.db.get<{ raw_json: string | null }>(
-      'SELECT raw_json FROM tracks WHERE urn = ?',
-      [formatUrn({ sourceId, kind: 'track', id: trackId })],
+      `SELECT raw_json FROM ${table} WHERE urn = ?`,
+      [urn],
     )
     if (!row?.raw_json) return undefined
     try {
@@ -297,7 +508,36 @@ export const inject = ['http', 'db', 'sources']
 export async function apply(ctx: Context, config: SourceRuntimeConfig = {}) {
   const runtime = new SourceRuntime(ctx, config)
   const stop = await runtime.start()
-  return () => stop()
+
+  /*
+   * `js` is optional, and a nested `inject` is how cordis says that.
+   *
+   * Every key in a plugin's own `inject` is *required* — a fiber whose store
+   * lacks one never activates — so listing `js` there would mean a build with
+   * no sandbox has no source runtime either, and every document, scripted or
+   * not, would stop working.
+   *
+   * This callback runs when the sandbox exists and its disposer when it goes,
+   * and each re-syncs: capabilities are derived from what can run *now*, so a
+   * source whose `@js:` rules just became runnable has to re-derive them.
+   */
+  const withJs = ctx.inject(['js'], (scoped) => {
+    runtime.useJs(scoped.js)
+    return () => runtime.useJs(undefined)
+  })
+
+  // Optional for the same reason, and separately: a build may have a sandbox
+  // and no credential store, or the reverse.
+  const withSecrets = ctx.inject(['secrets'], (scoped) => {
+    runtime.useSecrets(scoped.secrets)
+    return () => runtime.useSecrets(undefined)
+  })
+
+  return () => {
+    withSecrets.dispose()
+    withJs.dispose()
+    stop()
+  }
 }
 
 export default { name, inject, apply }

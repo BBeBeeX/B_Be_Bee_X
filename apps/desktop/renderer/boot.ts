@@ -14,6 +14,8 @@ import { StoreFs } from '@BBeBee/core-store-fs'
 import { DeviceElectron } from '@BBeBee/core-device-electron'
 import { BackgroundElectron } from '@BBeBee/core-background-electron'
 import { MediaSessionElectron } from '@BBeBee/core-media-session-electron'
+import { SecretsNode } from '@BBeBee/core-secrets-node'
+import { JsQuickJsNode } from '@BBeBee/core-js-quickjs-node'
 
 import ui from '@BBeBee/plugin-ui'
 import inspector from '@BBeBee/plugin-inspector'
@@ -119,6 +121,21 @@ export async function boot(): Promise<App> {
       [DeviceElectron, { appVersion: APP_VERSION, platform: hostPlatform() }],
       BackgroundElectron,
       MediaSessionElectron,
+      /*
+       * The two M2 services an imported source needs.
+       *
+       * `SecretsNode` before `HttpNode`, because the jar store is built from
+       * it: cookies are credential material and are envelope-encrypted under a
+       * key that lives in the credential store (docs/04 §2.1).
+       *
+       * ⚠️ Both are *optional* to `plugin-source-runtime`. Without `js` a
+       * document whose auth is scripted reports its search capability as
+       * absent rather than offering a button that cannot work; without
+       * `secrets` the cookie jars are in memory and honest about forgetting.
+       * Neither absence stops a source that does not need it from playing.
+       */
+      SecretsNode,
+      JsQuickJsNode,
     ],
     registry: registry(),
     config: {
@@ -131,6 +148,11 @@ export async function boot(): Promise<App> {
         '@BBeBee/plugin-inspector-ui-desktop': {},
         '@BBeBee/plugin-hello': { config: { greeting: 'Hello' } },
         '@BBeBee/plugin-hello-ui-desktop': {},
+
+        // `ctx.http` — the source runtime injects it, so without this every
+        // imported source sits PENDING and nothing remote plays. It adopts
+        // `ctx.secrets` on its own for persistent cookie jars (docs/04 §2.1).
+        '@BBeBee/core-http-node': {},
 
         '@BBeBee/plugin-sources': {},
         '@BBeBee/plugin-sources-ui-desktop': {},

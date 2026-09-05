@@ -6,6 +6,10 @@ export default defineConfig({
     // silently matched nothing would report "no test files" as success.
     include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.test.tsx'],
     environment: 'node',
+    // jsdom only where a hook needs one. Everything else stays in Node: a DOM
+    // for the whole suite would slow every test that has no use for one, and
+    // would let a Node-only package accidentally depend on `window`.
+    environmentMatchGlobs: [['packages/*/src/**/*.test.tsx', 'jsdom']],
     // Creates the scratch root the harnesses allocate under, and removes it
     // when the run ends. See vitest.global.ts.
     globalSetup: ['./vitest.global.ts'],

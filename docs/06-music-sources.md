@@ -609,6 +609,20 @@ The pipeline runs the same way for `browse` (`exploreUrl` → `ruleExplore` → 
 `ruleAlbum` → `ruleTrackList`) and for lyrics. There are only three verbs — fetch a document,
 select from it, coerce the selection — and every capability is a different arrangement of them.
 
+**Browse nodes carry their own stage.** `browse(nodeId)` has to know which of those rules to run,
+and it cannot infer it from the URL. So a node id is a self-contained token — the source id, the
+stage (`explore` or `tracks`), and the URL to fetch — rather than a key into a map the runtime
+keeps. The map would not survive a relaunch, and a shell restoring its navigation stack would
+return the user to a folder that had ceased to exist while they were away. The source id in the
+token is checked on the way back in: not a security boundary — the egress allowlist is that, and
+it is re-checked on every fetch, including on a `childUrl` the document computed — but it turns a
+stale id from another source into a plain refusal instead of a confusing cross-source fetch.
+
+**A leaf is a track; a node is a place.** An item whose `childUrl` is non-empty gets a node id and
+no URN. An item without one gets a URN and is playable — and is cached on the way past, payload
+included, by exactly the route a searched track is. Browsing to a track and playing it a week
+later has to work, and it only works if the row was written when it was seen.
+
 ### 4.3 Pagination, rate limiting and caching
 
 **Pagination** is `{{page}}`. The runtime increments it and stops when a page yields no items or

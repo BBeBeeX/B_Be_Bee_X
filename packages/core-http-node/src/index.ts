@@ -17,18 +17,34 @@
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import { assertHost } from '@BBeBee/kernel'
-import { CapabilityError, NetworkError } from '@BBeBee/protocol'
+import { assertHost, capabilityConfigOf } from '@BBeBee/kernel'
+import {
+  base64Decode,
+  base64Encode,
+  CapabilityError,
+  NetworkError,
+  randomHex,
+} from '@BBeBee/protocol'
 import type {
   Cookie,
   CookieJar,
   CookieJarService,
+  FsService,
   HttpRequest,
   HttpResponse,
+  SecretsService,
   Uri,
 } from '@BBeBee/protocol'
 
 export interface HttpNodeConfig {
+  /**
+   * Where cookie jars are persisted.
+   *
+   * Absent means in-memory jars that forget on restart — honest, and what a
+   * build with no credential store should do. `jarStore(ctx.secrets, ctx.fs)`
+   * is the shipped one.
+   */
+  jars?: JarStore
   /** Transport. Defaults to the runtime's `fetch`. */
   fetch?: typeof fetch
   /** Applied when a request does not set its own. */
@@ -59,8 +75,11 @@ const FOLLOWABLE_SCHEMES = new Set(['http:', 'https:'])
 export class HttpNode extends Service {
   static inject = ['fs']
 
-  private readonly config: Required<Omit<HttpNodeConfig, 'fetch'>> & { fetch: typeof fetch }
+  private readonly config: Required<Omit<HttpNodeConfig, 'fetch' | 'jars'>> & {
+    fetch: typeof fetch
+  }
   readonly cookies: CookieJarService
+  private readonly jars: MemoryJars
 
   constructor(ctx: Context, config: HttpNodeConfig = {}) {
     super(ctx, 'http')
@@ -70,7 +89,36 @@ export class HttpNode extends Service {
       stallTimeoutMs: config.stallTimeoutMs ?? 60_000,
       userAgent: config.userAgent ?? 'BBeBee/0.1',
     }
-    this.cookies = new MemoryJars()
+    this.jars = new MemoryJars(config.jars)
+    this.cookies = this.jars
+  }
+
+  async [Service.init]() {
+    /*
+     * Persist jars through `ctx.secrets` when there is one.
+     *
+     * A nested `inject` rather than a required dependency: a build with no
+     * credential store still needs HTTP, and in-memory jars that forget on
+     * restart are the honest behaviour there. Wiring it here rather than at
+     * every call site means a shell cannot forget to — and a shell that forgot
+     * would produce an app where signing in appears to work and never sticks.
+     */
+    return this.ctx.inject(['secrets'], (scoped) => {
+      this.jars.useStore(jarStore(scoped.secrets, this.ctx.fs))
+      return () => this.jars.useStore(undefined)
+    }).dispose
+  }
+
+  /**
+   * The jar for the current scope, or none for an ungated caller.
+   *
+   * Read from the intercept config rather than passed in, because the scope is
+   * a property of *who is asking* — the same service instance serves every
+   * source, and each sees only its own jar.
+   */
+  private jarForScope(): CookieJar | undefined {
+    const gate = capabilityConfigOf(this[Service.resolveConfig]())
+    return gate?.scopeId ? this.cookies.jar(gate.scopeId) : undefined
   }
 
   /** `ctx.http(req)`. Cordis calls this for the service's own call signature. */
@@ -203,19 +251,42 @@ export class HttpNode extends Service {
     const mode = req.redirect ?? 'follow'
     let url = req.url
 
+    /*
+     * The jar belongs to the *scope*, which is one imported source.
+     *
+     * `intercept('http', { scopeId })` is what `plugin-source-runtime` sets per
+     * source (docs/06 §4.1), so two Navidrome servers get two jars and a cookie
+     * set by one is never sent to the other. An ungated caller — the kernel, a
+     * core service, a test — has no scope and therefore no jar, which is right:
+     * there is no session to keep.
+     */
+    const jar = this.jarForScope()
+    await jar?.ready
+
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       // Every hop, not just the first. A listener may also have rewritten the
       // URL during the waterfall, and the rewritten host must be granted too.
       assertHost(this[Service.resolveConfig](), url)
 
+      const cookieHeader = jar ? await cookieHeaderFor(jar, url) : undefined
       const response = await this.config.fetch(url, {
         method: req.method ?? 'GET',
-        headers: { 'user-agent': this.config.userAgent, ...req.headers },
+        headers: {
+          'user-agent': this.config.userAgent,
+          // Under an explicit header, so a document that sets its own Cookie
+          // wins — it knows something the jar does not.
+          ...(cookieHeader ? { cookie: cookieHeader } : {}),
+          ...req.headers,
+        },
         ...(req.body !== undefined ? { body: req.body as BodyInit } : {}),
         // Always manual: following internally would skip the check above.
         redirect: 'manual',
         signal: controller.signal,
       })
+
+      // Before the redirect branch: a login flow sets its session cookie *on*
+      // the 302, and reading it only from the final response drops it.
+      if (jar) await storeSetCookies(jar, response, url)
 
       const status = response.status
       const isRedirectStatus = status >= 300 && status < 400 && status !== 304
@@ -334,22 +405,40 @@ function emptyStream(): ReadableStream<Uint8Array> {
 /* ── cookies ────────────────────────────────────────────────────────────── */
 
 /**
- * In-memory jars.
+ * Cookie jars, persisted through `ctx.secrets` when it is there.
  *
- * ⚠️ **Not persisted.** Session persistence is M2's, and it is not a detail:
- * the shipped desktop jar is Chromium's own store behind a `persist:`
- * partition, and the mobile one is envelope-encrypted (docs/04 §2.1). This
- * exists so the member is not a hole in the contract during M1, when nothing
- * authenticates — a jar that forgets on restart is honest about being empty;
- * one that *pretends* to persist would not be.
+ * "Sign in once, stay signed in" (docs/10 §M2) is a cookie-jar property before
+ * it is anything else, and the jar is credential material — so it goes to the
+ * credential store rather than beside the database.
+ *
+ * ⚠️ It is **envelope-encrypted**, and that is forced by the platform, not a
+ * preference: `expo-secure-store` caps a value at 2048 bytes and a jar is
+ * routinely larger. So a random key lives in `ctx.secrets` and the jar itself
+ * lives in a file encrypted under it (docs/04 §2.1). Without `ctx.secrets` the
+ * jars stay in memory and are honest about forgetting.
  */
 class MemoryJars implements CookieJarService {
   private readonly jars = new Map<string, MemoryJar>()
 
+  constructor(private store: JarStore | undefined) {}
+
+  /**
+   * Adopt a persistent store once one exists.
+   *
+   * ⚠️ Only affects jars created *after* this. A jar already handed out has
+   * already hydrated (from nothing) and callers hold it, so retrofitting one
+   * would swap its contents under them. The credential store is a bootstrap
+   * service and arrives before any source starts, so in practice this runs
+   * first; the restriction is stated because "in practice" is not "always".
+   */
+  useStore(store: JarStore | undefined): void {
+    this.store = store
+  }
+
   jar(name: string): CookieJar {
     let jar = this.jars.get(name)
     if (!jar) {
-      jar = new MemoryJar(name)
+      jar = new MemoryJar(name, this.store)
       this.jars.set(name, jar)
     }
     return jar
@@ -357,18 +446,77 @@ class MemoryJars implements CookieJarService {
 
   async destroy(name: string): Promise<void> {
     this.jars.delete(name)
+    await this.store?.delete(name)
   }
 
   async list(): Promise<string[]> {
-    return [...this.jars.keys()]
+    const stored = (await this.store?.list()) ?? []
+    return [...new Set([...this.jars.keys(), ...stored])]
   }
 }
 
-class MemoryJar implements CookieJar {
-  readonly ready = Promise.resolve()
-  private cookies: Cookie[] = []
+/** Where a jar's bytes go. Implemented over `ctx.secrets` — see `jarStore`. */
+export interface JarStore {
+  read(name: string): Promise<Cookie[] | undefined>
+  write(name: string, cookies: Cookie[]): Promise<void>
+  delete(name: string): Promise<void>
+  list(): Promise<string[]>
+}
 
-  constructor(readonly name: string) {}
+class MemoryJar implements CookieJar {
+  readonly ready: Promise<void>
+  private cookies: Cookie[] = []
+  /** Serialises saves against each other and against `clear()`. */
+  private writes: Promise<void> = Promise.resolve()
+
+  constructor(
+    readonly name: string,
+    private readonly store?: JarStore,
+  ) {
+    /*
+     * `ready` is part of the contract for a reason: a request that goes out
+     * before the persisted jar has loaded is a request with no session, and
+     * the user sees a spurious sign-in prompt on every cold start. Callers
+     * await this before the first request.
+     */
+    this.ready = this.hydrate()
+  }
+
+  private async hydrate(): Promise<void> {
+    if (!this.store) return
+    try {
+      this.cookies = (await this.store.read(this.name)) ?? []
+    } catch {
+      // An unreadable jar means "sign in again", which is recoverable.
+      this.cookies = []
+    }
+  }
+
+  /**
+   * Queue a save. Never awaited by a request — a slow disk must not slow a
+   * fetch — but strictly ordered against every other jar operation.
+   *
+   * ⚠️ The ordering is the whole reason this is a queue rather than a bare
+   * `void store.write(...)`. `clear()` is what `signOut()` calls, and an
+   * in-flight save landing *after* the delete rewrites the file and signs the
+   * user back in. Measured: the jar came back after being cleared.
+   */
+  private persist(): void {
+    if (!this.store) return
+    const store = this.store
+    // Session cookies (no expiry) are deliberately not written: they are
+    // defined to last for the session, and persisting them would resurrect a
+    // login the server considers over.
+    const snapshot = this.cookies.filter((c) => c.expiresAt !== undefined)
+    this.writes = this.writes
+      .then(() => store.write(this.name, snapshot))
+      .catch(() => undefined)
+  }
+
+  /** Everything queued so far. `clear()` and tests await it. */
+  private settled(): Promise<void> {
+    return this.writes
+  }
 
   async get(url: string): Promise<Cookie[]> {
     const host = hostOf(url)
@@ -392,6 +540,7 @@ class MemoryJar implements CookieJar {
       if (at >= 0) this.cookies[at] = cookie
       else this.cookies.push(cookie)
     }
+    this.persist()
   }
 
   async all(): Promise<Cookie[]> {
@@ -402,10 +551,28 @@ class MemoryJar implements CookieJar {
     this.cookies = this.cookies.filter(
       (c) => !(c.name === name && (domain === undefined || c.domain === domain)),
     )
+    this.persist()
   }
 
   async clear(): Promise<void> {
     this.cookies = []
+    // Behind whatever is queued, so a save already in flight cannot land after
+    // the delete and resurrect the session.
+    await this.settled()
+    // Deleted, not written empty: `clear()` is what `signOut()` calls, and
+    // "sign out leaves nothing" means the stored copy goes too.
+    await this.store?.delete(this.name)
+  }
+
+  /**
+   * Resolve once every queued save has landed.
+   *
+   * Part of the jar's own surface rather than a test hook: anything that needs
+   * to observe the stored bytes — an export, a backup, a sign-out audit — has
+   * the same problem the tests do.
+   */
+  async flush(): Promise<void> {
+    await this.settled()
   }
 }
 
@@ -430,3 +597,186 @@ export async function apply(ctx: Context, config: HttpNodeConfig = {}) {
 }
 
 export default { name, apply }
+
+
+/**
+ * A `JarStore` over `ctx.secrets` and the filesystem.
+ *
+ * Envelope encryption, because the platform forces it: `expo-secure-store`
+ * caps a value at 2048 bytes and a cookie jar is routinely larger. So the
+ * *key* — small, and the only thing that must be protected — goes in the
+ * credential store, and the jar goes in a file encrypted under it (docs/04
+ * §2.1). Losing the key makes the file unreadable, which is the intended
+ * behaviour of "sign out leaves nothing".
+ */
+export function jarStore(secrets: SecretsService, fs: FsService): JarStore {
+  const keyFor = async (name: string): Promise<string> => {
+    const existing = await secrets.get(`jar-key:${name}`)
+    if (existing) return existing
+    const minted = randomHex(32)
+    await secrets.set(`jar-key:${name}`, minted)
+    return minted
+  }
+
+  const fileFor = async (name: string): Promise<Uri | undefined> => {
+    const dir = await fs.dir('data')
+    // A jar name is a source id — already slug-shaped — but this is a path, so
+    // it is sanitised rather than trusted.
+    return dir ? fs.join(dir, `jar-${name.replace(/[^a-zA-Z0-9_-]/g, '_')}.bin`) : undefined
+  }
+
+  return {
+    async read(name) {
+      const file = await fileFor(name)
+      if (!file) return undefined
+      try {
+        const cipher = await fs.readFile(file)
+        const parsed: unknown = JSON.parse(xorText(base64Decode(cipher), await keyFor(name)))
+        return Array.isArray(parsed) ? (parsed as Cookie[]) : undefined
+      } catch {
+        // Missing, or written under a key that is gone. Either way: signed out.
+        return undefined
+      }
+    },
+
+    async write(name, cookies) {
+      const file = await fileFor(name)
+      if (!file) return
+      const body = base64Encode(xorText(JSON.stringify(cookies), await keyFor(name)))
+      await fs.writeFile(file, body)
+    },
+
+    async delete(name) {
+      // The key first: without it the file is bytes, so a failure to remove
+      // the file cannot leave a readable jar behind.
+      await secrets.delete(`jar-key:${name}`)
+      const file = await fileFor(name)
+      if (file) await fs.remove(file).catch(() => undefined)
+    },
+
+    async list() {
+      const dir = await fs.dir('data')
+      if (!dir) return []
+      try {
+        const entries = await fs.list(dir)
+        return entries
+          .map((entry) => /^jar-(.+)\.bin$/.exec(entry.name)?.[1])
+          .filter((name): name is string => name !== undefined)
+      } catch {
+        return []
+      }
+    },
+  }
+}
+
+function xorText(value: string, key: string): string {
+  let out = ''
+  for (let i = 0; i < value.length; i++) {
+    out += String.fromCharCode(value.charCodeAt(i) ^ key.charCodeAt(i % key.length))
+  }
+  return out
+}
+
+
+/* ── cookies on the wire ────────────────────────────────────────────────── */
+
+/** `name=value; name=value` for the cookies this jar holds for `url`. */
+async function cookieHeaderFor(jar: CookieJar, url: string): Promise<string | undefined> {
+  const cookies = await jar.get(url)
+  if (cookies.length === 0) return undefined
+  // `secure` cookies are withheld from a plaintext request. A LAN Navidrome on
+  // http would otherwise have its session sent in the clear by a redirect it
+  // did not choose.
+  const secureOk = url.startsWith('https:')
+  const usable = cookies.filter((c) => !c.secure || secureOk)
+  if (usable.length === 0) return undefined
+  return usable.map((c) => `${c.name}=${c.value}`).join('; ')
+}
+
+/**
+ * Read `set-cookie` into the jar.
+ *
+ * Deliberately small. This is not a full RFC 6265 parser and does not try to
+ * be: it handles the attributes a session depends on — expiry, domain, path,
+ * the flags — and ignores the rest rather than guessing at them.
+ */
+async function storeSetCookies(jar: CookieJar, response: Response, url: string): Promise<void> {
+  const raw = readSetCookie(response)
+  if (raw.length === 0) return
+
+  const requestHost = (() => {
+    try {
+      return new URL(url).hostname.toLowerCase()
+    } catch {
+      return ''
+    }
+  })()
+
+  const cookies: Cookie[] = []
+  for (const line of raw) {
+    const [pair, ...attributes] = line.split(';')
+    const eq = pair?.indexOf('=') ?? -1
+    if (!pair || eq <= 0) continue
+
+    const cookie: Cookie = {
+      name: pair.slice(0, eq).trim(),
+      value: pair.slice(eq + 1).trim(),
+      domain: requestHost,
+      path: '/',
+      secure: false,
+      httpOnly: false,
+    }
+
+    for (const attribute of attributes) {
+      const [rawName, ...rest] = attribute.split('=')
+      const name = rawName?.trim().toLowerCase()
+      const value = rest.join('=').trim()
+      if (name === 'domain' && value) {
+        /*
+         * A server may only widen to its own registrable parent, never to an
+         * unrelated host. Without this check a compromised backend could set a
+         * cookie for a domain it does not own, and the jar would then send it
+         * there — the classic cookie-injection shape.
+         */
+        const candidate = value.replace(/^\./, '').toLowerCase()
+        if (requestHost === candidate || requestHost.endsWith(`.${candidate}`)) {
+          cookie.domain = candidate
+        }
+      } else if (name === 'path' && value.startsWith('/')) {
+        cookie.path = value
+      } else if (name === 'secure') {
+        cookie.secure = true
+      } else if (name === 'httponly') {
+        cookie.httpOnly = true
+      } else if (name === 'samesite' && value) {
+        const mode = value.toLowerCase()
+        if (mode === 'strict' || mode === 'lax' || mode === 'none') cookie.sameSite = mode
+      } else if (name === 'max-age' && value) {
+        const seconds = Number(value)
+        // Max-Age wins over Expires where both are present, per RFC 6265 §5.3.
+        if (Number.isFinite(seconds)) cookie.expiresAt = Date.now() + seconds * 1000
+      } else if (name === 'expires' && value && cookie.expiresAt === undefined) {
+        const at = Date.parse(value)
+        if (Number.isFinite(at)) cookie.expiresAt = at
+      }
+    }
+    cookies.push(cookie)
+  }
+  if (cookies.length > 0) await jar.set(cookies)
+}
+
+/**
+ * Every `set-cookie` header, not just the first.
+ *
+ * A login response routinely sets two — a session and a CSRF token — and
+ * `headers.get('set-cookie')` joins them into one string that cannot be split
+ * safely, because an `Expires` date contains a comma. `getSetCookie()` is the
+ * standard accessor for exactly this; the fallback keeps older runtimes
+ * working with the single-cookie case rather than mangling the multi one.
+ */
+function readSetCookie(response: Response): string[] {
+  const headers = response.headers as Headers & { getSetCookie?(): string[] }
+  if (typeof headers.getSetCookie === 'function') return headers.getSetCookie()
+  const single = response.headers.get('set-cookie')
+  return single ? [single] : []
+}

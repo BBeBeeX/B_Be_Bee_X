@@ -88,6 +88,22 @@ document.
 - A local track and a server track of the same recording are linked by ISRC and shown as one
   library item with two sources.
 
+**Where it stands.** Built and under test: the rule language including `@js:`, the QuickJS sandbox
+(`core-js-quickjs-node`) and `ctx.js`, search, explore, album and lyrics, the catalogue round trip
+that keeps a searched or browsed track playable after a restart, `ctx.secrets` on both platforms
+(`core-secrets-node`, `core-secrets-expo`), per-source cookie jars that persist and are forgotten
+by sign-out, form and variable sign-in with transparent single-flight re-authentication, the step
+tracer, cross-source identity linking, the import and diagnose screens on both shells, and the
+full error taxonomy.
+
+Still open, and both need a device to finish: **`core-js-quickjs-expo`** — React Native's Hermes
+has no WebAssembly, so the mobile sandbox needs a *native* QuickJS module and therefore a
+dev-client rebuild, which is why it was always listed as the one native dependency M2 adds
+([04 §19](./04-core-services.md#19-ctxjs--the-sandboxed-evaluator)) — and running the two shells
+end to end on real hardware. Until the first lands, a scripted document on mobile reports its
+affected capabilities as absent rather than offering a button that cannot work, which is the
+designed degradation rather than a break.
+
 **Why second.** M1 plays files. M2 is where the model that the whole design now rests on is either
 true — a stranger's string plays music, safely, and can be repaired by the person holding it — or
 is revealed to need more than a milestone. It is also the last cheap moment to discover that the

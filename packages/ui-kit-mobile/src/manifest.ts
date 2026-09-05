@@ -31,6 +31,10 @@ export const COMPONENT_PROPS: KitPropMap = {
   ],
   EmptyState: ['title', 'description', 'action', 'icon', 'testID', 'accessibilityLabel'],
   Toast: ['message', 'tone', 'action', 'onDismiss', 'testID', 'accessibilityLabel'],
+  TextField: [
+    'value', 'onChange', 'placeholder', 'multiline', 'rows', 'secure', 'disabled',
+    'error', 'autoCorrect', 'testID', 'accessibilityLabel',
+  ],
   Text: ['children', 'variant', 'tone', 'numberOfLines', 'testID', 'accessibilityLabel'],
   Artwork: ['artwork', 'size', 'radius', 'testID', 'accessibilityLabel'],
 }

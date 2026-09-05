@@ -10,6 +10,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
+import { tokens } from '@BBeBee/ui-tokens'
 import { createElement as h, isValidElement } from 'react'
 import type { ReactElement } from 'react'
 import type { Track } from '@BBeBee/protocol'
@@ -22,6 +23,7 @@ import {
   Sheet,
   Slider,
   Text,
+  TextField,
   Toast,
   TrackRow,
   configureNative,
@@ -36,6 +38,7 @@ const NATIVE = {
   Modal: 'RNModal',
   FlatList: 'RNFlatList',
   ActivityIndicator: 'RNSpinner',
+  TextInput: 'RNTextInput',
 }
 configureNative(NATIVE)
 
@@ -222,5 +225,68 @@ describe('Artwork and EmptyState', () => {
   it('gives an empty screen something to say', () => {
     const nodes = tree(h(EmptyState, { title: 'No tracks yet', description: 'Add a folder' }))
     expect(JSON.stringify(nodes.map((n) => n.props))).toContain('No tracks yet')
+  })
+})
+
+describe('TextField', () => {
+  it('is controlled, like its desktop twin', () => {
+    /*
+     * React Native's `TextInput` is happy to be uncontrolled, and a kit where
+     * one platform keeps its own state and the other does not diverges the
+     * moment anything resets the field — which the import screen does on every
+     * successful paste.
+     */
+    const input = find(
+      h(TextField, { value: 'abc', onChange: () => {}, accessibilityLabel: 'Rule' }),
+      'RNTextInput',
+    )
+    expect(input?.props).toMatchObject({ value: 'abc' })
+    expect(typeof (input?.props as { onChangeText?: unknown }).onChangeText).toBe('function')
+  })
+
+  it('turns autocorrect and capitalisation off', () => {
+    // A rule and a URL are both case- and spelling-sensitive, and a phone
+    // keyboard rewriting one produces a source that fails for a reason nothing
+    // on screen explains.
+    const input = find(
+      h(TextField, { value: '', onChange: () => {}, accessibilityLabel: 'Rule' }),
+      'RNTextInput',
+    )
+    expect(input?.props).toMatchObject({ autoCorrect: false, autoCapitalize: 'none' })
+  })
+
+  it('grows for a pasted document and stays tappable for a rule', () => {
+    const many = find(
+      h(TextField, { value: '', onChange: () => {}, multiline: true, rows: 6, accessibilityLabel: 'Doc' }),
+      'RNTextInput',
+    )
+    const single = find(
+      h(TextField, { value: '', onChange: () => {}, accessibilityLabel: 'Rule' }),
+      'RNTextInput',
+    )
+    const heightOf = (n: ReactElement | undefined) =>
+      (n?.props as { style?: { minHeight?: number } }).style?.minHeight ?? 0
+    expect(heightOf(many)).toBeGreaterThan(heightOf(single))
+    expect(heightOf(single)).toBeGreaterThanOrEqual(tokens.size.touchTarget)
+  })
+
+  it('hides a secure value', () => {
+    const input = find(
+      h(TextField, { value: 'hunter2', onChange: () => {}, secure: true, accessibilityLabel: 'Password' }),
+      'RNTextInput',
+    )
+    expect(input?.props).toMatchObject({ secureTextEntry: true })
+  })
+
+  it('renders an error rather than hiding it', () => {
+    const nodes = tree(
+      h(TextField, {
+        value: '{',
+        onChange: () => {},
+        error: 'sourceUrl: must be a string',
+        accessibilityLabel: 'Doc',
+      }),
+    )
+    expect(JSON.stringify(nodes.map((n) => n.props))).toContain('sourceUrl: must be a string')
   })
 })

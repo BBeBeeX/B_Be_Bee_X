@@ -29,6 +29,7 @@ import type {
   Playlist,
   PlaylistDetail,
   Track,
+  WithPayloads,
 } from '../entities/catalog.js'
 import type { Lyrics } from '../entities/library.js'
 import type { StreamHandle, StreamPrefs, StreamQuality } from '../entities/media.js'
@@ -105,11 +106,31 @@ export interface SearchQuery {
   }
 }
 
-export interface SearchResult {
+export interface SearchResult extends WithPayloads {
   tracks?: Paged<Track>
   albums?: Paged<Album>
   artists?: Paged<Artist>
   playlists?: Paged<Playlist>
+}
+
+/**
+ * A page of browse entries, plus the cache material that came with it.
+ *
+ * The payloads belong to the *leaves*: descending into an album produces
+ * tracks, and those tracks have to still be playable after a restart, by
+ * exactly the mechanism a searched track is (see `WithPayloads`). Without
+ * this, a source found by browsing worked until the app was closed.
+ */
+export interface BrowseResult extends Paged<BrowseEntry>, WithPayloads {}
+
+/** How two URNs came to be considered the same recording. See `linksFor`. */
+export type LinkMethod = 'isrc' | 'mbid' | 'acoustid' | 'fuzzy' | 'manual'
+
+export interface TrackLink {
+  urn: string
+  /** 1.00 is exact. Below that it is a hint, never a merge. */
+  confidence: number
+  method: LinkMethod
 }
 
 export interface BrowseEntry {
@@ -119,7 +140,18 @@ export interface BrowseEntry {
   subtitle?: string
   artwork?: ArtworkRef
   kind: 'folder' | 'album' | 'artist' | 'playlist' | 'track' | 'genre'
-  /** Present for leaves; absent means "call browse(id) to descend". */
+  /**
+   * Whether this is something to play rather than somewhere to go.
+   *
+   * ⚠️ Separate from `urn`, which it used to be conflated with. An album in a
+   * browse listing is *both* — it has an identity worth caching and it is
+   * somewhere to descend into — and reading "no urn" as "descend" meant an
+   * album could never be cached, so `getAlbum` had no document URL to fetch
+   * and the whole `childUrl → ruleAlbum → ruleTrackList` half of the pipeline
+   * had nowhere to start.
+   */
+  leaf: boolean
+  /** This entry's own identity, where it has one. */
   urn?: string
 }
 
@@ -213,7 +245,7 @@ export interface MediaProvider {
 
   // ══ OPTIONAL ═══════════════════════════════════════════════════════════
   search?(q: SearchQuery, page?: PageRequest): Promise<SearchResult>
-  browse?(nodeId?: string, page?: PageRequest): Promise<Paged<BrowseEntry>>
+  browse?(nodeId?: string, page?: PageRequest): Promise<BrowseResult>
 
   /** Batched lookup. Falls back to N× `getTrack` when absent, which is slower. */
   getTracks?(ids: string[]): Promise<Track[]>
@@ -293,6 +325,19 @@ export interface SourcesService {
     opts?: { sourceIds?: string[]; timeoutMs?: number },
   ): Promise<AggregatedSearch>
 
+  /**
+   * Walk one source's hierarchy, caching what comes back.
+   *
+   * One source rather than a fan-out, because browsing is a *place* — the user
+   * is inside a folder on a particular server, not looking at twelve at once.
+   *
+   * Goes through the service rather than straight to `provider.browse` so that
+   * the rows and their payloads are cached on the way past, which is what
+   * makes a browsed track still playable after a restart. A shell that calls
+   * the provider directly gets the entries and silently loses that.
+   */
+  browse(sourceId: string, nodeId?: string, page?: PageRequest): Promise<BrowseResult>
+
   /* ── sources as data (docs/06 §9, §10) ─────────────────────────────── */
 
   /** Every imported source, enabled or not, in `sortOrder`. */
@@ -320,6 +365,22 @@ export interface SourcesService {
    * sharing a source never shares an account.
    */
   export(ids?: string[]): Promise<string>
+
+  /* ── cross-source identity (06 §11) ─────────────────────────────────── */
+
+  /**
+   * Everything known to be the same recording as `urn`, best evidence first.
+   *
+   * Returned rather than merged, and each entry carries its confidence: a
+   * caller offering a fallback wants every link, a caller drawing one library
+   * row wants only the certain ones. Anything below 1.00 is a *hint* — live
+   * versions, remasters and radio edits share titles, artists and durations,
+   * and merging on a bad guess makes a library wrong in a way nobody can see.
+   */
+  linksFor(urn: string): Promise<TrackLink[]>
+  /** The user says two URNs are one recording. Never overwritten by automation. */
+  link(a: string, b: string): Promise<void>
+  unlink(a: string, b: string): Promise<void>
 
   setEnabled(id: string, on: boolean): Promise<void>
   /** `forgetCatalogue` also drops the rows this source produced. */

@@ -112,6 +112,33 @@ export interface TextProps extends CommonProps {
   numberOfLines?: number
 }
 
+/**
+ * A text input.
+ *
+ * `multiline` exists because the two things users type into this app are a
+ * pasted source document — hundreds of lines of JSON — and a one-line rule.
+ * A single-line box for the first is unusable, and a text area for the second
+ * is a rule editor that swallows the Enter key.
+ *
+ * Controlled only: an uncontrolled input on one platform and a controlled one
+ * on the other is exactly the divergence the parity gate exists to prevent.
+ */
+export interface TextFieldProps extends CommonProps {
+  value: string
+  onChange(next: string): void
+  placeholder?: string
+  multiline?: boolean
+  /** Rows when `multiline`. Ignored otherwise. */
+  rows?: number
+  /** Hides the value. A password field, not a styling choice. */
+  secure?: boolean
+  disabled?: boolean
+  /** Shown beneath, in the danger tone. Absent means valid. */
+  error?: string
+  /** Off by default: a rule and a URL are both case- and spelling-sensitive. */
+  autoCorrect?: boolean
+}
+
 export interface ArtworkProps extends CommonProps {
   artwork?: ArtworkRef
   size: number

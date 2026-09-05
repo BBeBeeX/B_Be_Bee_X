@@ -253,6 +253,7 @@ export class SourceLocal extends Service {
           title: lastSegment(root.uri),
           subtitle: root.uri,
           kind: 'folder' as const,
+          leaf: false,
         })),
         hasMore: false,
       }
@@ -287,7 +288,7 @@ export class SourceLocal extends Service {
 
     for (const entry of listing) {
       if (entry.isDirectory) {
-        items.push({ id: entry.uri, title: entry.name, kind: 'folder' })
+        items.push({ id: entry.uri, title: entry.name, kind: 'folder', leaf: false })
         continue
       }
       const trackUrn = urnByUri.get(entry.uri)
@@ -298,6 +299,7 @@ export class SourceLocal extends Service {
         title: track?.title ?? entry.name,
         ...(track?.artists[0]?.name ? { subtitle: track.artists[0].name } : {}),
         kind: 'track',
+        leaf: true,
         urn: trackUrn,
       })
     }

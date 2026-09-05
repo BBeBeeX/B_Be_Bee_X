@@ -14,10 +14,25 @@ import { createElement as h, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Album, Track } from '@BBeBee/protocol'
+import type { Album, ImportReport, Track, TraceEvent } from '@BBeBee/protocol'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
-import { useAlbum, useAlbums, useTracks } from '@BBeBee/plugin-sources/hooks'
-import { Artwork, Button, EmptyState, List, Text, TrackRow } from '@BBeBee/ui-kit-desktop'
+import {
+  useAlbum,
+  useAlbums,
+  useSourceEditor,
+  useSourceImport,
+  useSourceTrace,
+  useTracks,
+} from '@BBeBee/plugin-sources/hooks'
+import {
+  Artwork,
+  Button,
+  EmptyState,
+  List,
+  Text,
+  TextField,
+  TrackRow,
+} from '@BBeBee/ui-kit-desktop'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
@@ -231,6 +246,246 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   )
 }
 
+
+/* ── importing ──────────────────────────────────────────────────────────── */
+
+/**
+ * Paste a source string.
+ *
+ * The preview is the screen's reason for existing. A set pasted from a forum
+ * is opaque — the user cannot read JSON at a glance, and an import that
+ * silently adds eleven sources is one they cannot undo without knowing which
+ * eleven. So what *would* be imported is named before the button is pressed.
+ */
+export function ImportScreen({ ctx }: { ctx: Context }): ReactElement {
+  const state = useSourceImport(ctx)
+  const scheme = p()
+
+  return h(
+    'section',
+    { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[4], padding: tokens.space[4] } },
+    h(Text, { variant: 'lg' }, 'Import a source'),
+    h(
+      Text,
+      { variant: 'sm', tone: 'muted' },
+      'Paste a source string — one document or a whole set. Nothing is written until you import.',
+    ),
+    h(TextField, {
+      value: state.text,
+      onChange: state.setText,
+      multiline: true,
+      rows: 14,
+      placeholder: '{ "sourceUrl": "https://…", "sourceName": "…", "ruleStream": { … } }',
+      accessibilityLabel: 'Source string',
+      testID: 'source-import-input',
+      ...(state.issues.length > 0
+        ? { error: state.issues.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('\n') }
+        : {}),
+    }),
+    state.preview
+      ? h(
+          'ul',
+          {
+            style: {
+              margin: 0,
+              padding: tokens.space[3],
+              borderRadius: tokens.radius.sm,
+              background: scheme.bg.raised,
+              listStyle: 'none',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: tokens.space[1],
+            },
+            'aria-label': 'What will be imported',
+          },
+          h(
+            Text,
+            { variant: 'sm', tone: 'muted' },
+            `${state.preview.count} source${state.preview.count === 1 ? '' : 's'} in this string`,
+          ),
+          ...state.preview.names.map((name) => h('li', { key: name }, h(Text, { variant: 'sm' }, name))),
+        )
+      : null,
+    h(
+      'div',
+      { style: { display: 'flex', gap: tokens.space[2] } },
+      h(Button, {
+        onPress: state.submit,
+        disabled: state.busy || !state.preview,
+        loading: state.busy,
+        testID: 'source-import-submit',
+        children: 'Import',
+      }),
+      h(Button, {
+        variant: 'ghost',
+        onPress: state.reset,
+        disabled: state.busy,
+        children: 'Clear',
+      }),
+    ),
+    state.report
+      ? h(
+          Text,
+          { variant: 'sm', tone: state.report.added.length + state.report.updated.length > 0 ? 'accent' : 'muted' },
+          summariseImport(state.report),
+        )
+      : null,
+  )
+}
+
+/** What an import did, in a sentence. */
+function summariseImport(report: ImportReport): string {
+  const parts: string[] = []
+  if (report.added.length) parts.push(`${report.added.length} added`)
+  if (report.updated.length) parts.push(`${report.updated.length} updated`)
+  if (report.unchanged.length) parts.push(`${report.unchanged.length} unchanged`)
+  if (report.rejected.length) parts.push(`${report.rejected.length} rejected`)
+  // Never an empty string: "nothing happened" reads as a button that did not
+  // work, which is the one thing it must not look like.
+  return parts.length > 0 ? parts.join(', ') : 'nothing to import'
+}
+
+/* ── diagnosing ─────────────────────────────────────────────────────────── */
+
+/**
+ * One source, traced and edited in the same place.
+ *
+ * docs/06 §10: the debug screen *is* the editor. The loop that repairs a
+ * rotted source is run a step, see which rule failed, change it, run it again
+ * — and splitting that across two screens turns a seconds-long fix into a
+ * navigation exercise.
+ */
+export function DebugScreen({ ctx, sourceId }: { ctx: Context; sourceId: string }): ReactElement {
+  const trace = useSourceTrace(ctx, sourceId)
+  const editor = useSourceEditor(ctx, sourceId)
+  const [query, setQuery] = useState('test')
+
+  return h(
+    'section',
+    { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[4], padding: tokens.space[4] } },
+    h(Text, { variant: 'lg' }, 'Diagnose'),
+    h(
+      'div',
+      { style: { display: 'flex', gap: tokens.space[2], alignItems: 'flex-start' } },
+      h(TextField, {
+        value: query,
+        onChange: setQuery,
+        placeholder: 'Search text',
+        accessibilityLabel: 'Search text to trace',
+        testID: 'trace-query',
+      }),
+      h(Button, {
+        onPress: () => trace.run({ kind: 'search', text: query }),
+        disabled: trace.running,
+        loading: trace.running,
+        testID: 'trace-run',
+        children: 'Run search',
+      }),
+    ),
+    h(TraceList, { events: trace.events, running: trace.running }),
+
+    h(Text, { variant: 'md' }, 'The document'),
+    h(TextField, {
+      value: editor.text,
+      onChange: editor.setText,
+      multiline: true,
+      rows: 16,
+      accessibilityLabel: 'Source document',
+      testID: 'source-editor',
+      ...(editor.error ? { error: editor.error } : {}),
+    }),
+    h(
+      'div',
+      { style: { display: 'flex', gap: tokens.space[2] } },
+      h(Button, {
+        onPress: editor.save,
+        disabled: !editor.dirty || editor.saving,
+        loading: editor.saving,
+        testID: 'source-save',
+        children: 'Save and re-run',
+      }),
+      h(Button, {
+        variant: 'ghost',
+        onPress: editor.revert,
+        disabled: !editor.dirty,
+        children: 'Revert',
+      }),
+    ),
+  )
+}
+
+/**
+ * The trace, as lines.
+ *
+ * Every step, including the ones that worked — the failure is usually two
+ * steps before the empty result, and a list of failures alone hides it.
+ */
+function TraceList({
+  events,
+  running,
+}: {
+  events: readonly TraceEvent[]
+  running: boolean
+}): ReactElement {
+  const scheme = p()
+  if (events.length === 0) {
+    return h(EmptyState, {
+      title: running ? 'Running…' : 'No trace yet',
+      description: running ? undefined : 'Run a step to see what each rule receives and produces.',
+    })
+  }
+  return h(
+    'ol',
+    {
+      'aria-label': 'Trace',
+      'aria-live': 'polite',
+      style: {
+        margin: 0,
+        padding: 0,
+        listStyle: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: tokens.space[1],
+        fontFamily: tokens.font.family.mono,
+        fontSize: tokens.font.size.sm,
+      },
+    },
+    ...events.map((event, i) =>
+      h(
+        'li',
+        {
+          key: i,
+          style: {
+            padding: tokens.space[2],
+            borderRadius: tokens.radius.sm,
+            background: scheme.bg.raised,
+            borderLeft: `3px solid ${event.kind === 'error' ? scheme.state.error : scheme.border.subtle}`,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          },
+        },
+        traceLine(event),
+      ),
+    ),
+  )
+}
+
+/** One event as text. Redacted upstream; this only lays it out. */
+function traceLine(event: TraceEvent): string {
+  switch (event.kind) {
+    case 'http':
+      // Status 0 means the request never came back — which is the diagnosis,
+      // so it is spelled out rather than shown as a zero.
+      return `${event.method} ${event.url} → ${event.status === 0 ? 'no response' : event.status} (${event.ms}ms)`
+    case 'rule':
+      return `${event.block}.${event.field} [${event.engine}] ${event.rule}\n  → ${event.output}`
+    case 'error':
+      return `✗ ${event.block ? `${event.block}.${event.field ?? ''} ` : ''}${event.message}`
+    case 'result':
+      return `✓ ${event.summary}`
+  }
+}
+
 export const name = 'plugin-sources-ui-desktop'
 export const inject = ['ui']
 
@@ -238,6 +493,8 @@ export async function apply(ctx: Context) {
   return ctx.effect(function* () {
     yield ctx.ui.registerView(SOURCES_VIEWS.library, LibraryScreen)
     yield ctx.ui.registerView(SOURCES_VIEWS.album, AlbumScreen)
+    yield ctx.ui.registerView(SOURCES_VIEWS.sourceImport, ImportScreen)
+    yield ctx.ui.registerView(SOURCES_VIEWS.sourceDebug, DebugScreen)
   }, 'sources-ui-desktop')
 }
 

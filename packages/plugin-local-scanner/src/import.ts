@@ -8,6 +8,7 @@
  * suspend mid-scan costs one batch and never half a track.
  */
 
+import { sortKey } from '@BBeBee/protocol'
 import type { AudioMetadata, DbService, SqlValue, Uri } from '@BBeBee/protocol'
 import { albumId, artistId, artworkId, trackId } from './ids.js'
 
@@ -36,12 +37,15 @@ export interface ImportResult {
 
 const urn = (source: string, kind: string, id: string) => `BBeBee:${source}:${kind}:${id}`
 
-/** A sort key that files "The Beatles" under B and drops leading punctuation. */
-export function sortKey(value: string | undefined): string | undefined {
-  if (!value) return undefined
-  const stripped = value.trim().replace(/^["'“”‘’([]+/, '')
-  return stripped.replace(/^(the|a|an)\s+/i, '').toLowerCase()
-}
+/**
+ * Re-exported, not defined.
+ *
+ * The catalogue's collation belongs to the catalogue (`@BBeBee/protocol`), not
+ * to whichever writer got there first — the source cache writes the same rows
+ * and had grown a slightly different copy, which is how "The Beatles" and
+ * "Beatles, The" end up in two places in one list.
+ */
+export { sortKey }
 
 /**
  * Split a tag that names several artists, which most taggers write inline.

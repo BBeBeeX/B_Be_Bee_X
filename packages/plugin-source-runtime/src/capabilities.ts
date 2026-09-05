@@ -7,10 +7,10 @@
  * nothing to call. A block that is present but empty counts as absent — an
  * empty block is a half-written document, not a capability.
  *
- * This slice builds only the members the M1 runtime can actually serve
- * (docs/11 MD-7), so `search` and `browse` stay false even when the document
- * describes them: claiming a capability the build cannot back is exactly the
- * lie deriving them was meant to end.
+ * A capability is true only when the document describes it *and* this build
+ * can run the rules it describes it with — the caller works the second half
+ * out and passes it in. Claiming one the build cannot back is exactly the lie
+ * deriving them was meant to end.
  *
  * See docs/06-music-sources.md §1.3.
  */
@@ -34,7 +34,12 @@ function hasRules(block: object | undefined): boolean {
 
 export function capabilitiesFor(
   doc: SourceDocument,
-  opts: { seekable?: boolean; searchable?: boolean } = {},
+  opts: {
+    seekable?: boolean
+    searchable?: boolean
+    browsable?: boolean
+    lyrics?: boolean
+  } = {},
 ): Capabilities {
   const rateLimit = parseRate(doc.concurrentRate)
   /*
@@ -55,8 +60,11 @@ export function capabilitiesFor(
       // honest answer is no rather than a guess the UI would act on.
       fullText: false,
     },
-    browse: false,
-    lyrics: false,
+    browse: opts.browsable ?? false,
+    // No `albums` flag exists on `Capabilities`: the *presence* of `getAlbum`
+    // is the signal a shell reads, and adding a second way to say the same
+    // thing is how the two drift apart.
+    lyrics: opts.lyrics ?? false,
     artwork: false,
     library: { read: false, save: false, playlistWrite: false, playlistReorder: false },
     streaming: {

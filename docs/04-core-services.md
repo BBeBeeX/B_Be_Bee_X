@@ -176,6 +176,20 @@ A signed-in music source must stay signed in across restarts
 persistence is therefore part of the platform contract rather than something a source document has
 to express in rules.
 
+**A jar belongs to one source.** `ctx.http` reads the scope id from the intercept config the
+runtime sets per source ([06 §4.1](./06-music-sources.md#41-a-sources-lifetime)), so two Navidrome
+servers get two jars and a cookie set by one is never sent to the other. An ungated caller — the
+kernel, a core service, a test — has no scope and therefore no jar, which is correct: there is no
+session to keep.
+
+**It is envelope-encrypted, and the platform forces that.** `expo-secure-store` caps a value at
+2048 bytes and a jar is routinely larger, so a random key goes to `ctx.secrets` and the jar itself
+to a file encrypted under it. Losing the key makes the file bytes — which is exactly what
+`signOut()` relies on. `ctx.http` adopts `ctx.secrets` on its own when one exists; a shell that had
+to wire that by hand is a shell that can forget to, and forgetting produces an app where signing in
+appears to work and never sticks. Without a credential store the jars stay in memory and are honest
+about forgetting.
+
 ```ts
 export interface Cookie {
   name: string
@@ -679,6 +693,18 @@ It exists for exactly one caller today: `plugin-source-runtime`, whose rules are
 strangers ([06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do)). It
 is a core service rather than part of that plugin because embedding an interpreter means shipping
 native code, which only `core-*` may do ([02 §1](./02-architecture.md#the-invariant)).
+
+**Implemented by `core-js-quickjs-node`** (desktop and Node) on QuickJS compiled to WebAssembly.
+Not `node:vm`, and the difference is the whole point: `vm` shares an object graph with the host,
+so a script reaching `this.constructor.constructor` is out, and every published mitigation for
+that is a blocklist someone eventually walks around. QuickJS is a separate interpreter — there is
+no host object graph to reach, because there are no host objects in it.
+
+⚠️ **`js` is an optional injection.** A build without a sandbox still runs every document that
+needs no scripting, and derives the affected capabilities as *absent* for the rest rather than
+offering a button that cannot work. Cordis treats every key in a plugin's own `inject` as
+required, so this is expressed as a nested `ctx.inject(['js'], …)` — listing it at the top level
+would mean one missing core service takes the whole source runtime down with it.
 
 ```ts
 export interface JsRealm {

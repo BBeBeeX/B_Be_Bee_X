@@ -20,23 +20,23 @@ const ctx = (document: unknown) => ({
 })
 
 describe('detecting the exponential shapes', () => {
-  it('refuses a repeated group that already repeats', () => {
+  it('refuses a repeated group that already repeats', async () => {
     for (const pattern of ['(a+)+b', '(a*)*b', '(\\d+)*', '(x+)+$', '([a-z]+)+']) {
       expect(isUnsafeRegex(pattern).unsafe, pattern).toBe(true)
     }
   })
 
-  it('refuses a repeated group containing an alternation', () => {
+  it('refuses a repeated group containing an alternation', async () => {
     // `(a|aa)+` gives the engine two ways to split every input.
     expect(isUnsafeRegex('(a|aa)+').unsafe).toBe(true)
     expect(isUnsafeRegex('(foo|foobar)*').unsafe).toBe(true)
   })
 
-  it('refuses nesting one level deeper', () => {
+  it('refuses nesting one level deeper', async () => {
     expect(isUnsafeRegex('((a+)+)+').unsafe).toBe(true)
   })
 
-  it('allows the patterns real documents use', () => {
+  it('allows the patterns real documents use', async () => {
     // A guard that refuses ordinary rules is a guard nobody can ship with.
     for (const pattern of [
       '(\\d+)kbps',
@@ -51,31 +51,31 @@ describe('detecting the exponential shapes', () => {
     }
   })
 
-  it('treats a fixed repeat as safe and an open one as a quantifier', () => {
+  it('treats a fixed repeat as safe and an open one as a quantifier', async () => {
     // `{2}` cannot multiply the search space; `{2,}` can.
     expect(isUnsafeRegex('(a{2})+').unsafe).toBe(false)
     expect(isUnsafeRegex('(a{2,})+').unsafe).toBe(true)
   })
 
-  it('does not read a quantifier inside a character class', () => {
+  it('does not read a quantifier inside a character class', async () => {
     expect(isUnsafeRegex('([+*]+)x').unsafe).toBe(false)
   })
 
-  it('does not read an escaped quantifier', () => {
+  it('does not read an escaped quantifier', async () => {
     expect(isUnsafeRegex('(a\\+)+').unsafe).toBe(false)
   })
 })
 
 describe('refusal reaches the author', () => {
-  it('names the pattern and the reason', () => {
+  it('names the pattern and the reason', async () => {
     expect(() => compileRuleRegex('(a+)+b', 'g')).toThrow(UnsafeRegexError)
     expect(() => compileRuleRegex('(a+)+b', 'g')).toThrow(/\(a\+\)\+b/)
   })
 
-  it('arrives as a RuleError, so the tracer can attribute it', () => {
+  it('arrives as a RuleError, so the tracer can attribute it', async () => {
     // A refusal with no block or field is one the user cannot act on.
     try {
-      evaluate(':(a+)+b', ctx('aaaa'))
+      await evaluate(':(a+)+b', ctx('aaaa'))
       expect.unreachable('should have thrown')
     } catch (error) {
       expect(error).toBeInstanceOf(RuleError)
@@ -83,21 +83,21 @@ describe('refusal reaches the author', () => {
     }
   })
 
-  it('refuses it in a replacement too, not only a selector', () => {
-    expect(() => evaluate('$.t##(a+)+b##x', ctx({ t: 'aaa' }))).toThrow(RuleError)
+  it('refuses it in a replacement too, not only a selector', async () => {
+    await expect(evaluate('$.t##(a+)+b##x', ctx({ t: 'aaa' }))).rejects.toThrow(RuleError)
   })
 })
 
 describe('the input bound', () => {
-  it('caps what any pattern is run against', () => {
+  it('caps what any pattern is run against', async () => {
     expect(boundInput('a'.repeat(MAX_REGEX_INPUT + 100))).toHaveLength(MAX_REGEX_INPUT)
     expect(boundInput('short')).toBe('short')
   })
 
-  it('stays fast on input that would previously have hung', () => {
+  it('stays fast on input that would previously have hung', async () => {
     // The measured case: this shape and this length took minutes.
     const started = Date.now()
-    expect(() => evaluate(':(a+)+b', ctx('a'.repeat(50_000)))).toThrow(RuleError)
+    await expect(evaluate(':(a+)+b', ctx('a'.repeat(50_000)))).rejects.toThrow(RuleError)
     expect(Date.now() - started).toBeLessThan(1000)
   })
 })

@@ -1,7 +1,7 @@
 {
   "name": "@BBeBee/core-http-node",
   "version": "0.0.0",
-  "description": "ctx.http — outbound HTTP, the M1 slice.",
+  "description": "ctx.http \u2014 outbound HTTP, the M1 slice.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -34,6 +34,7 @@
   },
   "devDependencies": {
     "@BBeBee/core-fs-node": "workspace:*",
-    "@BBeBee/core-paths-node": "workspace:*"
+    "@BBeBee/core-paths-node": "workspace:*",
+    "@BBeBee/core-secrets-node": "workspace:*"
   }
 }

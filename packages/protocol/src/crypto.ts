@@ -1,0 +1,270 @@
+/**
+ * The digest primitives a source document needs, in portable TypeScript.
+ *
+ * Not `node:crypto` and not WebCrypto. Two reasons, and the second is the one
+ * that decides it:
+ *
+ *  - This runs on Node, in Electron's renderer, and in React Native's JSC, and
+ *    only one of those has `node:crypto`. WebCrypto is closer to universal but
+ *    is *asynchronous* and has no MD5 — and MD5 is exactly what Subsonic's
+ *    auth scheme requires, so the one algorithm a shipped document depends on
+ *    is the one WebCrypto refuses to provide.
+ *  - A rule is evaluated inside a sandbox where the host surface is a fixed
+ *    list (docs/06 §8). Reaching a platform API from there would mean the list
+ *    is not the whole story.
+ *
+ * ⚠️ MD5 and SHA-1 are here because **backends** use them, not because they
+ * are sound. MD5 is broken for collision resistance and SHA-1 is broken for
+ * the same; neither is used by this app for anything of its own. `sha256Hex`
+ * in `hash.ts` is what identity and integrity use.
+ */
+
+import { sha256Hex } from './hash.js'
+
+/* ── UTF-8 ──────────────────────────────────────────────────────────────── */
+
+function bytesOf(input: string | Uint8Array): Uint8Array {
+  return typeof input === 'string' ? new TextEncoder().encode(input) : input
+}
+
+function hex(bytes: Uint8Array): string {
+  let out = ''
+  for (const byte of bytes) out += byte.toString(16).padStart(2, '0')
+  return out
+}
+
+/* ── MD5 ────────────────────────────────────────────────────────────────── */
+
+/** Per-round shift amounts. */
+const MD5_SHIFTS = [
+  7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+  5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+  4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+  6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+]
+
+/** `floor(abs(sin(i + 1)) * 2^32)`, precomputed so startup does no trig. */
+const MD5_K = new Uint32Array(
+  Array.from({ length: 64 }, (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32)),
+)
+
+function rotl(value: number, shift: number): number {
+  return (value << shift) | (value >>> (32 - shift))
+}
+
+export function md5Hex(input: string | Uint8Array): string {
+  const message = bytesOf(input)
+  const bitLength = message.length * 8
+
+  // Pad to 56 mod 64, then eight bytes of little-endian length.
+  const padded = new Uint8Array((((message.length + 8) >> 6) + 1) << 6)
+  padded.set(message)
+  padded[message.length] = 0x80
+  const view = new DataView(padded.buffer)
+  view.setUint32(padded.length - 8, bitLength >>> 0, true)
+  view.setUint32(padded.length - 4, Math.floor(bitLength / 2 ** 32), true)
+
+  let a0 = 0x67452301
+  let b0 = 0xefcdab89
+  let c0 = 0x98badcfe
+  let d0 = 0x10325476
+
+  const words = new Uint32Array(16)
+  for (let offset = 0; offset < padded.length; offset += 64) {
+    for (let i = 0; i < 16; i++) words[i] = view.getUint32(offset + i * 4, true)
+
+    let [a, b, c, d] = [a0, b0, c0, d0]
+    for (let i = 0; i < 64; i++) {
+      let f: number
+      let g: number
+      if (i < 16) {
+        f = (b & c) | (~b & d)
+        g = i
+      } else if (i < 32) {
+        f = (d & b) | (~d & c)
+        g = (5 * i + 1) % 16
+      } else if (i < 48) {
+        f = b ^ c ^ d
+        g = (3 * i + 5) % 16
+      } else {
+        f = c ^ (b | ~d)
+        g = (7 * i) % 16
+      }
+      const tmp = d
+      d = c
+      c = b
+      b = (b + rotl((a + f + MD5_K[i]! + words[g]!) >>> 0, MD5_SHIFTS[i]!)) >>> 0
+      a = tmp
+    }
+    a0 = (a0 + a) >>> 0
+    b0 = (b0 + b) >>> 0
+    c0 = (c0 + c) >>> 0
+    d0 = (d0 + d) >>> 0
+  }
+
+  const out = new Uint8Array(16)
+  const outView = new DataView(out.buffer)
+  outView.setUint32(0, a0, true)
+  outView.setUint32(4, b0, true)
+  outView.setUint32(8, c0, true)
+  outView.setUint32(12, d0, true)
+  return hex(out)
+}
+
+/* ── SHA-1 ──────────────────────────────────────────────────────────────── */
+
+export function sha1Hex(input: string | Uint8Array): string {
+  const message = bytesOf(input)
+  const bitLength = message.length * 8
+
+  const padded = new Uint8Array((((message.length + 8) >> 6) + 1) << 6)
+  padded.set(message)
+  padded[message.length] = 0x80
+  const view = new DataView(padded.buffer)
+  // Big-endian length, unlike MD5. Getting this backwards produces a digest
+  // that is wrong only for messages near a block boundary — the kind of bug
+  // that passes a smoke test and fails on one real document.
+  view.setUint32(padded.length - 8, Math.floor(bitLength / 2 ** 32))
+  view.setUint32(padded.length - 4, bitLength >>> 0)
+
+  let h0 = 0x67452301
+  let h1 = 0xefcdab89
+  let h2 = 0x98badcfe
+  let h3 = 0x10325476
+  let h4 = 0xc3d2e1f0
+
+  const w = new Uint32Array(80)
+  for (let offset = 0; offset < padded.length; offset += 64) {
+    for (let i = 0; i < 16; i++) w[i] = view.getUint32(offset + i * 4)
+    for (let i = 16; i < 80; i++) {
+      w[i] = rotl(w[i - 3]! ^ w[i - 8]! ^ w[i - 14]! ^ w[i - 16]!, 1) >>> 0
+    }
+
+    let [a, b, c, d, e] = [h0, h1, h2, h3, h4]
+    for (let i = 0; i < 80; i++) {
+      let f: number
+      let k: number
+      if (i < 20) {
+        f = (b & c) | (~b & d)
+        k = 0x5a827999
+      } else if (i < 40) {
+        f = b ^ c ^ d
+        k = 0x6ed9eba1
+      } else if (i < 60) {
+        f = (b & c) | (b & d) | (c & d)
+        k = 0x8f1bbcdc
+      } else {
+        f = b ^ c ^ d
+        k = 0xca62c1d6
+      }
+      const tmp = (rotl(a, 5) + f + e + k + w[i]!) >>> 0
+      e = d
+      d = c
+      c = rotl(b, 30) >>> 0
+      b = a
+      a = tmp
+    }
+    h0 = (h0 + a) >>> 0
+    h1 = (h1 + b) >>> 0
+    h2 = (h2 + c) >>> 0
+    h3 = (h3 + d) >>> 0
+    h4 = (h4 + e) >>> 0
+  }
+
+  const out = new Uint8Array(20)
+  const outView = new DataView(out.buffer)
+  for (const [i, value] of [h0, h1, h2, h3, h4].entries()) outView.setUint32(i * 4, value)
+  return hex(out)
+}
+
+/* ── HMAC ───────────────────────────────────────────────────────────────── */
+
+type HashName = 'md5' | 'sha1' | 'sha256'
+
+const BLOCK_SIZE = 64
+
+/**
+ * HMAC over any of the three, per RFC 2104.
+ *
+ * Written against raw digests rather than hex, because the construction hashes
+ * a *digest* in the outer pass — feeding it the hex string instead is a
+ * mistake that produces stable, plausible, entirely wrong output that only
+ * fails when compared against another implementation.
+ */
+export function hmacHex(algorithm: HashName, key: string | Uint8Array, message: string): string {
+  const digest = (bytes: Uint8Array): Uint8Array => {
+    const asHex =
+      algorithm === 'md5' ? md5Hex(bytes) : algorithm === 'sha1' ? sha1Hex(bytes) : sha256Hex(bytes)
+    return fromHex(asHex)
+  }
+
+  let keyBytes = bytesOf(key)
+  if (keyBytes.length > BLOCK_SIZE) keyBytes = digest(keyBytes)
+
+  const padded = new Uint8Array(BLOCK_SIZE)
+  padded.set(keyBytes)
+
+  const inner = new Uint8Array(BLOCK_SIZE + bytesOf(message).length)
+  const outer = new Uint8Array(BLOCK_SIZE + (algorithm === 'md5' ? 16 : algorithm === 'sha1' ? 20 : 32))
+  for (let i = 0; i < BLOCK_SIZE; i++) {
+    inner[i] = padded[i]! ^ 0x36
+    outer[i] = padded[i]! ^ 0x5c
+  }
+  inner.set(bytesOf(message), BLOCK_SIZE)
+  outer.set(digest(inner), BLOCK_SIZE)
+  return hex(digest(outer))
+}
+
+function fromHex(value: string): Uint8Array {
+  const out = new Uint8Array(value.length / 2)
+  for (let i = 0; i < out.length; i++) out[i] = Number.parseInt(value.slice(i * 2, i * 2 + 2), 16)
+  return out
+}
+
+/* ── Base64 and randomness ──────────────────────────────────────────────── */
+
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+export function base64Encode(input: string | Uint8Array): string {
+  const bytes = bytesOf(input)
+  let out = ''
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i]!
+    const b = bytes[i + 1]
+    const c = bytes[i + 2]
+    out += B64[a >> 2]
+    out += B64[((a & 3) << 4) | ((b ?? 0) >> 4)]
+    out += b === undefined ? '=' : B64[((b & 15) << 2) | ((c ?? 0) >> 6)]
+    out += c === undefined ? '=' : B64[c & 63]
+  }
+  return out
+}
+
+export function base64Decode(input: string): string {
+  const clean = input.replace(/[^A-Za-z0-9+/]/g, '')
+  const bytes: number[] = []
+  for (let i = 0; i < clean.length; i += 4) {
+    const n =
+      (B64.indexOf(clean[i]!) << 18) |
+      (B64.indexOf(clean[i + 1] ?? 'A') << 12) |
+      (B64.indexOf(clean[i + 2] ?? 'A') << 6) |
+      B64.indexOf(clean[i + 3] ?? 'A')
+    bytes.push((n >> 16) & 0xff)
+    if (clean[i + 2] !== undefined) bytes.push((n >> 8) & 0xff)
+    if (clean[i + 3] !== undefined) bytes.push(n & 0xff)
+  }
+  return new TextDecoder().decode(new Uint8Array(bytes))
+}
+
+/**
+ * `length` random bytes, hex-encoded.
+ *
+ * `crypto.getRandomValues` is a web standard present on every target — not a
+ * platform API — and it is a CSPRNG. `Math.random` is not, and this is used
+ * for auth salts, where a predictable value is the whole vulnerability.
+ */
+export function randomHex(length: number): string {
+  const bytes = new Uint8Array(Math.max(1, Math.min(length, 256)))
+  globalThis.crypto.getRandomValues(bytes)
+  return hex(bytes)
+}

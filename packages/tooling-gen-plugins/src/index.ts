@@ -69,6 +69,22 @@ export async function discover(
  * two packages differing only in punctuation would otherwise emit the same
  * binding and fail to compile — loudly, but confusingly.
  */
+/**
+ * Keep only the plugins that belong in this shell.
+ *
+ * A manifest with no `platforms` runs everywhere — that is the default and the
+ * point of the architecture. The exceptions are the `core-*` implementations,
+ * which are platform-specific by nature: without this the mobile registry
+ * imported Electron, and nothing said so, because a bundler resolving
+ * `electron` in React Native fails at run time rather than at build time.
+ */
+export function forTarget(
+  plugins: DiscoveredPlugin[],
+  target: 'mobile' | 'desktop',
+): DiscoveredPlugin[] {
+  return plugins.filter((p) => !p.manifest.platforms || p.manifest.platforms.includes(target))
+}
+
 export function render(plugins: DiscoveredPlugin[], target: 'mobile' | 'desktop'): string {
   const used = new Set<string>()
   const identFor = (id: string): string => {
@@ -133,7 +149,7 @@ export function render(plugins: DiscoveredPlugin[], target: 'mobile' | 'desktop'
 
 export async function generate(options: GenerateOptions): Promise<string> {
   const plugins = await discover(options.root, options.packagesDirs)
-  const source = render(plugins, options.target)
+  const source = render(forTarget(plugins, options.target), options.target)
   await writeFile(options.outFile, source, 'utf8')
   return relative(options.root, options.outFile)
 }

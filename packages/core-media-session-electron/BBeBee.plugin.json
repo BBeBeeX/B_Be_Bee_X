@@ -1,8 +1,11 @@
 {
   "id": "@BBeBee/core-media-session-electron",
+  "platforms": [
+    "desktop"
+  ],
   "version": "0.0.0",
   "displayName": "Media session",
-  "description": "ctx.mediaSession — the OS now-playing surface on desktop.",
+  "description": "ctx.mediaSession \u2014 the OS now-playing surface on desktop.",
   "engines": {
     "BBeBee": "^0.1.0"
   },

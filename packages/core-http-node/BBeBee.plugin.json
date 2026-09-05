@@ -1,8 +1,11 @@
 {
   "id": "@BBeBee/core-http-node",
+  "platforms": [
+    "desktop"
+  ],
   "version": "0.0.0",
   "displayName": "HTTP",
-  "description": "ctx.http — outbound HTTP, the M1 slice.",
+  "description": "ctx.http \u2014 outbound HTTP, the M1 slice.",
   "engines": {
     "BBeBee": "^0.1.0"
   },

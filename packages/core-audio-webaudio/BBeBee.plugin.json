@@ -2,7 +2,7 @@
   "id": "@BBeBee/core-audio-webaudio",
   "version": "0.0.0",
   "displayName": "Audio",
-  "description": "ctx.audio — the Web Audio graph, shared by every target.",
+  "description": "ctx.audio \u2014 the Web Audio graph, shared by every target.",
   "engines": {
     "BBeBee": "^0.1.0"
   },
