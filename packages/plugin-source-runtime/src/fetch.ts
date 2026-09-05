@@ -201,8 +201,20 @@ async function withRetries<T>(attempts: number, attempt: () => Promise<T>): Prom
       return await attempt()
     } catch (error) {
       if (i >= total || !isRetryable(error)) throw error
+      /*
+       * ⚠️ A server's own `Retry-After` is honoured up to a much higher
+       * ceiling than the backoff cap.
+       *
+       * Clamping the ask to `MAX_BACKOFF_MS` meant a backend asking for four
+       * seconds was re-hit at two — so the retry was guaranteed to be refused
+       * again, and the polite thing the server told us was worse than useless.
+       * The exponential backoff is what `MAX_BACKOFF_MS` is for; an explicit
+       * instruction is different and gets its own limit.
+       */
       const asked = error instanceof RateLimitError ? error.retryAfterMs : 0
-      const wait = Math.min(Math.max(asked, 100 * 2 ** (i - 1)), MAX_BACKOFF_MS)
+      const wait = asked
+        ? Math.min(asked, MAX_RETRY_AFTER_MS)
+        : Math.min(100 * 2 ** (i - 1), MAX_BACKOFF_MS)
       await new Promise((resolve) => setTimeout(resolve, wait))
     }
   }
@@ -266,5 +278,10 @@ function retryAfterOf(headers: Record<string, string>): number | undefined {
   return Math.min(Math.max(at - Date.now(), 0), MAX_RETRY_AFTER_MS)
 }
 
-/** A server asking for an hour is a server to give up on, not to wait for. */
-const MAX_RETRY_AFTER_MS = 5 * 60_000
+/**
+ * The longest a server may ask us to wait inside one call.
+ *
+ * Beyond this the request has failed as far as the user is concerned; the
+ * queue should move on rather than hold a slot open for minutes.
+ */
+const MAX_RETRY_AFTER_MS = 60_000

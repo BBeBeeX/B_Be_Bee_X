@@ -117,6 +117,7 @@ export interface SourceDeps {
 class DocumentAuth implements ProviderAuth {
   readonly flow: AuthFlow
   private explicit: AuthStatus | undefined
+  private readonly sourceIdForErrors: string
   /** The one refresh every caller awaits. See `refresh`. */
   private inFlight: Promise<void> | undefined
   private readonly listeners = new Set<(s: AuthStatus) => void>()
@@ -125,6 +126,7 @@ class DocumentAuth implements ProviderAuth {
     record: SourceRecord,
     private readonly session: SessionStore,
   ) {
+    this.sourceIdForErrors = record.id
     /*
      * Order matters: a document with `loginUi` is a *form*, even if it also
      * carries a `variableComment` for something else. The form is what the
@@ -232,6 +234,21 @@ class DocumentAuth implements ProviderAuth {
    * other. One in-flight promise; everyone awaits it (docs/06 §5).
    */
   async refresh(): Promise<void> {
+    /*
+     * ⚠️ Once expired, no more attempts until the user signs in again.
+     *
+     * Single-flighting only collapses a *concurrent* burst. Ten sequential
+     * searches against a permanently-401 backend still produced ten login
+     * POSTs — measured — which is a credential-stuffing pattern aimed at the
+     * user's own server, and every one of them was already known to be
+     * hopeless: the previous refresh had just failed for the same reason.
+     *
+     * `signIn` clears this, because that is the user supplying new
+     * information; nothing else does.
+     */
+    if (this.explicit?.state === 'expired') {
+      throw new AuthError('this source is signed out — sign in again', this.sourceIdForErrors)
+    }
     if (this.flow.kind !== 'form') {
       // Nothing to re-run: a `variable` source's credentials are static, so an
       // expired session there needs the *user*, not a retry.
@@ -376,7 +393,23 @@ export class DocumentSource {
    * had set up with it.
    */
   private realmFor(): Promise<JsRealm> {
-    if (this.realm) return Promise.resolve(this.realm)
+    /*
+     * ⚠️ A poisoned realm is replaced, not reused.
+     *
+     * `ctx.js` retires a realm that breached a limit — every later call on it
+     * rejects, by contract. Handing that same dead realm back for ever meant
+     * one `@js:` rule timing out once bricked *every* scripted rule for that
+     * source until the app restarted: search, stream, everything, with an
+     * error about a disposed realm rather than about the rule that overran.
+     *
+     * Rebuilt lazily on next use, which also re-runs `jsLib` — the only state
+     * lost is `src.cache`, which is TTL-bounded scratch space by definition.
+     */
+    if (this.realm && !this.realm.disposed) return Promise.resolve(this.realm)
+    if (this.realm) {
+      this.realm = undefined
+      this.realmSetup = undefined
+    }
     this.realmSetup ??= this.buildRealm()
     return this.realmSetup
   }
@@ -1814,3 +1847,5 @@ interface SessionStore {
 function slugOf(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
 }
+
+

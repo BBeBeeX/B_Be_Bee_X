@@ -2,7 +2,7 @@
   "id": "@BBeBee/plugin-source-runtime",
   "version": "0.0.0",
   "displayName": "Music sources",
-  "description": "plugin-source-runtime — interprets imported source strings.",
+  "description": "plugin-source-runtime \u2014 interprets imported source strings.",
   "engines": {
     "BBeBee": "^0.1.0"
   },
@@ -11,7 +11,8 @@
   },
   "capabilities": [
     "net:host/*",
-    "db:read:core"
+    "db:read:core",
+    "db:write:core"
   ],
   "contributes": {
     "slots": [

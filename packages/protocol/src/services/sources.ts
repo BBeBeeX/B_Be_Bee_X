@@ -378,6 +378,26 @@ export interface SourcesService {
    * and merging on a bad guess makes a library wrong in a way nobody can see.
    */
   linksFor(urn: string): Promise<TrackLink[]>
+  /* ── a source's own variables (06 §3.4) ─────────────────────────────── */
+
+  /**
+   * Read, write and clear a source's non-credential variables.
+   *
+   * On `ctx.sources` because this service owns the table — the SQL lives in
+   * one place, and a caller does not have to know the schema.
+   *
+   * ⚠️ Going through here does not narrow a caller's capability: the gate is
+   * resolved from the *calling* context, so a plugin writing a variable needs
+   * `db:write:core` of its own and its manifest must say so.
+   *
+   * ⚠️ Credentials do not live here. The source variable and every login
+   * field go to `ctx.secrets` (06 §5); this is for what a document stores
+   * itself through `src.vars.put` — a cache key, a region, a page token.
+   */
+  readVars(sourceId: string): Promise<Record<string, string>>
+  writeVar(sourceId: string, key: string, value: string): Promise<void>
+  clearVars(sourceId: string, key?: string): Promise<void>
+
   /** The user says two URNs are one recording. Never overwritten by automation. */
   link(a: string, b: string): Promise<void>
   unlink(a: string, b: string): Promise<void>

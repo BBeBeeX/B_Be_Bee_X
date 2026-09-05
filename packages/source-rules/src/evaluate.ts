@@ -204,7 +204,18 @@ async function runAtom(atom: Atom, context: RuleContext): Promise<unknown[]> {
 
   if (atom.get !== undefined) {
     const value = context.vars?.get(atom.get)
-    return value === undefined ? [] : [value]
+    if (value === undefined) return []
+    /*
+     * ⚠️ Through the replacement pipeline, like every other atom.
+     *
+     * `parse` keeps the replacements on a `@get` atom — refusing to drop them
+     * was a fix in its own right — and then evaluation returned the stored
+     * value before applying any of them. So `@get:{k}##a##X` handed back the
+     * *untransformed* value: the rule looked like it worked and produced the
+     * wrong text, which is the worst failure this language has.
+     */
+    if (atom.replacements.length === 0) return [value]
+    return [applyReplacements(value, atom, context)]
   }
 
   if (!context.trace) {

@@ -46,10 +46,30 @@ export async function writeExternalIds(
   if (!ids) return
   for (const [namespace, value] of Object.entries(ids)) {
     if (typeof value !== 'string' || !value.trim()) continue
+    const canonical = normalise(namespace, value)
+
+    /*
+     * ⚠️ Two shapes that turn identity matching into junk, and both are things
+     * real backends emit rather than hypotheticals:
+     *
+     *  - **An empty canonical.** `isrc: "???"` normalises to `''`, and every
+     *    such row then matches every other one — at confidence 1.00, the score
+     *    that means "these are certainly the same recording".
+     *  - **A placeholder.** `000000000000` passes any length check and is
+     *    written into whole catalogues by taggers that had nothing to put
+     *    there. Twenty-four tracks sharing one produced 276 links.
+     *
+     * So the value has to *look like* the identifier it claims to be. An id
+     * that fails is dropped rather than stored: a wrong link is much more
+     * expensive than a missing one, because it silently offers the user the
+     * wrong recording.
+     */
+    if (!canonical || !isPlausible(namespace, canonical)) continue
+
     await tx.exec(
       `INSERT INTO external_ids (urn, namespace, value) VALUES (?, ?, ?)
        ON CONFLICT(urn, namespace, value) DO NOTHING`,
-      [urn, namespace, normalise(namespace, value)],
+      [urn, namespace, canonical],
     )
   }
 }
@@ -169,6 +189,26 @@ function normalise(namespace: string, value: string): string {
   if (namespace === 'isrc') return trimmed.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
   if (namespace === 'upc') return trimmed.replace(/\D/g, '')
   return trimmed.toLowerCase()
+}
+
+/** `CCXXXYYNNNNN` — country, registrant, year, designation (ISO 3901). */
+const ISRC = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/
+/** 8-4-4-4-12 hex. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+/**
+ * Whether a canonical identifier is worth matching on.
+ *
+ * Shape only — this cannot tell a real ISRC from a well-formed invention, and
+ * does not try. What it rejects is the two things that break matching outright:
+ * values that are not identifiers at all, and the all-zero placeholder that
+ * taggers write into entire libraries.
+ */
+function isPlausible(namespace: string, canonical: string): boolean {
+  if (/^0+$/.test(canonical.replace(/-/g, ''))) return false
+  if (namespace === 'isrc') return ISRC.test(canonical)
+  if (namespace === 'mbid') return UUID.test(canonical)
+  return canonical.length >= 4
 }
 
 /** A `Track`'s ids, for the caller that has the track rather than the ids. */

@@ -129,3 +129,30 @@ describe('braces in the data, rather than in the template', () => {
     await expect(renderTemplate('{{track.id}}}}', { track: { id: '1' } }, site)).rejects.toThrow(/unbalanced/)
   })
 })
+
+describe('what a bare placeholder is', () => {
+  it('resolves a path and nothing more', async () => {
+    /*
+     * ⚠️ docs/06 §3.2 used to say "expressions are ordinary JavaScript". They
+     * are not: a bare `{{ }}` is a dotted path, and the published example's
+     * `{{(page-1)*50}}` failed on every source written to it. Only `{{@js:…}}`
+     * reaches the sandbox.
+     */
+    await expect(renderTemplate('{{(page-1)*50}}', { page: 2 }, site)).rejects.toThrow(
+      /resolved to nothing/,
+    )
+  })
+
+  it('says the js engine is missing rather than blaming the rule', async () => {
+    // A build without `ctx.js` cannot run it, and that is a different problem
+    // from a rule that is wrong.
+    await expect(renderTemplate('{{@js:(page-1)*50}}', { page: 2 }, site)).rejects.toThrow(
+      /js engine/,
+    )
+  })
+
+  it('evaluates it when a sandbox is supplied', async () => {
+    const js = async (expression: string) => Function(`return (${expression})`)() as unknown
+    expect(await renderTemplate('{{@js:1+1}}', {}, site, js)).toBe('2')
+  })
+})

@@ -317,8 +317,8 @@ a stream URL built from a stored id:
   "concurrentRate": "5/1000",
   "variableComment": "username:password",
   "jsLib": "function auth(){ const [u,p]=String(src.vars.get('var')||'').split(':'); const s=src.crypto.randomHex(8); return `u=${u}&t=${src.crypto.md5(p+s)}&s=${s}&v=1.16.1&c=BBeBee&f=json` }",
-  "searchUrl": "{{source.url}}/rest/search3?query={{key}}&songCount=50&songOffset={{(page-1)*50}}&{{@js:auth()}}",
-  "exploreUrl": "[{\"title\":\"Albums\",\"url\":\"{{source.url}}/rest/getAlbumList2?type=alphabeticalByName&size=100&offset={{(page-1)*100}}&{{@js:auth()}}\"}]",
+  "searchUrl": "{{source.url}}/rest/search3?query={{key}}&songCount=50&songOffset={{@js:(page-1)*50}}&{{@js:auth()}}",
+  "exploreUrl": "[{\"title\":\"Albums\",\"url\":\"{{source.url}}/rest/getAlbumList2?type=alphabeticalByName&size=100&offset={{@js:(page-1)*100}}&{{@js:auth()}}\"}]",
 
   "ruleSearch": {
     "trackList": "$.subsonic-response.searchResult3.song[*]",
@@ -418,8 +418,14 @@ scope:
 | `prefs` | The active `StreamPrefs` ([§6](#6-stream-resolution)) — quality, `saveData`, formats |
 | `src` | The host object of [§8](#8-trust-what-an-imported-source-can-and-cannot-do) — `md5`, `get`, `cache`, `vars`, … |
 
-Expressions are ordinary JavaScript evaluated in the sandbox, so `{{(page-1)*50}}` and
-`{{@js:auth()}}` are the same mechanism with different sugar.
+⚠️ **A bare `{{ }}` is a path, not an expression.** `{{track.id}}` and `{{page}}` resolve a dotted
+path against the scope above and nothing more — `{{(page-1)*50}}` is *not* evaluated and fails as
+an unresolvable path. Only `{{@js:…}}` reaches the sandbox, and it needs one: a build without
+`ctx.js` reports the affected capability absent rather than running the rule.
+
+The split is deliberate. Making every placeholder a script would put the sandbox on the path of
+every URL a source builds — including in builds that have no sandbox — to serve an arithmetic case
+that `@js:` already covers explicitly.
 
 ### 3.3 Combinators and post-processing
 
@@ -468,7 +474,7 @@ https://api.example.org/search,{"method":"POST","body":"q={{key}}","headers":{"X
 | `headers` | Merged over the document's `header` |
 | `charset` | Decode a non-UTF-8 response |
 | `retry` | Attempts before the call is an error; default 1 |
-| `webView` | ⚠️ Render in a hidden web view and take the result DOM. Desktop only, off by default, and it is the one option that gives a source a full browser — see [§8](#8-trust-what-an-imported-source-can-and-cannot-do) |
+| `webView` | ⚠️ Render in a hidden web view and take the result DOM. Desktop only, off by default, and it is the one option that gives a source a full browser — see [§8](#8-trust-what-an-imported-source-can-and-cannot-do). **Not implemented**: the option is currently ignored rather than honoured, so a document relying on it fetches normally and its rules run against the raw response |
 
 ### 3.6 What the interpreter guarantees
 
@@ -965,7 +971,7 @@ the entry. A path is rejected for the same reason. A bare scheme drops nothing, 
 itself, so `["org"]` cannot mean "anywhere in .org".
 | Wall clock per rule | 2 s (10 s for `@js:` with network) | A rule that hangs the search |
 | Memory per evaluation | 32 MB | A source that OOMs the app |
-| HTTP calls per rule | 8 | A rule that turns one search into a crawl |
+| HTTP calls per rule | 8 — ⚠️ **not yet enforced**; no counter exists | A rule that turns one search into a crawl |
 | Output size per rule | 1 MB | A selector that returns an entire page into a table cell |
 | Concurrency | `concurrentRate`, default conservative | The user's IP getting banned by their own server |
 | `webView` option | Desktop only, off by default, per-source opt-in with a warning | A full browser context with the user's session, reachable from a pasted string |

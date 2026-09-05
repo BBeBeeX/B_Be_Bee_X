@@ -104,22 +104,6 @@ export function isUrn(value: string): boolean {
   return tryParseUrn(value) !== undefined
 }
 
-/**
- * Canonical ordering for a `track_links` row, which stores each pair once
- * under a `CHECK (urn_a < urn_b)` constraint.
- *
- * ⚠️ JavaScript compares strings by UTF-16 code unit; SQLite's `BINARY`
- * collation compares UTF-8 bytes. The two orders **differ for astral
- * characters** — anything above U+FFFF sorts before U+E000–U+FFFF in UTF-16
- * and after it in UTF-8 — so a pair whose ids contain emoji can be ordered
- * here one way and rejected by the CHECK the other way. Source-local ids are
- * opaque and could contain anything, so an insert that fails its constraint
- * for a reason nobody can see is the failure mode to expect. Ordering the
- * pair in SQL, or normalising ids to ASCII, is the fix if it ever bites.
- */
-export function orderUrnPair(a: string, b: string): [string, string] {
-  return a < b ? [a, b] : [b, a]
-}
 
 /** `String.prototype.split` with a limit that keeps the remainder, unlike the built-in. */
 function splitN(value: string, sep: string, limit: number): string[] {

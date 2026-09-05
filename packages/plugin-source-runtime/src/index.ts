@@ -197,11 +197,12 @@ export class SourceRuntime {
     // rather than the second replacing the first's loaded values.
     this.vars.set(sourceId, mirror)
     try {
-      const rows = await this.ctx.db.query<{ key: string; value: string }>(
-        'SELECT key, value FROM source_vars WHERE source_id = ?',
-        [sourceId],
-      )
-      for (const row of rows) mirror.set(row.key, row.value)
+      // Through the service: `source_vars` is a core table and this plugin
+      // holds only `db:read:core`, so the *write* side has to go through the
+      // owner. Reading through the same door keeps the two in one place.
+      for (const [key, value] of Object.entries(await this.ctx.sources.readVars(sourceId))) {
+        mirror.set(key, value)
+      }
 
       // Credentials come from the keychain, not the table. Read after the
       // table so a value left there by an older build is superseded rather
@@ -342,7 +343,7 @@ export class SourceRuntime {
       failures.push(`secrets: ${String(error)}`)
     }
     try {
-      await this.ctx.db.exec('DELETE FROM source_vars WHERE source_id = ?', [sourceId])
+      await this.ctx.sources.clearVars(sourceId)
       this.vars.delete(sourceId)
     } catch (error) {
       failures.push(`vars: ${String(error)}`)
@@ -402,12 +403,8 @@ export class SourceRuntime {
           return
         }
 
-        await this.ctx.db
-          .exec(
-            `INSERT INTO source_vars (source_id, key, value, updated_at) VALUES (?, ?, ?, ?)
-             ON CONFLICT(source_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-            [sourceId, key, value, Date.now()],
-          )
+        await this.ctx.sources
+          .writeVar(sourceId, key, value)
           .catch((error: unknown) => {
             // A failed write costs persistence, not correctness: the value is
             // in the mirror and the session keeps working until a restart.
@@ -430,9 +427,7 @@ export class SourceRuntime {
       await this.secrets?.namespace(sourceId).delete(key)
       return
     }
-    await this.ctx.db
-      .exec('DELETE FROM source_vars WHERE source_id = ? AND key = ?', [sourceId, key])
-      .catch(() => undefined)
+    await this.ctx.sources.clearVars(sourceId, key).catch(() => undefined)
   }
 
   /**

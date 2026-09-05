@@ -307,3 +307,111 @@ describe('removing a source', () => {
     expect(await db.query('SELECT * FROM external_ids')).toHaveLength(1)
   })
 })
+
+describe('identifiers that would poison matching', () => {
+  const cache = async (db: Awaited<ReturnType<typeof fixture>>['db'], source: string, id: string, isrc: string) =>
+    cacheEntities(db, source, { tracks: [track(source, id, { externalIds: { isrc } })] })
+
+  it('drops an identifier that normalises to nothing', async () => {
+    /*
+     * `isrc: "???"` normalises to `''`, and every such row then matches every
+     * other one — at confidence 1.00, the score that means "certainly the same
+     * recording".
+     */
+    const { db } = await fixture()
+    await cache(db, NAV, 'a1', '???')
+    await cache(db, JELLY, 'b7', '!!!')
+    await linkTracks(db, [`BBeBee:${JELLY}:track:b7`])
+
+    expect(await db.query('SELECT * FROM external_ids')).toHaveLength(0)
+    expect(await linksFor(db, `BBeBee:${NAV}:track:a1`)).toEqual([])
+  })
+
+  it('drops the all-zero placeholder taggers write into whole libraries', async () => {
+    // Measured: twenty-four tracks sharing one produced 276 links.
+    const { db } = await fixture()
+    await cache(db, NAV, 'a1', '000000000000')
+    await cache(db, JELLY, 'b7', '000000000000')
+    await linkTracks(db, [`BBeBee:${JELLY}:track:b7`])
+
+    expect(await linksFor(db, `BBeBee:${NAV}:track:a1`)).toEqual([])
+  })
+
+  it('drops something that is not an ISRC at all', async () => {
+    const { db } = await fixture()
+    await cache(db, NAV, 'a1', 'unknown')
+    await cache(db, JELLY, 'b7', 'unknown')
+    await linkTracks(db, [`BBeBee:${JELLY}:track:b7`])
+
+    expect(await linksFor(db, `BBeBee:${NAV}:track:a1`)).toEqual([])
+  })
+
+  it('still links a well-formed one', async () => {
+    // The guard must not cost the case it exists to protect.
+    const { db } = await fixture()
+    await cache(db, NAV, 'a1', 'GB-AYE-75-00001')
+    await cache(db, JELLY, 'b7', 'GBAYE7500001')
+    await linkTracks(db, [`BBeBee:${JELLY}:track:b7`])
+
+    expect(await linksFor(db, `BBeBee:${NAV}:track:a1`)).toHaveLength(1)
+  })
+
+  it('drops a malformed MusicBrainz id', async () => {
+    const { db } = await fixture()
+    for (const source of [NAV, JELLY]) {
+      await cacheEntities(db, source, {
+        tracks: [track(source, 'x', { externalIds: { mbid: 'not-a-uuid' } })],
+      })
+    }
+    await linkTracks(db, [`BBeBee:${JELLY}:track:x`])
+    expect(await linksFor(db, `BBeBee:${NAV}:track:x`)).toEqual([])
+  })
+})
+
+describe('a link failure never costs the batch', () => {
+  it('still announces the tracks when linking throws', async () => {
+    /*
+     * ⚠️ Linking is a *relationship* problem; the rows are already written. It
+     * shared the cache write's catch, so one bad pair swallowed
+     * `library/changed` for the whole batch — fifty good tracks silently never
+     * reached the FTS index and could not be found by search.
+     */
+    const { db, ctx } = await fixture()
+    const changed: string[] = []
+    ctx.on('library/changed', (kind, urns) => {
+      if (kind === 'track') changed.push(...urns)
+    })
+
+    // A track already in the catalogue sharing the ISRC, so a link really is
+    // attempted — without a match there is nothing to fail on.
+    await cacheEntities(db, JELLY, {
+      tracks: [track(JELLY, 'b9', { externalIds: { isrc: 'GBAYE7500002' } })],
+    })
+
+    // Break linking specifically, leaving the track write intact.
+    await db.exec('DROP TABLE track_links')
+
+    ctx.sources.register({
+      sourceId: NAV,
+      displayName: 'Nav',
+      capabilities: { search: { tracks: true, albums: false, artists: false, playlists: false } },
+      auth: { flow: { kind: 'none' } },
+      search: async () => ({
+        tracks: {
+          items: [track(NAV, 'a2', { externalIds: { isrc: 'GBAYE7500002' } })],
+          hasMore: false,
+        },
+      }),
+    } as never)
+
+    const found = await ctx.sources.searchAll({ text: 'x' })
+    expect(found.bySource[0]?.error, 'the search itself is unaffected').toBeUndefined()
+    await tick()
+
+    expect(changed, 'the rows were written and announced').toContain(`BBeBee:${NAV}:track:a2`)
+    expect(
+      await db.query('SELECT urn FROM tracks WHERE remote_id = ?', ['a2']),
+      'and they really are in the catalogue',
+    ).toHaveLength(1)
+  })
+})

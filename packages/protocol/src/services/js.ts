@@ -120,6 +120,18 @@ export interface JsRealm {
    * leaked native handle the leak test catches.
    */
   dispose(): void
+
+  /**
+   * Whether this realm has stopped being usable.
+   *
+   * True after `dispose()`, and after a limit breach — a realm that breached
+   * one is retired, so a caller holding it must build a new one rather than
+   * retrying into the old. Synchronous because the alternative is finding out
+   * by `await`ing a call that rejects, which means a caller that *caches* a
+   * realm has no way to notice at all: one timeout would brick every later
+   * script for that source until the process restarted.
+   */
+  readonly disposed: boolean
 }
 
 export interface JsService {

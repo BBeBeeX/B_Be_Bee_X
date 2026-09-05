@@ -42,6 +42,7 @@ import type {
   ArtistDetail,
   CatalogCounts,
   CatalogQuery,
+  DbService,
   CheckReport,
   DebugStep,
   Disposable,
@@ -208,6 +209,32 @@ function artistSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
 }
 
+/**
+ * A check failure, safe to store and to hand to a listener.
+ *
+ * ⚠️ `statusError` builds its message from the **rendered** URL, and for a
+ * Subsonic document that URL carries `u=<username>` and `t=<md5(password +
+ * salt)>`. Stored verbatim in `sources.last_error`, that is a credential at
+ * rest in a plain SQLite table — greppable in the database and in the WAL —
+ * and it went out on `source/checked` to every listener as well.
+ *
+ * The host and path are what a person needs to recognise which request
+ * failed; the query string is where the secrets live and is dropped whole
+ * rather than filtered, because a filter has to know every parameter name a
+ * backend might choose.
+ */
+function safeCheckMessage(message: string): string {
+  return message.replace(/\bhttps?:\/\/\S+/gi, (url) => {
+    try {
+      const parsed = new URL(url)
+      // Trailing punctuation is part of the sentence, not of the URL.
+      return `${parsed.origin}${parsed.pathname}`
+    } catch {
+      return '<url>'
+    }
+  })
+}
+
 /** Whether a source can answer a search at all — method *and* capability. */
 function canSearch(provider: MediaProvider): boolean {
   if (typeof provider.search !== 'function') return false
@@ -238,6 +265,18 @@ export class Sources extends Service implements SourcesService {
 
   /** Insertion-ordered, which is the order `searchAll` reports in. */
   private readonly registry = new Map<string, MediaProvider>()
+  /**
+   * This service's *own* database handle, captured at init.
+   *
+   * ⚠️ Not `this.ctx.db` at call time. Inside a method reached through the
+   * service proxy `this.ctx` is the *caller's* context — that is how the
+   * capability gate sees the caller's grants — so a query written that way
+   * runs under the caller's budget. `plugin-source-runtime` holds
+   * `db:read:core` and calls `writeVar`, and the write was refused with the
+   * *runtime's* name on it even though the table belongs to this service.
+   * `Catalog` and `SourceStore` already capture theirs for the same reason.
+   */
+  private ownDb!: DbService
   private catalog!: Catalog
   private store!: SourceStore
   /** Mirrors the `sources` table, so reads are synchronous for the UI. */
@@ -251,8 +290,9 @@ export class Sources extends Service implements SourcesService {
   }
 
   async [Service.init]() {
-    this.catalog = new Catalog(this.ctx.db)
-    this.store = new SourceStore(this.ctx.db)
+    this.ownDb = this.ctx.db
+    this.catalog = new Catalog(this.ownDb)
+    this.store = new SourceStore(this.ownDb)
     this.records = await this.store.all()
 
     // Descriptors, not components: the headless plugin says what exists and
@@ -746,7 +786,7 @@ export class Sources extends Service implements SourcesService {
         ok: false,
         respondTimeMs: Date.now() - startedAt,
         failedStep,
-        message: asSourceError(error, sourceId).message,
+        message: safeCheckMessage(asSourceError(error, sourceId).message),
         checkedAt: Date.now(),
       })
     }
@@ -821,7 +861,7 @@ export class Sources extends Service implements SourcesService {
     if (!tracks?.length && !albums?.length) return
 
     try {
-      const written = await cacheEntities(this.ctx.db, sourceId, {
+      const written = await cacheEntities(this.ownDb, sourceId, {
         ...(tracks ? { tracks } : {}),
         ...(albums ? { albums } : {}),
         ...(result.payloads ? { payloads: result.payloads } : {}),
@@ -846,7 +886,7 @@ export class Sources extends Service implements SourcesService {
          * found by search.
          */
         try {
-          const links = await linkTracks(this.ctx.db, written.trackUrns)
+          const links = await linkTracks(this.ownDb, written.trackUrns)
           if (links > 0) {
             this.ctx.logger.debug(`sources: linked ${links} track(s) across sources`)
           }
@@ -888,16 +928,45 @@ export class Sources extends Service implements SourcesService {
    * confidence column is what lets each ask its own question.
    */
   linksFor(urn: string): Promise<TrackLink[]> {
-    return linksFor(this.ctx.db, urn)
+    return linksFor(this.ownDb, urn)
+  }
+
+  /* ── a source's own variables (docs/06 §3.4) ────────────────────────── */
+
+  async readVars(sourceId: string): Promise<Record<string, string>> {
+    const rows = await this.ownDb.query<{ key: string; value: string }>(
+      'SELECT key, value FROM source_vars WHERE source_id = ?',
+      [sourceId],
+    )
+    return Object.fromEntries(rows.map((row) => [row.key, row.value]))
+  }
+
+  async writeVar(sourceId: string, key: string, value: string): Promise<void> {
+    await this.ownDb.exec(
+      `INSERT INTO source_vars (source_id, key, value, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(source_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      [sourceId, key, value, Date.now()],
+    )
+  }
+
+  async clearVars(sourceId: string, key?: string): Promise<void> {
+    if (key === undefined) {
+      await this.ownDb.exec('DELETE FROM source_vars WHERE source_id = ?', [sourceId])
+      return
+    }
+    await this.ownDb.exec('DELETE FROM source_vars WHERE source_id = ? AND key = ?', [
+      sourceId,
+      key,
+    ])
   }
 
   /** The user says two URNs are the same recording. Never overwritten. */
   link(a: string, b: string): Promise<void> {
-    return linkManually(this.ctx.db, a, b)
+    return linkManually(this.ownDb, a, b)
   }
 
   unlink(a: string, b: string): Promise<void> {
-    return unlink(this.ctx.db, a, b)
+    return unlink(this.ownDb, a, b)
   }
 
   /* ── the catalogue cache ───────────────────────────────────────────── */

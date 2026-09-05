@@ -72,6 +72,11 @@ export class JsQuickJsNode extends Service implements JsService {
   async createRealm(limits: Partial<JsLimits> = {}): Promise<JsRealm> {
     const resolved: JsLimits = { ...DEFAULT_JS_LIMITS, ...this.config.limits, ...limits }
     const realm = new QuickJsRealm(this.module, resolved, () => this.realms.delete(realm))
+    // An unhandled rejection inside a realm is the sandbox's business to
+    // surface: nothing else can see it, and the caller has already moved on.
+    realm.onJobError = (error) => {
+      this.ctx.logger.warn(`js: a script left a rejection unhandled: ${error.message}`)
+    }
     this.realms.add(realm)
     return realm
   }
@@ -85,6 +90,11 @@ type Poison = 'disposed' | 'timeout' | 'memory'
 
 class QuickJsRealm implements JsRealm {
   private vm: QuickJSContext | undefined
+
+  /** See `JsRealm.disposed`: a caller that caches a realm needs to know. */
+  get disposed(): boolean {
+    return this.vm === undefined
+  }
   private poison: Poison | undefined
   /**
    * Set while an eval is running, so the interrupt handler knows its deadline.
@@ -99,6 +109,8 @@ class QuickJsRealm implements JsRealm {
   private readonly pending = new Set<() => void>()
   /** Set by `pump` when a queued job failed. Read on the next turn of `settle`. */
   private jobFailure: unknown
+  /** Where an unhandled realm-side rejection goes. Set by the service. */
+  onJobError: ((error: Error) => void) | undefined
   /** Set by `pump` when a queued job was interrupted. */
   private interrupted = false
 
@@ -233,6 +245,23 @@ class QuickJsRealm implements JsRealm {
     this.vm = undefined
     this.poison ??= 'disposed'
     this.disposers.clear()
+
+    /*
+     * ⚠️ Reject the in-flight bridges before tearing the context down.
+     *
+     * Clearing them silently left an `eval` parked on a host call to fail with
+     * whatever the engine happened to throw next — in practice a raw
+     * `QuickJSUseAfterFree`, which is an internal name for a situation the
+     * contract already has a word for. The caller asked for a realm and the
+     * realm went away; that is `JsRealmDisposedError`.
+     */
+    for (const reject of [...this.pending]) {
+      try {
+        reject()
+      } catch {
+        // Past saving; the teardown below is what matters.
+      }
+    }
     this.pending.clear()
 
     /*
@@ -437,6 +466,18 @@ class QuickJsRealm implements JsRealm {
       // poison first. `settle` reads this on its next turn.
       this.jobFailure = detail
       if (isInterrupt(detail)) this.interrupted = true
+      else {
+        /*
+         * ⚠️ Reported, not merely recorded.
+         *
+         * A job error that is neither an interrupt nor the completion value's
+         * own failure is an *unhandled rejection inside the realm* — a
+         * side-effect promise nobody awaited. Recording it in a field the
+         * happy path never reads is the same as dropping it, and the symptom
+         * is a source that quietly does half its work.
+         */
+        this.onJobError?.(scriptError(detail))
+      }
     }
   }
 

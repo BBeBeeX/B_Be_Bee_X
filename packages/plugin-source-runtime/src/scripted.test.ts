@@ -298,3 +298,38 @@ describe('src, the whole host surface', () => {
     expect(lastQuery!.get('v')).toMatch(/markup parser/)
   }, 30_000)
 })
+
+describe('a realm that timed out', () => {
+  it('does not brick every later rule for that source', async () => {
+    /*
+     * ⚠️ `ctx.js` retires a realm that breached a limit — every later call on
+     * it rejects, by contract. Handing that same dead realm back for ever
+     * meant one `@js:` rule overrunning once broke *every* scripted rule for
+     * the source until the app restarted, with an error about a disposed realm
+     * rather than about the rule that overran.
+     */
+    const ctx = await app([
+      document({
+        jsLib:
+          'function probe(){ if (globalThis.__done) return "ok";' +
+          ' globalThis.__done = 1; while (true) {} }',
+        searchUrl: '{{source.url}}/rest/search3?v={{@js:probe()}}',
+      }),
+    ])
+
+    // First search hangs its rule and poisons the realm.
+    const first = await ctx.sources.searchAll({ text: 'a' })
+    expect(first.bySource[0]!.error, 'the overrun is reported').toBeDefined()
+
+    /*
+     * The second search builds a *fresh* realm — so `jsLib` runs again and
+     * `globalThis.__done` is gone, which is exactly the point: the only state
+     * lost is the realm's own, and the source works.
+     */
+    const second = await ctx.sources.searchAll({ text: 'b' })
+    expect(
+      String(second.bySource[0]!.error ?? ''),
+      'and it is not a complaint about a dead realm',
+    ).not.toMatch(/no longer usable/)
+  }, 60_000)
+})

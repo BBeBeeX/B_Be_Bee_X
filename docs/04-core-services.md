@@ -721,8 +721,18 @@ export interface JsRealm {
 }
 
 export interface JsLimits {
-  /** Wall clock for one eval. Exceeding it throws JsTimeoutError and unwinds the realm. */
+  /**
+   * Wall clock for one uninterrupted stretch of engine execution.
+   *
+   * ⚠️ Not the whole call. A script that awaits hands control back, and each
+   * continuation is a fresh stretch — so this bounds *loops*, which is what it
+   * is for. An implementation that armed it only around the initial evaluation
+   * leaves every continuation unbounded, which is a freeze rather than a
+   * timeout.
+   */
   timeoutMs: number
+  /** Wall clock for one eval including everything it awaits — 06 §8's "10s with network". */
+  budgetMs: number
   /** Heap ceiling. Exceeding it throws JsMemoryError. */
   memoryBytes: number
   /** Cap on the size of a returned value, before cloning. */

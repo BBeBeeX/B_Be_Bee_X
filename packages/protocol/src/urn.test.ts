@@ -5,7 +5,6 @@ import {
   sourceOf,
   isUrn,
   kindOf,
-  orderUrnPair,
   parseUrn,
   tryParseUrn,
 } from './urn.js'
@@ -65,12 +64,3 @@ describe('helpers', () => {
   })
 })
 
-describe('orderUrnPair', () => {
-  it('is canonical regardless of argument order', () => {
-    // track_links stores each pair once, under CHECK (urn_a < urn_b).
-    const a = 'BBeBee:local:track:1'
-    const b = 'BBeBee:nas:track:2'
-    expect(orderUrnPair(a, b)).toEqual(orderUrnPair(b, a))
-    expect(orderUrnPair(b, a)[0] < orderUrnPair(b, a)[1]).toBe(true)
-  })
-})

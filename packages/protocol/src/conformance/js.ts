@@ -303,6 +303,23 @@ export const jsConformance: ConformanceSuite<JsSubject> = {
     },
 
     {
+      name: 'reports that it is no longer usable',
+      because:
+        'a caller that caches a realm cannot find out by awaiting a rejection — one timeout would brick every later script for that source until the process restarted',
+      async run({ js }) {
+        const realm = await js.createRealm({ timeoutMs: 200, budgetMs: 1000 })
+        assertEqual(realm.disposed, false, 'a fresh realm is usable')
+
+        await assertRejects(
+          () => realm.eval('while (true) {}'),
+          'the loop is interrupted',
+          (error) => (error as Error).name === 'JsTimeoutError',
+        )
+        assertEqual(realm.disposed, true, 'and a poisoned realm says so, synchronously')
+      },
+    },
+
+    {
       name: 'every other method rejects on a disposed realm',
       because:
         'the rule is the opposite of dispose’s, they are easy to conflate, and getting them backwards is silent',

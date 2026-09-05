@@ -18,7 +18,14 @@ import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import plugin from './index.js'
-import { useSourceEditor, useSourceImport, type EditorState, type ImportState } from './hooks.js'
+import {
+  useSourceEditor,
+  useSourceImport,
+  useTracks,
+  type EditorState,
+  type ImportState,
+  type PagedState,
+} from './hooks.js'
 
 async function harness(): Promise<Context> {
   const ctx = new Context()
@@ -262,5 +269,53 @@ describe('useSourceEditor, when a save does not take', () => {
 
     expect(state.error).toBeUndefined()
     expect(state.dirty).toBe(false)
+  })
+})
+
+describe('paging, when two reads overlap', () => {
+  it('lets only the newest read write', async () => {
+    /*
+     * ⚠️ `loadMore` fires again before the previous page lands — a fast scroll,
+     * or a `library/changed` reload racing one — and both responses appended.
+     * The list grew a duplicate page *and* the cursor went backwards to
+     * whichever arrived last, so the next `loadMore` re-fetched a page the user
+     * had already seen.
+     */
+    const ctx = await harness()
+
+    // A catalogue whose first read is slow and whose second is instant, so the
+    // two land out of order.
+    const pages = [
+      { items: [{ urn: 'a' }], cursor: '2', hasMore: true, delay: 40 },
+      { items: [{ urn: 'b' }], cursor: '3', hasMore: true, delay: 0 },
+    ]
+    let call = 0
+    const slowCatalog = async () => {
+      const page = pages[Math.min(call++, pages.length - 1)]!
+      await new Promise((resolve) => setTimeout(resolve, page.delay))
+      return { items: page.items, cursor: page.cursor, hasMore: page.hasMore }
+    }
+    ;(ctx.sources as unknown as { listTracks: unknown }).listTracks = slowCatalog
+
+    let state!: PagedState<{ urn: string }>
+    const probe = harnessFor(
+      () => (state = useTracks(ctx, {}) as unknown as PagedState<{ urn: string }>),
+    )
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80))
+    })
+    probe.rerender()
+
+    // Two overlapping loads; only the last may write.
+    await act(async () => {
+      state.loadMore()
+      state.loadMore()
+      await new Promise((resolve) => setTimeout(resolve, 80))
+    })
+    probe.rerender()
+
+    const urns = state.items.map((t) => t.urn)
+    expect(new Set(urns).size, 'no page appended twice').toBe(urns.length)
   })
 })

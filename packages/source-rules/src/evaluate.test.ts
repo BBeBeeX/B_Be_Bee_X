@@ -273,3 +273,37 @@ describe('what a failed rule tells you about the input', () => {
     }
   })
 })
+
+describe('a replacement after @get', () => {
+  const withVar = (rule: string) => {
+    const vars = new Map([['token', 'Bearer abc123']])
+    return evaluate(rule, {
+      document: {},
+      scope: {},
+      site: { block: 'ruleStream', field: 'headers', sourceId: 's1' },
+      vars,
+    })
+  }
+
+  it('is applied, not dropped', async () => {
+    /*
+     * ⚠️ `parse` keeps the replacements on a `@get` atom, and evaluation
+     * returned the stored value before applying any of them. So the rule
+     * looked like it worked and produced the *untransformed* text — the worst
+     * failure this language has, because nothing points at it.
+     */
+    expect(await withVar('@get:{token}##Bearer ##')).toEqual(['abc123'])
+  })
+
+  it('applies several, in order', async () => {
+    expect(await withVar('@get:{token}##Bearer ####abc##xyz')).toEqual(['xyz123'])
+  })
+
+  it('still returns the value untouched when there is no replacement', async () => {
+    expect(await withVar('@get:{token}')).toEqual(['Bearer abc123'])
+  })
+
+  it('still returns nothing for a key that was never put', async () => {
+    expect(await withVar('@get:{missing}##a##b')).toEqual([])
+  })
+})
