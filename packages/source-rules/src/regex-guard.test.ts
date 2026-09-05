@@ -101,3 +101,30 @@ describe('the input bound', () => {
     expect(Date.now() - started).toBeLessThan(1000)
   })
 })
+
+describe('the counted-repeat hole', () => {
+  it('refuses a counted repeat of something that can split the input', () => {
+    /*
+     * `(.*a){20}b` is `(.*a)+` with the exponent written down: twenty nested
+     * chances to split, not twenty fixed repetitions. Measured before this —
+     * sixty characters, no match, still running after two minutes.
+     */
+    for (const pattern of ['(.*a){20}b', '(a|b){15}c', '(a+){10}b', '(.*a){2}b']) {
+      expect(isUnsafeRegex(pattern).unsafe, pattern).toBe(true)
+    }
+  })
+
+  it('still allows the counts that cannot multiply', () => {
+    // `{0}` and `{1}` offer the engine no second arrangement, and a counted
+    // repeat of something *simple* is the ordinary way to write a date.
+    for (const pattern of ['(ab){1}c', '[0-9]{4}', '\\d{2,4}-\\d{2}', '(?:xy){3}']) {
+      expect(isUnsafeRegex(pattern).unsafe, pattern).toBe(false)
+    }
+  })
+
+  it('stays fast on the shape that used to hang', () => {
+    const started = Date.now()
+    expect(() => compileRuleRegex('(.*a){20}b', 'g')).toThrow(UnsafeRegexError)
+    expect(Date.now() - started).toBeLessThan(500)
+  })
+})

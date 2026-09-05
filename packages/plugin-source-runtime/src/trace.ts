@@ -29,8 +29,17 @@ export class TraceCollector {
   private waiting: ((value: IteratorResult<TraceEvent>) => void) | undefined
   private closed = false
 
-  /** Values that must never appear in a trace, whatever they look like. */
-  constructor(private readonly secrets: readonly string[] = []) {}
+  /**
+   * Values that must never appear in a trace, whatever they look like.
+   *
+   * ⚠️ Public, because `tracedHttp` needs them too. Redaction by *shape*
+   * catches `t=` and `password=`; only the values themselves catch a
+   * credential a document chose to put somewhere unremarkable — and the HTTP
+   * lines were being redacted structurally and not by value, so a password in
+   * a path segment or an unrecognised parameter went straight into a trace
+   * meant to be pasted into a forum thread.
+   */
+  constructor(readonly secrets: readonly string[] = []) {}
 
   push(event: TraceEvent): void {
     if (this.closed) return
@@ -123,7 +132,7 @@ export function tracedHttp(http: HttpService, collector: TraceCollector): HttpSe
         at: Date.now(),
         kind: 'http',
         method: request.method ?? 'GET',
-        url: redactUrl(response.url || request.url),
+        url: redactUrl(response.url || request.url, collector.secrets),
         status: response.status,
         ms: Date.now() - started,
         bytes: Number.isFinite(declared) ? declared : 0,
@@ -134,7 +143,7 @@ export function tracedHttp(http: HttpService, collector: TraceCollector): HttpSe
         at: Date.now(),
         kind: 'http',
         method: request.method ?? 'GET',
-        url: redactUrl(request.url),
+        url: redactUrl(request.url, collector.secrets),
         // Not a status the server sent: the request did not complete. Zero is
         // the conventional "no response", and the error line that follows says
         // what actually happened.

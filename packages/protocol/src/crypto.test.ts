@@ -97,3 +97,41 @@ describe('randomHex', () => {
     expect(randomHex(10_000).length).toBeLessThanOrEqual(512)
   })
 })
+
+describe('base64url', () => {
+  it('decodes the URL-safe alphabet rather than dropping it', () => {
+    /*
+     * ⚠️ A JWT and an OAuth token are base64url by definition. Stripping `-`
+     * and `_` shifted every later character into the wrong quantum, so a token
+     * decoded to something plausible and wrong — and only when it happened to
+     * contain one, which made it look like a backend problem.
+     */
+    for (const raw of ['user:pa??word', 'a?b>c~d', '{"alg":"HS256","typ":"JWT"}']) {
+      const url = Buffer.from(raw, 'utf8').toString('base64url')
+      expect(base64Decode(url), url).toBe(raw)
+    }
+  })
+
+  it('agrees with the platform decoder on a URL-safe token', () => {
+    // The shape this exists for: a JWT header segment, which is base64url and
+    // unpadded by definition.
+    const token = Buffer.from('user:pa??word', 'utf8').toString('base64url')
+    expect(token, 'the fixture really exercises the URL-safe alphabet').toMatch(/[-_]/)
+    expect(base64Decode(token)).toBe(Buffer.from(token, 'base64url').toString('utf8'))
+  })
+
+  it('still decodes the standard alphabet', () => {
+    expect(base64Decode(Buffer.from('user:password').toString('base64'))).toBe('user:password')
+  })
+
+  it('tolerates missing padding, which base64url omits', () => {
+    expect(base64Decode('YWJj')).toBe('abc')
+    expect(base64Decode('YWJjZA')).toBe('abcd')
+  })
+
+  it('refuses a length no encoder could have produced', () => {
+    // 1 mod 4 is not a truncation to guess at — it is corruption, and half a
+    // token silently decoded is worse than an error.
+    expect(() => base64Decode('YWJjZA'.slice(0, 5))).toThrow(/base64/)
+  })
+})

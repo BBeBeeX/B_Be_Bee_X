@@ -91,6 +91,8 @@ export interface SourceDeps {
   signOut?(): Promise<void>
   /** The track payload a search stored, keyed by track id. */
   trackPayload?(id: string): Promise<Record<string, unknown> | undefined>
+  /** Drop one stored value — used to undo a sign-in the backend refused. */
+  forget?(key: string): Promise<void>
   /** The album payload a browse stored. Carries the `childUrl` `getAlbum` fetches. */
   albumPayload?(id: string): Promise<Record<string, unknown> | undefined>
   /**
@@ -200,7 +202,22 @@ class DocumentAuth implements ProviderAuth {
         }
         if (value !== undefined) await this.session.put(field.id, value)
       }
-      await this.session.login()
+
+      /*
+       * ⚠️ If the login is refused, the credentials do not stay.
+       *
+       * `status` is derived from whether the fields are stored, so persisting
+       * them and *then* failing left the source reporting "authenticated" with
+       * a password the backend had just rejected — and every later request
+       * failed with no prompt to fix it, because as far as the app was
+       * concerned the user was signed in.
+       */
+      try {
+        await this.session.login()
+      } catch (error) {
+        for (const field of this.flow.fields) await this.session.forget?.(field.id)
+        throw error
+      }
     }
     this.explicit = undefined
     for (const listener of this.listeners) listener(this.status)
@@ -297,6 +314,9 @@ export class DocumentSource {
       clear: async () => {
         await deps.signOut?.()
       },
+      forget: async (key) => {
+        await deps.forget?.(key)
+      },
       login: () => this.login(),
     })
     // ⚠️ No rule is evaluated here. `seekable` used to be rendered in the
@@ -378,6 +398,9 @@ export class DocumentSource {
       },
       vars: {
         get: (key) => this.deps.vars?.get(key),
+        // Fire-and-forget for a *script*: `src.vars.put` is called from inside
+        // a template placeholder, which has nowhere to await. A failure there
+        // is logged by the writer rather than surfaced to the rule.
         put: (key, value) => void this.deps.vars?.put(key, value),
       },
       ...(this.deps.log ? { log: this.deps.log } : {}),
@@ -988,13 +1011,25 @@ export class DocumentSource {
    */
   private secrets(): string[] {
     const out: string[] = []
+    const add = (value: string | undefined) => {
+      if (!value || value.length < 3) return
+      out.push(value)
+    }
+
     const variable = this.deps.vars?.get('var')
     if (variable) {
-      out.push(variable)
+      add(variable)
       // A `user:password` variable is usually split before use, so the halves
       // are what actually reach a URL — the whole string never appears.
-      for (const part of variable.split(':')) if (part.length >= 3) out.push(part)
+      for (const part of variable.split(':')) add(part)
     }
+
+    // ⚠️ And every field the login form declared. A `form` source keeps its
+    // password under whatever id the document chose, so a list that knew only
+    // about `var` redacted nothing at all for the flow where the credential is
+    // most obviously a credential.
+    for (const field of this.record.doc.loginUi ?? []) add(this.deps.vars?.get(field.id))
+
     return out
   }
 
@@ -1737,7 +1772,15 @@ function bodyOf(expression: string): string {
 export interface SourceVars {
   load?(): Promise<void>
   get(key: string): string | undefined
-  put(key: string, value: string): void
+  /**
+   * ⚠️ Async, and awaited by `signIn`.
+   *
+   * A credential goes to the keychain, which is a real write that can fail —
+   * a build with no `ctx.secrets` refuses rather than falling back to the
+   * database. Fire-and-forget would report a successful sign-in for a password
+   * that was never stored, and the user would find out on the next launch.
+   */
+  put(key: string, value: string): Promise<void>
 }
 
 
@@ -1762,6 +1805,8 @@ interface SessionStore {
   clear(): Promise<void>
   /** Perform the document's `loginUrl` request. Throws `AuthError` on refusal. */
   login(): Promise<void>
+  /** Drop one stored value. Used to undo a sign-in the backend refused. */
+  forget?(key: string): Promise<void>
 }
 
 

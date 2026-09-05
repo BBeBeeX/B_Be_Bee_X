@@ -23,8 +23,25 @@ import type {} from 'cordis'
 import type { Disposable } from '../common.js'
 
 export interface JsLimits {
-  /** Wall clock for one eval. Exceeding it throws `JsTimeoutError`. */
+  /**
+   * Wall clock for one uninterrupted stretch of engine execution.
+   *
+   * ⚠️ **Not the whole call.** A script that `await`s hands control back, and
+   * each continuation is a fresh stretch — so this is what bounds *loops*,
+   * which is what it is for. An implementation that armed it only around the
+   * initial evaluation would leave every continuation unbounded, which is a
+   * freeze rather than a timeout. The call as a whole is bounded by
+   * `budgetMs`.
+   */
   timeoutMs: number
+  /**
+   * Wall clock for one `eval`, including everything it awaits.
+   *
+   * A rule that makes network calls legitimately takes longer than one that
+   * does not, so this is the larger of the two (docs/06 §8). Without it a
+   * script could yield for ever in individually-legal slices.
+   */
+  budgetMs: number
   /** Heap ceiling. Exceeding it throws `JsMemoryError`. */
   memoryBytes: number
   /** Cap on a returned value's size, measured before cloning. */
@@ -33,6 +50,9 @@ export interface JsLimits {
 
 export const DEFAULT_JS_LIMITS: JsLimits = {
   timeoutMs: 2_000,
+  // docs/06 §8's "10s with network": a rule fetching three pages is doing its
+  // job; one still going after ten seconds is not.
+  budgetMs: 10_000,
   memoryBytes: 32 * 1024 * 1024,
   maxResultBytes: 1024 * 1024,
 }

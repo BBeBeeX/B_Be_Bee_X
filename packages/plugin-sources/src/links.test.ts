@@ -243,3 +243,67 @@ describe('through the service', () => {
     ])
   })
 })
+
+describe('ordering that agrees with the constraint', () => {
+  it('links a pair whose ids order differently in JS and SQLite', async () => {
+    /*
+     * ⚠️ `CHECK (urn_a < urn_b)` uses SQLite's BINARY collation — UTF-8 bytes
+     * — while JavaScript's `<` compares UTF-16 code units. They disagree above
+     * the BMP, and an emoji in a track id is enough: the pair was rejected,
+     * the INSERT threw inside the cache write, and the whole batch lost its
+     * `library/changed` emit and therefore its FTS indexing.
+     */
+    const { db } = await fixture()
+    const isrc = { isrc: 'GBAYE7500001' }
+    await cacheEntities(db, NAV, { tracks: [track(NAV, '\u{1F600}', { externalIds: isrc })] })
+    await cacheEntities(db, JELLY, { tracks: [track(JELLY, '�', { externalIds: isrc })] })
+
+    await expect(linkTracks(db, [`BBeBee:${JELLY}:track:�`])).resolves.toBeGreaterThan(0)
+    expect(await linksFor(db, `BBeBee:${NAV}:track:\u{1F600}`)).toHaveLength(1)
+  })
+
+  it('unlinks the same pair it linked', async () => {
+    const { db } = await fixture()
+    const a = `BBeBee:${NAV}:track:\u{1F600}`
+    const b = `BBeBee:${JELLY}:track:�`
+    await cacheEntities(db, NAV, { tracks: [track(NAV, '\u{1F600}')] })
+    await cacheEntities(db, JELLY, { tracks: [track(JELLY, '�')] })
+
+    await linkManually(db, a, b)
+    expect(await linksFor(db, a)).toHaveLength(1)
+    await unlink(db, a, b)
+    expect(await linksFor(db, a)).toEqual([])
+  })
+})
+
+describe('removing a source', () => {
+  it('takes its identity rows with it', async () => {
+    /*
+     * ⚠️ `external_ids` and `track_links` key on a URN by value, so the FK
+     * cascade never reaches them. Left behind, a removed source's ISRCs keep
+     * matching — the *next* source imported gets linked to tracks that do not
+     * exist, and "also available on…" offers a failover to nothing.
+     */
+    const { db, ctx } = await fixture()
+    const isrc = { isrc: 'GBAYE7500001' }
+    await cacheEntities(db, NAV, { tracks: [track(NAV, 'a1', { externalIds: isrc })] })
+    await cacheEntities(db, JELLY, { tracks: [track(JELLY, 'b7', { externalIds: isrc })] })
+    await linkTracks(db, [`BBeBee:${JELLY}:track:b7`])
+
+    await ctx.sources.remove(NAV, { forgetCatalogue: true })
+
+    expect(await db.query('SELECT * FROM external_ids'), 'no ghost identifiers').toHaveLength(1)
+    expect(await db.query('SELECT * FROM track_links'), 'no ghost links').toHaveLength(0)
+  })
+
+  it('leaves them alone when the catalogue is kept', async () => {
+    // Removing a source without forgetting its catalogue is how a user
+    // disables a backend but keeps what it found.
+    const { db, ctx } = await fixture()
+    await cacheEntities(db, NAV, {
+      tracks: [track(NAV, 'a1', { externalIds: { isrc: 'GBAYE7500001' } })],
+    })
+    await ctx.sources.remove(NAV)
+    expect(await db.query('SELECT * FROM external_ids')).toHaveLength(1)
+  })
+})

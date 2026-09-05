@@ -51,20 +51,33 @@ function usePagedRead<T>(
   const [items, setItems] = useState<readonly T[]>([])
   const [cursor, setCursor] = useState<string | undefined>(undefined)
   const [generation, setGeneration] = useState(0)
+  /** Which read is allowed to write. See `run`. */
+  const inFlight = useRef(0)
 
   const run = useCallback(
     (from: string | undefined, append: boolean) => {
       let cancelled = false
+      /*
+       * ⚠️ A generation, not just the per-call `cancelled` flag.
+       *
+       * `loadMore` fires again before the previous page lands — a fast scroll,
+       * or a `library/changed` reload racing a scroll — and both responses
+       * appended. The list grew a duplicate page *and* the cursor went
+       * backwards to whichever answer arrived last, so the next `loadMore`
+       * re-fetched a page the user had already seen. Only the newest request
+       * is allowed to write.
+       */
+      const mine = ++inFlight.current
       setState((prev) => ({ ...prev, status: 'loading' }))
       read({ ...query, page: from ? { cursor: from } : undefined })
         .then((page) => {
-          if (cancelled) return
+          if (cancelled || inFlight.current !== mine) return
           setItems((prev) => (append ? [...prev, ...page.items] : page.items))
           setCursor(page.cursor)
           setState({ status: 'ready', data: page })
         })
         .catch((error: unknown) => {
-          if (cancelled) return
+          if (cancelled || inFlight.current !== mine) return
           // Surfaced, never swallowed: a catalogue read that fails silently
           // looks identical to an empty library.
           setState({
@@ -311,7 +324,30 @@ export function useSourceEditor(ctx: Context, sourceId: string | undefined): Edi
     setError(undefined)
     void ctx.sources
       .import(text)
-      .then(() => setBase(text))
+      .then((report) => {
+        /*
+         * ⚠️ A rejected entry arrives *in the report*, not as a throw, and a
+         * `locallyModified` source needs `overwrite` — so a save that changed
+         * nothing resolved successfully and the editor cleared its dirty flag.
+         * The user's fix was silently lost, and the screen said it was saved.
+         */
+        const rejected = report.rejected[0]
+        if (rejected) {
+          setError(
+            rejected.error.issues.length > 0
+              ? rejected.error.issues.map((i) => `${i.path}: ${i.message}`).join('\n')
+              : rejected.error.message,
+          )
+          return
+        }
+        if (report.conflicts.length > 0) {
+          setError(
+            'this source was edited in the app — re-importing over it needs an explicit overwrite',
+          )
+          return
+        }
+        setBase(text)
+      })
       .catch((error: unknown) => {
         setError(
           error instanceof SourceFormatError && error.issues.length > 0

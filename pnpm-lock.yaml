@@ -482,6 +482,9 @@ importers:
 
   packages/core-secrets-node:
     dependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -495,9 +498,6 @@ importers:
       '@BBeBee/core-paths-node':
         specifier: workspace:*
         version: link:../core-paths-node
-      '@BBeBee/kernel':
-        specifier: workspace:*
-        version: link:../kernel
 
   packages/core-store-fs:
     dependencies:

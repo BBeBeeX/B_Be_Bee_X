@@ -23,7 +23,8 @@ import jsPlugin from '@BBeBee/core-js-quickjs-node'
 import sourcesPlugin from '@BBeBee/plugin-sources'
 import { CORE_MIGRATIONS, MigrationRunner } from '@BBeBee/kernel'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
-import { AuthError } from '@BBeBee/protocol'
+import { AuthError, type RateLimitError } from '@BBeBee/protocol'
+import { statusError } from './fetch.js'
 import plugin from './index.js'
 
 let server: Server
@@ -253,4 +254,56 @@ describe('a variable source', () => {
     expect(logins, 'no login was attempted').toBe(0)
     expect(ctx.sources.providers[0]!.auth.status.state).toBe('expired')
   }, 30_000)
+})
+
+describe('a refused login leaves nothing behind', () => {
+  it('does not report authenticated after the backend said no', async () => {
+    /*
+     * ⚠️ `status` is derived from whether the fields are stored, so persisting
+     * them *before* attempting the login left the source reporting
+     * "authenticated" with a password the backend had just rejected — and
+     * every later request then failed with no prompt to fix it, because as far
+     * as the app was concerned the user was signed in.
+     */
+    reset()
+    const ctx = await app([document()])
+    const auth = ctx.sources.providers[0]!.auth
+
+    await expect(auth.signIn({ user: 'alice', pw: 'wrong' })).rejects.toThrow(AuthError)
+    expect(auth.status.state).toBe('anonymous')
+  }, 30_000)
+
+  it('leaves the credentials out of the keychain too', async () => {
+    reset()
+    const ctx = await app([document()])
+    const provider = ctx.sources.providers[0]!
+    await provider.auth.signIn({ user: 'alice', pw: 'wrong' }).catch(() => undefined)
+
+    const stored = ctx.secrets.namespace(provider.sourceId)
+    expect(await stored.get('pw')).toBeUndefined()
+    expect(await stored.get('user')).toBeUndefined()
+  }, 30_000)
+
+  it('and a correct login afterwards still works', async () => {
+    // The undo must not poison the next attempt.
+    reset()
+    const ctx = await app([document()])
+    const auth = ctx.sources.providers[0]!.auth
+    await auth.signIn({ user: 'alice', pw: 'wrong' }).catch(() => undefined)
+    await auth.signIn({ user: 'alice', pw: 'correct' })
+    expect(auth.status.state).toBe('authenticated')
+  }, 30_000)
+})
+
+describe('Retry-After', () => {
+  it('waits the interval the server named, not a guess', async () => {
+    // Inventing a minute either hammers the server early or idles the queue
+    // long after it was ready.
+    const error = statusError(429, 'https://h/x', 's1', 1500) as RateLimitError
+    expect(error.retryAfterMs).toBe(1500)
+  })
+
+  it('falls back only when the server said nothing', async () => {
+    expect((statusError(429, 'https://h/x', 's1') as RateLimitError).retryAfterMs).toBe(60_000)
+  })
 })

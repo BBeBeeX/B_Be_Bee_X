@@ -218,3 +218,49 @@ describe('useSourceEditor', () => {
     expect(state.text, 'the broken edit is still there').toBe('{ not json')
   })
 })
+
+describe('useSourceEditor, when a save does not take', () => {
+  it('stays dirty when the document is rejected', async () => {
+    /*
+     * ⚠️ A rejected entry arrives *in the report*, not as a throw. So a save
+     * that changed nothing resolved successfully, the editor cleared its dirty
+     * flag, and the user's fix was silently lost while the screen said it was
+     * saved.
+     */
+    const ctx = await harness()
+    await ctx.sources.import(JSON.stringify(DOC))
+    await tick()
+
+    let state!: EditorState
+    const probe = harnessFor(() => (state = useSourceEditor(ctx, ctx.sources.sources[0]!.id)))
+    act(() => state.setText(JSON.stringify({ sourceName: 42 })))
+    await act(async () => {
+      state.save()
+      await tick()
+      await tick()
+    })
+    probe.rerender()
+
+    expect(state.error, 'the reason is shown').toBeTruthy()
+    expect(state.dirty, 'and the edit is still unsaved').toBe(true)
+  })
+
+  it('still reports a genuine save as saved', async () => {
+    const ctx = await harness()
+    await ctx.sources.import(JSON.stringify(DOC))
+    await tick()
+
+    let state!: EditorState
+    const probe = harnessFor(() => (state = useSourceEditor(ctx, ctx.sources.sources[0]!.id)))
+    act(() => state.setText(JSON.stringify({ ...DOC, sourceName: 'Fixed' })))
+    await act(async () => {
+      state.save()
+      await tick()
+      await tick()
+    })
+    probe.rerender()
+
+    expect(state.error).toBeUndefined()
+    expect(state.dirty).toBe(false)
+  })
+})

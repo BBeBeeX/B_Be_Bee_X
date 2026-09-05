@@ -138,6 +138,38 @@ export const secretsConformance: ConformanceSuite<SecretsSubject> = {
     },
 
     {
+      name: 'accepts the key characters a namespaced caller produces',
+      because:
+        'a backend that silently rejects a key shape its own namespacing generates stores nothing, and reports success doing it',
+      async run({ secrets }) {
+        // `namespace()` composes ids, and a source id contains dashes. A store
+        // whose backend refuses the resulting key persists nothing — measured
+        // on SecureStore, which rejects `:`.
+        /*
+         * ⚠️ Measured on SecureStore, which throws on any key outside
+         * `[A-Za-z0-9._-]`: a `:` separator made every namespaced write on
+         * mobile fail, which is every credential and every cookie jar. Nothing
+         * surfaced it, because a jar that never saves reads back empty and
+         * looks exactly like a user who has not signed in.
+         */
+        const nested = secrets.namespace('music-example-org-35be9fe2').namespace('jar')
+        await nested.set('cookies-v1', 'x')
+        assertEqual(await nested.get('cookies-v1'), 'x', 'a composed key round-trips')
+
+        // And two ways of composing the same text must not collide.
+        const a = secrets.namespace('a.b')
+        const b = secrets.namespace('a').namespace('b')
+        await a.set('k', 'from-a.b')
+        await b.set('k', 'from-a-then-b')
+        assertEqual(await a.get('k'), 'from-a.b', 'the two namespaces stay distinct')
+
+        await nested.clear()
+        await a.clear()
+        await b.clear()
+      },
+    },
+
+    {
       name: 'says whether it is hardware-backed',
       because:
         'without a keychain the value is obfuscated, not protected, and the UI must be able to say so',

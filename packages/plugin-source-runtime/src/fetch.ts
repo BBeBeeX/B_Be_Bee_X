@@ -121,7 +121,9 @@ export async function fetchDocument(
     // capability refusal, a transport failure — and re-wrapping it would
     // flatten a `CapabilityError` into something retryable.
     const res = await http(request)
-    if (res.status >= 400) throw statusError(res.status, target.url, site.sourceId)
+    if (res.status >= 400) {
+      throw statusError(res.status, target.url, site.sourceId, retryAfterOf(res.headers))
+    }
     return res
   })
 
@@ -218,10 +220,19 @@ function looksLikeJson(text: string): boolean {
  * 401 that reads as "not found" skips the re-login path, and a 500 that reads
  * as non-retryable turns a blip into a stopped queue (docs/06 §7).
  */
-export function statusError(status: number, url: string, sourceId: string): Error {
+export function statusError(
+  status: number,
+  url: string,
+  sourceId: string,
+  retryAfterMs?: number,
+): Error {
   if (status === 404 || status === 410) return new NotFoundError(`${status} for ${url}`, sourceId)
   if (status === 401 || status === 403) return new AuthError(`${status} for ${url}`, sourceId)
-  if (status === 429) return new RateLimitError(`rate limited by ${hostOf(url)}`, 60_000, sourceId)
+  if (status === 429) {
+    // The server said how long; inventing a minute either hammers it early or
+    // idles the queue long after it was ready.
+    return new RateLimitError(`rate limited by ${hostOf(url)}`, retryAfterMs ?? 60_000, sourceId)
+  }
   if (status >= 500) return new NetworkError(`${status} from ${url}`, sourceId)
   return new ProviderError(`${status} for ${url}`, sourceId)
 }
@@ -233,3 +244,27 @@ function hostOf(url: string): string {
     return url
   }
 }
+
+
+/**
+ * `Retry-After`, in milliseconds.
+ *
+ * Both spellings: a delta in seconds, or an HTTP date. A server that says
+ * neither gets `undefined` and the caller's own default — but most that send a
+ * 429 do say, and honouring it is the difference between backing off politely
+ * and being rate-limited again immediately.
+ */
+function retryAfterOf(headers: Record<string, string>): number | undefined {
+  const raw = headers['retry-after']
+  if (!raw) return undefined
+
+  const seconds = Number(raw.trim())
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS)
+
+  const at = Date.parse(raw)
+  if (!Number.isFinite(at)) return undefined
+  return Math.min(Math.max(at - Date.now(), 0), MAX_RETRY_AFTER_MS)
+}
+
+/** A server asking for an hour is a server to give up on, not to wait for. */
+const MAX_RETRY_AFTER_MS = 5 * 60_000

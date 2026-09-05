@@ -202,6 +202,17 @@ export class SourceRuntime {
         [sourceId],
       )
       for (const row of rows) mirror.set(row.key, row.value)
+
+      // Credentials come from the keychain, not the table. Read after the
+      // table so a value left there by an older build is superseded rather
+      // than winning.
+      const secrets = this.secrets?.namespace(sourceId)
+      if (secrets) {
+        for (const key of this.secretKeysFor(sourceId)) {
+          const stored = await secrets.get(key)
+          if (stored !== undefined) mirror.set(key, stored)
+        }
+      }
     } catch (error) {
       // A source with no vars still works; one whose vars failed to load asks
       // the user to sign in again. Neither is worth failing a search over.
@@ -270,6 +281,7 @@ export class SourceRuntime {
       ...(this.js ? { js: this.js } : {}),
       vars: this.varsFor(record.id),
       signOut: () => this.forget(record.id, sourceCtx),
+      forget: (key) => this.forgetVar(record.id, key),
       trackPayload: (id) => this.trackPayload(record.id, id),
       albumPayload: (id) => this.albumPayload(record.id, id),
       log: (message) => this.ctx.logger.info(message),
@@ -353,19 +365,44 @@ export class SourceRuntime {
    * `src.vars` for one source, backed by `source_vars`.
    *
    * Read through a memory mirror so `src.vars.get` can stay synchronous — a
-   * script calling it inside a template placeholder cannot await — and written
-   * through to the table so it survives a restart. Cleared by sign-out and by
-   * removing the source (docs/06 §3.4).
+   * script calling it inside a template placeholder cannot await.
+   *
+   * ⚠️ **Where a value is written depends on whether it is a credential.**
+   * docs/06 §5 and docs/07 §4.1 both say credentials never land in readable
+   * storage, and `source_vars` is a plain SQLite table — the value is
+   * greppable in the database *and* in the WAL. So the source variable and
+   * every declared login field go to `ctx.secrets`, which is the OS keychain
+   * on mobile and an encrypted store on desktop; `source_vars` keeps only what
+   * a document put there itself through `src.vars.put`, which is a cache key
+   * or a region code rather than a password.
+   *
+   * A build with no `ctx.secrets` refuses to store a credential rather than
+   * falling back to the table. Silently downgrading the guarantee is worse
+   * than failing to sign in: the user cannot see that it happened.
    */
   private varsFor(sourceId: string): SourceVars {
+    const secretKeys = this.secretKeysFor(sourceId)
     return {
       load: () => this.loadVars(sourceId),
       get: (key) => this.vars.get(sourceId)?.get(key),
-      put: (key, value) => {
+      put: async (key, value) => {
         const mirror = this.vars.get(sourceId) ?? new Map<string, string>()
         mirror.set(key, value)
         this.vars.set(sourceId, mirror)
-        void this.ctx.db
+
+        if (secretKeys.has(key)) {
+          const secrets = this.secrets?.namespace(sourceId)
+          if (!secrets) {
+            throw new Error(
+              `sources: ${sourceId} cannot store credentials — this build has no ctx.secrets, ` +
+                'and writing them to the database would break the promise in docs/06 §5',
+            )
+          }
+          await secrets.set(key, value)
+          return
+        }
+
+        await this.ctx.db
           .exec(
             `INSERT INTO source_vars (source_id, key, value, updated_at) VALUES (?, ?, ?, ?)
              ON CONFLICT(source_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
@@ -378,6 +415,36 @@ export class SourceRuntime {
           })
       },
     }
+  }
+
+  /**
+   * Drop one stored value, from wherever it lives.
+   *
+   * Used to undo a sign-in the backend refused: leaving the credentials behind
+   * would leave the source reporting "authenticated" with a password that had
+   * just been rejected.
+   */
+  private async forgetVar(sourceId: string, key: string): Promise<void> {
+    this.vars.get(sourceId)?.delete(key)
+    if (this.secretKeysFor(sourceId).has(key)) {
+      await this.secrets?.namespace(sourceId).delete(key)
+      return
+    }
+    await this.ctx.db
+      .exec('DELETE FROM source_vars WHERE source_id = ? AND key = ?', [sourceId, key])
+      .catch(() => undefined)
+  }
+
+  /**
+   * Which of a source's keys are credentials.
+   *
+   * `var` always — it is the field whose documented content is
+   * `username:password` — plus every id the document's own login form
+   * declares. Anything else a script stores is its own business.
+   */
+  private secretKeysFor(sourceId: string): Set<string> {
+    const doc = this.ctx.sources.source(sourceId)?.doc
+    return new Set(['var', ...(doc?.loginUi ?? []).map((field) => field.id)])
   }
 
   /**
@@ -507,7 +574,6 @@ export const inject = ['http', 'db', 'sources']
  */
 export async function apply(ctx: Context, config: SourceRuntimeConfig = {}) {
   const runtime = new SourceRuntime(ctx, config)
-  const stop = await runtime.start()
 
   /*
    * `js` is optional, and a nested `inject` is how cordis says that.
@@ -532,6 +598,17 @@ export async function apply(ctx: Context, config: SourceRuntimeConfig = {}) {
     runtime.useSecrets(scoped.secrets)
     return () => runtime.useSecrets(undefined)
   })
+
+  /*
+   * ⚠️ Started *after* both injections, not before.
+   *
+   * Starting a source loads its stored credentials, and those live in
+   * `ctx.secrets` — so a runtime that started first read the keychain before
+   * it had one, found nothing, and reported every signed-in source as
+   * anonymous on the first launch after a restart. The one visible symptom
+   * was a sign-in prompt that should not have been there.
+   */
+  const stop = await runtime.start()
 
   return () => {
     withSecrets.dispose()

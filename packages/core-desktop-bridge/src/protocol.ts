@@ -80,3 +80,46 @@ export function requireBridge(): BridgeApi {
   }
   return bridge
 }
+
+/**
+ * The OS keychain, as `ctx.secrets` needs it.
+ *
+ * `safeStorage` is main-only, so this is three IPC calls — and no key crosses
+ * the bridge in either direction, because there is no key to cross: the OS
+ * holds it. Without this the desktop store falls back to XOR against a
+ * path-derived key, which is obfuscation rather than protection.
+ */
+export interface SecretsBridge {
+  available(): Promise<boolean>
+  encrypt(plain: string): Promise<string>
+  decrypt(cipher: string): Promise<string>
+}
+
+/**
+ * A `SecretCrypto` over the preload bridge, or `undefined` where there is none.
+ *
+ * Returning `undefined` rather than throwing is deliberate: a build with no
+ * keychain — a Linux box with no libsecret, a test — should still start, with
+ * `isHardwareBacked` false so the UI can say what it is running on.
+ */
+export function safeStorageCodec(): {
+  encrypt(plain: string): Promise<string>
+  decrypt(cipher: string): Promise<string>
+  readonly isHardwareBacked: true
+} | undefined {
+  /*
+   * Read structurally rather than through a `declare global`.
+   *
+   * The shell's preload owns the shape of `window.BBeBee` and declares it; a
+   * second declaration here would conflict with that one rather than extend
+   * it, and this package has no business owning a shape it does not build.
+   */
+  const exposed = (globalThis as { window?: { BBeBee?: { secrets?: SecretsBridge } } }).window
+  const bridge = exposed?.BBeBee?.secrets
+  if (!bridge) return undefined
+  return {
+    isHardwareBacked: true,
+    encrypt: (plain) => bridge.encrypt(plain),
+    decrypt: (cipher) => bridge.decrypt(cipher),
+  }
+}

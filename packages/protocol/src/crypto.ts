@@ -240,8 +240,29 @@ export function base64Encode(input: string | Uint8Array): string {
   return out
 }
 
+/**
+ * Decode standard *or* URL-safe base64.
+ *
+ * ⚠️ `-` and `_` are **mapped**, not stripped. Stripping them was silent
+ * corruption of exactly the values that matter: a JWT and an OAuth token are
+ * base64url by definition, and dropping their `-`/`_` shifts every subsequent
+ * character into the wrong quantum. `"-_--"` decoded to the empty string
+ * rather than to its three bytes — and only for tokens that happened to
+ * contain one, so it failed intermittently and looked like a backend problem.
+ *
+ * Padding is optional, but a length of 1 mod 4 cannot have come from an
+ * encoder and is refused rather than half-decoded.
+ *
+ * Returns **text**: the bytes are decoded as UTF-8, which is what every caller
+ * here wants (a token, a credential, a JSON header). Arbitrary binary would
+ * need a bytes-returning sibling, and nothing has asked for one.
+ */
 export function base64Decode(input: string): string {
-  const clean = input.replace(/[^A-Za-z0-9+/]/g, '')
+  // Map first, then clean: the order is the bug.
+  const clean = input.replace(/-/g, '+').replace(/_/g, '/').replace(/[^A-Za-z0-9+/]/g, '')
+  if (clean.length % 4 === 1) {
+    throw new Error(`base64: ${clean.length} characters cannot be a base64 string`)
+  }
   const bytes: number[] = []
   for (let i = 0; i < clean.length; i += 4) {
     const n =

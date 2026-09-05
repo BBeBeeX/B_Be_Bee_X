@@ -74,7 +74,7 @@ function source(over: Record<string, unknown> = {}, vars: Record<string, string>
   }
   return new DocumentSource(record, {
     http: nodeHttp,
-    vars: { get: (k) => vars[k], put: () => {} },
+    vars: { get: (k) => vars[k], put: async () => {} },
   })
 }
 
@@ -263,5 +263,44 @@ describe('streaming', () => {
 
     const events = await collect(traced.debug({ kind: 'search', text: 'y' }))
     expect(events.some((e) => e.kind === 'error' && /already running/.test(e.message))).toBe(true)
+  }, 20_000)
+})
+
+describe('redaction reaches the request lines too', () => {
+  it('scrubs a credential that landed somewhere unremarkable in a URL', async () => {
+    /*
+     * ⚠️ Redaction by *shape* catches `t=` and `password=`. It does not catch
+     * a password the document put in a path segment or under a name nobody
+     * recognises — and the `http` lines were being redacted structurally and
+     * not by value, so exactly that went into a trace meant to be pasted into
+     * a forum thread.
+     */
+    mode = 'ok'
+    const traced = source(
+      { searchUrl: '{{source.url}}/x/{{source.var}}/search?q={{key}}&sess={{source.var}}' },
+      { var: 'hunter2secret' },
+    )
+    const events = await collect(traced.debug({ kind: 'search', text: 'x' }))
+    const http = events.find((e) => e.kind === 'http')!
+
+    expect(http.kind === 'http' && http.url).not.toContain('hunter2secret')
+    expect(JSON.stringify(events)).not.toContain('hunter2secret')
+  }, 20_000)
+
+  it('scrubs a form field’s value, not only the source variable', async () => {
+    // A `form` source keeps its password under whatever id the document chose,
+    // so a secret list that knew only about `var` redacted nothing for the
+    // flow where the credential is most obviously one.
+    mode = 'ok'
+    const traced = source(
+      {
+        loginUi: [{ id: 'pw', label: 'Password', type: 'password' }],
+        loginUrl: '{{source.url}}/login',
+        searchUrl: '{{source.url}}/search?q={{key}}&p={{source.var}}',
+      },
+      { var: 'tok', pw: 'formpassword' },
+    )
+    const events = await collect(traced.debug({ kind: 'search', text: 'formpassword' }))
+    expect(JSON.stringify(events)).not.toContain('formpassword')
   }, 20_000)
 })

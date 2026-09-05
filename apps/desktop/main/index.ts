@@ -9,7 +9,7 @@
  * See docs/02-architecture.md §2.
  */
 
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron'
 import { createHost } from '@BBeBee/core-desktop-bridge/main'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -83,6 +83,35 @@ function registerHandlers(): void {
       // Not every kind exists on every platform; `undefined` is the contract.
       return undefined
     }
+  })
+
+  /*
+   * The OS keychain, which only `main` can reach.
+   *
+   * ⚠️ Without this the desktop credential store falls back to XOR against a
+   * key derived from the install path — obfuscation, not protection, and the
+   * shipped build was running on it because nothing ever injected a real
+   * codec. `isHardwareBacked` was honest about it, but honesty is not the
+   * feature; the keychain is.
+   *
+   * Encryption happens here rather than in the renderer because
+   * `safeStorage` is main-only. The renderer sends a string and receives an
+   * opaque one back; the key never crosses the bridge, because there is no
+   * key to cross — `safeStorage` holds it in the OS.
+   */
+  ipcMain.handle('secrets:available', () => safeStorage.isEncryptionAvailable())
+
+  ipcMain.handle('secrets:encrypt', (_event, plain: string) => {
+    if (typeof plain !== 'string') throw new Error('secrets: expected a string')
+    return safeStorage.encryptString(plain).toString('base64')
+  })
+
+  ipcMain.handle('secrets:decrypt', (_event, cipher: string) => {
+    if (typeof cipher !== 'string') throw new Error('secrets: expected a string')
+    // A value written by another install, or on another machine, will not
+    // decrypt. Throwing is right: the store treats it as absent and asks the
+    // user to sign in again, which is recoverable.
+    return safeStorage.decryptString(Buffer.from(cipher, 'base64'))
   })
 
   ipcMain.handle('shell:openExternal', async (_event, url: string) => {

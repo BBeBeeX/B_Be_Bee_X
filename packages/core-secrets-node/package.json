@@ -29,11 +29,11 @@
   },
   "dependencies": {
     "@BBeBee/protocol": "workspace:*",
-    "cordis": "4.0.0-rc.9"
+    "cordis": "4.0.0-rc.9",
+    "@BBeBee/kernel": "workspace:*"
   },
   "devDependencies": {
     "@BBeBee/core-fs-node": "workspace:*",
-    "@BBeBee/core-paths-node": "workspace:*",
-    "@BBeBee/kernel": "workspace:*"
+    "@BBeBee/core-paths-node": "workspace:*"
   }
 }

@@ -39,6 +39,28 @@ const MAX_VALUE_BYTES = 2048
  */
 const INDEX_KEY = '__BBeBee_index'
 
+/**
+ * The namespace separator.
+ *
+ * ⚠️ **Not `:`.** SecureStore rejects any key outside `[A-Za-z0-9._-]` with a
+ * hard throw — so every namespaced write on mobile failed, which is every
+ * credential and every cookie jar. Nothing surfaced it because the writes were
+ * the only thing that would have: a jar that never saves reads back empty and
+ * looks exactly like a user who has not signed in.
+ */
+const SEPARATOR = '.'
+
+/**
+ * A namespace segment SecureStore will accept.
+ *
+ * Source ids are already slug-shaped, but a namespace is composed from things
+ * the app does not always mint — so it is sanitised rather than trusted, and
+ * the separator itself is escaped so `a.b` and `a` + `b` cannot collide.
+ */
+function safeSegment(ns: string): string {
+  return ns.replace(/[^A-Za-z0-9_-]/g, '_')
+}
+
 export interface SecretsExpoConfig {
   /** Passed through to every call. See `SecureStore.SecureStoreOptions`. */
   options?: SecureStore.SecureStoreOptions
@@ -96,7 +118,7 @@ export class SecretsExpo extends Service implements SecretsService {
   }
 
   namespace(ns: string): SecretsService {
-    return new NamespacedSecrets(this, `${ns}:`)
+    return new NamespacedSecrets(this, `${safeSegment(ns)}${SEPARATOR}`)
   }
 
   /* ── internals, shared with a namespace ─────────────────────────────── */
@@ -199,7 +221,7 @@ class NamespacedSecrets implements SecretsService {
   }
 
   namespace(ns: string): SecretsService {
-    return new NamespacedSecrets(this.root, `${this.prefix}${ns}:`)
+    return new NamespacedSecrets(this.root, `${this.prefix}${safeSegment(ns)}${SEPARATOR}`)
   }
 }
 

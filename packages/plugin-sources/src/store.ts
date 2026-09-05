@@ -165,6 +165,28 @@ export class SourceStore {
         )
         await tx.exec(`DELETE FROM lyrics WHERE source_id = ?`, [id])
         await tx.exec(`DELETE FROM library_items WHERE source_id = ?`, [id])
+
+        /*
+         * ⚠️ And the two identity tables, for the same reason and with worse
+         * consequences than stale rows.
+         *
+         * `external_ids` and `track_links` key on a URN by value, so the FK
+         * cascade never reaches them. Left behind, a removed source's ISRCs
+         * keep matching — so the *next* source imported gets linked to tracks
+         * that do not exist, and "also available on…" offers a failover to
+         * nothing. Deleting rows the user asked to forget has to include what
+         * those rows were related to.
+         */
+        await tx.exec(
+          `DELETE FROM track_links WHERE urn_a IN (SELECT urn FROM tracks WHERE source_id = ?)
+              OR urn_b IN (SELECT urn FROM tracks WHERE source_id = ?)`,
+          [id, id],
+        )
+        await tx.exec(
+          `DELETE FROM external_ids WHERE urn IN (SELECT urn FROM tracks WHERE source_id = ?)
+              OR urn IN (SELECT urn FROM albums WHERE source_id = ?)`,
+          [id, id],
+        )
         await tx.exec(`DELETE FROM sources WHERE id = ?`, [id])
       })
       return

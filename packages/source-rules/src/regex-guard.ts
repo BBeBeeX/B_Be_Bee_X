@@ -53,14 +53,38 @@ export function isUnsafeRegex(pattern: string): { unsafe: boolean; reason?: stri
   // whether it contains a top-level alternation.
   const groups: { quantified: boolean; alternation: boolean }[] = []
 
-  const quantifierAt = (index: number): boolean => {
+  /**
+   * Whether a quantifier sits at `index`.
+   *
+   * ⚠️ `counted` distinguishes the two places this is asked, and the answer
+   * genuinely differs between them:
+   *
+   *  - **On a group** (`counted`): `{n}` with n ≥ 2 multiplies. `(.*a){20}b`
+   *    is not "twenty repetitions of a bounded thing" — it is twenty nested
+   *    chances to split the input, which is `(.*a)+` with the exponent
+   *    written out. Measured: sixty characters, no match, still running after
+   *    two minutes.
+   *  - **Inline, inside a body**: it does not. `a{2}` is two characters wide
+   *    however you look at it, so `(a{2})+` — i.e. `(aa)+` — offers the
+   *    engine no second arrangement and is perfectly safe. Counting it would
+   *    refuse a shape real documents use.
+   *
+   * Open-ended forms (`{2,}`, `{2,5}`) multiply in both positions.
+   */
+  const quantifierAt = (index: number, counted = false): boolean => {
     const ch = pattern[index]
     if (ch === '*' || ch === '+') return true
     if (ch === '?') return false // optional alone does not multiply
     if (ch !== '{') return false
     const close = pattern.indexOf('}', index)
-    // `{2,}` and `{2,5}` multiply; `{2}` is a fixed repeat and does not.
-    return close !== -1 && pattern.slice(index + 1, close).includes(',')
+    if (close === -1) return false
+
+    const body = pattern.slice(index + 1, close)
+    if (body.includes(',')) return true
+    if (!counted) return false
+    const exact = Number(body)
+    // `{0}` and `{1}` offer no second arrangement, whatever they wrap.
+    return Number.isFinite(exact) && exact >= 2
   }
 
   while (i < pattern.length) {
@@ -93,7 +117,7 @@ export function isUnsafeRegex(pattern: string): { unsafe: boolean; reason?: stri
     }
     if (ch === ')') {
       const closed = groups.pop()
-      if (closed && quantifierAt(i + 1)) {
+      if (closed && quantifierAt(i + 1, true)) {
         if (closed.quantified) {
           return {
             unsafe: true,

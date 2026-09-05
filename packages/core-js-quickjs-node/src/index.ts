@@ -77,6 +77,9 @@ export class JsQuickJsNode extends Service implements JsService {
   }
 }
 
+/** How long a poisoned realm is given to unwind its parked frames. */
+const UNWIND_MS = 50
+
 /** Why a realm stopped being usable. `undefined` means it still is. */
 type Poison = 'disposed' | 'timeout' | 'memory'
 
@@ -92,6 +95,12 @@ class QuickJsRealm implements JsRealm {
    */
   private deadline = 0
   private readonly disposers = new Set<() => void>()
+  /** Host bridges awaiting settlement. Rejected before a poisoned teardown. */
+  private readonly pending = new Set<() => void>()
+  /** Set by `pump` when a queued job failed. Read on the next turn of `settle`. */
+  private jobFailure: unknown
+  /** Set by `pump` when a queued job was interrupted. */
+  private interrupted = false
 
   constructor(
     module: QuickJSWASMModule,
@@ -156,21 +165,46 @@ class QuickJsRealm implements JsRealm {
          * contract calls it out.
          */
         const deferred = vm.newPromise()
+
+        /*
+         * Registered so a poisoned teardown can reject it.
+         *
+         * A realm disposed while an async frame is parked on one of these
+         * makes QuickJS abort the whole WASM instance. Rejecting first lets
+         * the frame unwind, which is the difference between a `JsTimeoutError`
+         * and a native abort that bricks the module.
+         */
+        const abandon = () => {
+          if (this.vm !== vm) return
+          const h = vm.newString('the realm was torn down before this call returned')
+          deferred.reject(h)
+          h.dispose()
+        }
+        this.pending.add(abandon)
+
+        const settle = (make: () => QuickJSHandle, how: 'resolve' | 'reject') => {
+          this.pending.delete(abandon)
+          if (this.vm !== vm) return
+          const h = make()
+          try {
+            deferred[how](h)
+          } finally {
+            h.dispose()
+          }
+          // ⚠️ Pumped with the deadline armed. A continuation is as capable of
+          // looping for ever as the script that queued it, and this pump runs
+          // outside `run`'s own — an unarmed one here is a freeze.
+          try {
+            this.pump(vm)
+          } catch {
+            // The rejection reaches the script through its own promise; there
+            // is no caller here to hand an error to.
+          }
+        }
+
         void result.then(
-          (value) => {
-            if (this.vm !== vm) return
-            const h = this.toHandle(vm, value)
-            deferred.resolve(h)
-            h.dispose()
-            vm.runtime.executePendingJobs()
-          },
-          (error: unknown) => {
-            if (this.vm !== vm) return
-            const h = this.toHandle(vm, String(error))
-            deferred.reject(h)
-            h.dispose()
-            vm.runtime.executePendingJobs()
-          },
+          (value) => settle(() => this.toHandle(vm, value), 'resolve'),
+          (error: unknown) => settle(() => vm.newString(String(error)), 'reject'),
         )
         return deferred.handle
       }
@@ -199,9 +233,29 @@ class QuickJsRealm implements JsRealm {
     this.vm = undefined
     this.poison ??= 'disposed'
     this.disposers.clear()
+    this.pending.clear()
+
+    /*
+     * ⚠️ Guarded, and the guard is load-bearing.
+     *
+     * Tearing down a context that still holds a suspended frame makes QuickJS
+     * abort the WASM instance from inside `dispose()`. Letting that propagate
+     * left the realm in `this.realms` — so the service's unload loop hit the
+     * same abort again and cascaded, and the runtime allocation leaked. The
+     * contract says `dispose()` returns void and never throws; this is what
+     * makes that true rather than aspirational.
+     */
     const runtime = vm.runtime
-    vm.dispose()
-    runtime.dispose()
+    try {
+      vm.dispose()
+    } catch {
+      // Nothing to recover: the instance is gone either way.
+    }
+    try {
+      runtime.dispose()
+    } catch {
+      // As above.
+    }
     this.onDispose()
   }
 
@@ -222,50 +276,79 @@ class QuickJsRealm implements JsRealm {
    */
   private async run(code: string): Promise<unknown> {
     const vm = this.live()
-    this.deadline = Date.now() + this.limits.timeoutMs
 
-    let result: ReturnType<QuickJSContext['evalCode']>
+    /*
+     * ⚠️ One deadline, armed across the *whole* call — not just `evalCode`.
+     *
+     * The interrupt handler only fires while the engine is executing, and
+     * `evalCode` returns as soon as the script hits its first `await`. Arming
+     * the deadline only around that call left every continuation unbounded:
+     * `(async () => { await 1; while (true) {} })()` returned from `evalCode`
+     * immediately, and the infinite loop then ran inside `executePendingJobs`
+     * with the deadline disarmed. It never came back — no timeout, no
+     * interrupt, a permanently frozen process. The same held for anything
+     * chained onto a host call: `src.get(...).then(() => { while (1) {} })`.
+     *
+     * `budgetMs` rather than `timeoutMs` because a rule that makes network
+     * calls legitimately takes longer than one that does not (docs/06 §8): the
+     * *engine* is bounded by `timeoutMs` of continuous execution, and the call
+     * as a whole by this.
+     */
+    const budget = Date.now() + this.limits.budgetMs
+    this.deadline = Date.now() + this.limits.timeoutMs
+    this.jobFailure = undefined
+    this.interrupted = false
+
     try {
-      result = vm.evalCode(code)
-    } catch (error) {
-      // A throw from `evalCode` itself is the memory limit: the allocator
-      // fails inside the engine rather than producing an error value.
-      this.poisonWith('memory')
-      throw wrapOutOfMemory(error, this.limits)
+      let result: ReturnType<QuickJSContext['evalCode']>
+      try {
+        result = vm.evalCode(code)
+      } catch (error) {
+        // A throw from `evalCode` itself is the memory limit: the allocator
+        // fails inside the engine rather than producing an error value.
+        await this.poisonWith('memory')
+        throw wrapOutOfMemory(error, this.limits)
+      }
+
+      if (result.error) {
+        const detail = vm.dump(result.error) as unknown
+        result.error.dispose()
+        // An interrupt surfaces as an error QuickJS wrote itself — telling it
+        // apart from a script's own throw is what makes "your rule is wrong"
+        // different from "your rule is too slow".
+        if (isInterrupt(detail)) {
+          await this.poisonWith('timeout')
+          throw new JsTimeoutError(this.limits.timeoutMs)
+        }
+        if (isOutOfMemory(detail)) {
+          await this.poisonWith('memory')
+          throw new JsMemoryError(this.limits.memoryBytes)
+        }
+        throw scriptError(detail)
+      }
+
+      try {
+        return await this.settle(vm, result.value, budget)
+      } finally {
+        // ⚠️ Only if the context still exists. A limit breach tears the realm
+        // down from inside `settle`, and freeing a handle afterwards throws
+        // `Lifetime not alive` — which would replace the `JsTimeoutError` the
+        // caller needs with an internal one that means nothing to them.
+        if (this.vm === vm) result.value.dispose()
+      }
     } finally {
       this.deadline = 0
     }
-
-    if (result.error) {
-      const detail = vm.dump(result.error) as unknown
-      result.error.dispose()
-      // An interrupt surfaces as an error with no message QuickJS wrote —
-      // telling it apart from a script's own throw is what makes "your rule
-      // is wrong" different from "your rule is too slow".
-      if (isInterrupt(detail)) {
-        this.poisonWith('timeout')
-        throw new JsTimeoutError(this.limits.timeoutMs)
-      }
-      if (isOutOfMemory(detail)) {
-        this.poisonWith('memory')
-        throw new JsMemoryError(this.limits.memoryBytes)
-      }
-      throw scriptError(detail)
-    }
-
-    // Pending jobs first: a script whose completion value is a promise has
-    // not settled it yet, and dumping the handle would give a pending one.
-    vm.runtime.executePendingJobs()
-    const settled = await this.settle(vm, result.value)
-    result.value.dispose()
-    return settled
   }
 
   /**
-   * Await a realm promise from the host side, pumping the realm as it goes.
+   * Drive the realm until `handle` settles, or the budget runs out.
    *
    * `jsLib` helpers routinely `await` a host call, so the completion value of
-   * a rule is a promise more often than not.
+   * a rule is a promise more often than not — and every one of those
+   * continuations runs *here*, inside `executePendingJobs`, rather than inside
+   * `evalCode`. That is why the engine deadline is re-armed before each pump:
+   * a continuation is as capable of looping for ever as the top-level script.
    *
    * ⚠️ Ownership: this frees only handles it did not receive. Asking QuickJS
    * for the promise state of a *non*-promise hands back a fulfilled state
@@ -273,20 +356,27 @@ class QuickJsRealm implements JsRealm {
    * well as in the caller is a double free — which surfaces as
    * `QuickJSUseAfterFree` from somewhere unrelated, several calls later.
    */
-  private async settle(vm: QuickJSContext, handle: QuickJSHandle): Promise<unknown> {
+  private async settle(
+    vm: QuickJSContext,
+    handle: QuickJSHandle,
+    budget: number,
+  ): Promise<unknown> {
     const initial = vm.getPromiseState(handle)
     if (initial.type === 'fulfilled' && initial.notAPromise) {
       return this.bounded(vm.dump(handle) as unknown)
     }
 
     if (initial.type === 'pending') {
-      const until = Date.now() + this.limits.timeoutMs
       for (;;) {
-        vm.runtime.executePendingJobs()
-        if (vm.getPromiseState(handle).type !== 'pending') break
-        if (Date.now() > until) {
-          this.poisonWith('timeout')
+        this.pump(vm)
+        if (this.interrupted) {
+          await this.poisonWith('timeout')
           throw new JsTimeoutError(this.limits.timeoutMs)
+        }
+        if (vm.getPromiseState(handle).type !== 'pending') break
+        if (Date.now() > budget) {
+          await this.poisonWith('timeout')
+          throw new JsTimeoutError(this.limits.budgetMs)
         }
         // Yield to the host loop so a pending host promise can settle.
         await new Promise((resolve) => setTimeout(resolve, 0))
@@ -297,6 +387,20 @@ class QuickJsRealm implements JsRealm {
     if (state.type === 'rejected') {
       const detail = vm.dump(state.error) as unknown
       state.error.dispose()
+      /*
+       * ⚠️ An interrupted *continuation* rejects the promise rather than
+       * failing the evaluation, so the interrupt arrives here — and reporting
+       * it as a script error would tell the author their code threw when in
+       * fact the engine stopped it. The realm is equally unusable either way.
+       */
+      if (isInterrupt(detail)) {
+        await this.poisonWith('timeout')
+        throw new JsTimeoutError(this.limits.timeoutMs)
+      }
+      if (isOutOfMemory(detail)) {
+        await this.poisonWith('memory')
+        throw new JsMemoryError(this.limits.memoryBytes)
+      }
       throw scriptError(detail)
     }
     if (state.type === 'fulfilled') {
@@ -308,8 +412,71 @@ class QuickJsRealm implements JsRealm {
     return this.bounded(vm.dump(handle) as unknown)
   }
 
-  private poisonWith(reason: Poison): void {
+  /**
+   * Run the realm's queued jobs, bounded.
+   *
+   * The deadline is re-armed here because it was cleared by whatever ran last,
+   * and because each pump is a fresh stretch of *continuous* execution: a
+   * script that awaits ten times gets `timeoutMs` per continuation, which is
+   * what "wall clock per rule" means for code that yields.
+   *
+   * `executePendingJobs()` runs the queue to exhaustion, so a job that queues
+   * another job for ever would never return control — the interrupt handler is
+   * what breaks that, and it needs the deadline armed to fire.
+   */
+  private pump(vm: QuickJSContext): void {
+    this.deadline = Date.now() + this.limits.timeoutMs
+    const jobs = vm.runtime.executePendingJobs()
+    // ⚠️ A job's error is not the completion value's error, and dropping it
+    // makes an unhandled rejection inside the realm vanish silently.
+    if (jobs.error) {
+      const detail = vm.dump(jobs.error) as unknown
+      jobs.error.dispose()
+      // Flagged rather than thrown: `pump` is called from a host-promise
+      // callback with no caller to catch, and from `settle` which needs to
+      // poison first. `settle` reads this on its next turn.
+      this.jobFailure = detail
+      if (isInterrupt(detail)) this.interrupted = true
+    }
+  }
+
+  /**
+   * Retire a realm that breached a limit.
+   *
+   * ⚠️ Disposing a context with a *suspended frame* — an async function parked
+   * on an `await` that will now never resume — makes QuickJS abort the whole
+   * WASM instance: `RuntimeError: Aborted(...)`, thrown from inside `dispose`,
+   * which then leaves the runtime allocated for ever and the realm registered.
+   * Measured with three sequential 800ms awaits against a 2s budget.
+   *
+   * So the pending host bridges are rejected first, the queue is pumped to let
+   * those rejections unwind the parked frames, and only then is the context
+   * torn down. `dispose` itself is wrapped, because a realm that will not die
+   * cleanly must still stop being reachable.
+   */
+  private async poisonWith(reason: Poison): Promise<void> {
     this.poison = reason
+    const vm = this.vm
+    if (vm) {
+      for (const reject of [...this.pending]) {
+        try {
+          reject()
+        } catch {
+          // A bridge that cannot be rejected is one whose realm is already
+          // past saving; the dispose below is what matters.
+        }
+      }
+      this.pending.clear()
+      // Unwinding, not running: the deadline stays armed so a `finally` that
+      // loops cannot hold the teardown open.
+      this.deadline = Date.now() + UNWIND_MS
+      try {
+        vm.runtime.executePendingJobs()
+      } catch {
+        // Expected where the frames are already unrecoverable.
+      }
+      this.deadline = 0
+    }
     this.dispose()
     this.poison = reason
   }

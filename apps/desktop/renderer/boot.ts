@@ -9,7 +9,13 @@
 import { createApp, type App, type PluginRegistry } from '@BBeBee/kernel'
 // The renderer is sandboxed, so these are IPC clients over the main-process
 // host — not the node implementations, which cannot load here (docs/02 §2).
-import { DbBridge, FsBridge, PathsBridge, fetchPaths } from '@BBeBee/core-desktop-bridge'
+import {
+  DbBridge,
+  FsBridge,
+  PathsBridge,
+  fetchPaths,
+  safeStorageCodec,
+} from '@BBeBee/core-desktop-bridge'
 import { StoreFs } from '@BBeBee/core-store-fs'
 import { DeviceElectron } from '@BBeBee/core-device-electron'
 import { BackgroundElectron } from '@BBeBee/core-background-electron'
@@ -104,6 +110,9 @@ function hostPlatform(): 'macos' | 'windows' | 'linux' {
 }
 
 export async function boot(): Promise<App> {
+  // Resolved once: the bridge is either there or it is not.
+  const keychain = safeStorageCodec()
+
   // Paths are fetched once, up front: `PathsService` promises synchronous
   // access and IPC cannot provide it.
   const pathSnapshot = await fetchPaths()
@@ -134,7 +143,16 @@ export async function boot(): Promise<App> {
        * `secrets` the cookie jars are in memory and honest about forgetting.
        * Neither absence stops a source that does not need it from playing.
        */
-      SecretsNode,
+      /*
+       * The keychain where there is one.
+       *
+       * ⚠️ Without a codec the store falls back to XOR against a path-derived
+       * key — obfuscation, not protection — and `isHardwareBacked` reports
+       * false so nothing downstream mistakes it for more. Passing
+       * `safeStorage` here is what makes the desktop guarantee real rather
+       * than documented.
+       */
+      [SecretsNode, keychain ? { crypto: keychain } : {}],
       JsQuickJsNode,
     ],
     registry: registry(),

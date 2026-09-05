@@ -105,6 +105,84 @@ export const jsConformance: ConformanceSuite<JsSubject> = {
     },
 
     {
+      name: 'interrupts a loop that runs after an await',
+      because:
+        'the engine deadline only fires while the engine runs, and eval returns at the first await — arming it only around the initial evaluation leaves every continuation unbounded, which is a freeze rather than a timeout',
+      async run({ js }) {
+        const realm = await js.createRealm({ timeoutMs: 250, budgetMs: 3000 })
+        const started = Date.now()
+        await assertRejects(
+          () => realm.eval('(async () => { await 1; while (true) {} })()'),
+          'a loop in a continuation is interrupted',
+          (error) => (error as Error).name === 'JsTimeoutError',
+        )
+        assert(Date.now() - started < 15_000, 'and it is interrupted promptly')
+        realm.dispose()
+      },
+    },
+
+    {
+      name: 'interrupts a loop chained onto a host call',
+      because:
+        'the same hole by the other route: a continuation queued by a host promise runs in a pump, not in eval',
+      async run({ js }) {
+        const realm = await js.createRealm({ timeoutMs: 250, budgetMs: 3000 })
+        realm.expose('later', async () => {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          return 1
+        })
+        const started = Date.now()
+        await assertRejects(
+          () => realm.eval('later().then(() => { while (true) {} })'),
+          'a loop after a host call is interrupted',
+          (error) => (error as Error).name === 'JsTimeoutError',
+        )
+        assert(Date.now() - started < 15_000, 'and it is interrupted promptly')
+        realm.dispose()
+      },
+    },
+
+    {
+      name: 'bounds the whole call, not only each stretch of execution',
+      because:
+        'a script that yields repeatedly stays within the per-stretch limit for ever; without a budget it never has to stop',
+      async run({ js }) {
+        const realm = await js.createRealm({ timeoutMs: 2000, budgetMs: 600 })
+        realm.expose('wait', async () => {
+          await new Promise((resolve) => setTimeout(resolve, 200))
+          return 1
+        })
+        await assertRejects(
+          () => realm.eval('(async () => { for (let i = 0; i < 20; i++) await wait(); return 1 })()'),
+          'the budget ends it',
+          (error) => (error as Error).name === 'JsTimeoutError',
+        )
+        realm.dispose()
+      },
+    },
+
+    {
+      name: 'survives being torn down with a frame still parked on an await',
+      because:
+        'disposing a context holding a suspended frame aborts the whole WASM instance — the realm leaks, dispose throws, and the service’s unload loop hits it again',
+      async run({ js }) {
+        const realm = await js.createRealm({ timeoutMs: 2000, budgetMs: 500 })
+        realm.expose('slow', async () => {
+          await new Promise((resolve) => setTimeout(resolve, 400))
+          return 1
+        })
+        await assertRejects(
+          () => realm.eval('(async () => { await slow(); await slow(); await slow(); return 9 })()'),
+          'the budget ends it rather than the engine aborting',
+          (error) => (error as Error).name === 'JsTimeoutError',
+        )
+        // And the contract still holds: dispose never throws.
+        realm.dispose()
+        realm.dispose()
+      },
+    },
+
+    {
       name: 'a realm that breached a limit is poisoned',
       because:
         'engine state after an interrupt is undefined; reusing it turns a sandbox into a crash later',
@@ -241,6 +319,27 @@ export const jsConformance: ConformanceSuite<JsSubject> = {
           'preload on a disposed realm rejects',
           (error) => (error as Error).name === 'JsRealmDisposedError',
         )
+      },
+    },
+
+    {
+      name: 'does not leak a handle per rejected promise',
+      because:
+        'a rejected bridge that never frees its handle turns a source retrying a failing call into a growing heap',
+      async run({ js }) {
+        const realm = await js.createRealm({ budgetMs: 20_000 })
+        try {
+          realm.expose('fails', () => {
+            throw new Error('no')
+          })
+          // Enough iterations that a per-call leak would breach the heap.
+          for (let i = 0; i < 400; i++) {
+            await realm.eval('(() => { try { fails() } catch { return 1 } })()')
+          }
+          assertEqual(await realm.eval('1 + 1'), 2, 'the realm is still healthy')
+        } finally {
+          realm.dispose()
+        }
       },
     },
 

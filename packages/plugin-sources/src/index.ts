@@ -836,9 +836,22 @@ export class Sources extends Service implements SourcesService {
          * reaches six figures, and the answer for rows nobody touched cannot
          * have changed.
          */
-        const links = await linkTracks(this.ctx.db, written.trackUrns)
-        if (links > 0) {
-          this.ctx.logger.debug(`sources: linked ${links} track(s) across sources`)
+        /*
+         * ⚠️ Linking is reported separately, and never costs the emit.
+         *
+         * A link failure is a *relationship* problem; the rows are already
+         * written. Letting it share the cache write's catch meant one bad pair
+         * swallowed `library/changed` for the whole batch, so fifty perfectly
+         * good tracks silently never reached the FTS index and could not be
+         * found by search.
+         */
+        try {
+          const links = await linkTracks(this.ctx.db, written.trackUrns)
+          if (links > 0) {
+            this.ctx.logger.debug(`sources: linked ${links} track(s) across sources`)
+          }
+        } catch (error) {
+          this.ctx.logger.warn(`sources: could not link ${sourceId}'s tracks: ${String(error)}`)
         }
         this.safeEmit(() => this.ctx.emit('library/changed', 'track', written.trackUrns))
       }

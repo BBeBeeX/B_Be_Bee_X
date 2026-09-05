@@ -21,6 +21,7 @@ import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
 import httpPlugin from '@BBeBee/core-http-node'
 import jsPlugin from '@BBeBee/core-js-quickjs-node'
+import { SecretsNode } from '@BBeBee/core-secrets-node'
 import sourcesPlugin from '@BBeBee/plugin-sources'
 import { CORE_MIGRATIONS, MigrationRunner } from '@BBeBee/kernel'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
@@ -78,6 +79,9 @@ async function app(docs: unknown[], opts: { sandbox?: boolean } = {}) {
   await ctx.plugin(PathsNode, { root: await tempDir('bbebee-scripted') })
   await ctx.plugin(FsNode)
   await ctx.plugin(DbNode, { fileName: ':memory:' })
+  // Credentials go to the keychain, never to the database (docs/06 §5), so a
+  // source that signs in needs this present.
+  await ctx.plugin(SecretsNode, {})
   await ctx.plugin(httpPlugin, {})
   if (opts.sandbox !== false) await ctx.plugin(jsPlugin, {})
   await ctx.plugin(sourcesPlugin, {})

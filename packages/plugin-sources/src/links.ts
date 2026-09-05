@@ -14,7 +14,6 @@
  * the user has no way to know it happened.
  */
 
-import { orderUrnPair } from '@BBeBee/protocol'
 import type { DbService, ExternalIds, LinkMethod, Track, TrackLink } from '@BBeBee/protocol'
 
 /*
@@ -106,17 +105,29 @@ async function upsertLink(
   confidence: number,
   method: LinkMethod,
 ): Promise<boolean> {
-  const [urnA, urnB] = orderUrnPair(a, b)
+  /*
+   * ⚠️ Ordered by **SQLite**, not by JavaScript.
+   *
+   * The table's `CHECK (urn_a < urn_b)` uses SQLite's BINARY collation, which
+   * compares UTF-8 bytes; JavaScript's `<` compares UTF-16 code units. The two
+   * disagree for anything above the BMP — an emoji in a track id is enough —
+   * so `orderUrnPair` produced a pair the CHECK rejected, the INSERT threw
+   * inside the cache write, and the *whole batch* lost its `library/changed`
+   * emit and therefore its FTS indexing. Measured.
+   *
+   * `MIN`/`MAX` here use the same collation as the constraint, so the two
+   * cannot disagree by construction.
+   */
   const result = await tx.exec(
     `INSERT INTO track_links (urn_a, urn_b, confidence, method, created_at)
-     VALUES (?, ?, ?, ?, ?)
+     VALUES (MIN(?1, ?2), MAX(?1, ?2), ?3, ?4, ?5)
      ON CONFLICT(urn_a, urn_b) DO UPDATE SET
        confidence = CASE WHEN track_links.method = 'manual' THEN track_links.confidence
                          ELSE MAX(track_links.confidence, excluded.confidence) END,
        method     = CASE WHEN track_links.method = 'manual' THEN 'manual'
                          WHEN excluded.confidence > track_links.confidence THEN excluded.method
                          ELSE track_links.method END`,
-    [urnA, urnB, confidence, method, Date.now()],
+    [a, b, confidence, method, Date.now()],
   )
   return result.changes > 0
 }
@@ -143,8 +154,8 @@ export async function linkManually(db: DbService, a: string, b: string): Promise
 }
 
 export async function unlink(db: DbService, a: string, b: string): Promise<void> {
-  const [urnA, urnB] = orderUrnPair(a, b)
-  await db.exec('DELETE FROM track_links WHERE urn_a = ? AND urn_b = ?', [urnA, urnB])
+  // Ordered the same way the insert was — see `upsertLink`.
+  await db.exec('DELETE FROM track_links WHERE urn_a = MIN(?1, ?2) AND urn_b = MAX(?1, ?2)', [a, b])
 }
 
 /**

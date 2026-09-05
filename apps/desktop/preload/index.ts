@@ -15,6 +15,18 @@ const api = {
   paths: {
     get: (kind: string): Promise<string | undefined> => ipcRenderer.invoke('paths:get', kind),
   },
+  /**
+   * The OS keychain, reachable only from `main`.
+   *
+   * Three calls and no key: `safeStorage` holds the key in the OS, so nothing
+   * secret crosses this bridge in either direction — a plaintext string goes
+   * one way and an opaque one comes back.
+   */
+  secrets: {
+    available: (): Promise<boolean> => ipcRenderer.invoke('secrets:available'),
+    encrypt: (plain: string): Promise<string> => ipcRenderer.invoke('secrets:encrypt', plain),
+    decrypt: (cipher: string): Promise<string> => ipcRenderer.invoke('secrets:decrypt', cipher),
+  },
   shell: {
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url),
   },

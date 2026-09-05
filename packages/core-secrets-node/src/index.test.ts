@@ -11,6 +11,7 @@ import { Context } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { secretsConformance } from '@BBeBee/protocol/conformance'
+import { scopeContext } from '@BBeBee/kernel'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import plugin from './index.js'
 
@@ -105,5 +106,48 @@ describe('honesty about what it is', () => {
     expect(ctx.secrets.isHardwareBacked).toBe(true)
     await ctx.secrets.set('k', 'v')
     expect(await ctx.secrets.get('k')).toBe('v')
+  })
+})
+
+describe('scoping', () => {
+  it('confines a gated caller to its own namespace', async () => {
+    /*
+     * ⚠️ Without this `secrets:own` and `secrets:all` are the same grant: the
+     * store read the intercept config for nothing, so any plugin holding
+     * `ctx.secrets` could read — and overwrite — another plugin's credentials
+     * just by naming their key.
+     */
+    const ctx = await harness()
+    const a = scopeContext(ctx, { pluginId: '@BBeBee/a', requested: ['secrets:own'] as never })
+    const b = scopeContext(ctx, { pluginId: '@BBeBee/b', requested: ['secrets:own'] as never })
+
+    await a.secrets.set('token', 'a-token')
+    await b.secrets.set('token', 'b-token')
+
+    expect(await a.secrets.get('token')).toBe('a-token')
+    expect(await b.secrets.get('token'), 'b cannot see a').toBe('b-token')
+  })
+
+  it('clearing one scope leaves another alone', async () => {
+    const ctx = await harness()
+    const a = scopeContext(ctx, { pluginId: '@BBeBee/a', requested: ['secrets:own'] as never })
+    const b = scopeContext(ctx, { pluginId: '@BBeBee/b', requested: ['secrets:own'] as never })
+    await a.secrets.set('token', 'a-token')
+    await b.secrets.set('token', 'b-token')
+
+    await a.secrets.clear()
+    expect(await a.secrets.get('token')).toBeUndefined()
+    expect(await b.secrets.get('token')).toBe('b-token')
+  })
+
+  it('leaves an ungated caller the whole store', async () => {
+    // The kernel, a core service, a test. Without this `clear()` on the root
+    // would clear nothing, and the store could never be reset.
+    const ctx = await harness()
+    const a = scopeContext(ctx, { pluginId: '@BBeBee/a', requested: ['secrets:own'] as never })
+    await a.secrets.set('token', 'a-token')
+
+    await ctx.secrets.clear()
+    expect(await a.secrets.get('token')).toBeUndefined()
   })
 })

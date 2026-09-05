@@ -95,10 +95,17 @@ describe('signing in', () => {
     await provider.auth.signIn({ var: 'alice:s3cret' })
 
     expect(provider.auth.status.state).toBe('authenticated')
-    const row = await ctx.db.get<{ value: string }>(
-      "SELECT value FROM source_vars WHERE key = 'var'",
-    )
-    expect(row?.value, 'in source_vars, not in the document').toBe('alice:s3cret')
+
+    /*
+     * ⚠️ In the keychain, not in the database.
+     *
+     * docs/06 §5 and docs/07 §4.1 both promise credentials never land in
+     * readable storage, and `source_vars` is a plain SQLite table — the value
+     * would be greppable in the database file *and* in the WAL alongside it.
+     */
+    expect(await ctx.secrets.namespace(provider.sourceId).get('var')).toBe('alice:s3cret')
+    const rows = await ctx.db.query('SELECT value FROM source_vars')
+    expect(rows, 'nothing credential-shaped in the table').toHaveLength(0)
     await close()
   })
 })
@@ -166,10 +173,10 @@ describe('signing out', () => {
     await provider.auth.signOut()
     expect(provider.auth.status.state).toBe('anonymous')
 
-    const vars = await first.ctx.db.query('SELECT * FROM source_vars WHERE source_id = ?', [
-      sourceId,
-    ])
-    expect(vars, 'the password is gone').toHaveLength(0)
+    expect(
+      await first.ctx.secrets.namespace(sourceId).get('var'),
+      'the password is gone',
+    ).toBeUndefined()
     expect(
       await first.ctx.secrets.namespace(sourceId).get('anything'),
       'the namespace is empty',
@@ -201,8 +208,8 @@ describe('signing out', () => {
 
     expect(a!.auth.status.state).toBe('anonymous')
     expect(b!.auth.status.state, 'the other source is untouched').toBe('authenticated')
-    const rows = await ctx.db.query<{ source_id: string }>('SELECT source_id FROM source_vars')
-    expect(rows.map((r) => r.source_id)).toEqual([b!.sourceId])
+    expect(await ctx.secrets.namespace(a!.sourceId).get('var')).toBeUndefined()
+    expect(await ctx.secrets.namespace(b!.sourceId).get('var')).toBe('bob:b')
     await close()
   })
 })
@@ -250,10 +257,7 @@ describe('sharing a source', () => {
     expect(ctx.sources.sources[0]!.id).toBe(before)
     // The session survives the re-import: the id did not change, so nothing
     // that keys on it — vars, jar, playlist references — was orphaned.
-    const row = await ctx.db.get<{ value: string }>(
-      "SELECT value FROM source_vars WHERE key = 'var'",
-    )
-    expect(row?.value).toBe('alice:keepme')
+    expect(await ctx.secrets.namespace(before).get('var')).toBe('alice:keepme')
     await close()
   })
 })
