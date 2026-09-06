@@ -129,6 +129,42 @@ describe('ScanRootsScreen', () => {
     expect(container.textContent, 'and says so while there are none').toContain('No folders yet')
   })
 
+  /**
+   * The button that reads a *second* service, which is where this went wrong.
+   *
+   * The screen's state comes from `ctx.scanner`, so rendering it proved
+   * nothing about `ctx.fs` — and `addFolder` is the only place that touches
+   * it. Pressing it on a scoped context is the whole test: an undeclared read
+   * throws `cannot get property "fs" without inject`, which is what a device
+   * reported while the render tests above stayed green.
+   */
+  it('picks a folder through ctx.fs, which it may only reach if it declares it', async () => {
+    const { ctx, admin } = await harness()
+    const dir = await tempDir('bbebee-picked-root')
+    // Spied through the root context: the same service instance the scoped
+    // `ctx` resolves, but reachable here without `inject` in the way. `FsNode`
+    // has no dialog to open, so the picked uri has to come from the stub.
+    const pick = vi.spyOn(admin.fs, 'pickDirectory').mockResolvedValue(`file://${dir}`)
+    const addRoot = vi.spyOn(ctx.scanner, 'addRoot')
+
+    const { container } = await withListLayout(async () => {
+      const view = render(h(ScanRootsScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+      return view
+    })
+
+    await act(async () => {
+      buttonNamed(container, 'Add folder')!.click()
+      await tick()
+      await tick()
+    })
+
+    expect(pick, 'the picker is what carries the permission grant').toHaveBeenCalled()
+    expect(addRoot, 'and what it returns becomes a scan root').toHaveBeenCalledWith(`file://${dir}`)
+  })
+
   it('shows a folder that was added, and a way to remove it', async () => {
     const { ctx } = await harness()
     const dir = await tempDir('bbebee-scan-root')
