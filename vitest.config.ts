@@ -22,6 +22,16 @@ export default defineConfig({
        * leave the mobile one covered by reading it.
        */
       'expo-sqlite': fileURLToPath(new URL('./test/stubs/expo-sqlite.ts', import.meta.url)),
+      /*
+       * Same bargain for the filesystem, and the one with a scar: `ctx.fs` has
+       * two implementations, their drift is a named risk, and the conformance
+       * suite could only ever run against one of them. `File.move` refusing an
+       * existing destination — where `rename(2)` replaces it — is what that
+       * cost, and the stub reproduces the refusal rather than papering over it.
+       */
+      'expo-file-system': fileURLToPath(
+        new URL('./test/stubs/expo-file-system.ts', import.meta.url),
+      ),
     },
   },
   test: {

@@ -742,6 +742,13 @@ nothing else.
 
 - [x] Contributions are descriptors; components are bound with `registerView`, never handed to the
       shell directly ([08 §2](./08-ui-architecture.md#2-contributions-are-descriptors)).
+      ⚠️ **Bound to the view package's own context, not the shell's.** The shell renders a view
+      as `h(Component, { ctx })` with the context it got from `app.ready(['ui'])` — `ui`
+      injected and nothing else. A cordis context *throws* for any property that was not
+      injected, so every screen reading `ctx.sources`, `ctx.player` or `ctx.scanner` through its
+      hooks threw on a device. `plugin-hello-ui-mobile` had always registered a closure over its
+      own context; the M1 view packages registered bare components. They now do the same, and
+      each declares the services its screens actually read.
 - [x] `ui.missingViews()` is exercised: at least one contribution deliberately has no view on one
       target, and the shell shows "not available on this platform" rather than a hole.
       `plugin-inspector` is that contribution — both shells run it, only desktop has a view for
@@ -750,6 +757,12 @@ nothing else.
 - [x] Artwork renders `blurhash` first, then the image. No grey flash on scroll.
 - [x] Position is interpolated with `requestAnimationFrame` between 1 Hz ticks, never polled.
 - [x] No `useEffect` doing domain work, and no domain state in React.
+- [x] A view never reads a service with `ctx.name`. `ui-core`'s `serviceOf` / `useService` ask
+      through `reflect.get(name, false)`, which answers `undefined` instead of throwing.
+      ⚠️ `ctx.player?.playNow()` looks like a safe optional and is not one: the property read
+      throws before `?.` can short-circuit. `useService`'s own doc comment promised "`undefined`
+      where it is not loaded" while doing exactly that — true on the root context every test
+      built, false on the scoped context every view actually gets.
 
 ### 4.13 The shells
 
@@ -975,6 +988,15 @@ Built once, in Stage 1, because every later stage leans on them.
   in a `finally` that ran when the *headers* arrived, so aborting a request that had already
   started streaming did nothing — which is the only case that matters, since MD-5's prefetch is
   cancelled mid-download when the queue changes.
+- **Stubs that are not fakes** — `test/stubs/` aliases `expo-sqlite` to `node:sqlite`,
+  `expo-file-system` to `node:fs`, and `react-native-audio-api` to a surface that throws on
+  anything genuinely native. The first two exist so the *second* implementation of `ctx.db` and
+  `ctx.fs` runs the same conformance suites as the first, in CI, rather than only on a device
+  nobody has to hand. ⚠️ They reproduce the platform's **refusals**, not just its successes:
+  `File.move` throws "Destination already exists" here exactly as it does on a phone. A stub
+  that quietly overwrote would let the adapter pass the suite and still fail in the world,
+  which is the failure mode a stub is most likely to introduce.
+
 - **The device smoke matrix** — one iOS device, one deliberately low-end Android device, and one
   machine per desktop OS. The list of checks is
   [05 §7](./05-audio-playback.md#7-testing-audio)'s, plus the gapless boundary from MD-5. It runs
@@ -1044,12 +1066,25 @@ earlier and is not the same thing.
       4, 5 and 7 keep a manual half that no harness can honestly stand in for.
 - [x] The `fs`, `db`, `store`, `paths`, **`codec`**, **`audio`**, **`http` (M1 slice)** and
       **`mediaSession`** conformance suites are green against every implementation, on device for
-      the Expo ones. ⚠️ Two of the Expo implementations turned out not to need a device to be
-      covered: `core-media-session-rn` runs the suite with its native surface injected, and
+      the Expo ones. ⚠️ Three of the Expo implementations turned out not to need a device to be
+      covered: `core-media-session-rn` runs the suite with its native surface injected;
       `core-db-expo` runs `db` *and* `db-scope` with `expo-sqlite` aliased to `node:sqlite`
-      behind the same API — real statements, real migrations, real gate. What stays on the
-      device is what is genuinely of the device: the SDK's SQLite *build* (and therefore
-      `contentless_delete=1`), the decoder, and whether the lock screen draws.
+      behind the same API; and `core-fs-expo` runs `paths`, `fs` and `fs-scope` with
+      `expo-file-system` aliased to `node:fs` behind the SDK 54+ `File`/`Directory`/`Paths`
+      surface. Real statements, real files, real gates.
+
+      **This was not an optimisation.** The `fs` suite existed and ran against one
+      implementation, and [10](./10-roadmap.md#-the-abstraction-leaks-faster-than-it-is-patched)
+      names that exact gap as a risk whose primary defence is the suite. It leaked: Expo's
+      `File.move` refuses an existing destination where `rename(2)` replaces it, so every
+      write-temp-then-move in the codebase failed from a device's *second* launch onward —
+      `ctx.store` persisted nothing — while CI stayed green, because the one `move` case only
+      ever moved onto a fresh path. Both halves are fixed: the adapter clears the destination,
+      and the suite gained "move replaces an existing destination" and its `copy` twin.
+
+      What stays on the device is what is genuinely of the device: the SDK's SQLite *build*
+      (and therefore `contentless_delete=1`), SAF `content://` trees, the directory picker, the
+      decoder, and whether the lock screen draws.
 - [x] The leak test passes for every new plugin, and `ctx.inspector` shows a clean tree after
       disabling and re-enabling `plugin-player` mid-playback. ⚠️ Writing the *re-enabling* half
       found the bug it was meant to find: `ctx.mediaSession.clear()` ran only from `stop()`, and

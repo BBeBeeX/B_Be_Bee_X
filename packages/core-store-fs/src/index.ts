@@ -159,6 +159,25 @@ export class StoreFs extends Service implements StoreService {
     try {
       if (await this[OWN_FS].exists(uri)) {
         this.doc.data = JSON.parse(await this[OWN_FS].readFile(uri)) as Record<string, unknown>
+      } else if (await this[OWN_FS].exists(`${uri}.tmp`)) {
+        /*
+         * The store is missing but its temp file is not.
+         *
+         * That is the crash window of a non-atomic replace: on mobile
+         * `ctx.fs.move` has to clear the destination before it can move onto
+         * it (see `core-fs-expo`), so there is a moment where the new contents
+         * exist only under `.tmp`. The alternative to adopting it is starting
+         * empty — silently discarding a write that had already succeeded — so
+         * this recovers rather than shrugs. On a platform with a real atomic
+         * rename this branch simply never runs.
+         */
+        this.doc.data = JSON.parse(
+          await this[OWN_FS].readFile(`${uri}.tmp`),
+        ) as Record<string, unknown>
+        this.ctx.logger.warn(`store: recovered ${uri} from an interrupted write`)
+        this.doc.loaded = true
+        await this.enqueueFlush()
+        return
       }
     } catch (error) {
       // A corrupt store must not brick the app: settings are recoverable,

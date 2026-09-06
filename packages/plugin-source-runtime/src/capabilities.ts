@@ -32,6 +32,41 @@ function hasRules(block: object | undefined): boolean {
   return !!block && Object.values(block).some((v) => typeof v === 'string' && v.trim() !== '')
 }
 
+/**
+ * Whether there is anything here for the runtime to interpret.
+ *
+ * ⚠️ Not every `sources` row is a document. The catalogue's foreign keys need
+ * a row per source id, so `plugin-local-scanner` writes one for `local` — and
+ * says so in its own `sourceComment`: files on this device, managed by the
+ * scanner, not imported. There is no HTTP to describe, which is exactly what
+ * [06 §12] says about local files.
+ *
+ * Adopting such a row anyway is how `plugin-source-runtime` came to register a
+ * second, rules-free provider for `local` and collide with the real one. It
+ * lost that race on the devices it was seen on — "already registered; ignoring
+ * the duplicate" — but load order is *derived*, so the race was the bug: won
+ * the other way, a provider that can do nothing would own the source id and
+ * the local library would stop playing.
+ *
+ * The same reasoning is already written down one layer below, in the core
+ * migration that carries pre-document providers across: a row with no rules is
+ * written **disabled**, because starting a source with no rules "fails every
+ * call with a RuleError and looks like a bug".
+ */
+export function isInterpretable(doc: SourceDocument): boolean {
+  return (
+    hasRules(doc.ruleSearch) ||
+    hasRules(doc.ruleExplore) ||
+    hasRules(doc.ruleAlbum) ||
+    hasRules(doc.ruleTrackList) ||
+    hasRules(doc.ruleStream) ||
+    hasRules(doc.ruleLyric) ||
+    hasRules(doc.ruleLibrary) ||
+    !!doc.searchUrl ||
+    !!doc.exploreUrl
+  )
+}
+
 export function capabilitiesFor(
   doc: SourceDocument,
   opts: {

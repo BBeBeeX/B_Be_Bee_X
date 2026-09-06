@@ -23,10 +23,29 @@ export * from './store.js'
  *
  * `undefined` is a normal state, not an error: a plugin may be disabled, or a
  * service may not exist on this platform, and a view that renders a
- * placeholder is the behaviour docs/08 3 asks for.
+ * placeholder is the behaviour docs/08 §3 asks for.
+ *
+ * ⚠️ **`ctx[key]` is not how to ask.** On a plugin-scoped context — which is
+ * the only kind a view ever receives — cordis's proxy *throws* for any
+ * property that was not injected, so `ctx.player` and even `ctx.player?.x`
+ * raise `cannot get property "player" without inject` rather than answering
+ * `undefined`. This function used to be that read, and its own doc comment was
+ * false everywhere it mattered: it answered `undefined` in tests, which build
+ * a root context, and threw in the app.
+ *
+ * `reflect.get(key, false)` is the ask that has an answer. The `false` is
+ * "not required", and it works the same on a root context and a scoped one.
  */
-export function useService(ctx: Context, key: string): unknown {
-  const value = (ctx as unknown as Record<string, unknown>)[key]
+export function serviceOf<T = unknown>(ctx: Context, key: string): T | undefined {
+  return (ctx as unknown as { reflect: { get(key: string, required: boolean): unknown } }).reflect.get(
+    key,
+    false,
+  ) as T | undefined
+}
+
+/** The hook form of {@link serviceOf}, with the absent case named in devtools. */
+export function useService<T = unknown>(ctx: Context, key: string): T | undefined {
+  const value = serviceOf<T>(ctx, key)
   useDebugValue(value === undefined ? `${key} (absent)` : key)
   return value
 }

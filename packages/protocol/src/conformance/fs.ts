@@ -109,6 +109,42 @@ export const fsConformance: ConformanceSuite<FsSubject> = {
       },
     },
     {
+      name: 'move replaces an existing destination',
+      because:
+        'write-temp-then-move is how every atomic write in this codebase works, and the ' +
+        'destination exists on every run after the first',
+      async run({ fs, scratch }) {
+        /*
+         * ⚠️ This case exists because its absence cost a milestone's worth of
+         * settings. `rename(2)` replaces the destination; Expo's `File.move`
+         * rejects it. Both implementations passed "move relocates content"
+         * because it only ever moved onto a fresh path — so `ctx.store` wrote
+         * fine on a device's first launch and never again, and nothing in the
+         * suite could see it.
+         */
+        const from = fs.join(scratch, 'replace-from.txt')
+        const to = fs.join(scratch, 'replace-to.txt')
+        await fs.writeFile(to, 'stale')
+        await fs.writeFile(from, 'fresh')
+        await fs.move(from, to)
+        assert(!(await fs.exists(from)), 'source gone')
+        assertEqual(await fs.readFile(to), 'fresh', 'destination replaced, not refused')
+      },
+    },
+    {
+      name: 'copy replaces an existing destination',
+      because: 'the twin of move, and drifting from it would be the same bug one call along',
+      async run({ fs, scratch }) {
+        const from = fs.join(scratch, 'copy-from.txt')
+        const to = fs.join(scratch, 'copy-to.txt')
+        await fs.writeFile(to, 'stale')
+        await fs.writeFile(from, 'fresh')
+        await fs.copy(from, to)
+        assert(await fs.exists(from), 'copy leaves the source')
+        assertEqual(await fs.readFile(to), 'fresh', 'destination replaced, not refused')
+      },
+    },
+    {
       name: 'join produces a uri that stat can resolve',
       because: 'plugins never concatenate paths — join is the only builder',
       async run({ fs, scratch }) {

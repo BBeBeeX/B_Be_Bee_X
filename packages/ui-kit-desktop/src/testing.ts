@@ -45,12 +45,52 @@ export function withListLayout<T>(body: () => T): T {
     get: () => 300,
   })
 
-  try {
-    return body()
-  } finally {
+  let done = false
+  const restore = () => {
+    if (done) return
+    done = true
     for (const [name, descriptor] of saved) {
       if (descriptor) Object.defineProperty(HTMLElement.prototype, name, descriptor)
       else Reflect.deleteProperty(HTMLElement.prototype, name)
     }
   }
+
+  try {
+    const out = body()
+    /*
+     * An async body keeps the sizes until it settles.
+     *
+     * The virtualiser measures in a layout effect and re-renders, so anything
+     * that renders and *then* awaits — a screen fetching its rows — does its
+     * real measuring after the synchronous part returns. Restoring at that
+     * point left the second pass measuring zero and rendering an empty window,
+     * which reads as "the list is broken" rather than "the helper returned
+     * too early".
+     */
+    if (isThenable(out)) {
+      return out.then(
+        (value: unknown) => {
+          restore()
+          return value
+        },
+        (error: unknown) => {
+          restore()
+          throw error
+        },
+      ) as T
+    }
+    restore()
+    return out
+  } catch (error) {
+    restore()
+    throw error
+  }
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as PromiseLike<unknown>).then === 'function'
+  )
 }

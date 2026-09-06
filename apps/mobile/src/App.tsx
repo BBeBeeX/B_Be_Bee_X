@@ -6,7 +6,18 @@
  */
 
 import { createElement as h, useEffect, useState, type ComponentType } from 'react'
-import { SafeAreaView, ScrollView, Text, View, Pressable, ActivityIndicator } from 'react-native'
+import { ScrollView, Text, View, Pressable, ActivityIndicator } from 'react-native'
+/*
+ * ⚠️ `react-native-safe-area-context`, not React Native's own `SafeAreaView`.
+ *
+ * RN's is deprecated and warns on every launch: "SafeAreaView has been
+ * deprecated and will be removed in a future release." It also only ever
+ * worked on iOS, so the Android notch was never accounted for.
+ *
+ * This is a native module, so it needs a dev-client rebuild — which docs/11
+ * §4.13 already expects for M1, and which FlashList requires anyway.
+ */
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import type { Context } from 'cordis'
 import type { RouteContribution } from '@BBeBee/protocol'
 import { boot } from './boot'
@@ -93,4 +104,15 @@ export default function App() {
     )
   }
   return h(Shell, { ctx })
+}
+
+/**
+ * The root component: the safe-area provider, then the app.
+ *
+ * The provider has to be above every `SafeAreaView`, and `App` is the only
+ * thing `registerRootComponent` mounts — so it goes here rather than in the
+ * shell, where a second screen could forget it.
+ */
+export function Root() {
+  return h(SafeAreaProvider, null, h(App))
 }

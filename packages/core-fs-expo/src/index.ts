@@ -193,12 +193,27 @@ export class FsExpo extends Service implements FsService {
     directory.delete()
   }
 
+  /**
+   * ⚠️ **Expo's `move` refuses an existing destination; `rename(2)` replaces
+   * it.** Left alone, that difference is not a nuance — it is the atomic-write
+   * pattern (write a temp file, rename it over the target) failing on the
+   * *second* run and every run after, which is how `ctx.store` stopped
+   * persisting anything on device while every test stayed green. The
+   * conformance suite only ever moved onto a fresh path, so nothing saw it.
+   *
+   * So the destination is cleared first, and the two implementations agree
+   * again. The cost is that the replace is no longer atomic here: a crash
+   * between the delete and the move leaves neither file. Callers that care
+   * keep their source until the move returns — `core-store-fs` does, and
+   * recovers from its temp file on the next boot for exactly this window.
+   */
   async move(from: Uri, to: Uri): Promise<void> {
     this.check(from, 'write')
     this.check(to, 'write')
     const info = Paths.info(from)
     const source = info.isDirectory ? new Directory(from) : new File(from)
-    await source.move(new File(to))
+    this.clearDestination(to)
+    await source.move(info.isDirectory ? new Directory(to) : new File(to))
   }
 
   async copy(from: Uri, to: Uri): Promise<void> {
@@ -206,7 +221,16 @@ export class FsExpo extends Service implements FsService {
     this.check(to, 'write')
     const info = Paths.info(from)
     const source = info.isDirectory ? new Directory(from) : new File(from)
-    await source.copy(new File(to))
+    this.clearDestination(to)
+    await source.copy(info.isDirectory ? new Directory(to) : new File(to))
+  }
+
+  /** Remove whatever is at `to`, so a move or copy replaces rather than fails. */
+  private clearDestination(to: Uri): void {
+    const existing = Paths.info(to)
+    if (!existing.exists) return
+    if (existing.isDirectory) new Directory(to).delete()
+    else new File(to).delete()
   }
 
   /* ── Contents ───────────────────────────────────────────────────────── */

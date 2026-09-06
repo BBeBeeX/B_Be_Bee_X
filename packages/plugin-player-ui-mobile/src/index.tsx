@@ -141,12 +141,42 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
 }
 
 export const name = 'plugin-player-ui-mobile'
-export const inject = ['ui']
+
+/**
+ * Bind a screen to *this* plugin's context, not the shell's.
+ *
+ * ⚠️ The shell renders a view as `h(Component, { ctx })` with **its own**
+ * context — the one it got from `app.ready(['ui'])`, which has `ui` injected
+ * and nothing else. A cordis context throws for any property that was not
+ * injected, so a screen reading `ctx.player` through its hooks threw
+ * `cannot get property "player" without inject` on a device while every
+ * test passed, because tests built a root context where that read answers
+ * `undefined` instead.
+ *
+ * Registering a closure over the context this plugin was applied with is what
+ * `plugin-hello-ui-mobile` has always done, and it is the fix: the screen runs
+ * on a context with exactly what this package's `inject` declares. The shell's
+ * props are still forwarded, so a view that takes more than `ctx` keeps
+ * working.
+ */
+function bound<P extends { ctx: Context }>(
+  ctx: Context,
+  Screen: (props: P) => ReactElement | null,
+): (props: Omit<P, 'ctx'>) => ReactElement | null {
+  // `h(Screen, …)`, not `Screen(…)`: calling a component as a function splices
+  // its hooks into this one's list, which works right up until someone renders
+  // it conditionally. An element keeps them separate.
+  return function Bound(props) {
+    return h(Screen, { ...props, ctx } as P)
+  }
+}
+
+export const inject = ['ui', 'player']
 
 export async function apply(ctx: Context) {
   return ctx.effect(function* () {
-    yield ctx.ui.registerView(PLAYER_VIEWS.nowPlaying, NowPlayingScreen)
-    yield ctx.ui.registerView(PLAYER_VIEWS.queue, QueueScreen)
+    yield ctx.ui.registerView(PLAYER_VIEWS.nowPlaying, bound(ctx, NowPlayingScreen))
+    yield ctx.ui.registerView(PLAYER_VIEWS.queue, bound(ctx, QueueScreen))
   }, 'player-ui-mobile')
 }
 

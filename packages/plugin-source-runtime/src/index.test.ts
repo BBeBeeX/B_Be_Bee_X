@@ -71,7 +71,18 @@ function radio(path = '/track.mp3', extra: Record<string, unknown> = {}) {
   }
 }
 
-async function harness(docs: unknown[] = []) {
+async function harness(
+  docs: unknown[] = [],
+  /**
+   * Rows written straight to the `sources` table, before anything imports.
+   *
+   * Not every row arrives through `import` — the scanner writes one for
+   * `local` so the catalogue's foreign keys resolve — and the difference is
+   * load-bearing, because `import` refuses a document the runtime could not
+   * interpret and a direct write does not.
+   */
+  seedRows?: (db: Context['db']) => Promise<void>,
+) {
   const ctx = new Context()
   await ctx.plugin(PathsNode, { root: await tempDir('bbebee-runtime') })
   await ctx.plugin(FsNode)
@@ -81,6 +92,7 @@ async function harness(docs: unknown[] = []) {
   await tick()
   await new MigrationRunner(ctx.db).apply('core', CORE_MIGRATIONS)
 
+  await seedRows?.(ctx.db)
   if (docs.length) await ctx.sources.import(JSON.stringify(docs))
   const fiber = await ctx.plugin(plugin, {})
   await tick()
@@ -387,6 +399,50 @@ describe('the source list drives the fibers', () => {
     await ctx.sources.import(JSON.stringify(radio()))
     await tick()
     expect(ctx.sources.providers).toHaveLength(1)
+  })
+
+  it('leaves a rows-only source to whoever owns it', async () => {
+    /*
+     * Seen on a device: `sources: source "local" is already registered;
+     * ignoring the duplicate`.
+     *
+     * The catalogue's foreign keys need a `sources` row per source id, so
+     * `plugin-local-scanner` writes one for `local` — files on this device,
+     * managed by the scanner, with no HTTP to describe (docs/06 §12). This
+     * runtime was starting a fiber for it and registering a second, rules-free
+     * provider on the same id.
+     *
+     * It lost that race on the devices it was seen on, which is why it showed
+     * as a warning rather than as silence. But load order is *derived*: won
+     * the other way, a provider that can do nothing would own `local` and the
+     * whole local library would stop playing.
+     */
+    /*
+     * Written with SQL, exactly as `plugin-local-scanner.ensureSourceRow` does
+     * — not through `import`, which rejects a document with no rules and so
+     * could never have produced this row in the first place. The bug lives in
+     * the gap between "row in the table" and "document someone imported".
+     */
+    const { ctx } = await harness([radio()], async (db) => {
+      const doc = JSON.stringify({
+        sourceUrl: 'bbebee://local/local',
+        sourceName: 'This device',
+        sourceComment: 'Files on this device. Managed by the scanner, not imported.',
+      })
+      await db.exec(
+        `INSERT INTO sources (id, source_url, name, source_type, doc_json, doc_hash,
+                              enabled, imported_at, updated_at)
+         VALUES ('local', 'bbebee://local/local', 'This device', 'music', ?, 'local-local', 1, ?, ?)`,
+        [doc, Date.now(), Date.now()],
+      )
+    })
+
+    const ids = ctx.sources.providers.map((p) => p.sourceId)
+    expect(ids, 'only the document with rules becomes a provider').toHaveLength(1)
+    expect(
+      ctx.sources.sources.length,
+      'and the row is still there, because the foreign keys need it',
+    ).toBe(2)
   })
 
   it('two documents are two sources with two ids', async () => {

@@ -14,7 +14,7 @@ import { createElement as h, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Album, ImportReport, Track, TraceEvent } from '@BBeBee/protocol'
+import type { Album, ImportReport, PlayerService, Track, TraceEvent } from '@BBeBee/protocol'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
   useAlbum,
@@ -33,6 +33,7 @@ import {
   TextField,
   TrackRow,
 } from '@BBeBee/ui-kit-desktop'
+import { serviceOf } from '@BBeBee/ui-core'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
@@ -125,7 +126,7 @@ function TrackList({
         showAlbum: true,
         // Playing one track queues just that track; queueing the whole list
         // is a decision for the album screen, where "the rest" has a meaning.
-        onPress: () => void ctx.player?.playNow([track.urn]),
+        onPress: () => void serviceOf<PlayerService>(ctx, 'player')?.playNow([track.urn]),
       }),
   })
 }
@@ -216,7 +217,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           children: detail.artists?.map((a) => a.name).join(', ') ?? '',
         }),
         h(Button, {
-          onPress: () => void ctx.player?.playNow(detail.tracks.map((t) => t.urn)),
+          onPress: () => void serviceOf<PlayerService>(ctx, 'player')?.playNow(detail.tracks.map((t) => t.urn)),
           children: 'Play album',
           // Disabled rather than absent: an album with no playable tracks is
           // a real state, and hiding the control hides the reason.
@@ -237,7 +238,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           // Playing from an album plays the album from that point, which is
           // what "play this track" means in an album context.
           onPress: () =>
-            void ctx.player?.playNow(
+            void serviceOf<PlayerService>(ctx, 'player')?.playNow(
               detail.tracks.map((t) => t.urn),
               { startIndex: index },
             ),
@@ -487,14 +488,44 @@ function traceLine(event: TraceEvent): string {
 }
 
 export const name = 'plugin-sources-ui-desktop'
-export const inject = ['ui']
+
+/**
+ * Bind a screen to *this* plugin's context, not the shell's.
+ *
+ * ⚠️ The shell renders a view as `h(Component, { ctx })` with **its own**
+ * context — the one it got from `app.ready(['ui'])`, which has `ui` injected
+ * and nothing else. A cordis context throws for any property that was not
+ * injected, so a screen reading `ctx.sources` through its hooks threw
+ * `cannot get property "sources" without inject` on a device while every
+ * test passed, because tests built a root context where that read answers
+ * `undefined` instead.
+ *
+ * Registering a closure over the context this plugin was applied with is what
+ * `plugin-hello-ui-mobile` has always done, and it is the fix: the screen runs
+ * on a context with exactly what this package's `inject` declares. The shell's
+ * props are still forwarded, so a view that takes more than `ctx` keeps
+ * working.
+ */
+function bound<P extends { ctx: Context }>(
+  ctx: Context,
+  Screen: (props: P) => ReactElement | null,
+): (props: Omit<P, 'ctx'>) => ReactElement | null {
+  // `h(Screen, …)`, not `Screen(…)`: calling a component as a function splices
+  // its hooks into this one's list, which works right up until someone renders
+  // it conditionally. An element keeps them separate.
+  return function Bound(props) {
+    return h(Screen, { ...props, ctx } as P)
+  }
+}
+
+export const inject = ['ui', 'sources']
 
 export async function apply(ctx: Context) {
   return ctx.effect(function* () {
-    yield ctx.ui.registerView(SOURCES_VIEWS.library, LibraryScreen)
-    yield ctx.ui.registerView(SOURCES_VIEWS.album, AlbumScreen)
-    yield ctx.ui.registerView(SOURCES_VIEWS.sourceImport, ImportScreen)
-    yield ctx.ui.registerView(SOURCES_VIEWS.sourceDebug, DebugScreen)
+    yield ctx.ui.registerView(SOURCES_VIEWS.library, bound(ctx, LibraryScreen))
+    yield ctx.ui.registerView(SOURCES_VIEWS.album, bound(ctx, AlbumScreen))
+    yield ctx.ui.registerView(SOURCES_VIEWS.sourceImport, bound(ctx, ImportScreen))
+    yield ctx.ui.registerView(SOURCES_VIEWS.sourceDebug, bound(ctx, DebugScreen))
   }, 'sources-ui-desktop')
 }
 

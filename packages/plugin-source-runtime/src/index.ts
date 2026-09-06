@@ -30,6 +30,7 @@ import type {
   StreamPrefs,
 } from '@BBeBee/protocol'
 import { DocumentSource, type SourceVars } from './source.js'
+import { isInterpretable } from './capabilities.js'
 
 /**
  * How long one rotted rule stays "already reported".
@@ -147,8 +148,18 @@ export class SourceRuntime {
 
   /** Start what should be running, stop what should not. */
   private async sync(): Promise<void> {
+    /*
+     * Enabled *and* something this runtime can interpret.
+     *
+     * Not every `sources` row is a document: the catalogue's foreign keys need
+     * one per source id, so the scanner writes a rules-free row for `local`.
+     * Starting a fiber for it registered a second provider on `local` and
+     * collided with `plugin-source-local`'s real one — see `isInterpretable`.
+     */
     const wanted = new Map(
-      this.ctx.sources.sources.filter((r) => r.enabled).map((r) => [r.id, r] as const),
+      this.ctx.sources.sources
+        .filter((r) => r.enabled && isInterpretable(r.doc))
+        .map((r) => [r.id, r] as const),
     )
 
     for (const [id, current] of this.live) {
@@ -555,7 +566,7 @@ export class SourceRuntime {
 }
 
 export { DocumentSource } from './source.js'
-export { capabilitiesFor, parseRate } from './capabilities.js'
+export { capabilitiesFor, isInterpretable, parseRate } from './capabilities.js'
 
 export const name = 'plugin-source-runtime'
 export const inject = ['http', 'db', 'sources']
