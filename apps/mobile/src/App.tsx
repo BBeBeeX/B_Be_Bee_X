@@ -19,23 +19,62 @@ import { ScrollView, Text, View, Pressable, ActivityIndicator } from 'react-nati
  */
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import type { Context } from 'cordis'
-import type { RouteContribution } from '@BBeBee/protocol'
+import type { RouteContribution, SettingsContribution } from '@BBeBee/protocol'
 import { boot } from './boot'
 
-function useRoutes(ctx: Context): readonly RouteContribution[] {
-  const [routes, setRoutes] = useState<readonly RouteContribution[]>(() => ctx.ui.routes)
+/** What the tab bar can navigate to: a route, or a settings page. */
+interface Tab {
+  id: string
+  title: string
+}
+
+/**
+ * Re-read the registry whenever a plugin contributes or unloads.
+ *
+ * ⚠️ **Settings pages are navigable, not just routes.** `ctx.ui.settings` was
+ * contributed by `plugin-local-scanner` and `plugin-sources` from the start
+ * and read by nobody, so "Music folders" — the screen with *Add folder* and
+ * *Scan now* on it — existed, had a view registered, and could not be reached
+ * from either shell. A contribution nothing renders is a feature nobody has.
+ */
+function useTabs(ctx: Context): Tab[] {
+  const read = () => ({
+    routes: [...ctx.ui.routes] as readonly RouteContribution[],
+    settings: [...ctx.ui.settings] as readonly SettingsContribution[],
+  })
+  const [state, setState] = useState(read)
   useEffect(() => {
-    const off = ctx.on('ui/changed', () => setRoutes([...ctx.ui.routes]))
+    // `read` is redefined per render but only ever closes over `ctx`, so
+    // re-subscribing on `ctx` alone is correct and keeps one listener.
+    const off = ctx.on('ui/changed', () =>
+      setState({ routes: [...ctx.ui.routes], settings: [...ctx.ui.settings] }),
+    )
     return () => void off()
   }, [ctx])
-  return routes
+
+  return [
+    ...state.routes
+      .filter((r) => r.placement?.includes('tab-bar') ?? true)
+      .map((r) => ({ id: r.id, title: r.title })),
+    /*
+     * Settings pages that actually have a view.
+     *
+     * ⚠️ A different rule from routes, deliberately. A *route* with no view on
+     * this target renders "not available on this platform", which is true and
+     * worth saying. A settings page with no view on *either* target is not a
+     * platform gap, it is a page nobody has written yet (`sources.settings` is
+     * one today), and listing it advertises a screen that does not exist.
+     */
+    ...state.settings
+      .filter((s) => ctx.ui.viewFor(s.id) !== undefined)
+      .map((s) => ({ id: s.id, title: s.title })),
+  ]
 }
 
 function Shell({ ctx }: { ctx: Context }) {
-  const routes = useRoutes(ctx)
+  const tabs = useTabs(ctx)
   const [activeId, setActiveId] = useState<string | undefined>()
-  const tabs = routes.filter((r) => r.placement?.includes('tab-bar') ?? true)
-  const active = routes.find((r) => r.id === activeId) ?? tabs[0]
+  const active = tabs.find((t) => t.id === activeId) ?? tabs[0]
   const ViewComponent = active
     ? (ctx.ui.viewFor(active.id) as ComponentType<{ ctx: Context }> | undefined)
     : undefined
@@ -57,18 +96,24 @@ function Shell({ ctx }: { ctx: Context }) {
     h(
       View,
       { style: { flexDirection: 'row', borderTopColor: '#1E1E28', borderTopWidth: 1 } },
-      ...tabs.map((route) =>
+      ...tabs.map((tab) =>
         h(
           Pressable,
           {
-            key: route.id,
-            onPress: () => setActiveId(route.id),
+            key: tab.id,
+            onPress: () => setActiveId(tab.id),
+            accessibilityRole: 'tab',
+            accessibilityLabel: tab.title,
+            accessibilityState: { selected: active?.id === tab.id },
             style: { flex: 1, padding: 14, alignItems: 'center' },
           },
           h(
             Text,
-            { style: { color: active?.id === route.id ? '#F5F5F7' : '#5A5A68' } },
-            route.title,
+            {
+              numberOfLines: 1,
+              style: { color: active?.id === tab.id ? '#F5F5F7' : '#5A5A68' },
+            },
+            tab.title,
           ),
         ),
       ),

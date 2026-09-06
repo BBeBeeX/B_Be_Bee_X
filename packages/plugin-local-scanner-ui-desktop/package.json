@@ -30,6 +30,13 @@
     "@types/react": "^19.2.0",
     "vitest": "^4.1.11",
     "react-dom": "19.2.3",
-    "@types/react-dom": "^19.2.0"
+    "@types/react-dom": "^19.2.0",
+    "@BBeBee/core-paths-node": "workspace:*",
+    "@BBeBee/core-fs-node": "workspace:*",
+    "@BBeBee/core-db-node": "workspace:*",
+    "@BBeBee/core-codec-node": "workspace:*",
+    "@BBeBee/plugin-ui": "workspace:*",
+    "@BBeBee/kernel": "workspace:*",
+    "@testing-library/react": "^16.3.3"
   }
 }
