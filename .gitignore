@@ -1,10 +1,16 @@
 node_modules/
 dist/
+out/
 *.tsbuildinfo
 .DS_Store
 *.log
 .env
 .env.local
 coverage/
-**/node_modules/
-**/out/
+
+# Generated native projects. `app.json` and its config plugins are the source
+# of truth; `npx expo prebuild` rebuilds these from it, so committing them
+# means two descriptions of the same thing that drift apart (docs/11 §4.13).
+apps/mobile/android/
+apps/mobile/ios/
+apps/mobile/.expo/devices.json
