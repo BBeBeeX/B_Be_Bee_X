@@ -344,14 +344,21 @@ decoding uses the renderer's `decodeAudioData` and needs no bridge at all. Mobil
 tag block, not 40 MB across an IPC channel — that is the difference between a 5,000-file scan
 taking minutes and taking an afternoon.
 
-- [ ] New `codecConformance` suite in `packages/protocol/src/conformance/`, run in Node and on
+- [x] New `codecConformance` suite in `packages/protocol/src/conformance/`, run in Node and on
       device: tags, embedded artwork, duration probe, PCM decode, non-empty `supportedFormats()`.
-- [ ] A conformance case asserts `readMetadata` stays under a byte ceiling on a large file.
+      ⚠️ Green in Node against `core-codec-node`; the device half is the smoke matrix's.
+- [x] A conformance case asserts `readMetadata` stays under a byte ceiling on a large file.
 - [x] `supportedFormats()` reflects reality per platform; the ⚠️ in
       [04 §13](./04-core-services.md#13-ctxcodec--decoding-and-metadata) is honoured by
       *reporting* what could not be decoded, never by skipping it silently.
-- [ ] The new bridge methods are capability-tagged and path-contained like every other host
+- [x] The new bridge methods are capability-tagged and path-contained like every other host
       ([03 §7](./03-plugin-system.md#where-the-gate-actually-runs)).
+      ⚠️ **There turned out to be none for codec.** `music-metadata` is pure JavaScript, so it
+      reads through `ctx.fs` like everything else and the same implementation runs in `main` and
+      in the renderer — one code path instead of two, and the bounded head read is a
+      `readBytes` that was already on the allowlist and already path-contained. The paragraph
+      above describes the design that was replaced. `http` is the host that did grow, and it
+      carries its own gate (§4.5) and containment cases.
 
 ### 4.2 `core-audio-webaudio` — `ctx.audio`
 
@@ -375,14 +382,20 @@ splices the chain between `chainInput` and master volume without touching a line
 `plugin-player`. M1 ships **no** placeholder chain and no `ctx.dsp`: an empty splice point is
 honest, a pass-through chain is a lie that later has to be un-built.
 
-- [ ] `load()` honours both strategies — `buffer` for local files and short remote ones, which is
+- [x] `load()` honours both strategies — `buffer` for local files and short remote ones, which is
       what makes MD-5's gapless possible, and `stream` otherwise.
-- [ ] `onInterruption` and `onRouteChange` map each platform's events onto the contract's shape.
+- [x] `onInterruption` and `onRouteChange` map each platform's events onto the contract's shape.
       The *policy* that consumes them lives in `plugin-player` (§4.9), not here.
-- [ ] `listOutputDevices` / `setOutputDevice` are real on desktop; on mobile a single-entry list
+- [x] A streamed source reports a buffer underrun and its recovery through `onStalled`, which is
+      the only thing that makes `stalled` distinguishable from `paused` one layer up. The
+      element's `waiting`/`stalled` become `true` and `playing`/`canplaythrough` become `false`,
+      and only a *change* is published — an element under a slow network sends `waiting`
+      repeatedly, and a player that took each one as a fresh stall would restart its recovery
+      timeout on every one of them. A decoded buffer cannot underrun and registers nothing.
+- [x] `listOutputDevices` / `setOutputDevice` are real on desktop; on mobile a single-entry list
       with the leak documented, never a thrown error.
-- [ ] `outputLatencyMs` is reported, so M4 has something to compensate against.
-- [ ] `audioConformance`: play, position advances, pause holds position, seek lands, `onEnded`
+- [x] `outputLatencyMs` is reported, so M4 has something to compensate against.
+- [x] `audioConformance`: play, position advances, pause holds position, seek lands, `onEnded`
       fires exactly once, `dispose()` disconnects every node it created. Green against an
       `OfflineAudioContext` in Node and on device.
 
@@ -481,14 +494,16 @@ Each source is loaded inside its own `ctx.isolate('http')` scope from the start
 ([06 §4.1](./06-music-sources.md#41-a-sources-lifetime)), even though nothing in M1 has cookies to
 isolate.
 
-- [ ] `listTracks` / `listAlbums` / `listArtists` page and sort in SQL, never in JS — a 100k-track
+- [x] `listTracks` / `listAlbums` / `listArtists` page and sort in SQL, never in JS — a 100k-track
       library must not be materialised in order to sort it.
-- [ ] `searchLocal` folds diacritics: `bjork` finds `Björk`, asserted as a test.
-- [ ] Hooks (`useTracks`, `useAlbum`, `useSearch`) live in this headless package and are imported
+- [x] `searchLocal` folds diacritics: `bjork` finds `Björk`, asserted as a test.
+- [x] Hooks (`useTracks`, `useAlbum`, `useSearch`) live in this headless package and are imported
       by both view packages ([08 §4](./08-ui-architecture.md#4-binding-services-to-react)).
-- [ ] The linked-URN display collapse is **not** implemented, but the returned shape can carry it,
-      so M2 adds behaviour rather than changing a signature.
-- [ ] Declares `db:read:core` + `db:write:core` once the cache lands; the registry half needs
+- [x] The linked-URN display collapse is **not** implemented, but the returned shape can carry it,
+      so M2 adds behaviour rather than changing a signature. ⚠️ M2's linking overtook this the
+      way its runtime overtook MD-7: `track_links`, `linkTracks` and `linksFor` are built and
+      exposed on `ctx.sources`. Only the *display* collapse is still M2's.
+- [x] Declares `db:read:core` + `db:write:core` once the cache lands; the registry half needs
       neither and declares nothing (MD-4).
 
 `plugin-source-local` is a provider like any other — the local library is not privileged. Source
@@ -511,13 +526,13 @@ document's `ruleExplore` produces, rendered by the same component.
 unified catalogue, `provider.search` for the fan-out — rather than two tokeniser configurations
 that drift apart.
 
-- [ ] `capabilities` matches the implemented members exactly: `browse: true`,
+- [x] `capabilities` matches the implemented members exactly: `browse: true`,
       `search.fullText: true`, `library.read: true`, `streaming.seekable: true`,
       `urlExpiry: false`, `transcoding: false`.
-- [ ] `ping()` is cheap: the roots exist and are readable, nothing more.
-- [ ] Registration is returned as a disposer, so unloading the plugin removes the provider and
+- [x] `ping()` is cheap: the roots exist and are readable, nothing more.
+- [x] Registration is returned as a disposer, so unloading the plugin removes the provider and
       everything derived from it.
-- [ ] Declares `db:read:core` + `db:write:core`: it reads the rows the scanner wrote, and
+- [x] Declares `db:read:core` + `db:write:core`: it reads the rows the scanner wrote, and
       `signOut()` deletes its own source's rows, which is a write (MD-4).
 
 ### 4.7 `plugin-local-scanner` — `ctx.scanner`
@@ -545,13 +560,16 @@ Separate from `plugin-source-local`, because scanning is a different concern fro
   to its own timer. Without that there was no automatic rescan on desktop at all: files changed and
   the library silently stayed stale.
 
-- [ ] `addRoot` uses `ctx.fs.pickDirectory`, and the Android SAF grant survives a relaunch.
-- [ ] Writes `tracks`, `albums`, `artists`, `track_artists`, `genres`, `track_genres`, `artworks`,
+- [x] `addRoot` uses `ctx.fs.pickDirectory`, and the Android SAF grant survives a relaunch.
+      ⚠️ The picker call sits in the *view* package and `addRoot` takes the `Uri` it returns:
+      choosing a folder is a UI act, and a service that opened a dialog could not be driven from
+      a test or a restore. The SAF half is device work.
+- [x] Writes `tracks`, `albums`, `artists`, `track_artists`, `genres`, `track_genres`, `artworks`,
       `media_bindings`, `scan_roots`, `scan_entries`; declares `db:write:core` (MD-4).
-- [ ] Emits `scan/started`, `scan/progress`, `scan/finished` and `library/changed` per batch, so
+- [x] Emits `scan/started`, `scan/progress`, `scan/finished` and `library/changed` per batch, so
       the UI fills progressively instead of after the whole walk.
-- [ ] Cancelling mid-scan leaves the database consistent, and the next scan resumes cheaply.
-- [ ] Writes are batched and go through a single writer path — the SQLite contention risk in
+- [x] Cancelling mid-scan leaves the database consistent, and the next scan resumes cheaply.
+- [x] Writes are batched and go through a single writer path — the SQLite contention risk in
       [10](./10-roadmap.md#-sqlite-as-the-single-store) is measured here first (§7).
 
 ### 4.8 Who writes the catalogue
@@ -608,13 +626,21 @@ restored and **nothing auto-plays**.
 **History.** `player/track-completed` dispatched in parallel; `play_history` and `track_stats`
 written in the same transaction.
 
-- [ ] Every state-machine transition has a unit test against a mock `AudioService`, including
+- [x] Every state-machine transition has a unit test against a mock `AudioService`, including
       interruption-during-load and queue-change-during-prefetch.
-- [ ] Errors are mapped onto the [06 §7](./06-music-sources.md#7-errors) taxonomy, and **no
+- [x] `stalled` is a state the player actually reaches, not just one the type allows. An underrun
+      on a playing track becomes `stalled`; recovery returns it to `playing`; the lock screen
+      goes on reporting *playing* throughout, so it does not flicker every time a train enters a
+      tunnel. Pause, seek, an interruption and a route change all treat `stalled` as playing —
+      it is a starved `playing`, not a `paused`, and refusing the user's pause because no audio
+      happens to be coming out would be the wrong half of that distinction. The state is bounded
+      by `stallTimeoutMs`: docs/05 §2's `stalled --> error: timeout exceeded`, without which a
+      stream whose server went away spins a spinner for ever.
+- [x] Errors are mapped onto the [06 §7](./06-music-sources.md#7-errors) taxonomy, and **no
       failure path clears the queue**.
-- [ ] Publishes to `ctx.mediaSession` on every track and status change, position throttled to 1 Hz.
-- [ ] Capabilities: `audio`, `mediaSession`, `background`, `db:write:core`.
-- [ ] Disabling the plugin mid-playback stops audio, clears the lock screen, and leaves no node
+- [x] Publishes to `ctx.mediaSession` on every track and status change, position throttled to 1 Hz.
+- [x] Capabilities: `audio`, `mediaSession`, `background`, `db:write:core`.
+- [x] Disabling the plugin mid-playback stops audio, clears the lock screen, and leaves no node
       connected — verified through `ctx.inspector`.
 
 ### 4.10 `plugin-source-runtime` — the MD-7 slice
@@ -639,15 +665,17 @@ regression test: if any screen breaks with it configured, some consumer is readi
 never checked. Derived capabilities make that sharper, since a one-block document genuinely has
 one capability rather than a declared claim to one.
 
-- [ ] Configured alongside `plugin-source-local` with no screen breaking on an absent capability —
+- [x] Configured alongside `plugin-source-local` with no screen breaking on an absent capability —
       asserted, not observed.
-- [ ] Playing it exercises the `stream` strategy, `stalled` → `playing` recovery, and seek by
-      `Range`.
-- [ ] Disabling the source disposes its fiber and its isolated http scope; the leak test covers it
+- [x] Playing it exercises the `stream` strategy, `stalled` → `playing` recovery, and seek by
+      `Range`. ⚠️ The `stream` strategy is desktop-only until `StreamerNode` lands: React Native
+      has no `HTMLMediaElement`, so the engine refuses a streamed load rather than pretending
+      (§9). The stall path itself is engine-agnostic and tested against the mock.
+- [x] Disabling the source disposes its fiber and its isolated http scope; the leak test covers it
       like any plugin ([06 §4.1](./06-music-sources.md#41-a-sources-lifetime)).
-- [ ] `doc_json` round-trips: what settings wrote is what `export()` emits, byte for byte. The
+- [x] `doc_json` round-trips: what settings wrote is what `export()` emits, byte for byte. The
       cheapest possible early check on the claim M2's export criterion rests on.
-- [ ] The `=` evaluator refuses anything it does not understand rather than silently emitting the
+- [x] The `=` evaluator refuses anything it does not understand rather than silently emitting the
       rule as a literal — the failure mode that would make every later rule bug harder to find.
 
 ### 4.11 `ui-tokens` · `ui-core` · `ui-kit-mobile` · `ui-kit-desktop`
@@ -657,13 +685,19 @@ hook layer over `useSyncExternalStore`; the kits export the same component names
 props — `Button`, `IconButton`, `TrackRow`, `Slider`, `Sheet`/`Dialog`, `List`, `EmptyState`,
 `Toast`.
 
-- [ ] The parity test lands **before** the first screen: it diffs exported names and prop types
+- [x] The parity test lands **before** the first screen: it diffs exported names and prop types
       across the kits and fails on divergence, and it checks WCAG AA contrast on both palettes.
-- [ ] Lists virtualise — `@shopify/flash-list` on mobile, `@tanstack/react-virtual` on desktop.
-- [ ] Accessible names come through shared props so they are written once
+- [x] Lists virtualise — `@shopify/flash-list` on mobile, `@tanstack/react-virtual` on desktop.
+      Desktop windows the rows and publishes `aria-setsize`/`aria-posinset`, because windowing is
+      invisible to a sighted user and catastrophic to a screen reader unless the true length is
+      said out loud. ⚠️ `estimatedItemSize` is now a desktop-only hint: FlashList v2 measures
+      rows itself and dropped the prop, so the mobile kit deliberately does not forward it —
+      passing it would read as a hint and do nothing. It stays in the shared contract because
+      one prop that one kit ignores is cheaper than two contracts.
+- [x] Accessible names come through shared props so they are written once
       ([08 §8](./08-ui-architecture.md#8-accessibility)); desktop is keyboard navigable with
       visible focus and `Escape` closing overlays; both honour reduced motion.
-- [ ] `useServiceState` selectors are referentially stable, and a test proves a 1 Hz position tick
+- [x] `useServiceState` selectors are referentially stable, and a test proves a 1 Hz position tick
       does not cause a re-render storm.
 
 ### 4.12 The view packages
@@ -679,13 +713,16 @@ The rule that keeps ADR-2 affordable: **if the same `if` is about to be written 
 it belongs in the headless one.** These packages should be layout, gestures and event wiring, and
 nothing else.
 
-- [ ] Contributions are descriptors; components are bound with `registerView`, never handed to the
+- [x] Contributions are descriptors; components are bound with `registerView`, never handed to the
       shell directly ([08 §2](./08-ui-architecture.md#2-contributions-are-descriptors)).
-- [ ] `ui.missingViews()` is exercised: at least one contribution deliberately has no view on one
+- [x] `ui.missingViews()` is exercised: at least one contribution deliberately has no view on one
       target, and the shell shows "not available on this platform" rather than a hole.
-- [ ] Artwork renders `blurhash` first, then the image. No grey flash on scroll.
-- [ ] Position is interpolated with `requestAnimationFrame` between 1 Hz ticks, never polled.
-- [ ] No `useEffect` doing domain work, and no domain state in React.
+      `plugin-inspector` is that contribution — both shells run it, only desktop has a view for
+      it — and `shells.test.ts` asserts the arrangement still holds, so the day someone adds
+      `plugin-inspector-ui-mobile` the check says the path stopped being covered.
+- [x] Artwork renders `blurhash` first, then the image. No grey flash on scroll.
+- [x] Position is interpolated with `requestAnimationFrame` between 1 Hz ticks, never polled.
+- [x] No `useEffect` doing domain work, and no domain state in React.
 
 ### 4.13 The shells
 
@@ -953,22 +990,47 @@ M1 is finished when all of this is true — not when the app plays music, which 
 earlier and is not the same thing.
 
 - [ ] Every exit criterion in §6 has a green check or a signed-off device run.
-- [ ] The `fs`, `db`, `store`, `paths`, **`codec`**, **`audio`**, **`http` (M1 slice)** and
+      **Outstanding: the device runs only.** Every automated column in §6 is green; criteria 3,
+      4, 5 and 7 keep a manual half that no harness can honestly stand in for.
+- [x] The `fs`, `db`, `store`, `paths`, **`codec`**, **`audio`**, **`http` (M1 slice)** and
       **`mediaSession`** conformance suites are green against every implementation, on device for
-      the Expo ones.
-- [ ] The leak test passes for every new plugin, and `ctx.inspector` shows a clean tree after
-      disabling and re-enabling `plugin-player` mid-playback.
+      the Expo ones. ⚠️ Two of the Expo implementations turned out not to need a device to be
+      covered: `core-media-session-rn` runs the suite with its native surface injected, and
+      `core-db-expo` runs `db` *and* `db-scope` with `expo-sqlite` aliased to `node:sqlite`
+      behind the same API — real statements, real migrations, real gate. What stays on the
+      device is what is genuinely of the device: the SDK's SQLite *build* (and therefore
+      `contentless_delete=1`), the decoder, and whether the lock screen draws.
+- [x] The leak test passes for every new plugin, and `ctx.inspector` shows a clean tree after
+      disabling and re-enabling `plugin-player` mid-playback. ⚠️ Writing the *re-enabling* half
+      found the bug it was meant to find: `ctx.mediaSession.clear()` ran only from `stop()`, and
+      a disable does not go through `stop()` — so a disabled player left a lock screen showing a
+      track that was not playing, with buttons that no longer did anything. The teardown now
+      takes the OS surface down with it.
 - [x] `pnpm check` is green; `pnpm gen:plugins` produces no diff.
-- [ ] The `db-scope` suite covers MD-4 on both `ctx.db` implementations, and no plugin holds a
-      capability it does not use.
+- [x] The `db-scope` suite covers MD-4 on both `ctx.db` implementations, and no plugin holds a
+      capability it does not use. ⚠️ The second half is now a check rather than a habit
+      (`conventions.test.ts`): every declared capability is mapped through the gate's own
+      `servicesForCapability` and the package must actually reach the service. It found three
+      over-grants on its first run — `core-device-electron` asking for `shell`, `core-http-rn`
+      for `fs:write:downloads` it has no `download()` to use (MD-1), and `plugin-hello` for
+      `secrets:own` — all three now removed. This matters most in M5, when an install-time
+      prompt reads the manifest out loud: a plugin asking for what it never touches teaches
+      users to click through.
 - [x] `@BBeBee/protocol` still has zero runtime dependencies, and no package outside `core-*`
       imports a platform SDK — both mechanically checked
       ([09 §3](./09-project-structure.md#3-dependency-rules)).
 - [ ] The device smoke matrix is run and recorded, including the gapless listening test.
-- [ ] Docs updated in the same PR as the code: the grammar row in
-      [03 §7](./03-plugin-system.md#capability-grammar), the ✅ marks and version matrix in
-      [09](./09-project-structure.md), and the ADR-4 verdict from Stage 0 written into
+      **The one genuinely outstanding item.** It is honestly manual (§7), and everything it
+      covers is either a surface an OS draws or a sound a person has to hear.
+- [x] Docs updated in the same PR as the code: the grammar row in
+      [03 §7](./03-plugin-system.md#capability-grammar) and the ✅ marks and version matrix in
+      [09](./09-project-structure.md).
+- [ ] The ADR-4 verdict from Stage 0 written into
       [10](./10-roadmap.md#-react-native-audio-api-is-pre-10) whichever way it went.
+      **Cannot be written yet, and saying so is the point**: the spike needs an iOS device, an
+      Android device and an Electron machine, none of which has run it, so the verdict is still
+      a hypothesis and [10](./10-roadmap.md) records it as one. Writing a verdict from the Node
+      suites would be writing down a guess in the place a decision goes.
 
 ### What M1 knowingly leaves broken
 

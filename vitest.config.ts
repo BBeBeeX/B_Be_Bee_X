@@ -15,6 +15,13 @@ export default defineConfig({
       'react-native-audio-api': fileURLToPath(
         new URL('./test/stubs/react-native-audio-api.ts', import.meta.url),
       ),
+      /*
+       * `expo-sqlite`, on the other hand, is aliased to something that really
+       * works: `node:sqlite` behind the Expo surface. The gate MD-4 added has
+       * to be shown to hold on *both* drivers, and a stub that threw would
+       * leave the mobile one covered by reading it.
+       */
+      'expo-sqlite': fileURLToPath(new URL('./test/stubs/expo-sqlite.ts', import.meta.url)),
     },
   },
   test: {
@@ -22,10 +29,18 @@ export default defineConfig({
     // silently matched nothing would report "no test files" as success.
     include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.test.tsx'],
     environment: 'node',
-    // jsdom only where a hook needs one. Everything else stays in Node: a DOM
-    // for the whole suite would slow every test that has no use for one, and
-    // would let a Node-only package accidentally depend on `window`.
-    environmentMatchGlobs: [['packages/*/src/**/*.test.tsx', 'jsdom']],
+    /*
+     * jsdom only where a test needs one, opted into per file with a
+     * `// @vitest-environment jsdom` docblock. Everything else stays in Node:
+     * a DOM for the whole suite would slow every test that has no use for one,
+     * and would let a Node-only package accidentally depend on `window`.
+     *
+     * ⚠️ This was an `environmentMatchGlobs` entry mapping `*.test.tsx` to
+     * jsdom. Vitest 4 removed the option, so it stopped applying silently —
+     * a `.tsx` test that wanted a DOM got Node and a bare `Element is not
+     * defined`, while the files that already carried the docblock went on
+     * passing and hid it. The per-file pragma is the supported spelling.
+     */
     // Creates the scratch root the harnesses allocate under, and removes it
     // when the run ends. See vitest.global.ts.
     globalSetup: ['./vitest.global.ts'],

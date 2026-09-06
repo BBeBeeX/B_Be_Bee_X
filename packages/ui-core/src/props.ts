@@ -83,7 +83,11 @@ export interface ListProps<T> extends CommonProps {
   renderItem: (item: T, index: number) => unknown
   /** A 100k-track library needs stable keys or every scroll re-mounts rows. */
   keyExtractor: (item: T, index: number) => string
-  /** Both virtualisers want it, and neither should have to guess. */
+  /**
+   * Row height hint for the desktop virtualiser, which windows by arithmetic
+   * and should not have to guess. FlashList measures rows itself and ignores
+   * it; one prop that one kit ignores is cheaper than two contracts.
+   */
   estimatedItemSize?: number
   onEndReached?: () => void
   /** What to show instead of nothing. */

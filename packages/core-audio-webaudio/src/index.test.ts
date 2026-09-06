@@ -8,6 +8,51 @@ import plugin, { AudioWebAudio } from './index.js'
 import { type FakeAudioContext, createFakeAudioContext } from './fake-context.js'
 
 /**
+ * A media element, as far as a streamed handle is concerned.
+ *
+ * The real one is an `HTMLAudioElement` whose buffer state arrives as events;
+ * this is the same surface with the events under the test's control, which is
+ * what makes an underrun something a test can cause rather than wait for.
+ */
+class FakeMediaElement {
+  src = ''
+  currentTime = 0
+  duration = 120
+  paused = true
+  private readonly listeners = new Map<string, Set<() => void>>()
+
+  async play(): Promise<void> {
+    this.paused = false
+  }
+
+  pause(): void {
+    this.paused = true
+  }
+
+  addEventListener(type: string, listener: () => void): void {
+    let set = this.listeners.get(type)
+    if (!set) this.listeners.set(type, (set = new Set()))
+    set.add(listener)
+  }
+
+  removeEventListener(type: string, listener: () => void): void {
+    this.listeners.get(type)?.delete(listener)
+  }
+
+  /** Fire an event the way the platform would. */
+  emit(type: string): void {
+    for (const listener of [...(this.listeners.get(type) ?? [])]) listener()
+  }
+
+  /** Listeners still attached, so a disposed handle can be shown to leave none. */
+  countListeners(): number {
+    let total = 0
+    for (const set of this.listeners.values()) total += set.size
+    return total
+  }
+}
+
+/**
  * The service under test is the real one; only the engine below it is fake.
  * The graph wiring, offset arithmetic and one-shot source lifecycle are
  * therefore genuinely exercised.
@@ -16,15 +61,36 @@ async function harness(): Promise<{
   ctx: Context
   audio: AudioWebAudio
   engine: FakeAudioContext
+  elements: FakeMediaElement[]
 }> {
   const engine = createFakeAudioContext()
+  const elements: FakeMediaElement[] = []
   const ctx = new Context()
   await ctx.plugin(plugin, {
     createContext: () => engine as unknown as BaseAudioContext,
     fetchBytes: async () => new ArrayBuffer(8),
+    createMediaElement: () => {
+      const element = new FakeMediaElement()
+      elements.push(element)
+      return element
+    },
   })
   await tick()
-  return { ctx, audio: ctx.audio as AudioWebAudio, engine }
+  return { ctx, audio: ctx.audio as AudioWebAudio, engine, elements }
+}
+
+/** The one harness with no media element, for the refusal case. */
+async function harnessWithoutMediaElement(): Promise<{ audio: AudioWebAudio }> {
+  const ctx = new Context()
+  await ctx.plugin(plugin, {
+    createContext: () => createFakeAudioContext() as unknown as BaseAudioContext,
+    fetchBytes: async () => new ArrayBuffer(8),
+    // Explicitly none: `defaultMediaElementFactory()` finds nothing in Node,
+    // and saying so here keeps the case honest if that ever changes.
+    createMediaElement: undefined,
+  })
+  await tick()
+  return { audio: ctx.audio as AudioWebAudio }
 }
 
 describe('core-audio-webaudio', () => {
@@ -46,10 +112,20 @@ describe('core-audio-webaudio', () => {
   })
 
   it('refuses to stream where the platform has no media element', async () => {
-    const { audio } = await harness()
+    const { audio } = await harnessWithoutMediaElement()
     await expect(audio.load('https://example.org/a.mp3', { strategy: 'stream' })).rejects.toThrow(
       /media element/,
     )
+  })
+
+  it('streams through a media element, wired into chainInput like any source', async () => {
+    const { audio, engine, elements } = await harness()
+    const source = await audio.load('https://example.org/a.mp3', { strategy: 'stream' })
+
+    expect(elements).toHaveLength(1)
+    expect(elements[0]!.src).toBe('https://example.org/a.mp3')
+    expect(engine.mediaSources, 'the element is wrapped, not played on its own').toHaveLength(1)
+    expect(source.node).toBe(engine.mediaSources[0]!.node)
   })
 
   it('mute restores the level it replaced', async () => {
@@ -115,6 +191,62 @@ describe('core-audio-webaudio', () => {
     expect(engine.closed, 'the audio context must be closed on unload').toBe(true)
     const problems = diffSnapshots(before, snapshotContext(ctx))
     expect(problems, problems?.join('; ')).toBeUndefined()
+  })
+})
+
+describe('stalls', () => {
+  it('maps the element\u2019s buffer events onto the contract\u2019s shape', async () => {
+    // `waiting` is what a starved element sends; `playing` is the honest
+    // recovery, because `canplay` fires while still paused (docs/05 §2).
+    const { audio, elements } = await harness()
+    const source = await audio.load('https://example.org/a.mp3', { strategy: 'stream' })
+    const seen: boolean[] = []
+    source.onStalled((stalled) => void seen.push(stalled))
+
+    elements[0]!.emit('waiting')
+    elements[0]!.emit('playing')
+
+    expect(seen).toEqual([true, false])
+  })
+
+  it('publishes a change, not every event', async () => {
+    // A slow network sends `waiting` over and over. A player that took each
+    // one as a fresh stall would restart its recovery timeout on every one,
+    // turning "gives up after 30 seconds" into "never gives up".
+    const { audio, elements } = await harness()
+    const source = await audio.load('https://example.org/a.mp3', { strategy: 'stream' })
+    const seen: boolean[] = []
+    source.onStalled((stalled) => void seen.push(stalled))
+
+    elements[0]!.emit('waiting')
+    elements[0]!.emit('stalled')
+    elements[0]!.emit('waiting')
+
+    expect(seen).toEqual([true])
+  })
+
+  it('a decoded buffer never stalls, and leaks no listener for saying so', async () => {
+    const { audio } = await harness()
+    const source = await audio.load('file:///music/a.flac', { strategy: 'buffer' })
+    let called = false
+    const off = source.onStalled(() => void (called = true))
+
+    off()
+    source.play()
+    expect(called).toBe(false)
+  })
+
+  it('a disposed streamed source stops listening', async () => {
+    const { audio, elements } = await harness()
+    const source = await audio.load('https://example.org/a.mp3', { strategy: 'stream' })
+    const seen: boolean[] = []
+    source.onStalled((stalled) => void seen.push(stalled))
+
+    source.dispose()
+    elements[0]!.emit('waiting')
+
+    expect(seen).toEqual([])
+    expect(elements[0]!.countListeners(), 'every handler is removed, not just muted').toBe(0)
   })
 })
 

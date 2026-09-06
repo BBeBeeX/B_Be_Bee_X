@@ -48,7 +48,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/core-http-rn": {
     plugin: coreHttpRn,
-    manifest: {"id":"@BBeBee/core-http-rn","platforms":["mobile"],"version":"0.0.0","displayName":"HTTP","description":"ctx.http for iOS and Android — the M1 slice over expo/fetch.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:write:downloads"],"contributes":{"services":["http"]}},
+    manifest: {"id":"@BBeBee/core-http-rn","platforms":["mobile"],"version":"0.0.0","displayName":"HTTP","description":"ctx.http for iOS and Android — the M1 slice over expo/fetch.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*"],"contributes":{"services":["http"]}},
     builtin: true,
   },
   "@BBeBee/core-media-session-rn": {
@@ -63,7 +63,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-hello": {
     plugin: pluginHello,
-    manifest: {"id":"@BBeBee/plugin-hello","version":"0.0.0","displayName":"Hello","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:own","secrets:own"],"contributes":{"services":["hello"]}},
+    manifest: {"id":"@BBeBee/plugin-hello","version":"0.0.0","displayName":"Hello","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:own"],"contributes":{"services":["hello"]}},
     builtin: true,
   },
   "@BBeBee/plugin-hello-ui-mobile": {

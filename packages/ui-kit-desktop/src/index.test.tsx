@@ -1,13 +1,20 @@
+// @vitest-environment jsdom
 /**
  * The desktop kit renders, and renders the things docs/08 §8 requires.
  *
- * Static markup rather than a DOM: what is worth pinning here is the
- * *accessible* output — a name on every control, a role a screen reader can
- * use, a focus ring nobody removed — and that is all in the markup.
+ * Static markup for most of it: what is worth pinning is the *accessible*
+ * output — a name on every control, a role a screen reader can use, a focus
+ * ring nobody removed — and that is all in the markup.
+ *
+ * `List` is the exception and runs in the DOM, because windowing is a function
+ * of how tall the scroller is and where it is scrolled, and static markup has
+ * neither.
  */
 
 import { describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { render } from '@testing-library/react'
+import { TEST_ROW_HEIGHT as ROW, withListLayout as withLayout } from './testing.js'
 import { createElement as h } from 'react'
 import type { Track } from '@BBeBee/protocol'
 import {
@@ -136,31 +143,80 @@ describe('Sheet', () => {
   })
 })
 
+/**
+ * The one component that needs a real DOM.
+ *
+ * Windowing is a function of how tall the scroller is and where it is
+ * scrolled, and static markup has neither. So `List` is rendered into jsdom
+ * with a viewport of a known size — measured, not mocked away, because a test
+ * that stubbed the virtualiser would only prove the stub windows correctly.
+ */
 describe('List', () => {
-  it('renders each item with a stable key', () => {
-    const out = html(
-      h(List<{ id: string }>, {
-        items: [{ id: 'a' }, { id: 'b' }],
-        keyExtractor: (i) => i.id,
-        renderItem: (i) => h(Text, { children: i.id }),
-      }),
+  const items = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `t${i}` }))
+
+  function renderList(count: number, extra: Record<string, unknown> = {}) {
+    return withLayout(() =>
+      render(
+        h(List<{ id: string }>, {
+          items: items(count),
+          keyExtractor: (i) => i.id,
+          renderItem: (i) => h(Text, { children: i.id }),
+          estimatedItemSize: ROW,
+          ...extra,
+        }),
+      ),
     )
-    expect(out).toContain('role="list"')
-    expect((out.match(/role="listitem"/g) ?? []).length).toBe(2)
+  }
+
+  it('renders a window of rows, not the whole library', () => {
+    // 10,000 rows in the DOM is where a desktop list stops being usable; the
+    // point of the virtualiser is that this number stays small.
+    const { container } = renderList(10_000)
+    const rows = container.querySelectorAll('[role="listitem"]')
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.length).toBeLessThan(100)
+  })
+
+  it('tells assistive technology how long the list really is', () => {
+    // Windowing is invisible to a sighted user and catastrophic to a screen
+    // reader unless the true size is published.
+    const { container } = renderList(10_000)
+    const first = container.querySelector('[role="listitem"]')!
+    expect(first.getAttribute('aria-setsize')).toBe('10000')
+    expect(first.getAttribute('aria-posinset')).toBe('1')
+  })
+
+  it('scrolls the whole library, not just the window', () => {
+    const { container } = renderList(1000)
+    const spacer = container.querySelector('[role="list"] > div') as HTMLElement
+    expect(Number.parseInt(spacer.style.height, 10)).toBeGreaterThanOrEqual(1000 * ROW)
+  })
+
+  it('renders every row of a list that fits', () => {
+    const { container } = renderList(3)
+    expect(container.querySelectorAll('[role="listitem"]')).toHaveLength(3)
   })
 
   it('shows the empty state instead of nothing', () => {
     // A blank pane tells a user nothing about whether it is loading, broken,
     // or genuinely empty.
-    const out = html(
-      h(List<{ id: string }>, {
-        items: [],
-        keyExtractor: (i) => i.id,
-        renderItem: () => null,
-        empty: h(EmptyState, { title: 'No tracks yet' }),
-      }),
+    const { container } = withLayout(() =>
+      render(
+        h(List<{ id: string }>, {
+          items: [],
+          keyExtractor: (i: { id: string }) => i.id,
+          renderItem: () => null,
+          empty: h(EmptyState, { title: 'No tracks yet' }),
+        }),
+      ),
     )
-    expect(out).toContain('No tracks yet')
+    expect(container.textContent).toContain('No tracks yet')
+  })
+
+  it('reports reaching the end once, not once per render', () => {
+    const onEndReached = vi.fn()
+    renderList(3, { onEndReached })
+    expect(onEndReached).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -24,7 +24,7 @@ class FakeParam {
   }
 }
 
-class FakeNode {
+export class FakeNode {
   readonly outputs = new Set<FakeNode>()
   connectCount = 0
   disconnectCount = 0
@@ -112,12 +112,29 @@ export class FakeAudioContext {
 
   private readonly scheduled: Scheduled[] = []
 
+  /** Every element wrapped by `createMediaElementSource`, in order. */
+  readonly mediaSources: { element: unknown; node: FakeNode }[] = []
+
   createGain(): FakeGain {
     return new FakeGain()
   }
 
   createBufferSource(): FakeBufferSource {
     return new FakeBufferSource(this)
+  }
+
+  /**
+   * The streamed half of `load()`.
+   *
+   * Real Web Audio wraps the element; nothing here needs to, because the
+   * element itself is what a streamed handle listens to. Returning a plain
+   * node is enough to exercise the wiring and the stall mapping without a
+   * network or a decoder.
+   */
+  createMediaElementSource(element: unknown): FakeNode {
+    const node = new FakeNode()
+    this.mediaSources.push({ element, node })
+    return node
   }
 
   async decodeAudioData(_data: ArrayBuffer): Promise<FakeAudioBuffer> {

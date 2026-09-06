@@ -124,7 +124,10 @@ export const COMPONENT_CONTRACT: ComponentSpec[] = [
       { name: 'items', required: true },
       { name: 'renderItem', required: true },
       { name: 'keyExtractor', required: true, note: 'A 100k-track library needs stable keys.' },
-      { name: 'estimatedItemSize', note: 'Both virtualisers want it; neither should guess.' },
+      {
+        name: 'estimatedItemSize',
+        note: 'The desktop virtualiser windows by arithmetic and needs it; FlashList measures.',
+      },
       { name: 'onEndReached' },
       { name: 'empty', note: 'What to show instead of nothing.' },
       ...UNIVERSAL,

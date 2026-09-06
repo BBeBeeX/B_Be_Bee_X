@@ -202,3 +202,32 @@ describe.each(SHELLS)('the $name shell', (shell) => {
     ).toEqual([])
   })
 })
+
+/**
+ * The arrangement `ui.missingViews()` exists for (docs/11 §4.12).
+ *
+ * A contribution with no view on one target must be a normal state, and the
+ * only way to know the shells still handle it is for one to actually be in
+ * that state. `plugin-inspector` is it: both shells run the plugin, only
+ * desktop has a view package for it, and mobile shows "not available on this
+ * platform" rather than a hole.
+ *
+ * Asserted rather than left to the comment above, because the day someone adds
+ * `plugin-inspector-ui-mobile` the path stops being covered and nothing else
+ * would say so.
+ */
+describe('a contribution with no view on one target', () => {
+  it('is genuinely configured, so missingViews() is exercised', async () => {
+    const desktop = await shellLists(SHELLS.find((s) => s.name === 'desktop')!)
+    const mobile = await shellLists(SHELLS.find((s) => s.name === 'mobile')!)
+
+    expect(mobile.enabled, 'both shells run the headless plugin').toContain(
+      '@BBeBee/plugin-inspector',
+    )
+    expect(desktop.enabled).toContain('@BBeBee/plugin-inspector-ui-desktop')
+    expect(
+      mobile.enabled.some((id) => id.endsWith('inspector-ui-mobile')),
+      'if this ever gains a mobile view, point this check at another contribution',
+    ).toBe(false)
+  })
+})

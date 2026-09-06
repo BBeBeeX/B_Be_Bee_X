@@ -26,6 +26,17 @@ export interface AudioSourceHandle {
   readonly positionMs: number
   /** Fires when the source reaches its natural end. */
   onEnded(cb: () => void): Disposable
+  /**
+   * Fires with `true` when playback runs out of buffered audio, and with
+   * `false` when it recovers.
+   *
+   * This is what makes `stalled` distinguishable from `paused` (docs/05 §2):
+   * an underrun is not a user decision, so the UI shows a spinner rather than a
+   * play button and the lock screen keeps reporting *playing*. A source that
+   * cannot underrun — a fully decoded buffer — never fires and says so by
+   * registering nothing, rather than by lacking the member.
+   */
+  onStalled(cb: (stalled: boolean) => void): Disposable
   dispose(): void
 }
 

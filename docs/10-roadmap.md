@@ -60,6 +60,13 @@ manifest rather than by being added to two hand-written lists that can disagree.
 checked at the size it names: a generated 5,000-file corpus, read by the real codec, through an
 instrumented `ctx.fs` that asserts the second pass opens no file.
 
+The transport reaches every state its type declares, `stalled` included: a streamed source reports
+an underrun through `ctx.audio`'s `onStalled`, the player shows a spinner rather than a play button
+and the lock screen goes on saying *playing*, and a stall that never recovers becomes a retryable
+error rather than a spinner that spins for ever. Both kits virtualise their lists — FlashList on
+mobile, `@tanstack/react-virtual` on desktop, the latter publishing `aria-setsize` so windowing
+stays invisible to a screen reader rather than catastrophic for one.
+
 Still open, and every one of them needs hardware: **the Stage 0 spike has not been run** on an iOS
 device, an Android device, or in Electron, so ADR-4's verdict below is still a hypothesis; the
 device smoke matrix has not been run; and **`load({ strategy: 'stream' })` has no mobile

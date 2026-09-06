@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.tsx",
     "./manifest": "./src/manifest.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./testing": "./src/testing.ts"
   },
   "main": "./src/index.tsx",
   "types": "./src/index.tsx",
@@ -23,12 +24,14 @@
     "@BBeBee/ui-core": "workspace:*",
     "@BBeBee/ui-tokens": "workspace:*",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "@tanstack/react-virtual": "3.14.10"
   },
   "devDependencies": {
     "@BBeBee/ui-parity": "workspace:*",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "@testing-library/react": "^16.3.3"
   }
 }

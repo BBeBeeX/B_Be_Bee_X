@@ -14,8 +14,7 @@
     }
   },
   "capabilities": [
-    "db:own",
-    "secrets:own"
+    "db:own"
   ],
   "contributes": {
     "services": [

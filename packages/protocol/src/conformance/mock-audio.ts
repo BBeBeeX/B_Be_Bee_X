@@ -47,7 +47,9 @@ class MockHandle implements MockSource {
   playing = false
   disposed = false
   position = 0
+  stalled = false
   private readonly ended = new Set<() => void>()
+  private readonly stalls = new Set<(stalled: boolean) => void>()
 
   constructor(
     readonly src: string,
@@ -83,16 +85,40 @@ class MockHandle implements MockSource {
     return () => void this.ended.delete(cb)
   }
 
+  onStalled(cb: (stalled: boolean) => void): Disposable {
+    this.stalls.add(cb)
+    return () => void this.stalls.delete(cb)
+  }
+
   dispose(): void {
     this.disposed = true
     this.playing = false
     this.ended.clear()
+    this.stalls.clear()
     this.node.disconnect()
   }
 
-  /** Advance this source's own clock, firing `onEnded` at the boundary. */
+  /**
+   * Report a buffer underrun, or its recovery.
+   *
+   * Only a change is published, matching what a real engine does with an
+   * element that sends `waiting` repeatedly under a slow network.
+   */
+  setStalled(stalled: boolean): void {
+    if (this.disposed || this.stalled === stalled) return
+    this.stalled = stalled
+    for (const cb of [...this.stalls]) cb(stalled)
+  }
+
+  /**
+   * Advance this source's own clock, firing `onEnded` at the boundary.
+   *
+   * A stalled source does not advance — that is what a stall *is*, and a mock
+   * whose position kept climbing through one would let the player pass a test
+   * it fails in the world.
+   */
   advance(ms: number): void {
-    if (!this.playing || this.disposed) return
+    if (!this.playing || this.disposed || this.stalled) return
     this.position = Math.min(this.position + ms, this.durationMs)
     if (this.position >= this.durationMs) {
       this.playing = false
@@ -130,6 +156,8 @@ export interface MockAudio {
   setDuration(ms: number): void
   interrupt(event: InterruptionEvent): void
   routeChange(event: RouteChangeEvent): void
+  /** Underrun the playing source, or let it recover. */
+  stall(stalled: boolean): void
   readonly volume: number
   readonly muted: boolean
 }
@@ -220,6 +248,12 @@ export function createMockAudio(options: MockAudioOptions = {}): MockAudio {
     },
     routeChange(event) {
       for (const cb of [...routes]) cb(event)
+    },
+    stall(stalled: boolean) {
+      // A stalled source stays `playing`: it was never paused, it is starved.
+      // That is the distinction the whole state exists to make, so the lookup
+      // finds the same handle on the way in and on the way out.
+      handles.find((h) => h.playing && !h.disposed)?.setStalled(stalled)
     },
     get volume() {
       return volume

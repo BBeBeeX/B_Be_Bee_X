@@ -5,7 +5,7 @@
   ],
   "version": "0.0.0",
   "displayName": "HTTP",
-  "description": "ctx.http for iOS and Android — the M1 slice over expo/fetch.",
+  "description": "ctx.http for iOS and Android \u2014 the M1 slice over expo/fetch.",
   "engines": {
     "BBeBee": "^0.1.0"
   },
@@ -13,8 +13,7 @@
     "main": "./dist/index.js"
   },
   "capabilities": [
-    "net:host/*",
-    "fs:write:downloads"
+    "net:host/*"
   ],
   "contributes": {
     "services": [

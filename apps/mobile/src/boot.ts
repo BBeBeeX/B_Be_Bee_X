@@ -14,7 +14,6 @@
 import { Platform } from 'react-native'
 import {
   ActivityIndicator,
-  FlatList,
   Image,
   Modal,
   Pressable,
@@ -22,6 +21,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import { FlashList } from '@shopify/flash-list'
 import { AudioContext, AudioManager } from 'react-native-audio-api'
 import { createApp, type App } from '@BBeBee/kernel'
 import { PathsExpo } from '@BBeBee/core-paths-expo'
@@ -54,7 +54,7 @@ configureNative({
   Pressable,
   Image,
   Modal,
-  FlatList,
+  FlashList,
   ActivityIndicator,
   TextInput,
 })

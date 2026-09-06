@@ -16,7 +16,7 @@
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import { NotFoundError, ProviderError, SourceError } from '@BBeBee/protocol'
+import { NetworkError, NotFoundError, ProviderError, SourceError } from '@BBeBee/protocol'
 import type {
   AudioSourceHandle,
   Disposable,
@@ -61,6 +61,14 @@ export interface PlayerConfig {
   bufferMaxBytes?: number
   /** Consecutive failed tracks before the player stops trying. */
   maxSkipStreak?: number
+  /**
+   * How long a buffer underrun may last before it becomes an error.
+   *
+   * `stalled --> error: timeout exceeded` in docs/05 §2. Without a bound the
+   * state is absorbing: a stream whose server went away spins a spinner
+   * forever, which is the one outcome worse than saying so.
+   */
+  stallTimeoutMs?: number
   /** Which device wrote `playback_state`, for future sync. */
   deviceId?: string
 }
@@ -75,6 +83,9 @@ const DEFAULTS = {
   // ~150 MB of source bytes; comfortably a long album, not an audiobook.
   bufferMaxBytes: 150 * 1024 * 1024,
   maxSkipStreak: 10,
+  // Long enough that a tunnel or a lift is survived, short enough that a dead
+  // connection is reported while the user still remembers pressing play.
+  stallTimeoutMs: 30_000,
 }
 
 /** Prefetch starts here, per docs/05 §2. */
@@ -111,6 +122,9 @@ export class Player extends Service implements PlayerService {
 
   private source?: AudioSourceHandle
   private sourceEnded?: Disposable
+  private sourceStalled?: Disposable
+  /** Runs while `status === 'stalled'`; firing turns the stall into an error. */
+  private stallTimer?: ReturnType<typeof setTimeout>
   private prefetched?: { itemId: string; handle: AudioSourceHandle }
   private prefetchAbort?: AbortController
   private prefetching = false
@@ -166,7 +180,7 @@ export class Player extends Service implements PlayerService {
     // every platform's rules differ, the policy does not (docs/05 §5).
     const offInterruption = this.ctx.audio.onInterruption((event) => {
       if (event.type === 'began') {
-        if (this.transport.status === 'playing') {
+        if (isPlayingLike(this.transport.status)) {
           this.pause()
           this.pausedByInterruption = true
         }
@@ -224,6 +238,19 @@ export class Player extends Service implements PlayerService {
         }
       })
       return () => {
+        /*
+         * Take the OS surface down with us.
+         *
+         * The lock screen outlives the plugin unless something says
+         * otherwise, so a disabled `plugin-player` used to leave a track
+         * showing with buttons that no longer did anything — the ghost
+         * §4.9 says disabling must not leave. `clear()` only ran from
+         * `stop()`, which a disable does not go through.
+         *
+         * Optional: on a full shutdown the session may already be gone, and
+         * a teardown that throws would strand the disposers after it.
+         */
+        scoped.mediaSession?.clear()
         this.mediaCtx = undefined
         off()
       }
@@ -348,10 +375,14 @@ export class Player extends Service implements PlayerService {
     // Recorded before the early return: a pause during `loading` must still be
     // honoured when the in-flight load lands.
     this.playIntent = false
-    if (!this.source || this.transport.status !== 'playing') {
+    // `stalled` counts as playing here: the user pressed pause on a spinner,
+    // and refusing them because no audio happens to be coming out would leave
+    // the transport claiming to play a track that is going nowhere.
+    if (!this.source || !isPlayingLike(this.transport.status)) {
       if (this.transport.status === 'loading') this.set({ status: 'paused' })
       return
     }
+    this.clearStall()
     this.source.pause()
     this.set({ status: 'paused', positionMs: this.source.positionMs })
     this.publishNowPlaying()
@@ -359,7 +390,7 @@ export class Player extends Service implements PlayerService {
   }
 
   togglePlay(): void {
-    if (this.transport.status === 'playing') this.pause()
+    if (isPlayingLike(this.transport.status)) this.pause()
     else void this.play()
   }
 
@@ -388,7 +419,7 @@ export class Player extends Service implements PlayerService {
       this.set({ positionMs: target })
       return
     }
-    const wasPlaying = this.transport.status === 'playing'
+    const wasPlaying = isPlayingLike(this.transport.status)
     if (wasPlaying) this.source.play(target)
     else {
       this.source.pause()
@@ -604,6 +635,7 @@ export class Player extends Service implements PlayerService {
     this.source = source
     source.node.connect(this.ctx.audio.chainInput)
     this.sourceEnded = source.onEnded(() => void this.onEnded())
+    this.sourceStalled = source.onStalled((stalled) => this.onStalled(stalled))
 
     // A track that started is a track that worked.
     this.skipStreak = 0
@@ -718,6 +750,47 @@ export class Player extends Service implements PlayerService {
     }
   }
 
+  /* ── stalls ────────────────────────────────────────────────────────── */
+
+  /**
+   * A buffer underrun, and its recovery.
+   *
+   * `stalled` is deliberately not `paused`: the user did not ask for this, so
+   * the UI shows a spinner rather than a play button and `ctx.mediaSession`
+   * goes on reporting *playing*, which is what stops the lock screen
+   * flickering every time a train goes into a tunnel (docs/05 §2).
+   *
+   * Only a track that was actually playing can stall. A `waiting` that arrives
+   * while the user has it paused — a media element still filling its buffer,
+   * say — is not a stall in any sense the transport cares about.
+   */
+  private onStalled(stalled: boolean): void {
+    if (stalled) {
+      if (this.transport.status !== 'playing') return
+      this.set({ status: 'stalled' })
+      this.publishNowPlaying()
+      this.stallTimer = setTimeout(() => {
+        this.stallTimer = undefined
+        if (this.transport.status !== 'stalled') return
+        // Retryable: the queue is intact and pressing play is all it takes,
+        // which is the same shape as the out-of-attempts network failure.
+        this.fail(new NetworkError('playback stalled and did not recover'), true)
+      }, this.config.stallTimeoutMs)
+      return
+    }
+
+    this.clearStall()
+    if (this.transport.status !== 'stalled') return
+    this.set({ status: 'playing' })
+    this.publishNowPlaying()
+  }
+
+  private clearStall(): void {
+    if (this.stallTimer === undefined) return
+    clearTimeout(this.stallTimer)
+    this.stallTimer = undefined
+  }
+
   private async maybePrefetch(positionMs: number, durationMs: number): Promise<void> {
     if (this.config.transition === 'neither' || this.prefetching || this.prefetched) return
     if (!durationMs) return
@@ -781,8 +854,11 @@ export class Player extends Service implements PlayerService {
     // The outgoing source is kept alive for the length of its fade. Disposing
     // it here — as `detachSource` would — stops it instantly, so the ramp
     // never sounds and a "crossfade" is only ever a fade-in.
+    this.clearStall()
     this.sourceEnded?.()
     this.sourceEnded = undefined
+    this.sourceStalled?.()
+    this.sourceStalled = undefined
     this.source = undefined
     if (outgoing) this.fadeOut(outgoing, this.config.crossfadeMs)
 
@@ -1092,14 +1168,29 @@ export class Player extends Service implements PlayerService {
   /* ── teardown ──────────────────────────────────────────────────────── */
 
   private detachSource(): void {
+    this.clearStall()
     this.sourceEnded?.()
     this.sourceEnded = undefined
+    this.sourceStalled?.()
+    this.sourceStalled = undefined
     this.source?.dispose()
     this.source = undefined
   }
 }
 
 /* ── helpers ────────────────────────────────────────────────────────────── */
+
+/**
+ * Statuses in which audio is meant to be coming out.
+ *
+ * `stalled` is one of them: it is a starved `playing`, not a `paused`, so
+ * pause, seek, an interruption and a route change all treat it as playing.
+ * `plugin-player`'s hooks export the same predicate for the UI, and the two
+ * agreeing is the whole point of docs/05 §2's distinction.
+ */
+function isPlayingLike(status: TransportState['status']): boolean {
+  return status === 'playing' || status === 'stalled'
+}
 
 /** Ramp a handle's own gain, where the platform gives us one to ramp. */
 function ramp(node: AudioNode | undefined, from: number, to: number, seconds: number, now: number): void {

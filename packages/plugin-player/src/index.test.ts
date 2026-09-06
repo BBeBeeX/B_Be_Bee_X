@@ -26,6 +26,9 @@ import plugin, { type Player } from './index.js'
 const SOURCE = 'local'
 const urn = (id: string) => `BBeBee:${SOURCE}:track:${id}`
 
+/** Real time, for the one policy in the player that is a wall-clock timeout. */
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
 /** `ctx.audio`, provided by the mock rather than by a real engine. */
 function mockAudioPlugin(mock: MockAudio) {
   class MockAudioService extends Service {
@@ -71,20 +74,60 @@ function localProvider(overrides: Partial<MediaProvider> = {}): MediaProvider {
   }
 }
 
+/** What a lock screen was told, in order. */
+interface SessionLog {
+  states: ('playing' | 'paused' | 'stopped')[]
+  cleared: number
+}
+
+/**
+ * A minimal `ctx.mediaSession`.
+ *
+ * Opt-in, because most transport tests have no interest in the OS surface and
+ * a session on every one of them would publish on every state change for
+ * nothing.
+ */
+function mediaSessionStub(log: SessionLog) {
+  class MediaSessionStub extends Service {
+    constructor(ctx: Context) {
+      super(ctx, 'mediaSession')
+    }
+    update() {}
+    setPlaybackState(state: 'playing' | 'paused' | 'stopped') {
+      log.states.push(state)
+    }
+    onCommand() {
+      return () => {}
+    }
+    setSupportedCommands() {}
+    clear() {
+      log.cleared++
+    }
+  }
+  return MediaSessionStub
+}
+
 interface Harness {
   ctx: Context
   player: Player
   audio: MockAudio
   db: DbService
   root: string
+  session: SessionLog
   restart(): Promise<Harness>
 }
 
 async function harness(
-  opts: { root?: string; provider?: MediaProvider; config?: Record<string, unknown> } = {},
+  opts: {
+    root?: string
+    provider?: MediaProvider
+    config?: Record<string, unknown>
+    mediaSession?: boolean
+  } = {},
 ): Promise<Harness> {
   const root = opts.root ?? (await tempDir('bbebee-player'))
   const audio = createMockAudio({ durationMs: 200_000 })
+  const session: SessionLog = { states: [], cleared: 0 }
 
   const ctx = new Context()
   const fibers = [
@@ -93,6 +136,7 @@ async function harness(
     // A file-backed database, so a "restart" is a real restart.
     await ctx.plugin(DbNode, { fileName: 'player-test.db' }),
     await ctx.plugin(mockAudioPlugin(audio)),
+    ...(opts.mediaSession ? [await ctx.plugin(mediaSessionStub(session))] : []),
     await ctx.plugin(sourcesStub(opts.provider ?? localProvider())),
     await ctx.plugin(plugin, { tickMs: 3_600_000, saveThrottleMs: 0, ...opts.config }),
   ]
@@ -104,6 +148,7 @@ async function harness(
     audio,
     db: ctx.db,
     root,
+    session,
     restart: async () => {
       // Teardown in reverse, exactly as the kernel does it, so the player
       // flushes its state before the database closes underneath it.
@@ -385,6 +430,102 @@ describe('interruptions and routes', () => {
     player.pause() // the user's own pause clears our claim on the resume
     audio.interrupt({ type: 'ended', shouldResume: true })
     await tick()
+    expect(player.state.status).toBe('paused')
+  })
+})
+
+describe('stalls', () => {
+  it('reports stalled rather than paused, and recovers to playing', async () => {
+    // Stage 5's demo, and the distinction docs/05 §2 exists to make: a buffer
+    // underrun is not a user decision, so the UI shows a spinner and not a
+    // play button.
+    const { player, audio } = await harness()
+    await player.playNow([urn('a')])
+    expect(player.state.status).toBe('playing')
+
+    audio.stall(true)
+    expect(player.state.status).toBe('stalled')
+
+    audio.stall(false)
+    expect(player.state.status).toBe('playing')
+  })
+
+  it('keeps the lock screen reporting playing through a stall', async () => {
+    // Otherwise every tunnel flickers the lock screen between playing and
+    // paused, which is the visible half of the same distinction.
+    const { player, audio, session } = await harness({ mediaSession: true })
+    await player.playNow([urn('a')])
+    session.states.length = 0
+
+    audio.stall(true)
+    audio.stall(false)
+
+    expect(session.states.every((s) => s === 'playing')).toBe(true)
+    expect(session.states, 'a stall still publishes, it just publishes playing').not.toHaveLength(0)
+  })
+
+  it('does not advance position while stalled', async () => {
+    const { player, audio } = await harness()
+    await player.playNow([urn('a')])
+    audio.advance(5000)
+    await player.refresh()
+    const before = player.state.positionMs
+
+    audio.stall(true)
+    audio.advance(5000)
+    await player.refresh()
+
+    expect(player.state.positionMs).toBe(before)
+  })
+
+  it('a stall the user pauses out of becomes a pause, not a spinner', async () => {
+    const { player, audio } = await harness()
+    await player.playNow([urn('a')])
+    audio.stall(true)
+
+    player.pause()
+
+    expect(player.state.status).toBe('paused')
+    // And recovery must not drag it back: the user's intent outlives the
+    // buffer's.
+    audio.stall(false)
+    expect(player.state.status).toBe('paused')
+  })
+
+  it('gives up on a stall that never recovers, with the queue intact', async () => {
+    // `stalled --> error: timeout exceeded`. Without the bound the state is
+    // absorbing and a dead stream spins for ever.
+    const { player, audio } = await harness({ config: { stallTimeoutMs: 5 } })
+    await player.playNow([urn('a'), urn('b')])
+
+    audio.stall(true)
+    await delay(25)
+
+    expect(player.state.status).toBe('error')
+    expect(player.state.error?.retryable, 'pressing play is all it takes').toBe(true)
+    expect(player.queue, 'no failure path clears the queue').toHaveLength(2)
+  })
+
+  it('does not fail a stall that recovered before the timeout', async () => {
+    const { player, audio } = await harness({ config: { stallTimeoutMs: 5 } })
+    await player.playNow([urn('a')])
+
+    audio.stall(true)
+    audio.stall(false)
+    await delay(25)
+
+    expect(player.state.status).toBe('playing')
+  })
+
+  it('ignores a stall reported while the user has it paused', async () => {
+    // An element still filling its buffer behind a paused track is not a
+    // stall in any sense the transport cares about.
+    const { player, audio } = await harness()
+    await player.playNow([urn('a')])
+    player.pause()
+
+    audio.stall(true)
+
     expect(player.state.status).toBe('paused')
   })
 })
@@ -715,6 +856,46 @@ describe('lifecycle', () => {
     await tick()
 
     expect(audio.sources.every((s) => s.disposed), 'every source is disposed').toBe(true)
+    const problems = diffSnapshots(before, snapshotContext(ctx))
+    expect(problems, problems?.join('; ')).toBeUndefined()
+  })
+
+  it('can be disabled mid-playback and enabled again, leaving no ghost behind', async () => {
+    // M1's definition of done asks for a clean tree after disabling *and*
+    // re-enabling during playback — the cycle, not just the teardown, because
+    // a listener re-registered on the way back is a leak that only shows on
+    // the second pass.
+    const root = await tempDir('bbebee-player-cycle')
+    const audio = createMockAudio()
+    const session: SessionLog = { states: [], cleared: 0 }
+    const ctx = new Context()
+    await ctx.plugin(PathsNode, { root })
+    await ctx.plugin(FsNode)
+    await ctx.plugin(DbNode, { fileName: 'cycle.db' })
+    await ctx.plugin(mockAudioPlugin(audio))
+    await ctx.plugin(mediaSessionStub(session))
+    await ctx.plugin(sourcesStub(localProvider()))
+    await tick()
+
+    const before = snapshotContext(ctx)
+
+    for (const pass of [1, 2]) {
+      const fiber = await ctx.plugin(plugin, { tickMs: 3_600_000, saveThrottleMs: 0 })
+      await tick()
+      const player = ctx.player as Player
+      await player.playNow([urn('a')])
+      expect(player.state.status, `pass ${pass}: playing`).toBe('playing')
+
+      await fiber.dispose()
+      await tick()
+
+      expect(ctx.player, `pass ${pass}: the service is gone`).toBeUndefined()
+      expect(audio.sources.every((s) => s.disposed), `pass ${pass}: no node left connected`).toBe(
+        true,
+      )
+      expect(session.cleared, `pass ${pass}: no ghost lock screen`).toBeGreaterThanOrEqual(pass)
+    }
+
     const problems = diffSnapshots(before, snapshotContext(ctx))
     expect(problems, problems?.join('; ')).toBeUndefined()
   })

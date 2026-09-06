@@ -14,7 +14,8 @@
  * component is at the wrong altitude.
  */
 
-import { createElement as h, useCallback, useRef, useState } from 'react'
+import { createElement as h, useCallback, useEffect, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import type { CSSProperties, ReactElement, ReactNode } from 'react'
 import { palettes, tokens, type Scheme } from '@BBeBee/ui-tokens'
 import type {
@@ -394,17 +395,95 @@ export function Sheet(props: SheetProps) {
   )
 }
 
+/**
+ * A virtualised list.
+ *
+ * The row set is windowed by `@tanstack/react-virtual`: a 100k-track library
+ * puts 100k rows in the DOM otherwise, and the browser spends its frame budget
+ * on layout for rows nobody can see. The twin does the same job with FlashList
+ * (docs/11 §4.11).
+ *
+ * `role="list"` sits on the scroller and each row keeps `role="listitem"`, so
+ * a screen reader reads a list of `aria-setsize` items rather than the handful
+ * currently rendered — the one thing windowing breaks if it is not said out
+ * loud.
+ */
 export function List<T>(props: ListProps<T>) {
-  // Virtualisation lands with the first screen that needs it; the contract is
-  // what matters now, and a plain map is honest about what this does today.
-  if (props.items.length === 0 && props.empty !== undefined) {
+  const scroller = useRef<HTMLDivElement | null>(null)
+  const count = props.items.length
+  // `tokens.size.row` rather than a number: the estimate only has to be close,
+  // and the closest thing available is the height a TrackRow actually is.
+  const estimate = props.estimatedItemSize ?? tokens.size.row
+
+  const virtualizer = useVirtualizer({
+    count,
+    getScrollElement: () => scroller.current,
+    estimateSize: () => estimate,
+    overscan: 8,
+  })
+
+  const rows = virtualizer.getVirtualItems()
+
+  /*
+   * `onEndReached` fires from the last *rendered* row rather than from a
+   * scroll handler: with windowing the two are the same event, and reading it
+   * off the window costs no listener.
+   *
+   * In an effect, not during render. The callback belongs to the caller and
+   * almost always sets state — "cannot update a component while rendering a
+   * different component" is the warning, and a dropped page is the symptom.
+   * `firedFor` keys the guard on the count so one page is requested once, and
+   * the arrival of that page re-arms it.
+   */
+  const last = rows[rows.length - 1]
+  const reachedEnd = last !== undefined && last.index >= count - 1
+  const firedFor = useRef(-1)
+  const onEndReached = props.onEndReached
+  useEffect(() => {
+    if (!reachedEnd || !onEndReached || firedFor.current === count) return
+    firedFor.current = count
+    onEndReached()
+  }, [reachedEnd, onEndReached, count])
+
+  if (count === 0 && props.empty !== undefined) {
     return h('div', common(props), props.empty as ReactNode)
   }
+
   return h(
     'div',
-    { ...common(props), role: 'list', style: { overflowY: 'auto' } },
-    props.items.map((item, i) =>
-      h('div', { key: props.keyExtractor(item, i), role: 'listitem' }, props.renderItem(item, i) as ReactNode),
+    {
+      ...common(props),
+      ref: scroller,
+      role: 'list',
+      style: { overflowY: 'auto', height: '100%' },
+    },
+    // The spacer carries the full scroll height, so the scrollbar reports the
+    // whole library and not the window.
+    h(
+      'div',
+      { style: { height: virtualizer.getTotalSize(), position: 'relative', width: '100%' } },
+      rows.map((row) => {
+        const item = props.items[row.index]!
+        return h(
+          'div',
+          {
+            key: props.keyExtractor(item, row.index),
+            role: 'listitem',
+            'aria-setsize': count,
+            'aria-posinset': row.index + 1,
+            ref: virtualizer.measureElement,
+            'data-index': row.index,
+            style: {
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              transform: `translateY(${row.start}px)`,
+            },
+          },
+          props.renderItem(item, row.index) as ReactNode,
+        )
+      }),
     ),
   )
 }

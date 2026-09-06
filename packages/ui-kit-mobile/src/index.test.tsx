@@ -36,7 +36,7 @@ const NATIVE = {
   Pressable: 'RNPressable',
   Image: 'RNImage',
   Modal: 'RNModal',
-  FlatList: 'RNFlatList',
+  FlashList: 'RNFlashList',
   ActivityIndicator: 'RNSpinner',
   TextInput: 'RNTextInput',
 }
@@ -175,29 +175,50 @@ describe('Sheet', () => {
 })
 
 describe('List', () => {
-  it('hands the virtualiser its keys and its size hint', () => {
+  it('renders through FlashList, not a plain FlatList', () => {
+    // Recycling is the whole point: mounting one view per row is what makes a
+    // large library unscrollable on a low-end phone (docs/11 §4.11).
+    const node = tree(
+      h(List<{ id: string }>, { items: [{ id: 'a' }], keyExtractor: (i) => i.id, renderItem: () => null }),
+    )[0]!
+    expect(node.type).toBe(NATIVE.FlashList)
+  })
+
+  it('hands the virtualiser its data and its keys', () => {
     const keyExtractor = (i: { id: string }) => i.id
+    const items = [{ id: 'a' }, { id: 'b' }]
+    const node = tree(
+      h(List<{ id: string }>, { items, keyExtractor, renderItem: () => null }),
+    )[0]!
+    const props = node.props as { data: unknown; keyExtractor: unknown }
+    expect(props.data).toBe(items)
+    expect(props.keyExtractor, 'stable keys, or every scroll re-mounts rows').toBe(keyExtractor)
+  })
+
+  it('does not forward a size hint FlashList would ignore', () => {
+    // v2 measures rows itself and dropped `estimatedItemSize`. Passing it
+    // anyway would read as a hint and do nothing.
     const node = tree(
       h(List<{ id: string }>, {
         items: [{ id: 'a' }],
-        keyExtractor,
+        keyExtractor: (i) => i.id,
         renderItem: () => null,
         estimatedItemSize: 56,
       }),
     )[0]!
-    const props = node.props as {
-      keyExtractor: unknown
-      getItemLayout: (d: unknown, i: number) => { length: number; offset: number }
-    }
-    expect(props.keyExtractor).toBe(keyExtractor)
-    expect(props.getItemLayout(null, 2)).toMatchObject({ length: 56, offset: 112 })
+    expect((node.props as { estimatedItemSize?: unknown }).estimatedItemSize).toBeUndefined()
   })
 
-  it('omits the layout hint when none was given, rather than guessing', () => {
+  it('shows the empty state instead of nothing', () => {
     const node = tree(
-      h(List<{ id: string }>, { items: [], keyExtractor: (i) => i.id, renderItem: () => null }),
+      h(List<{ id: string }>, {
+        items: [],
+        keyExtractor: (i) => i.id,
+        renderItem: () => null,
+        empty: 'No tracks yet',
+      }),
     )[0]!
-    expect((node.props as { getItemLayout?: unknown }).getItemLayout).toBeUndefined()
+    expect((node.props as { ListEmptyComponent?: unknown }).ListEmptyComponent).toBe('No tracks yet')
   })
 })
 

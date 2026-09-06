@@ -146,6 +146,16 @@ class BufferedHandle implements AudioSourceHandle {
     return () => void this.endedListeners.delete(cb)
   }
 
+  /**
+   * A decoded buffer holds the whole track in memory, so there is nothing left
+   * to wait for and this never fires. The member exists because the contract
+   * has it; registering the callback and never calling it would be the same
+   * silence with a listener leaked behind it.
+   */
+  onStalled(): Disposable {
+    return () => {}
+  }
+
   dispose(): void {
     this.disposed = true
     // Freeze the position first. Stopping the source without clearing
@@ -172,6 +182,18 @@ class BufferedHandle implements AudioSourceHandle {
 }
 
 /** A media element wrapped as a graph node: constant memory, no seek-ahead. */
+/**
+ * Element events that mean "the buffer ran dry" and "it filled again".
+ *
+ * `waiting` is the one that always fires; `stalled` is the network-level
+ * cousin that some engines send instead, and neither is guaranteed on its own.
+ * On the way back, `playing` is the honest signal — `canplay` fires while
+ * still paused, so recovering on it would report `playing` for a track the
+ * user had stopped.
+ */
+const STALL_EVENTS = ['waiting', 'stalled'] as const
+const RECOVER_EVENTS = ['playing', 'canplaythrough'] as const
+
 class StreamedHandle implements AudioSourceHandle {
   readonly node: AudioNode
 
@@ -180,12 +202,33 @@ class StreamedHandle implements AudioSourceHandle {
     for (const listener of this.endedListeners) listener()
   }
 
+  private readonly stallListeners = new Set<(stalled: boolean) => void>()
+  private stalled = false
+  private readonly onStallNative = () => this.setStalled(true)
+  private readonly onRecoverNative = () => this.setStalled(false)
+
   constructor(
     private readonly element: MediaElementLike,
     node: AudioNode,
   ) {
     this.node = node
     element.addEventListener('ended', this.onEndedNative)
+    for (const type of STALL_EVENTS) element.addEventListener(type, this.onStallNative)
+    for (const type of RECOVER_EVENTS) element.addEventListener(type, this.onRecoverNative)
+  }
+
+  /**
+   * Only an actual change is published.
+   *
+   * An element under a slow network sends `waiting` repeatedly, and a player
+   * that took each one as a fresh stall would restart its recovery timeout on
+   * every one of them — turning "gave up after 30 seconds" into "never gives
+   * up".
+   */
+  private setStalled(stalled: boolean): void {
+    if (this.stalled === stalled) return
+    this.stalled = stalled
+    for (const listener of [...this.stallListeners]) listener(stalled)
   }
 
   get durationMs(): number {
@@ -216,9 +259,17 @@ class StreamedHandle implements AudioSourceHandle {
     return () => void this.endedListeners.delete(cb)
   }
 
+  onStalled(cb: (stalled: boolean) => void): Disposable {
+    this.stallListeners.add(cb)
+    return () => void this.stallListeners.delete(cb)
+  }
+
   dispose(): void {
     this.element.removeEventListener('ended', this.onEndedNative)
+    for (const type of STALL_EVENTS) this.element.removeEventListener(type, this.onStallNative)
+    for (const type of RECOVER_EVENTS) this.element.removeEventListener(type, this.onRecoverNative)
     this.endedListeners.clear()
+    this.stallListeners.clear()
     this.element.pause()
     this.node.disconnect()
   }

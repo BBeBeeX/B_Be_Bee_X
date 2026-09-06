@@ -1,14 +1,21 @@
+// @vitest-environment jsdom
 /**
  * The desktop player views.
  *
  * What is worth pinning is the behaviour a user would notice and that is easy
  * to get wrong in a view: a control that is present but does nothing, a
  * buffering state shown as paused, an unlabelled transport button.
+ *
+ * Static markup for most of it; the queue is a virtualised `List`, and a
+ * virtualiser with nothing to measure renders an empty window, so that one
+ * screen goes through the DOM with `withListLayout`.
  */
 
 import { describe, expect, it } from 'vitest'
 import { createElement as h } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { render } from '@testing-library/react'
+import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
 import { Context } from 'cordis'
 import { Service } from 'cordis'
 import type { QueueItem, TransportState } from '@BBeBee/protocol'
@@ -130,8 +137,8 @@ describe('QueueScreen', () => {
       { id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' },
       { id: 'b', trackUrn: 'BBeBee:local:track:b', addedBy: 'user' },
     ])
-    const out = html(h(QueueScreen, { ctx }))
-    expect((out.match(/role="listitem"/g) ?? []).length).toBe(2)
-    expect(out).toContain('role="list"')
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+    expect(container.querySelectorAll('[role="listitem"]')).toHaveLength(2)
+    expect(container.querySelector('[role="list"]')).not.toBeNull()
   })
 })

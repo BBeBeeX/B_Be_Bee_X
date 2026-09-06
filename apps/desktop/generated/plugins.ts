@@ -45,7 +45,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/core-device-electron": {
     plugin: coreDeviceElectron,
-    manifest: {"id":"@BBeBee/core-device-electron","platforms":["desktop"],"version":"0.0.0","displayName":"Device","description":"ctx.device — network, battery, media keys and hotkeys on desktop.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["shell"],"contributes":{"services":["device"]}},
+    manifest: {"id":"@BBeBee/core-device-electron","platforms":["desktop"],"version":"0.0.0","displayName":"Device","description":"ctx.device — network, battery, media keys and hotkeys on desktop.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["device"]}},
     builtin: true,
   },
   "@BBeBee/core-http-node": {
@@ -70,7 +70,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-hello": {
     plugin: pluginHello,
-    manifest: {"id":"@BBeBee/plugin-hello","version":"0.0.0","displayName":"Hello","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:own","secrets:own"],"contributes":{"services":["hello"]}},
+    manifest: {"id":"@BBeBee/plugin-hello","version":"0.0.0","displayName":"Hello","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:own"],"contributes":{"services":["hello"]}},
     builtin: true,
   },
   "@BBeBee/plugin-hello-ui-desktop": {

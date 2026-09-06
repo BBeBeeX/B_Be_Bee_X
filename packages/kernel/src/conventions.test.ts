@@ -15,6 +15,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { servicesForCapability, type PluginManifest } from '@BBeBee/protocol'
 
 const workspaceRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 
@@ -89,6 +90,41 @@ async function sourceFiles(): Promise<string[]> {
   return out
 }
 
+/** Every workspace package that declares itself a plugin, by manifest id. */
+async function pluginManifests(): Promise<Map<string, PluginManifest>> {
+  const base = join(workspaceRoot, 'packages')
+  const out = new Map<string, PluginManifest>()
+  for (const entry of await readdir(base)) {
+    try {
+      const raw = await readFile(join(base, entry, 'BBeBee.plugin.json'), 'utf8')
+      const manifest = JSON.parse(raw) as PluginManifest
+      out.set(manifest.id, manifest)
+    } catch {
+      // Not a plugin package.
+    }
+  }
+  return out
+}
+
+/** One package's non-test sources, read once. */
+async function packageSources(dir: string): Promise<string[]> {
+  const root = join(workspaceRoot, 'packages', dir, 'src')
+  const out: string[] = []
+  const walk = async (at: string): Promise<void> => {
+    for (const entry of await readdir(at, { withFileTypes: true })) {
+      const full = join(at, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === 'dist') continue
+        await walk(full)
+      } else if (/\.tsx?$/.test(entry.name) && !entry.name.includes('.test.')) {
+        out.push(await readFile(full, 'utf8'))
+      }
+    }
+  }
+  await walk(root).catch(() => undefined)
+  return out
+}
+
 describe('the detector itself', () => {
   it('flags the shapes that actually occurred', () => {
     expect(findUnawaitedPlugin('  const fiber = ctx.plugin(Svc)')).toHaveLength(1)
@@ -150,5 +186,43 @@ describe('workspace conventions', () => {
       offenders,
       `un-awaited ctx.plugin() — readiness is not propagated to the caller:\n  ${offenders.join('\n  ')}`,
     ).toEqual([])
+  })
+
+  /**
+   * M1's definition of done: "no plugin holds a capability it does not use."
+   *
+   * It matters most in M5, when an install-time prompt reads the manifest out
+   * loud: a plugin asking for the filesystem it never touches teaches users to
+   * click through the prompt, which is the whole mechanism failing quietly.
+   * Cheaper to keep true from the first milestone than to audit later.
+   *
+   * `servicesForCapability` is the same mapping the gate uses, so this cannot
+   * drift from enforcement. A capability that mediates no service — a flag
+   * like `background` maps to one, but a future grant may not — is skipped
+   * rather than guessed at: this check is for the ones it can be sure about.
+   */
+  it('no plugin holds a capability it does not use', async () => {
+    const offenders: string[] = []
+
+    for (const [id, manifest] of await pluginManifests()) {
+      const dir = id.replace(/^@BBeBee\//, '')
+      const sources = await packageSources(dir)
+      if (sources.length === 0) continue
+      const text = sources.join('\n')
+
+      for (const capability of manifest.capabilities ?? []) {
+        const services = servicesForCapability(capability)
+        if (services.length === 0) continue
+        // Both spellings: `ctx.fs`/`scoped.fs` reads, and the `inject` lists
+        // that declare the dependency in the first place.
+        const used = services.some(
+          (service) =>
+            new RegExp(`\\.${service}\\b`).test(text) || new RegExp(`'${service}'`).test(text),
+        )
+        if (!used) offenders.push(`${id} declares '${capability}' and never reaches ${services.join('/')}`)
+      }
+    }
+
+    expect(offenders, offenders.join('\n  ')).toEqual([])
   })
 })

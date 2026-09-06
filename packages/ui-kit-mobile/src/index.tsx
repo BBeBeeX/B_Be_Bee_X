@@ -48,7 +48,15 @@ export interface NativePrimitives {
   Pressable: unknown
   Image: unknown
   Modal: unknown
-  FlatList: unknown
+  /**
+   * `FlashList` from `@shopify/flash-list`, not `FlatList`.
+   *
+   * Recycling rather than mounting is what keeps a 100k-track library
+   * scrolling on a low-end Android phone, and it is the mobile half of docs/11
+   * §4.11. Injected like everything else here so this package still typechecks
+   * and unit-tests without a device.
+   */
+  FlashList: unknown
   ActivityIndicator: unknown
   TextInput: unknown
 }
@@ -67,7 +75,7 @@ const PLACEHOLDER: NativePrimitives = {
   Pressable: 'Pressable',
   Image: 'Image',
   Modal: 'Modal',
-  FlatList: 'FlatList',
+  FlashList: 'FlashList',
   ActivityIndicator: 'ActivityIndicator',
   TextInput: 'TextInput',
 }
@@ -432,21 +440,25 @@ export function Sheet(props: SheetProps): ReactElement | null {
   )
 }
 
+/**
+ * A virtualised list.
+ *
+ * FlashList recycles row views instead of mounting one per item, which is what
+ * a 100k-track library needs on a phone. Its twin on desktop windows the same
+ * way with `@tanstack/react-virtual` (docs/11 §4.11).
+ *
+ * ⚠️ `estimatedItemSize` is deliberately not forwarded. FlashList v2 measures
+ * rows itself and dropped the prop; passing it would look like a hint and be
+ * ignored. The prop stays in the shared contract because the desktop
+ * virtualiser genuinely needs it, and a prop one kit ignores is cheaper than
+ * two contracts.
+ */
 export function List<T>(props: ListProps<T>): ReactElement {
-  return h(native.FlatList as never, {
+  return h(native.FlashList as never, {
     ...common(props),
     data: props.items,
     keyExtractor: props.keyExtractor,
     renderItem: ({ item, index }: { item: T; index: number }) => props.renderItem(item, index),
-    // FlashList replaces this at the first screen that needs it; both want the
-    // hint, and neither should guess.
-    getItemLayout: props.estimatedItemSize
-      ? (_data: unknown, index: number) => ({
-          length: props.estimatedItemSize!,
-          offset: props.estimatedItemSize! * index,
-          index,
-        })
-      : undefined,
     onEndReached: props.onEndReached,
     onEndReachedThreshold: 0.5,
     ListEmptyComponent: props.empty as ReactNode,
