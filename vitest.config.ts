@@ -25,9 +25,21 @@ export default defineConfig({
     },
   },
   test: {
-    // `.tsx` too: the kits' tests render components, and a pattern that
-    // silently matched nothing would report "no test files" as success.
-    include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.test.tsx'],
+    /*
+     * `.tsx` too: the kits' tests render components, and a pattern that
+     * silently matched nothing would report "no test files" as success.
+     *
+     * `apps/` as well, for the policies that only a shell can hold — the
+     * close-to-tray decision is an M1 exit criterion and lived in a file
+     * nothing could load, because `main/index.ts` imports Electron at module
+     * scope. The testable part is a policy with no imports; the pattern is
+     * narrow enough that a shell cannot smuggle logic in behind it.
+     */
+    include: [
+      'packages/*/src/**/*.test.ts',
+      'packages/*/src/**/*.test.tsx',
+      'apps/*/**/*.test.ts',
+    ],
     environment: 'node',
     /*
      * jsdom only where a test needs one, opted into per file with a

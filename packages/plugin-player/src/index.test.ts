@@ -107,6 +107,65 @@ function mediaSessionStub(log: SessionLog) {
   return MediaSessionStub
 }
 
+/** What the host was asked to keep awake, and whether it still is. */
+interface WakeLog {
+  taken: string[]
+  released: number
+  get held(): number
+}
+
+/**
+ * A minimal `ctx.background`.
+ *
+ * Opt-in like the media session: most transport tests do not care whether the
+ * machine is allowed to sleep, and a service on all of them would be noise.
+ */
+function backgroundStub(
+  log: WakeLog,
+  opts: { refuse?: boolean; gate?: () => Promise<void> } = {},
+) {
+  class BackgroundStub extends Service {
+    constructor(ctx: Context) {
+      super(ctx, 'background')
+    }
+    async canRunInBackground() {
+      return true
+    }
+    async acquireWakeLock(reason: string) {
+      if (opts.refuse) throw new Error('no blocker available')
+      // A gate lets a test hold the acquire open and change the transport
+      // underneath it, which is the only way to reach the race.
+      if (opts.gate) await opts.gate()
+      log.taken.push(reason)
+      let released = false
+      return () => {
+        // Idempotent, like the real one: a double release must not free
+        // someone else's lock.
+        if (released) return
+        released = true
+        log.released++
+      }
+    }
+    schedule() {
+      return () => {}
+    }
+    onWillSuspend() {
+      return () => {}
+    }
+  }
+  return BackgroundStub
+}
+
+function wakeLog(): WakeLog {
+  return {
+    taken: [],
+    released: 0,
+    get held() {
+      return this.taken.length - this.released
+    },
+  }
+}
+
 interface Harness {
   ctx: Context
   player: Player
@@ -114,6 +173,7 @@ interface Harness {
   db: DbService
   root: string
   session: SessionLog
+  wake: WakeLog
   restart(): Promise<Harness>
 }
 
@@ -123,11 +183,13 @@ async function harness(
     provider?: MediaProvider
     config?: Record<string, unknown>
     mediaSession?: boolean
+    background?: boolean | { refuse?: boolean; gate?: () => Promise<void> }
   } = {},
 ): Promise<Harness> {
   const root = opts.root ?? (await tempDir('bbebee-player'))
   const audio = createMockAudio({ durationMs: 200_000 })
   const session: SessionLog = { states: [], cleared: 0 }
+  const wake = wakeLog()
 
   const ctx = new Context()
   const fibers = [
@@ -137,6 +199,13 @@ async function harness(
     await ctx.plugin(DbNode, { fileName: 'player-test.db' }),
     await ctx.plugin(mockAudioPlugin(audio)),
     ...(opts.mediaSession ? [await ctx.plugin(mediaSessionStub(session))] : []),
+    ...(opts.background
+      ? [
+          await ctx.plugin(
+            backgroundStub(wake, typeof opts.background === 'object' ? opts.background : {}),
+          ),
+        ]
+      : []),
     await ctx.plugin(sourcesStub(opts.provider ?? localProvider())),
     await ctx.plugin(plugin, { tickMs: 3_600_000, saveThrottleMs: 0, ...opts.config }),
   ]
@@ -149,6 +218,7 @@ async function harness(
     db: ctx.db,
     root,
     session,
+    wake,
     restart: async () => {
       // Teardown in reverse, exactly as the kernel does it, so the player
       // flushes its state before the database closes underneath it.
@@ -431,6 +501,117 @@ describe('interruptions and routes', () => {
     audio.interrupt({ type: 'ended', shouldResume: true })
     await tick()
     expect(player.state.status).toBe('paused')
+  })
+})
+
+describe('the wake lock', () => {
+  it('holds the machine awake while playing and lets it sleep on pause', async () => {
+    // MD-6's other half. Close-to-tray keeps the renderer and the audio graph
+    // alive when the window goes; without this the machine still sleeps
+    // mid-track, and "playback survives window-hide" needs both.
+    const { player, wake } = await harness({ background: true })
+    await player.playNow([urn('a')])
+    await tick()
+
+    expect(wake.taken, 'the lock names what it is for').toEqual(['playback'])
+    expect(wake.held).toBe(1)
+
+    player.pause()
+    expect(wake.held, 'a paused player must not hold the machine awake').toBe(0)
+
+    await player.play()
+    await tick()
+    expect(wake.held).toBe(1)
+  })
+
+  it('keeps holding it through a stall', async () => {
+    // A lock dropped and re-taken on every buffer underrun is a lock the OS
+    // sees flapping, and the track is still playing as far as anyone can tell.
+    const { player, audio, wake } = await harness({ background: true })
+    await player.playNow([urn('a')])
+    await tick()
+
+    audio.stall(true)
+    expect(wake.held).toBe(1)
+    expect(wake.taken, 'and not re-taken').toHaveLength(1)
+
+    audio.stall(false)
+    expect(wake.held).toBe(1)
+  })
+
+  it('releases it when the queue runs out', async () => {
+    const { player, audio, wake } = await harness({ background: true })
+    await player.playNow([urn('a')])
+    await tick()
+
+    audio.finish()
+    await tick()
+
+    expect(player.state.status).toBe('idle')
+    expect(wake.held, 'nothing is playing, so nothing holds the machine awake').toBe(0)
+  })
+
+  it('does not strand a lock when playback stops while it is being acquired', async () => {
+    /*
+     * The acquire is async, so the transport can change under it. A lock that
+     * arrives after the user pressed pause has to be released on arrival — not
+     * held until something else happens to change the status, which is the
+     * failure nobody notices until a laptop flattens itself in a bag.
+     *
+     * The gate holds the acquire open so the pause lands in the middle of it,
+     * which is the only way to reach that branch deterministically.
+     */
+    let openGate!: () => void
+    const gate = new Promise<void>((resolve) => {
+      openGate = resolve
+    })
+
+    const h = await harness({ background: { gate: () => gate } })
+    await h.player.playNow([urn('a')])
+    expect(h.player.state.status, 'playing, with the acquire still in flight').toBe('playing')
+    expect(h.wake.taken, 'nothing acquired yet').toEqual([])
+
+    h.player.pause()
+    openGate()
+    await tick()
+
+    expect(h.wake.taken, 'the lock did arrive').toEqual(['playback'])
+    expect(h.wake.held, 'and was let go again immediately').toBe(0)
+  })
+
+  it('plays on when the host refuses a blocker', async () => {
+    // A machine with no power-save blocker is a machine that may sleep. It is
+    // not a reason to refuse to play.
+    const { player, wake } = await harness({ background: { refuse: true } })
+    await player.playNow([urn('a')])
+    await tick()
+
+    expect(player.state.status).toBe('playing')
+    expect(wake.taken).toEqual([])
+  })
+
+  it('releases it when the plugin unloads mid-playback', async () => {
+    const root = await tempDir('bbebee-player-wake')
+    const audio = createMockAudio()
+    const wake = wakeLog()
+    const ctx = new Context()
+    await ctx.plugin(PathsNode, { root })
+    await ctx.plugin(FsNode)
+    await ctx.plugin(DbNode, { fileName: ':memory:' })
+    await ctx.plugin(mockAudioPlugin(audio))
+    await ctx.plugin(backgroundStub(wake))
+    await ctx.plugin(sourcesStub(localProvider()))
+    await tick()
+
+    const fiber = await ctx.plugin(plugin, { tickMs: 3_600_000 })
+    await tick()
+    await (ctx.player as Player).playNow([urn('a')])
+    await tick()
+    expect(wake.held).toBe(1)
+
+    await fiber.dispose()
+    await tick()
+    expect(wake.held, 'a disabled player leaves the machine free to sleep').toBe(0)
   })
 })
 

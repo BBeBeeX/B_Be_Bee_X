@@ -1,7 +1,7 @@
 {
   "name": "@BBeBee/plugin-local-scanner",
   "version": "0.0.0",
-  "description": "ctx.scanner — the local filesystem walk.",
+  "description": "ctx.scanner \u2014 the local filesystem walk.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -43,6 +43,7 @@
     "@BBeBee/core-paths-node": "workspace:*",
     "@BBeBee/plugin-sources": "workspace:*",
     "@BBeBee/tooling-fixtures": "workspace:*",
-    "@types/react": "^19.2.0"
+    "@types/react": "^19.2.0",
+    "@BBeBee/plugin-player": "workspace:*"
   }
 }

@@ -140,6 +140,12 @@ export class Player extends Service implements PlayerService {
    * call time and an isolated or replaced implementation is honoured.
    */
   private mediaCtx?: Context
+  /** The scoped context `ctx.background` arrived on. See `mediaCtx`. */
+  private bgCtx?: Context
+  /** Held while playing, so the machine does not sleep mid-track (MD-6). */
+  private wakeLock?: Disposable
+  /** An acquire in flight. The status can change before it lands. */
+  private wakeLockPending = false
   private ticker?: ReturnType<typeof setInterval>
   private activePlay?: ActivePlay
   private lastSaveAt = 0
@@ -312,10 +318,19 @@ export class Player extends Service implements PlayerService {
       }, 'player-ui-contributions'),
     )
 
-    this.ctx.inject(['background'], (scoped) =>
+    this.ctx.inject(['background'], (scoped) => {
+      this.bgCtx = scoped
       // Checkpoint before the host suspends: on mobile there may be no later.
-      scoped.background.onWillSuspend(() => this.persist(true)),
-    )
+      const off = scoped.background.onWillSuspend(() => this.persist(true))
+      // A status may already be playing — the service can arrive after the
+      // first track does.
+      this.syncWakeLock()
+      return () => {
+        this.bgCtx = undefined
+        this.dropWakeLock()
+        off()
+      }
+    })
 
     return async () => {
       this.disposed = true
@@ -326,6 +341,7 @@ export class Player extends Service implements PlayerService {
       this.clearFading()
       await this.finishPlay({ completed: false, skipped: false })
       this.detachSource()
+      this.dropWakeLock()
       await this.persist(true).catch(() => undefined)
     }
   }
@@ -341,8 +357,58 @@ export class Player extends Service implements PlayerService {
   }
 
   private set(patch: Partial<TransportState>): void {
+    const wasPlaying = isPlayingLike(this.transport.status)
     this.transport = { ...this.transport, ...patch }
+    if (isPlayingLike(this.transport.status) !== wasPlaying) this.syncWakeLock()
     this.ctx.emit('player/state-changed', this.transport)
+  }
+
+  /* ── the wake lock ─────────────────────────────────────────────────── */
+
+  /**
+   * Hold the machine awake exactly while audio is meant to be coming out.
+   *
+   * MD-6's other half. Close-to-tray keeps the renderer — and the audio graph
+   * — alive when the window goes, but a process that survives a hidden window
+   * still stops when the machine sleeps, so "playback survives window-hide"
+   * needs both. `ctx.background` is optional, so a build without it plays
+   * exactly as before and simply does not hold the lock.
+   *
+   * ⚠️ `stalled` counts as playing here too. A lock dropped and re-taken on
+   * every buffer underrun is a lock the OS sees flapping, and the track is
+   * still playing as far as the user and the lock screen are concerned.
+   */
+  private syncWakeLock(): void {
+    if (isPlayingLike(this.transport.status)) void this.takeWakeLock()
+    else this.dropWakeLock()
+  }
+
+  private async takeWakeLock(): Promise<void> {
+    const background = this.bgCtx?.background
+    if (!background || this.wakeLock || this.wakeLockPending) return
+    this.wakeLockPending = true
+    try {
+      const lock = await background.acquireWakeLock('playback')
+      /*
+       * Playback may have stopped while this was in flight — a track that
+       * failed to load, or a user who pressed pause immediately. Releasing it
+       * on arrival is what stops a paused player from holding the machine
+       * awake for ever, which is the failure nobody notices until a laptop
+       * runs its battery down in a bag.
+       */
+      if (this.disposed || !isPlayingLike(this.transport.status)) lock()
+      else this.wakeLock = lock
+    } catch {
+      // A host that refuses a blocker is not a reason to stop playing; the
+      // service already reports that case rather than throwing on its own.
+    } finally {
+      this.wakeLockPending = false
+    }
+  }
+
+  private dropWakeLock(): void {
+    this.wakeLock?.()
+    this.wakeLock = undefined
   }
 
   private emitQueueChanged(): void {

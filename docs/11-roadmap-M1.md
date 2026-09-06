@@ -164,6 +164,12 @@ rewrite of `plugin-player` rather than a re-scope of a milestone.
 **MD-6 — Desktop close-to-tray is in; the tray mini-player is not.**
 Closing the window hides it, keeping the renderer — and therefore the kernel and the audio graph —
 alive, with `powerSaveBlocker` held while playing. There is no tray UI beyond show and quit.
+⚠️ The blocker half was built as a service and then never asked for: `ctx.background.acquireWakeLock`
+existed, was tested, reached `powerSaveBlocker` through the bridge — and had **no caller**, so a
+hidden window kept playing right up until the machine slept. `plugin-player` now takes the lock
+while the transport is playing-like and releases it on pause, on an empty queue, and on unload.
+`stalled` counts as playing: a lock dropped and re-taken on every buffer underrun is one the OS
+sees flapping, and the track is still playing as far as the user is concerned.
 *Why.* [10 §M1](./10-roadmap.md#m1--it-plays-music) requires playback to survive window-hide, and
 [ADR-3](./01-overview.md#adr-3--the-electron-kernel-lives-in-the-renderer-main-is-a-thin-native-host)
 makes that a process-lifetime question rather than a UI one. The mini-player is UI, and MD-2
@@ -347,6 +353,13 @@ taking minutes and taking an afternoon.
 - [x] New `codecConformance` suite in `packages/protocol/src/conformance/`, run in Node and on
       device: tags, embedded artwork, duration probe, PCM decode, non-empty `supportedFormats()`.
       ⚠️ Green in Node against `core-codec-node`; the device half is the smoke matrix's.
+      The PCM case is deliberately two-sided, because `decode` is a member the two platforms
+      answer differently: mobile has a real decoder (`AudioDecoder`), and on desktop decoding
+      belongs to the audio engine, since a second decoder in the tag reader would be a second
+      answer to "what can this platform play". So an implementation may decode *or* refuse in a
+      way that names where decoding lives — what it may not do is return something shaped like
+      audio with no audio in it. A caller can handle a refusal and cannot handle a lie, which is
+      the same rule as MD-1's "absent, not stubbed".
 - [x] A conformance case asserts `readMetadata` stays under a byte ceiling on a large file.
 - [x] `supportedFormats()` reflects reality per platform; the ⚠️ in
       [04 §13](./04-core-services.md#13-ctxcodec--decoding-and-metadata) is honoured by
@@ -411,7 +424,8 @@ where the player checkpoints.
 - [x] Desktop's `canRunInBackground()` is `true`; mobile's is `true` only while audio holds the
       process, and the value is derived rather than hardcoded.
 - [x] `acquireWakeLock` maps to `powerSaveBlocker` on desktop and is released promptly; a leaked
-      lock is caught by the leak test.
+      lock is caught by the leak test. ⚠️ And it now has a *caller* — see MD-6. A capability with
+      no consumer passes every test it has and delivers nothing.
 - [ ] `onWillSuspend` fires before a real suspension on both platforms, verified on device — a
       hook that never fires is worse than no hook, because everything downstream trusts it.
 
@@ -638,6 +652,11 @@ written in the same transaction.
       stream whose server went away spins a spinner for ever.
 - [x] Errors are mapped onto the [06 §7](./06-music-sources.md#7-errors) taxonomy, and **no
       failure path clears the queue**.
+- [x] Holds a wake lock through `ctx.background` while playing, and lets it go otherwise (MD-6).
+      The acquire is async, so a lock that lands after playback stopped is released on arrival
+      rather than held until something else changes the status — the failure nobody notices until
+      a laptop flattens itself in a bag. `ctx.background` stays optional: a build without it plays
+      exactly as before and simply does not hold the lock.
 - [x] Publishes to `ctx.mediaSession` on every track and status change, position throttled to 1 Hz.
 - [x] Capabilities: `audio`, `mediaSession`, `background`, `db:write:core`.
 - [x] Disabling the plugin mid-playback stops audio, clears the lock screen, and leaves no node
@@ -697,6 +716,14 @@ props — `Button`, `IconButton`, `TrackRow`, `Slider`, `Sheet`/`Dialog`, `List`
 - [x] Accessible names come through shared props so they are written once
       ([08 §8](./08-ui-architecture.md#8-accessibility)); desktop is keyboard navigable with
       visible focus and `Escape` closing overlays; both honour reduced motion.
+      ⚠️ The mobile `Slider` was a *picture* of a scrubber: no gesture, and an
+      `onAccessibilityAction` that committed the value it already had — a control announced as
+      adjustable that adjusted nothing, and no way for anyone to seek on mobile at all
+      (criterion 2). It now drags through React Native's own responder system — no
+      `react-native-gesture-handler`, because a native module in the kit is the one thing
+      `configureNative` exists to keep out — reports `onChange` through the drag and `onCommit`
+      once on release, clamps to its range, gives the position back if the OS takes the drag
+      away, and steps by 5% for `increment`/`decrement`.
 - [x] `useServiceState` selectors are referentially stable, and a test proves a 1 Hz position tick
       does not cause a re-render storm.
 
@@ -762,9 +789,8 @@ registry members it already declares — `register`, `providers`, `get`, `forUrn
 unchanged and already implemented.
 
 ```ts
-import type { Paged } from '../common.js'
+import type { Paged, PageRequest } from '../common.js'
 import type { Album, AlbumDetail, Artist, ArtistDetail, Track } from '../entities/catalog.js'
-import type { UrnKind } from '../urn.js'
 
 export type TrackSort = 'title' | 'artist' | 'album' | 'addedAt' | 'year' | 'duration' | 'playCount'
 
@@ -795,11 +821,19 @@ export interface SourcesService {
    * can be slow, partial, or unreachable. Both exist; they answer different
    * questions and the UI shows both.
    */
-  searchLocal(text: string, opts?: { limit?: number; kinds?: UrnKind[] }): Promise<SearchResult>
+  searchLocal(text: string, opts?: { limit?: number; sourceIds?: string[] }): Promise<SearchResult>
 
   counts(): Promise<CatalogCounts>
 }
 ```
+
+⚠️ `searchLocal`'s filter is `sourceIds`, not the `kinds: UrnKind[]` this section first sketched.
+Two reasons, and the second is the real one: it matches `CatalogQuery.sourceIds`, so "restrict to
+these sources" is spelled once across the whole catalogue surface; and a `kinds` filter would have
+had exactly one legal value in M1, because the FTS index holds tracks (`SEARCHABLE_KINDS`). A
+parameter whose only argument is its default is not a filter, it is a promise about M2 made in the
+wrong place — `kinds` lands when albums and artists are indexed and there is something to choose
+between.
 
 `ctx.library` — playlists, favourites, collections — is specified with M2, when something
 actually curates.
@@ -892,9 +926,9 @@ criterion with no named check is an intention, not a criterion.
 | # | Criterion | How it is checked | Automated |
 |---|---|---|---|
 | 1 | Scan ≥ 5,000 files; incremental rescan of an unchanged library costs stat calls only | The corpus generator (§7) builds 5,000 tagged files; an instrumented `ctx.fs` counts calls; the second pass must issue `n` stats, zero `readBytes`, and zero `readMetadata`. Runs against the **real** `core-codec-node`, in `plugin-local-scanner/src/corpus.test.ts`. Repeated on device against a real library | ✅ Node · device run per release |
-| 2 | Play, pause, seek, next, previous, queue reorder — on all three platforms | Transport unit tests against a mock `AudioService` (every transition in [05 §2](./05-audio-playback.md#transport-state-machine)); an integration test in a real context with fake core services; the device smoke matrix for the real thing | ✅ + device |
+| 2 | Play, pause, seek, next, previous, queue reorder — on all three platforms | Transport unit tests against a mock `AudioService` (every transition in [05 §2](./05-audio-playback.md#transport-state-machine)); an integration test in a real context with fake core services; both scrubbers driven — desktop's `input[type=range]`, mobile's responder drag in `ui-kit-mobile/src/slider.test.tsx` — since a seek the UI cannot express is not a seek; the device smoke matrix for the real thing | ✅ + device |
 | 3 | Lock-screen and notification controls on iOS and Android; MPRIS/SMTC/Now Playing on desktop | `mediaSessionConformance` round-trips `update` / `setPlaybackState` / `onCommand` per implementation; the OS surfaces themselves are manual | Partly — surfaces are manual |
-| 4 | Playback survives backgrounding on mobile and window-hide on desktop | Desktop: an automated check that closing hides rather than destroys and that the wake lock is held while playing. Mobile: device smoke, since no harness can background an app faithfully | Partly |
+| 4 | Playback survives backgrounding on mobile and window-hide on desktop | Desktop: `apps/desktop/main/window-policy.test.ts` on the close decision — hide with a tray or on macOS, destroy where there would be no way back, never intercept a quit — plus `plugin-player`'s wake-lock suite, which pins that the lock is taken while playing, held through a stall, released on pause, on an empty queue and on unload, and not stranded when playback stops mid-acquire. Mobile: device smoke, since no harness can background an app faithfully | Partly |
 | 5 | Headphone unplug pauses | A policy unit test drives synthetic `onRouteChange` / `onInterruption` events through the player and asserts the whole [05 §5](./05-audio-playback.md#5-interruptions-focus-and-routes) table, including "never continue to speakers". The real event is device smoke | ✅ + device |
 | 6 | Queue and position restore across a restart, without auto-playing | An integration test boots a context against a populated `playback_state`, then asserts the queue is restored, `positionMs` matches, and `status !== 'playing'` | ✅ |
 | 7 | *(MD-5)* Gapless boundary is inaudible; a queue change cancels the prefetch | Unit: the next source is queued before the current one ends and no second `AudioContext` schedule happens; the prefetch `AbortSignal` fires on a queue change. Audibility is a listening test in the device matrix | Partly |
@@ -951,6 +985,22 @@ file library while playing** and watch for write contention on the single SQLite
 the cheapest possible probe of the risk in
 [10](./10-roadmap.md#-sqlite-as-the-single-store), and it costs one run.
 
+**Taken** — `plugin-local-scanner/src/corpus.test.ts`, against a file-backed database rather than
+`:memory:`, because WAL, the lock and the busy timeout are the things under test and an in-memory
+database has a different concurrency story from the one that ships. The player checkpoints with no
+save throttle, which is as hard as it ever writes.
+
+> `[contention] 5011 files: 18162ms quiet, 19416ms while playing (1.07×), 2795 checkpoints landed`
+> `[contention] 5011 files: 24746ms quiet, 27880ms while playing (1.13×), 3806 checkpoints landed`
+
+**Contention is not a problem at this scale.** A scan costs 7–13% more while a track plays — the
+second line is the same probe during a full `pnpm test`, which is the more honest number. Thousands
+of checkpoints landed *during* the scan rather than queueing behind it; no write was refused, and
+the player was still playing at the end. What the test asserts is those outcomes — a `SQLITE_BUSY`
+reaching a caller, a starved checkpoint, a player driven into `error` — and not the timing, because
+a threshold on shared CI hardware is a flake generator. The ratio is printed for a human to read,
+which is what a probe is for.
+
 - **The shell wiring check** — `packages/kernel/src/shells.test.ts`. Reads each shell's allowlist,
   its generated registry and the manifests, and asserts that every configured plugin is bundled,
   that every service a configured plugin *requires* is provided by the bootstrap array or by
@@ -979,7 +1029,7 @@ milestone: each has a signal that arrives early enough to act on.
 | Hermes lacks `ReadableStream` on RN 0.86 | Stage 1, first streamed read | `web-streams-polyfill` in the mobile entry ([04 §17](./04-core-services.md#17-runtime-compatibility-checklist)) |
 | `expo-sqlite` ships SQLite < 3.43, so `contentless_delete=1` is unavailable | The core migration fails at first boot on device | Assert the SQLite version in the migration and fail loudly; fall back to a `LIKE` search with a ⚠️ in the UI until the SDK catches up |
 | Android 14+ foreground-service policy rejects the media service | First background playback on a modern device | Declare the `mediaPlayback` service type and its permission; verify in the dev build during Stage 1, not during Stage 4 |
-| Scan and playback contend on one SQLite writer | The measurement in §7 | Batch scanner writes; if it persists, the volatile-table split described in [10](./10-roadmap.md#-sqlite-as-the-single-store) is still available and nothing joins across that boundary |
+| Scan and playback contend on one SQLite writer | The measurement in §7 | **Measured, and it does not.** 1.07× at 5,000 files with the player checkpointing unthrottled, no refused write, no starved checkpoint. Scanner writes are batched, which is most of why. If it ever does bite, the volatile-table split described in [10](./10-roadmap.md#-sqlite-as-the-single-store) is still available and nothing joins across that boundary |
 | The two kits drift from the first screen onward | The parity test, if it lands before the screens | Freeze the component set before Stage 4 starts; a divergence is a CI failure, not a review comment |
 
 ---

@@ -110,6 +110,49 @@ export const codecConformance: ConformanceSuite<CodecSubject> = {
       },
     },
     {
+      name: 'decodes to PCM, or says plainly that decoding is not its job',
+      because:
+        'a decoder that returns an empty buffer instead of refusing is the one answer nothing ' +
+        'downstream can tell from silence',
+      async run({ codec, sample }) {
+        /*
+         * ⚠️ Deliberately two-sided. `ctx.codec.decode` is on the contract
+         * because mobile has a real decoder behind it (`AudioDecoder`), while
+         * on desktop decoding belongs to the audio engine — Web Audio's
+         * `decodeAudioData` in the renderer — and a second decoder in the tag
+         * reader would be a second answer to "what can this platform play".
+         *
+         * So an implementation may decode or may refuse; what it may not do is
+         * return something shaped like audio with no audio in it. That is the
+         * same rule as MD-1's "absent, not stubbed" and §4.1's "report what
+         * could not be decoded, never skip it silently": a caller can handle a
+         * refusal, and cannot handle a lie.
+         */
+        let decoded
+        try {
+          decoded = await codec.decode(sample.uri)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          assert(
+            /audio|decode|not supported|unsupported/i.test(message),
+            `a refusal must say where decoding lives, got: ${message}`,
+          )
+          return
+        }
+
+        assert(decoded.sampleRate > 0, `sampleRate must be positive, got ${decoded.sampleRate}`)
+        assert(decoded.channels > 0, `channels must be positive, got ${decoded.channels}`)
+        assert(
+          decoded.pcm.length === decoded.channels,
+          `pcm must hold one buffer per channel: ${decoded.pcm.length} for ${decoded.channels}`,
+        )
+        assert(
+          decoded.pcm.every((channel) => channel.length > 0),
+          'a decode that succeeded must return samples, not empty buffers',
+        )
+      },
+    },
+    {
       name: 'declares what this platform can decode',
       because: 'StreamPrefs.acceptFormats is built from it, and an empty list asks for nothing',
       async run({ codec }) {

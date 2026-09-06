@@ -25,6 +25,11 @@ import {
   Menu,
 } from 'electron'
 import { createHost, type Host } from '@BBeBee/core-desktop-bridge/main'
+import {
+  shouldHideOnClose,
+  shouldQuitWhenWindowsGone,
+  type CloseContext,
+} from './window-policy.js'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -107,7 +112,7 @@ function createWindow(): BrowserWindow {
    * better than that.
    */
   window.on('close', (event) => {
-    if (quitting || !canSurviveWithoutWindow()) return
+    if (!shouldHideOnClose(closeContext())) return
     event.preventDefault()
     window.hide()
   })
@@ -119,14 +124,9 @@ function createWindow(): BrowserWindow {
   return window
 }
 
-/**
- * Whether hiding the last window leaves a way back to it.
- *
- * The tray on Windows and Linux; the dock on macOS, which keeps an app alive
- * with no windows by design and re-opens on `activate`.
- */
-function canSurviveWithoutWindow(): boolean {
-  return tray !== undefined || process.platform === 'darwin'
+/** The three facts the window policy decides from. */
+function closeContext(): CloseContext {
+  return { quitting, hasTray: tray !== undefined, platform: process.platform }
 }
 
 function showWindow(): void {
@@ -406,7 +406,7 @@ app.on('before-quit', () => {
 app.on('window-all-closed', () => {
   // Reached only when a window was genuinely destroyed: either the user is
   // quitting, or this build has nowhere to hide to and the close went through.
-  if (quitting || !canSurviveWithoutWindow()) app.quit()
+  if (shouldQuitWhenWindowsGone(closeContext())) app.quit()
 })
 
 app.on('will-quit', () => {

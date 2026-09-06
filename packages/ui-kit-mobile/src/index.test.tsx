@@ -21,7 +21,6 @@ import {
   IconButton,
   List,
   Sheet,
-  Slider,
   Text,
   TextField,
   Toast,
@@ -144,22 +143,8 @@ describe('TrackRow', () => {
   })
 })
 
-describe('Slider', () => {
-  it('reports its range as an adjustable control', () => {
-    const node = tree(h(Slider, { value: 30, max: 100 }))[0]!
-    const props = node.props as {
-      accessibilityRole: string
-      accessibilityValue: { now: number; max: number }
-    }
-    expect(props.accessibilityRole).toBe('adjustable')
-    expect(props.accessibilityValue).toMatchObject({ now: 30, max: 100 })
-  })
-
-  it('does not divide by a zero duration', () => {
-    // A track whose duration is not known yet is the ordinary case at load.
-    expect(() => tree(h(Slider, { value: 0, max: 0 }))).not.toThrow()
-  })
-})
+// `Slider` holds drag state, so it needs a renderer rather than a call.
+// Its tests live in `slider.test.tsx`, which gives it one.
 
 describe('Sheet', () => {
   it('renders nothing while closed', () => {

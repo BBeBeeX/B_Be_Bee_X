@@ -352,6 +352,12 @@ platforms. If it becomes a problem, splitting the volatile tables (`play_history
 `cache_entries`, `download_tasks`) into a second database file is a contained change, because
 nothing joins across those boundaries.
 
+*Measured at M1* — scanning 5,000 files while a track plays and checkpoints unthrottled costs
+7–13% (`18.2s`→`19.4s` idle, `24.7s`→`27.9s` during a full test run), lands thousands of
+checkpoints *during* the scan rather than behind it, and refuses no write. So the risk is real in shape and not yet real in practice; the download queue is
+the half M1 could not exercise, because M3 is where one exists. The probe is
+[11 §7](./11-roadmap-M1.md#7-fixtures-and-harnesses) and it runs on every `pnpm test`.
+
 ---
 
 ## What would make this design wrong
