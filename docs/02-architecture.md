@@ -8,73 +8,217 @@
 
 ## 1. The layer model
 
-Five layers. The rule that gives the architecture its value is the **dependency direction**:
-every arrow points down, and nothing above the contract layer may skip past it.
+Five layers, numbered from the contracts upward. The number is vocabulary: "Layer 2" means core
+plugins in every document here, and a package's layer is the thing that decides which imports it
+is allowed to write.
+
+The rule that gives the architecture its value is the **dependency direction**: every arrow
+points down, no call skips a layer on the way down, and exactly one layer is allowed to touch the
+machine underneath.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Layer 4: UI & Business Function Layer                           │
+│  (Pages, Interactions, Business Orchestration)                  │
+│  apps/* · plugin-*-ui-mobile · plugin-*-ui-desktop · ui-*       │
+│  ✅ Depends on: Protocol, Kernel, Core Plugins, Feature Plugins │
+│  ❌ Forbidden: Direct calls to system APIs / Kernel             │
+└─────────────────────────────────────────────────────────────────┘
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Layer 3: Feature Plugins Layer                                  │
+│  (Business Feature Modules)                                     │
+│  plugin-player · plugin-sources · plugin-download · …           │
+│  ✅ Depends on: Protocol, Kernel, Core Plugins                  │
+│  ❌ Forbidden: Direct calls to system APIs / Kernel             │
+└─────────────────────────────────────────────────────────────────┘
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Layer 2: Core Plugins Layer                                     │
+│  (Core Capability Services — one implementation per target)     │
+│  core-fs-* · core-http-* · core-db-* · core-js-quickjs-* · …    │
+│  ✅ Depends on: Protocol, Kernel                                │
+│  ⚠️ The ONLY layer permitted to directly call system APIs /     │
+│     Kernel                                                      │
+└─────────────────────────────────────────────────────────────────┘
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Layer 1: Kernel Layer                                           │
+│  (Infrastructure + System Abstractions)                         │
+│  @BBeBee/kernel — Cordis Context · DI · fibers · events ·       │
+│  config loader · plugin resolution · capability gate            │
+│  ✅ Depends on: Protocol                                        │
+└─────────────────────────────────────────────────────────────────┘
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Layer 0: Protocol Layer                                         │
+│  (Interface Definitions / Data Models / Constants)              │
+│  @BBeBee/protocol — zero runtime, zero dependencies             │
+│  ✅ All layers may depend on this layer                         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Read the numbering as a permission system rather than a picture. A layer may name anything at or
+below it in the list above, and nothing else — but *how* it names a lower layer changes at the
+Layer 2 boundary, which is the subject of the next two subsections and the reason the diagram is
+worth more than its shape.
+
+### What each layer is
+
+| Layer | Packages | Responsible for | May depend on | Never |
+|---|---|---|---|---|
+| **4 — UI & business function** | `apps/mobile`, `apps/desktop/renderer`, `plugin-*-ui-mobile`, `plugin-*-ui-desktop`, `ui-kit-*`, `ui-core`, `ui-parity`, `ui-tokens` | Pages, navigation, gestures and keyboard, and the orchestration that turns one user intent into a sequence of feature calls | Layers 0–3 | A platform SDK; the kernel's bootstrap surface; SQL; HTTP; domain state ([§6](#6-state-ownership)) |
+| **3 — Feature plugins** | headless `plugin-*` (`plugin-player`, `plugin-dsp`, `plugin-sources`, `plugin-source-runtime`, `plugin-download`, `plugin-library`, `plugin-lyrics`, `plugin-cache`, `plugin-local-scanner`, `plugin-log-*`), plus `source-rules` as pure logic beneath them | One business capability each, headless: state, persistence, networking, events | Layers 0–2 | A platform SDK; the kernel's bootstrap surface; another feature plugin's internals |
+| **2 — Core plugins** | `packages/core-*` | One platform capability per service key, with one implementation per target behind each key | Layers 0–1 — **directly** | Domain knowledge. A core plugin must not know what a track is |
+| **1 — Kernel** | `@BBeBee/kernel` | The Cordis `Context`, DI, fibers and effects, the event bus, config loading, plugin resolution, the capability gate, core migrations | Layer 0 (and Cordis) | Importing any `core-*` or `plugin-*`. The kernel does not know which plugins exist |
+| **0 — Protocol** | `@BBeBee/protocol` | Service interfaces, entity types, the typed event map, constants, and the conformance suites that hold implementations to them | Nothing at all | Emitting a runtime value; importing any bare specifier ([09 §3](./09-project-structure.md#3-dependency-rules)) |
+
+Layer 0 is the load-bearing one. It is a `.d.ts`-shaped package with no code in it, which is what
+lets `core-fs-expo` and `core-fs-node` be substituted for one another without a single consumer
+recompiling differently, and what makes every layer above mockable in a unit test.
+
+### "Depends on" means two different things
+
+This is the distinction the box diagram cannot draw, and getting it wrong is the most common way
+to break the architecture while appearing to follow it.
+
+- **Layer 2 depends on Layer 1 by importing it.** `core-db-node` imports `MigrationRunner` and
+  `scopeContext` from `@BBeBee/kernel` and calls them. That is intended: core plugins are the
+  adaptation layer, so they are the layer that talks to both the kernel and the operating system.
+- **Layers 3 and 4 depend on Layer 2 without importing it.** A feature plugin writes
+  `inject: ['fs', 'http']` — naming *service keys declared at Layer 0* — and the kernel binds them
+  to whichever Layer 2 package the shell registered ([§3](#3-boot-sequence)). There is no
+  compile-time import from a `plugin-*` to a `core-*` anywhere in the repository, and the
+  `package.json` files are the proof: no feature plugin lists a core plugin as a dependency.
+
+So the arrow from Layer 3 to Layer 2 in the diagram is a **runtime** arrow. Its compile-time
+counterpart goes to Layer 0 instead, and that inversion is the whole design:
 
 ```mermaid
 flowchart TD
-    subgraph L5["Host shells"]
-        M["apps/mobile<br/>Expo · React Native"]
-        D["apps/desktop/renderer<br/>Electron · React DOM"]
+    subgraph L4["Layer 4 — UI & business function"]
+        S["apps/* shells"]
+        V["plugin-*-ui-* · ui-kit-* · ui-core"]
     end
-
-    subgraph L4["Feature plugins"]
+    subgraph L3["Layer 3 — feature plugins"]
         F1["player · queue · dsp"]
         F2["source runtime · sources · library · scanner"]
-        F3["download · lyrics · cache"]
-        F4["ui registry · settings · log viewer"]
+        F3["download · lyrics · cache · logging"]
     end
-
-    subgraph L3["@BBeBee/protocol — contracts only, zero runtime"]
-        P["service interfaces · entity types · event map"]
-    end
-
-    subgraph L2["Core plugins — one implementation per target"]
+    subgraph L2["Layer 2 — core plugins (one implementation per target)"]
         C1["core-fs-node / core-fs-expo"]
         C2["core-http-node / core-http-rn"]
         C3["core-db-node / core-db-expo"]
         C4["core-js-quickjs-* · core-secrets-* · core-media-session-* · ..."]
     end
-
-    subgraph L1["@BBeBee/kernel"]
+    subgraph L1["Layer 1 — @BBeBee/kernel"]
         K["Cordis Context · DI · fibers · events<br/>config loader · plugin resolution · capability gate"]
     end
+    subgraph L0["Layer 0 — @BBeBee/protocol (zero runtime)"]
+        P["service interfaces · entity types · event map · constants"]
+    end
+    SYS["Platform SDKs · OS<br/>expo-* · node:* · electron"]
 
-    L5 --> L4
-    L4 --> L3
-    L2 --> L3
-    L4 --> L1
+    L4 -.->|"service keys, at runtime"| L3
+    L3 -.->|"service keys, at runtime"| L2
+    L4 --> L0
+    L3 --> L0
+    L2 --> L0
+    L1 --> L0
     L2 --> L1
-    L5 --> L1
+    L2 --> SYS
 ```
 
-Read the two arrows into `@BBeBee/protocol` carefully. Feature plugins and core plugins both
-depend on the contract layer, and **on nothing else in common**. A feature plugin has no
-compile-time knowledge that `core-fs-expo` exists; a core plugin has no idea who consumes it.
-That is the entire trick.
+The dotted arrows are resolved by the kernel; the solid ones are `import` statements. Feature
+plugins and core plugins have **nothing in common but Layer 0**: a feature plugin has no
+compile-time knowledge that `core-fs-expo` exists, and a core plugin has no idea who consumes it.
+That is the entire trick, and everything else in this document is a consequence of it.
 
 ### The invariant
 
-> **No package outside `packages/core-*` may import a platform SDK.**
+Two rules, both mechanical, both scoped by directory in
+[09 §3](./09-project-structure.md#3-dependency-rules) because code review will not catch them
+reliably:
 
-Not `expo-file-system`, not `node:fs`, not `electron`, not `react-native`'s native modules. This
-is enforced mechanically by an ESLint `no-restricted-imports` rule scoped by directory
-([09 §3](./09-project-structure.md#3-dependency-rules)), because it is the invariant the whole
-design rests on and code review will not catch it reliably.
+> **1. No package outside `packages/core-*` may import a platform SDK.**
 
-Two deliberate exceptions, both narrow:
+Not `expo-file-system`, not `node:fs`, not `electron`, not `react-native`'s native modules.
 
-- **UI packages** import `react-native` or `react-dom` respectively, since ADR-2 already accepts a
+> **2. No package above Layer 2 may drive the kernel.**
+
+`@BBeBee/kernel` has two kinds of export and they are not equally available:
+
+| Surface | Exports | Who may import it |
+|---|---|---|
+| **Plugin surface** — being *typed* by the kernel | `Context`, `Service`, `Inject`, `Plugin`, `Fiber`, `Effect`, `FiberState`, `fiberStateName`, `isActive`, `isSettled` | Layers 2, 3 and 4. These are the pinned Cordis re-exports of [09 §5.1](./09-project-structure.md#51-the-cordis-rc-problem): plugins import them from the kernel rather than from `cordis` so one adapter absorbs an upstream change |
+| **Bootstrap surface** — *driving* the kernel | `createApp`, `resolveConfig`, `loadPlugins`, `scopeContext`, `capabilityConfigOf`, `assert*`, `CORE_MIGRATIONS`, `MigrationRunner`, `AppConfig` | Layer 2 and the composition root only |
+
+A feature plugin does not construct a context, resolve a plugin, read the config store, or consult
+the capability gate. It is *handed* a context and works inside it. Stating it this precisely
+matters because "everything is a Cordis plugin" makes it sound as though every layer depends on
+the kernel equally; the layer rule is about who may **drive** the kernel, not who may be **typed**
+by it.
+
+### Three deliberate exceptions
+
+Each is narrow, and each is named here so it can be audited rather than discovered.
+
+- **UI packages import a view library.** `plugin-*-ui-mobile` and `ui-kit-mobile` import
+  `react-native`; their desktop counterparts import `react-dom`. ADR-2 already accepts a
   per-target view layer. They still may not touch platform *capabilities* — a mobile view may
   render a `<FlatList>`, but it may not call `FileSystem.readAsStringAsync`.
-- **Host shells** (`apps/*`) are platform-specific by definition. They choose which core plugins
-  to register (§3) and own genuinely platform-bound chrome — deep-link registration, safe-area
-  insets, window controls ([08 §7](./08-ui-architecture.md#7-shell-responsibilities)). Everything
-  else belongs in a plugin.
+- **Host shells own platform chrome.** `apps/*` are platform-specific by definition: deep-link
+  registration, safe-area insets, window controls
+  ([08 §7](./08-ui-architecture.md#7-shell-responsibilities)). Everything else belongs in a plugin.
+- **The composition root drives the kernel.** `apps/mobile/src/boot.ts`,
+  `apps/desktop/renderer/boot.ts`, and the `plugins.ts` allowlist beside each are the only files
+  that call `createApp` and name Layer 2 packages by import — [§3's bootstrap table](#bootstrap-plugin-sets)
+  is literally their contents. This is wiring, not business function: a composition root contains
+  no orchestration, no domain types, and no view code, and the rest of `apps/*` obeys the Layer 4
+  rule like any other Layer 4 package.
 
-The invariant therefore constrains `packages/plugin-*`, `packages/ui-*`, and `packages/protocol` —
-which is exactly the scope of the lint rule in
-[09 §3](./09-project-structure.md#3-dependency-rules).
+### Key design principles
+
+The five layers are a means. These are what they are for, and each names the mechanism that makes
+it real rather than aspirational.
+
+**Dependency Inversion Principle (DIP).** High-level modules do not depend on low-level modules;
+both depend on abstractions. Here the abstraction is Layer 0, and the inversion is visible in the
+build graph: `plugin-player` depends on `@BBeBee/protocol`, `core-db-expo` depends on
+`@BBeBee/protocol`, and neither depends on the other. Swapping SQLite implementations is a change
+to one line of a `boot.ts`.
+
+**Single Responsibility Principle (SRP).** Each layer answers one kind of question — *what is the
+contract* (0), *how does anything load and unload* (1), *how does this platform do it* (2), *what
+does the product do* (3), *what does the user see and touch* (4) — and each package within a layer
+owns exactly one service key or one feature. When a change needs edits in two layers at once, the
+seam is usually drawn at the wrong altitude; the standing example is domain logic creeping into
+Electron's `main`, which [§2](#desktop) rejects for this reason.
+
+**Interface Segregation Principle (ISP).** Layer 0 defines many small service interfaces rather
+than one platform façade, so `inject: ['fs']` pulls in filesystem access and nothing else. A
+plugin's `inject` list is therefore an honest, reviewable statement of its blast radius, and it is
+what the capability gate ([03 §7](./03-plugin-system.md#7-capability-model)) narrows further.
+
+**Layer-by-layer propagation.** UI → feature plugins → core plugins → kernel → system. Nothing
+skips: a screen that needs bytes calls a feature plugin, which asks `ctx.fs`, which is a core
+plugin, which calls the SDK. The forbidden move is the shortcut — a view reaching for
+`expo-file-system` because the round trip felt long — and it is forbidden precisely because it is
+the tempting one. Rule 1 of the invariant exists to make that shortcut fail in CI rather than in
+review.
+
+**Testability.** Every layer can be mocked at the Layer 0 seam, and the seam is the *same* seam
+production uses, so a test double is a legitimate implementation rather than a stand-in:
+
+| Testing | Substitute at Layer 0 | Where |
+|---|---|---|
+| A feature plugin | An in-memory `FsService` / `HttpService` / `DbService` | `packages/tooling-fixtures` ([09 §6](./09-project-structure.md#6-testing-strategy)) |
+| A core plugin | Nothing — it is held to the shared contract instead | The conformance suites in `protocol/src/conformance` ([04 §18](./04-core-services.md)) |
+| A UI package | The hooks read a fake service off a context built in the test | [08 §4](./08-ui-architecture.md#4-binding-services-to-react) |
+| The rule language | Nothing to mock: `source-rules` is pure, with no Cordis and no I/O | [06 §3](./06-music-sources.md#3-the-rule-language) |
+
+The circularity is the point: the conformance suites live in Layer 0, so the contract that makes
+the layers substitutable is also the thing that tests them.
 
 ---
 
@@ -169,6 +313,9 @@ nothing loads foreign code.
 ## 3. Boot sequence
 
 Identical on both platforms except for which core plugins are registered and which loader runs.
+Boot is [§1](#1-the-layer-model)'s stack turned on its side: the layers come up in order — kernel,
+then Layer 2, then Layer 3, then the Layer 4 shell — because each is waiting on a service key the
+one below it provides.
 
 ```mermaid
 sequenceDiagram
@@ -268,9 +415,14 @@ Three obligations fall out of this table and are non-negotiable for any plugin d
 
 ## 5. Composition: how features reach each other
 
+[§1](#1-the-layer-model) governs *vertical* dependency — who may reach down to whom. This section
+is about the *horizontal* problem it leaves open, entirely within Layer 3.
+
 Services answer "who provides this capability". They do not answer "how does a feature modify
 another feature's behaviour without either knowing about the other". That is what Cordis's
-**waterfall** dispatch is for, and it is used as a first-class architectural mechanism here.
+**waterfall** dispatch is for, and it is used as a first-class architectural mechanism here — and
+it is what keeps two Layer 3 packages from having to import each other, which the layer model
+would allow and which experience says rots.
 
 A waterfall hook is middleware: each listener receives the arguments plus a `next` continuation,
 and may transform inputs, short-circuit, or post-process the result.

@@ -1103,7 +1103,9 @@ earlier and is not the same thing.
       users to click through.
 - [x] `@BBeBee/protocol` still has zero runtime dependencies, and no package outside `core-*`
       imports a platform SDK — both mechanically checked
-      ([09 §3](./09-project-structure.md#3-dependency-rules)).
+      ([09 §3](./09-project-structure.md#3-dependency-rules)). The same config now also pins the
+      other two layer edges: nothing above Layer 2 imports the kernel's bootstrap surface or a
+      `core-*` package, and the kernel imports neither ([02 §1](./02-architecture.md#the-invariant)).
 - [ ] The device smoke matrix is run and recorded, including the gapless listening test.
       **The one genuinely outstanding item.** It is honestly manual (§7), and everything it
       covers is either a surface an OS draws or a sound a person has to hear.

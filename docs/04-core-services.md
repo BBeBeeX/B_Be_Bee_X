@@ -1,12 +1,19 @@
 # 04 — Core Services
 
-> **What this answers.** The platform abstraction layer: every service key a feature plugin may
-> use to touch the outside world, its TypeScript contract, its implementation on each target, and
-> the places where the two platforms genuinely differ.
+> **What this answers.** **Layer 2** of [02 §1](./02-architecture.md#1-the-layer-model): every
+> service key a feature plugin may use to touch the outside world, its TypeScript contract, its
+> implementation on each target, and the places where the two platforms genuinely differ.
 
-These are the only doors out of the sandbox. If a feature needs something not listed here, the
-answer is to add a core service — never to import a platform SDK
-([02 §1](./02-architecture.md#the-invariant)).
+These are the only doors out of the sandbox. Core plugins are the one layer permitted to call a
+platform SDK or the kernel's bootstrap surface directly, and that privilege is the whole reason
+they exist: they convert *this machine's* API into a contract that Layers 3 and 4 can be written
+against once. If a feature needs something not listed here, the answer is to add a core service —
+never to import a platform SDK ([02 §1](./02-architecture.md#the-invariant)).
+
+The price of the privilege is that a core plugin holds **no domain knowledge**. `ctx.fs` moves
+bytes and `ctx.db` runs SQL; neither knows what a track is. A core service that grows a concept
+from Layer 3 has put the seam at the wrong altitude, and the symptom is always the same — the two
+implementations stop being interchangeable.
 
 All interfaces live in `packages/protocol/src/services/` and are applied to the context by module
 augmentation. Implementations live in `packages/core-*` and are the sole holders of platform

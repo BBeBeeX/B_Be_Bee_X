@@ -44,7 +44,7 @@ Read `01` and `02` first — they establish the vocabulary every other document 
 | # | Document | What it answers |
 |---|---|---|
 | 01 | [Overview & Decisions](./01-overview.md) | What are we building, what are we deliberately *not* building, and which four decisions shaped everything else |
-| 02 | [Architecture](./02-architecture.md) | The layer model, the runtime model per platform, and how the app boots |
+| 02 | [Architecture](./02-architecture.md) | The five numbered layers, what each may and may not depend on, the runtime model per platform, and how the app boots |
 | 03 | [Plugin System](./03-plugin-system.md) | What a plugin *is*, how it declares dependencies, how it is loaded, and how it is contained |
 | 04 | [Core Services](./04-core-services.md) | The platform abstraction: `fs`, `http`, `db`, `secrets`, … and their two implementations each |
 | 05 | [Audio & Playback](./05-audio-playback.md) | The audio engine, the transport state machine, and the DSP effect chain |
@@ -60,13 +60,15 @@ Read `01` and `02` first — they establish the vocabulary every other document 
 ## The one-paragraph version
 
 A Cordis `Context` is created inside the app's single JavaScript runtime — Hermes on mobile, the
-Electron renderer on desktop. A small set of **core plugins** claim service keys (`ctx.fs`,
-`ctx.http`, `ctx.db`, `ctx.js`, …) and are the *only* code in the repository allowed to import a
-platform SDK; there is one implementation per target behind each key. Above them, **feature
-plugins** provide playback, DSP, downloads, the library, and the UI, and they reach the platform
-exclusively through those service keys. All contracts — service interfaces, entity types, and the
-typed event map — live in a single runtime-free package, `@BBeBee/protocol`, which is the seam
-that makes implementations interchangeable. Features compose with each other through Cordis
+Electron renderer on desktop. That context is **Layer 1**, the kernel. **Layer 2** is a small set
+of **core plugins** that claim service keys (`ctx.fs`, `ctx.http`, `ctx.db`, `ctx.js`, …); they are
+the *only* code in the repository allowed to import a platform SDK or to drive the kernel, and
+there is one implementation per target behind each key. Above them, **Layer 3** feature plugins
+provide playback, DSP, downloads, the library and the sources, and **Layer 4** — the shells and the
+view packages — turns those into pages; neither may reach past Layer 2 to the platform. All
+contracts — service interfaces, entity types, and the typed event map — live in **Layer 0**, a
+single runtime-free package, `@BBeBee/protocol`, which every other layer depends on and which is
+the seam that makes implementations interchangeable. Features compose with each other through Cordis
 **waterfall hooks**, so that, for example, the download plugin can transparently substitute a
 local file for a stream URL without the player knowing downloads exist. **Music sources sit
 outside all of this**: they are imported documents, held as rows, interpreted by
@@ -78,6 +80,9 @@ from.
 
 ## Conventions used in these documents
 
+- **Layer 0–4** — the five layers of [02 §1](./02-architecture.md#1-the-layer-model): protocol,
+  kernel, core plugins, feature plugins, UI & business function. Written as "Layer 2" throughout;
+  a package's layer is what decides which imports it may write.
 - **Service key** — a name claimed on the context, e.g. `ctx.player`. Written with the `ctx.`
   prefix throughout so it is never confused with a package name.
 - **Package name** — always fully qualified, e.g. `@BBeBee/plugin-download`.

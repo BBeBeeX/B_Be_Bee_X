@@ -10,7 +10,8 @@
 
 ```
 B_Be_Bee/
-├─ apps/
+├─ apps/                            L4 — the shells. boot.ts + plugins.ts in each
+│                                   are the composition root (02 §1)
 │  ├─ mobile/                       Expo app — the mobile shell
 │  │  ├─ app/                       expo-router routes
 │  │  ├─ generated/plugins.ts       codegen: static plugin imports (03 §6.1)
@@ -24,19 +25,19 @@ B_Be_Bee/
 │     └─ electron.vite.config.ts
 │
 ├─ packages/
-│  ├─ protocol/                     @BBeBee/protocol — types + contracts, ZERO runtime
+│  ├─ protocol/            L0       @BBeBee/protocol — types + contracts, ZERO runtime
 │  │  ├─ src/services/              fs, http, db, secrets, audio, player, sources, ui …
 │  │  ├─ src/entities/              Track, Album, StreamHandle, TransportState …
 │  │  ├─ src/events.ts              the typed event map (07 §5)
 │  │  └─ src/conformance/           shared contract test suites (04 §18)
 │  │
-│  ├─ kernel/                       @BBeBee/kernel — bootstrap, config, loader, capability gate
+│  ├─ kernel/              L1       @BBeBee/kernel — bootstrap, config, loader, capability gate
 │  │  └─ src/migrations/            core schema migrations
 │  │
-│  ├─ core-paths-node/     ✅       ┐ platform implementations.
+│  ├─ core-paths-node/     ✅       ┐ L2 — platform implementations.
 │  ├─ core-paths-expo/     ✅       │ The ONLY packages allowed to
-│  ├─ core-fs-node/        ✅       │ import a platform SDK.
-│  ├─ core-fs-expo/        ✅       │
+│  ├─ core-fs-node/        ✅       │ import a platform SDK, and the only
+│  ├─ core-fs-expo/        ✅       │ ones that may drive the kernel.
 │  ├─ core-db-node/        ✅       │ ✅ = built
 │  ├─ core-db-expo/        ✅       │
 │  ├─ core-store-fs/       ✅       │ shared: one impl, via ctx.fs (04 §4)
@@ -59,7 +60,7 @@ B_Be_Bee/
 │  ├─ core-audio-webaudio/ ✅       │ (shared: react-native-audio-api on both)
 │  └─ core-…                        ┘
 │
-│  ├─ source-rules/         ✅      ┐ the rule language: parser, engines,
+│  ├─ source-rules/         ✅      ┐ L3 — the rule language: parser, engines,
 │  │                                │ combinators, coercion. Pure logic —
 │  │                                │ no Cordis, no platform, no I/O (06 §3)
 │  ├─ plugin-source-runtime/ ✅     │ binds source-rules to ctx.http · ctx.js
@@ -77,14 +78,15 @@ B_Be_Bee/
 │  ├─ plugin-log-buffer/   ✅       │
 │  └─ plugin-…                      ┘
 │
-│  ├─ plugin-ui/           ✅       the ctx.ui contribution registry
-│  ├─ plugin-sources/      ✅       the ctx.sources registry + catalogue (06 §4.1)
-│  ├─ plugin-inspector/    ✅       fiber tree + labelled effects (M0 exit criterion)
-│  ├─ core-desktop-bridge/ ✅       renderer↔main IPC clients + the main-side host
+│  ├─ plugin-ui/           ✅   L3  the ctx.ui contribution registry — a registry
+│  │                                of descriptors, so it holds no React
+│  ├─ plugin-sources/      ✅   L3  the ctx.sources registry + catalogue (06 §4.1)
+│  ├─ plugin-inspector/    ✅   L3  fiber tree + labelled effects (M0 exit criterion)
+│  ├─ core-desktop-bridge/ ✅   L2  renderer↔main IPC clients + the main-side host
 │
-│  ├─ ui-tokens/           ✅       design tokens as plain data, plus the
+│  ├─ ui-tokens/           ✅   L4  design tokens as plain data, plus the
 │  │                                WCAG AA gate of 08 §8
-│  ├─ ui-core/            ✅       framework-agnostic React hooks, and the
+│  ├─ ui-core/            ✅   L4  framework-agnostic React hooks, and the
 │  │                                prop types both kits share
 │  ├─ ui-parity/          ✅       the component contract, and the check that
 │  │                                both kits meet it (08 §6)
@@ -113,13 +115,19 @@ B_Be_Bee/
 
 ### Naming
 
-| Prefix | Meaning |
-|---|---|
-| `core-<service>-<platform>` | A platform implementation of a core service |
-| `plugin-<feature>` | A headless feature plugin |
-| `plugin-<feature>-ui-<target>` | Views for one target |
-| `plugin-effect-<id>` | A DSP effect |
-| `ui-*` | Shared UI infrastructure, not a plugin |
+The prefix is not decoration: it is how a reader — and the lint config in
+[§3](#3-dependency-rules) — knows which layer a package sits in and therefore what it may import.
+
+| Prefix | Layer | Meaning |
+|---|---|---|
+| `protocol` | 0 | The contracts. One package, no runtime |
+| `kernel` | 1 | The kernel. One package |
+| `core-<service>-<platform>` | 2 | A platform implementation of a core service |
+| `plugin-<feature>` | 3 | A headless feature plugin |
+| `plugin-effect-<id>` | 3 | A DSP effect |
+| `source-rules` | 3 | Pure logic beneath the source runtime; not a plugin |
+| `plugin-<feature>-ui-<target>` | 4 | Views for one target |
+| `ui-*` | 4 | Shared UI infrastructure, not a plugin |
 
 There is deliberately **no `plugin-source-<protocol>` prefix any more**. A music backend is a
 source document ([06](./06-music-sources.md)), not a package. The only two packages with `source`
@@ -131,19 +139,25 @@ The example documents this repository ships live in `fixtures/sources/`, not in 
 
 ## 2. Package layering
 
+The same five layers as [02 §1](./02-architecture.md#1-the-layer-model), drawn as the actual
+`package.json` graph. Every node is annotated with its layer, and every edge here is a real
+`dependencies` entry — the runtime edges that service keys create are deliberately absent, because
+this is the build graph.
+
 ```mermaid
 flowchart TD
-    apps["apps/*"] --> uikit["ui-kit-mobile · ui-kit-desktop"]
-    apps --> kernel["@BBeBee/kernel"]
-    apps --> pluginui["plugin-*-ui-*"]
+    apps["apps/* — L4 shells<br/>(boot.ts = composition root)"] --> uikit["ui-kit-mobile · ui-kit-desktop — L4"]
+    apps --> kernel["@BBeBee/kernel — L1"]
+    apps --> pluginui["plugin-*-ui-* — L4"]
     pluginui --> uikit
-    pluginui --> uicore["ui-core"]
+    pluginui --> uicore["ui-core — L4"]
     uikit --> uicore
-    uikit --> tokens["ui-tokens"]
-    uicore --> protocol["@BBeBee/protocol"]
-    pluginui -.->|types only| headless["plugin-* (headless)"]
+    uikit --> tokens["ui-tokens — L4"]
+    uicore --> protocol["@BBeBee/protocol — L0"]
+    pluginui -.->|types only| headless["plugin-* (headless) — L3"]
     headless --> protocol
-    core["core-*"] --> protocol
+    core["core-* — L2"] --> protocol
+    core --> kernel
     kernel --> protocol
     apps --> core
 ```
@@ -151,12 +165,26 @@ flowchart TD
 Every arrow that is not into `@BBeBee/protocol` is a convenience. The arrows *into* `protocol` are
 the architecture.
 
+Two edges are worth reading twice, because they are the ones the layer model constrains rather
+than forbids:
+
+- **`apps/* → @BBeBee/kernel` and `apps/* → core-*`** exist only for the composition root — the
+  `boot.ts` / `plugins.ts` pair per shell. Every other file under `apps/*` is plain Layer 4 and is
+  linted as such ([§3](#3-dependency-rules)).
+- **`core-* → @BBeBee/kernel`** is the one place the bootstrap surface is imported by a package
+  rather than by a shell: `core-db-*` runs the core migrations and scopes contexts for the
+  capability gate. That is Layer 2 doing its job as the adaptation layer.
+
+There is no `plugin-* → core-*` edge, on purpose. If one ever appears, the layer model is broken
+and `pnpm lint` says so.
+
 ---
 
 ## 3. Dependency rules
 
-Enforced by ESLint with `overrides` scoped by path, not by review. Each of these has a comment in
-the config explaining which document section it protects.
+The layer model of [02 §1](./02-architecture.md#1-the-layer-model) is worth exactly as much as its
+enforcement, so it is enforced by ESLint with `overrides` scoped by path, not by review. Each rule
+below states which layer boundary it protects.
 
 ```js
 // eslint.config.js — the rules that matter
@@ -166,18 +194,77 @@ const PLATFORM_SDKS = [
   'child_process', 'better-sqlite3', 'music-metadata', 'ws',
 ]
 
+// 02 §1 — the kernel's two surfaces. Being *typed* by the kernel is open to
+// Layers 2-4; *driving* it is Layer 2 and the composition root only.
+const KERNEL_BOOTSTRAP = [
+  'createApp', 'BootstrapError', 'resolveConfig', 'isEnabled', 'loadPlugins',
+  'scopeContext', 'capabilityConfigOf', 'assertFs', 'assertHost', 'assertWsHost',
+  'CORE_MIGRATIONS', 'MigrationRunner',
+]
+
+// The composition root: the only files that may name a Layer 2 package by
+// import and call createApp. Everything else under apps/* is Layer 4.
+const COMPOSITION_ROOT = [
+  'apps/mobile/src/boot.ts', 'apps/mobile/src/plugins.ts',
+  'apps/desktop/renderer/boot.ts', 'apps/desktop/renderer/plugins.ts',
+  'apps/*/generated/plugins.ts',
+]
+
 export default tseslint.config(
   {
-    // 02 §1 — the invariant. Nothing outside core-* touches a platform SDK.
+    // 02 §1, invariant 1 — Layers 3 and 4 never touch a platform SDK.
+    // Only packages/core-* (Layer 2) may.
     files: ['packages/plugin-*/**/*.ts', 'packages/ui-*/**/*.ts', 'packages/protocol/**/*.ts'],
     ignores: ['packages/plugin-*-ui-*/**/*.ts'],
     rules: { 'no-restricted-imports': ['error', { patterns: PLATFORM_SDKS }] },
   },
   {
+    // 02 §1, invariant 2 — Layers 3 and 4 may be typed by the kernel but may
+    // not drive it. A feature plugin is *handed* a context; it does not build
+    // one, resolve plugins, read the config store, or consult the gate.
+    files: ['packages/plugin-*/**/*.ts', 'packages/ui-*/**/*.ts', 'apps/**/*.{ts,tsx}'],
+    ignores: [...COMPOSITION_ROOT, '**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{
+            name: '@BBeBee/kernel',
+            importNames: KERNEL_BOOTSTRAP,
+            message:
+              'Layer 3/4 may import the pinned Cordis surface (Context, Service, Inject, ' +
+              'FiberState…) but not the bootstrap surface. See docs/02 §1 — the invariant.',
+          }],
+          patterns: ['@BBeBee/kernel/*'],
+        },
+      ],
+    },
+  },
+  {
+    // 02 §1 — Layer 4 reaches Layer 2 through service keys, never by import.
+    // The composition root is the single exception, and it is listed above.
+    files: ['apps/**/*.{ts,tsx}'],
+    ignores: COMPOSITION_ROOT,
+    rules: { 'no-restricted-imports': ['error', { patterns: ['@BBeBee/core-*'] }] },
+  },
+  {
+    // 02 §1 — Layer 1 depends on Layer 0 and nothing else. A kernel that knows
+    // which plugins exist is no longer a kernel.
+    files: ['packages/kernel/src/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: ['@BBeBee/core-*', '@BBeBee/plugin-*', '@BBeBee/ui-*', ...PLATFORM_SDKS] },
+      ],
+    },
+  },
+  {
     // 02 §1 and 06 §3 — the rule engine is pure logic: no platform, and no I/O
     // either. It takes a document and a string and returns a value; every fetch
     // belongs to plugin-source-runtime. Keeping it pure is what makes the rule
-    // corpus in §6 runnable without a network.
+    // corpus in §6 runnable without a network, and it is the Layer 3 entry in
+    // 02 §1's testability table.
     files: ['packages/source-rules/**/*.ts'],
     rules: {
       'no-restricted-imports': [
@@ -187,7 +274,7 @@ export default tseslint.config(
     },
   },
   {
-    // 08 §1 — UI packages may render, but may not reach the platform.
+    // 08 §1 — Layer 4 view packages may render, but may not reach the platform.
     files: ['packages/plugin-*-ui-mobile/**/*.ts', 'packages/ui-kit-mobile/**/*.ts'],
     rules: {
       'no-restricted-imports': [
@@ -197,7 +284,8 @@ export default tseslint.config(
     },
   },
   {
-    // @BBeBee/protocol must stay runtime-free so it is safe to import anywhere.
+    // 02 §1 — Layer 0 must stay runtime-free so it is safe to import anywhere,
+    // which is what makes it the seam every other layer is mocked at.
     // `^[^.]` matches bare specifiers only, leaving relative imports alone.
     files: ['packages/protocol/src/**/*.ts'],
     ignores: ['packages/protocol/src/conformance/**/*.ts', '**/*.test.ts'],
@@ -209,7 +297,8 @@ export default tseslint.config(
     },
   },
   {
-    // 02 §2 — main is an IPC host. Domain logic there breaks platform symmetry.
+    // 02 §2 — main is an IPC host. Domain logic there breaks platform symmetry,
+    // and it would put Layer 3 concerns below Layer 2.
     files: ['apps/desktop/main/**/*.ts'],
     rules: { 'no-restricted-imports': ['error', { patterns: ['@BBeBee/plugin-*'] }] },
   },
@@ -222,15 +311,32 @@ export default tseslint.config(
 )
 ```
 
+Read as a matrix, that is the layer model with nothing left implicit:
+
+| | Layer 0 `protocol` | Layer 1 `kernel` | Layer 2 `core-*` | Layer 3 `plugin-*` | Layer 4 `ui-*`, `apps/*` | Platform SDK |
+|---|---|---|---|---|---|---|
+| **Layer 0** may import | — | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Layer 1** may import | ✅ | — | ❌ | ❌ | ❌ | ❌ |
+| **Layer 2** may import | ✅ | ✅ **all of it** | own package | ❌ | ❌ | ✅ **only here** |
+| **Layer 3** may import | ✅ | ⚠️ Cordis surface only | ❌ *(service keys instead)* | types only, of a sibling | ❌ | ❌ |
+| **Layer 4** may import | ✅ | ⚠️ Cordis surface only | ❌ *(service keys instead)* | ⚠️ types only | ✅ | ⚠️ view library in `ui-*`/`plugin-*-ui-*`; platform chrome in `apps/*` |
+| **Composition root** may import | ✅ | ✅ | ✅ | ✅ (as registry data) | ✅ | ✅ |
+
 Two rules deliberately live in **tests** rather than ESLint, because a lint rule whose selector
 cannot be verified is worse than none: `conventions.test.ts` scans for un-awaited `ctx.plugin()`
 (with a self-test proving the detector fires), and the `*-scope` conformance suites check the
 capability gates. See [§6](#6-testing-strategy).
 
 Still to add: a check that no `plugin-*-ui-*` package imports a *value* from its headless sibling,
-only types. `eslint-plugin-import`'s `no-restricted-paths` with a type-only exception covers it.
-The scaffolder already emits the right shape — the headless package is a `devDependency` of its
-view packages — but nothing yet enforces it.
+only types — the `⚠️ types only` cell above is currently convention rather than enforcement.
+`eslint-plugin-import`'s `no-restricted-paths` with a type-only exception covers it. The
+scaffolder already emits the right shape — the headless package is a `devDependency` of its view
+packages — but nothing yet enforces it.
+
+The cleaner long-term form of invariant 2 is a subpath export: `@BBeBee/kernel/plugin` for the
+Cordis surface and `@BBeBee/kernel` for the bootstrap surface, which would turn an `importNames`
+list into a package boundary. It is not built, because the `importNames` rule is exact today and
+a second entry point is a published-API change; recorded here so the option is not rediscovered.
 
 ---
 
@@ -321,6 +427,9 @@ stable and may change without notice."* The entire architecture rests on it. Mit
 3. **Own the re-export.** `@BBeBee/kernel` re-exports what plugins need
    (`export { Service, Inject } from 'cordis'`) and **plugins import from the kernel, not from
    `cordis`**. If a signature changes, one adapter module absorbs it instead of 40 packages.
+   This is the kernel's *plugin surface*, and it is the only part of Layer 1 that Layers 3 and 4
+   may import — the bootstrap surface beside it is Layer 2 and the composition root only
+   ([02 §1](./02-architecture.md#the-invariant), enforced in [§3](#3-dependency-rules)).
 4. **Pin the tests.** `@BBeBee/protocol`'s conformance suite includes a small set of tests asserting
    Cordis semantics the design depends on — that a lost dependency unloads a plugin, that effects
    run in reverse order, that isolation is per-key. An upgrade that breaks an assumption fails CI

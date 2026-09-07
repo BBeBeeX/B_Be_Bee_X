@@ -1,8 +1,8 @@
 # 08 — UI Architecture
 
-> **What this answers.** How a single plugin contributes user interface to two shells that share
-> no component code, how views find their data without owning it, and where the boundary between
-> "logic" and "view" is drawn.
+> **What this answers.** **Layer 4** of [02 §1](./02-architecture.md#1-the-layer-model): how a
+> single plugin contributes user interface to two shells that share no component code, how views
+> find their data without owning it, and where the boundary between "logic" and "view" is drawn.
 
 Per [ADR-2](./01-overview.md#adr-2--the-ui-is-split-react-native-on-mobile-react-dom-on-desktop),
 there are two view layers: React Native on mobile and React DOM on desktop. The cost of that
@@ -21,11 +21,16 @@ keeps ADR-2 from doubling the *whole* feature instead of just its pixels.
 @BBeBee/plugin-scrobble-ui-desktop    ← React DOM views
 ```
 
-| Package | Contains | May import |
-|---|---|---|
-| headless | The Cordis plugin, all logic, all state, all DB access, all networking | `@BBeBee/protocol` only |
-| `-ui-mobile` | Components and the descriptors that name them | `react`, `react-native`, `@BBeBee/ui-kit-mobile`, the headless package's **types** |
-| `-ui-desktop` | Components and the descriptors that name them | `react`, `react-dom`, `@BBeBee/ui-kit-desktop`, the headless package's **types** |
+| Package | Layer | Contains | May import |
+|---|---|---|---|
+| headless | 3 | The Cordis plugin, all logic, all state, all DB access, all networking | `@BBeBee/protocol` only |
+| `-ui-mobile` | 4 | Components and the descriptors that name them | `react`, `react-native`, `@BBeBee/ui-kit-mobile`, the headless package's **types** |
+| `-ui-desktop` | 4 | Components and the descriptors that name them | `react`, `react-dom`, `@BBeBee/ui-kit-desktop`, the headless package's **types** |
+
+The split is the Layer 3/Layer 4 boundary made concrete. Layer 4 is where business *orchestration*
+lives — this button, then that confirmation, then this navigation — while the business *rule* it
+orchestrates stays at Layer 3, where it can be tested without a renderer and reused by the other
+target's views unchanged.
 
 The rule that makes it work:
 

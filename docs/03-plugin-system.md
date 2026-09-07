@@ -4,6 +4,13 @@
 > dependencies, how its lifetime is managed, how it is discovered and loaded on each platform,
 > and what containment it is (and is not) subject to.
 
+Plugins are Layers 2 and 3 of [02 §1](./02-architecture.md#1-the-layer-model). The mechanics here
+are identical for both — same manifest, same lifecycle, same loader — and the *only* thing that
+distinguishes a core plugin from a feature plugin is what it is allowed to import: a core plugin
+may reach the platform SDK and the kernel's bootstrap surface, a feature plugin may not. That is
+worth stating early, because everything below reads as if there were one kind of plugin, and
+architecturally there nearly is.
+
 All API shapes below were verified against `cordis@4.0.0-rc.9` source and its test suite.
 Cordis is a release candidate and says so; see
 [09 §5](./09-project-structure.md#51-the-cordis-rc-problem) for the pinning strategy.
@@ -652,7 +659,11 @@ something shipped rather than a subsystem to invent.
 
 - [ ] `name` set, and it matches the package name's suffix.
 - [ ] `inject` lists exactly what is needed — optional deps in object form.
-- [ ] No platform SDK imported ([02 §1](./02-architecture.md#the-invariant)).
+- [ ] No platform SDK imported ([02 §1](./02-architecture.md#the-invariant)). Core plugins are the
+      exception, and are the *only* exception.
+- [ ] Nothing imported from the kernel's bootstrap surface — a feature plugin is handed a context,
+      it does not build one ([02 §1](./02-architecture.md#the-invariant)).
+- [ ] No import of a `core-*` package. A Layer 2 dependency is spelled `inject: ['fs']`.
 - [ ] Every listener, timer, socket, and audio node registered through `ctx.effect()` or returned
       as a disposer.
 - [ ] Long async work takes an `AbortSignal` aborted on dispose.
