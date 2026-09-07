@@ -135,19 +135,19 @@ describe('core-store-fs specifics', () => {
 describe('core-store-fs under the capability gate', () => {
   it('writes store.json as itself, not as the plugin that called set()', async () => {
     const ctx = await freshStore()
-    // `plugin-hello` is granted nothing that touches the filesystem, yet its
+    // `plugin-sources` is granted nothing that touches the filesystem, yet its
     // settings must still persist: `store.json` belongs to the store, not to
     // whichever plugin happens to be calling (docs/03 §4, "The one exception").
     const scoped = scopeContext(ctx, {
-      pluginId: '@BBeBee/plugin-hello',
-      requested: ['db:own'],
+      pluginId: '@BBeBee/plugin-sources',
+      requested: ['db:read:core', 'db:write:core'],
     })
-    await scoped.store.set('launchCount', 3)
+    await scoped.store.set('pageSize', 50)
 
     const data = await ctx.fs.dir('data')
     const raw = JSON.parse(
       await ctx.fs.readFile(ctx.fs.join(data!, 'store.json')),
     ) as Record<string, unknown>
-    expect(raw['@BBeBee/plugin-hello:launchCount']).toBe(3)
+    expect(raw['@BBeBee/plugin-sources:pageSize']).toBe(50)
   })
 })

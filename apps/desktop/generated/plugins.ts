@@ -10,8 +10,6 @@ import coreHttpNode from '@BBeBee/core-http-node'
 import coreJsQuickjsNode from '@BBeBee/core-js-quickjs-node'
 import coreMediaSessionElectron from '@BBeBee/core-media-session-electron'
 import coreSecretsNode from '@BBeBee/core-secrets-node'
-import pluginHello from '@BBeBee/plugin-hello'
-import pluginHelloUi from '@BBeBee/plugin-hello-ui-desktop'
 import pluginInspector from '@BBeBee/plugin-inspector'
 import pluginInspectorUi from '@BBeBee/plugin-inspector-ui-desktop'
 import pluginLocalScanner from '@BBeBee/plugin-local-scanner'
@@ -66,16 +64,6 @@ export const bundled: PluginRegistry = {
   "@BBeBee/core-secrets-node": {
     plugin: coreSecretsNode,
     manifest: {"id":"@BBeBee/core-secrets-node","platforms":["desktop"],"version":"0.0.0","displayName":"Secrets","description":"ctx.secrets — credential storage for desktop and Node.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:own","fs:write:own"],"contributes":{"services":["secrets"]}},
-    builtin: true,
-  },
-  "@BBeBee/plugin-hello": {
-    plugin: pluginHello,
-    manifest: {"id":"@BBeBee/plugin-hello","version":"0.0.0","displayName":"Hello","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:own"],"contributes":{"services":["hello"]}},
-    builtin: true,
-  },
-  "@BBeBee/plugin-hello-ui-desktop": {
-    plugin: pluginHelloUi,
-    manifest: {"id":"@BBeBee/plugin-hello-ui-desktop","version":"0.0.0","displayName":"Hello (desktop views)","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["hello"]}},
     builtin: true,
   },
   "@BBeBee/plugin-inspector": {

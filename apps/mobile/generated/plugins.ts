@@ -9,8 +9,6 @@ import coreDeviceExpo from '@BBeBee/core-device-expo'
 import coreHttpRn from '@BBeBee/core-http-rn'
 import coreMediaSessionRn from '@BBeBee/core-media-session-rn'
 import coreSecretsExpo from '@BBeBee/core-secrets-expo'
-import pluginHello from '@BBeBee/plugin-hello'
-import pluginHelloUi from '@BBeBee/plugin-hello-ui-mobile'
 import pluginInspector from '@BBeBee/plugin-inspector'
 import pluginLocalScanner from '@BBeBee/plugin-local-scanner'
 import pluginLocalScannerUi from '@BBeBee/plugin-local-scanner-ui-mobile'
@@ -59,16 +57,6 @@ export const bundled: PluginRegistry = {
   "@BBeBee/core-secrets-expo": {
     plugin: coreSecretsExpo,
     manifest: {"id":"@BBeBee/core-secrets-expo","platforms":["mobile"],"version":"0.0.0","displayName":"Secrets","description":"ctx.secrets for iOS and Android, over expo-secure-store.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["secrets"]}},
-    builtin: true,
-  },
-  "@BBeBee/plugin-hello": {
-    plugin: pluginHello,
-    manifest: {"id":"@BBeBee/plugin-hello","version":"0.0.0","displayName":"Hello","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:own"],"contributes":{"services":["hello"]}},
-    builtin: true,
-  },
-  "@BBeBee/plugin-hello-ui-mobile": {
-    plugin: pluginHelloUi,
-    manifest: {"id":"@BBeBee/plugin-hello-ui-mobile","version":"0.0.0","displayName":"Hello (mobile views)","description":"M0 demonstration plugin.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["hello"]}},
     builtin: true,
   },
   "@BBeBee/plugin-inspector": {

@@ -47,8 +47,6 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-log-buffer': {},
   '@BBeBee/plugin-log-file': {},
   '@BBeBee/plugin-inspector': {},
-  '@BBeBee/plugin-hello': { config: { greeting: 'Hello' } },
-  '@BBeBee/plugin-hello-ui-mobile': {},
 
   // M1's feature set, identical to desktop's. Load order is derived from
   // `inject`, never declared here (docs/02 §3).

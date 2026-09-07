@@ -72,12 +72,6 @@ importers:
       '@BBeBee/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
-      '@BBeBee/plugin-hello':
-        specifier: workspace:*
-        version: link:../../packages/plugin-hello
-      '@BBeBee/plugin-hello-ui-desktop':
-        specifier: workspace:*
-        version: link:../../packages/plugin-hello-ui-desktop
       '@BBeBee/plugin-inspector':
         specifier: workspace:*
         version: link:../../packages/plugin-inspector
@@ -190,12 +184,6 @@ importers:
       '@BBeBee/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
-      '@BBeBee/plugin-hello':
-        specifier: workspace:*
-        version: link:../../packages/plugin-hello
-      '@BBeBee/plugin-hello-ui-mobile':
-        specifier: workspace:*
-        version: link:../../packages/plugin-hello-ui-mobile
       '@BBeBee/plugin-inspector':
         specifier: workspace:*
         version: link:../../packages/plugin-inspector
@@ -705,90 +693,6 @@ importers:
       cordis:
         specifier: 4.0.0-rc.9
         version: 4.0.0-rc.9
-
-  packages/plugin-hello:
-    dependencies:
-      '@BBeBee/kernel':
-        specifier: workspace:*
-        version: link:../kernel
-      '@BBeBee/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      cordis:
-        specifier: 4.0.0-rc.9
-        version: 4.0.0-rc.9
-    devDependencies:
-      '@BBeBee/core-db-node':
-        specifier: workspace:*
-        version: link:../core-db-node
-      '@BBeBee/core-fs-node':
-        specifier: workspace:*
-        version: link:../core-fs-node
-      '@BBeBee/core-paths-node':
-        specifier: workspace:*
-        version: link:../core-paths-node
-      '@BBeBee/core-store-fs':
-        specifier: workspace:*
-        version: link:../core-store-fs
-      '@BBeBee/plugin-inspector':
-        specifier: workspace:*
-        version: link:../plugin-inspector
-      '@BBeBee/plugin-log-buffer':
-        specifier: workspace:*
-        version: link:../plugin-log-buffer
-      '@BBeBee/plugin-log-file':
-        specifier: workspace:*
-        version: link:../plugin-log-file
-      '@BBeBee/plugin-ui':
-        specifier: workspace:*
-        version: link:../plugin-ui
-
-  packages/plugin-hello-ui-desktop:
-    dependencies:
-      '@BBeBee/kernel':
-        specifier: workspace:*
-        version: link:../kernel
-      '@BBeBee/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      cordis:
-        specifier: 4.0.0-rc.9
-        version: 4.0.0-rc.9
-      react:
-        specifier: 19.2.3
-        version: 19.2.3
-    devDependencies:
-      '@BBeBee/plugin-hello':
-        specifier: workspace:*
-        version: link:../plugin-hello
-      '@types/react':
-        specifier: ^19.2.0
-        version: 19.2.18
-
-  packages/plugin-hello-ui-mobile:
-    dependencies:
-      '@BBeBee/kernel':
-        specifier: workspace:*
-        version: link:../kernel
-      '@BBeBee/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      '@BBeBee/ui-kit-mobile':
-        specifier: workspace:*
-        version: link:../ui-kit-mobile
-      cordis:
-        specifier: 4.0.0-rc.9
-        version: 4.0.0-rc.9
-      react:
-        specifier: 19.2.3
-        version: 19.2.3
-    devDependencies:
-      '@BBeBee/plugin-hello':
-        specifier: workspace:*
-        version: link:../plugin-hello
-      '@types/react':
-        specifier: ^19.2.0
-        version: 19.2.18
 
   packages/plugin-inspector:
     dependencies:
@@ -6536,7 +6440,7 @@ snapshots:
       postcss: 8.5.26
       resolve-from: 5.0.0
     optionalDependencies:
-      expo: 57.0.18(@babel/core@7.29.7(supports-color@8.1.1))(@expo/dom-webview@57.0.1)(react-dom@19.2.3(react@19.2.8))(react-native-worklets@0.10.4(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.8)(supports-color@8.1.1))(react@19.2.8)(supports-color@8.1.1))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.8)(supports-color@8.1.1))(react@19.2.8)(supports-color@8.1.1)(typescript@5.9.3)
+      expo: 57.0.18(@babel/core@7.29.7(supports-color@8.1.1))(@expo/dom-webview@57.0.1)(react-dom@19.2.3(react@19.2.3))(react-native-worklets@0.10.4(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1)(typescript@5.9.3)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -7534,7 +7438,7 @@ snapshots:
       react-refresh: 0.14.2
     optionalDependencies:
       '@babel/runtime': 7.29.7
-      expo: 57.0.18(@babel/core@7.29.7(supports-color@8.1.1))(@expo/dom-webview@57.0.1)(react-dom@19.2.3(react@19.2.8))(react-native-worklets@0.10.4(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.8)(supports-color@8.1.1))(react@19.2.8)(supports-color@8.1.1))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.8)(supports-color@8.1.1))(react@19.2.8)(supports-color@8.1.1)(typescript@5.9.3)
+      expo: 57.0.18(@babel/core@7.29.7(supports-color@8.1.1))(@expo/dom-webview@57.0.1)(react-dom@19.2.3(react@19.2.3))(react-native-worklets@0.10.4(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1)(typescript@5.9.3)
     transitivePeerDependencies:
       - '@babel/core'
       - supports-color

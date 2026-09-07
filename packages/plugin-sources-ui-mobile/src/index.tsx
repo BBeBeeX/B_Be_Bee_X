@@ -411,9 +411,9 @@ export const name = 'plugin-sources-ui-mobile'
  * test passed, because tests built a root context where that read answers
  * `undefined` instead.
  *
- * Registering a closure over the context this plugin was applied with is what
- * `plugin-hello-ui-mobile` has always done, and it is the fix: the screen runs
- * on a context with exactly what this package's `inject` declares. The shell's
+ * Registering a closure over the context this plugin was applied with is the
+ * fix, and it is what every view package here does: the screen runs on a
+ * context with exactly what this package's `inject` declares. The shell's
  * props are still forwarded, so a view that takes more than `ctx` keeps
  * working.
  */

@@ -746,8 +746,8 @@ nothing else.
       as `h(Component, { ctx })` with the context it got from `app.ready(['ui'])` — `ui`
       injected and nothing else. A cordis context *throws* for any property that was not
       injected, so every screen reading `ctx.sources`, `ctx.player` or `ctx.scanner` through its
-      hooks threw on a device. `plugin-hello-ui-mobile` had always registered a closure over its
-      own context; the M1 view packages registered bare components. They now do the same, and
+      hooks threw on a device. The M0 demo's view package had always registered a closure over
+      its own context; the M1 view packages registered bare components. They now do the same, and
       each declares the services its screens actually read.
 - [x] `ui.missingViews()` is exercised: at least one contribution deliberately has no view on one
       target, and the shell shows "not available on this platform" rather than a hole.
@@ -1030,7 +1030,7 @@ which is what a probe is for.
 
   ⚠️ It exists because its absence cost a milestone. Every M1 package was built and green while
   the desktop shell had `plugin-player` commented out — `ctx.audio` was in no bootstrap array —
-  and the mobile shell was still running the M0 set: four core services and the hello plugin. Both
+  and the mobile shell was still running the M0 set: four core services and the demo plugin. Both
   states are invisible from inside a package, and nearly invisible from outside one: a fiber
   waiting for a service that will never arrive looks exactly like a fiber that is merely slow. The
   runtime half of the same check is `await app.ready(BOOTSTRAP_SERVICES)` in each `boot()`, which
@@ -1097,7 +1097,7 @@ earlier and is not the same thing.
       (`conventions.test.ts`): every declared capability is mapped through the gate's own
       `servicesForCapability` and the package must actually reach the service. It found three
       over-grants on its first run — `core-device-electron` asking for `shell`, `core-http-rn`
-      for `fs:write:downloads` it has no `download()` to use (MD-1), and `plugin-hello` for
+      for `fs:write:downloads` it has no `download()` to use (MD-1), and the M0 demo plugin for
       `secrets:own` — all three now removed. This matters most in M5, when an install-time
       prompt reads the manifest out loud: a plugin asking for what it never touches teaches
       users to click through.

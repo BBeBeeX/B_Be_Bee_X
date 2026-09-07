@@ -143,9 +143,9 @@ export const name = 'plugin-local-scanner-ui-mobile'
  * test passed, because tests built a root context where that read answers
  * `undefined` instead.
  *
- * Registering a closure over the context this plugin was applied with is what
- * `plugin-hello-ui-mobile` has always done, and it is the fix: the screen runs
- * on a context with exactly what this package's `inject` declares. The shell's
+ * Registering a closure over the context this plugin was applied with is the
+ * fix, and it is what every view package here does: the screen runs on a
+ * context with exactly what this package's `inject` declares. The shell's
  * props are still forwarded, so a view that takes more than `ctx` keeps
  * working.
  */
@@ -161,15 +161,7 @@ function bound<P extends { ctx: Context }>(
   }
 }
 
-/**
- * `fs` is declared for the picker, not for the screen's state.
- *
- * `addFolder` reads `ctx.fs.pickDirectory()` — the only way to get a uri that
- * carries a durable grant — and this context is the plugin's own, so an
- * undeclared read there throws `cannot get property "fs" without inject`
- * rather than answering `undefined`. The screen rendered fine and the button
- * threw.
- */
+
 export const inject = ['ui', 'scanner', 'fs']
 
 export async function apply(ctx: Context) {

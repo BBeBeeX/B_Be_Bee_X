@@ -131,8 +131,8 @@ designed degradation rather than a break.
 ⚠️ **What "built" did and did not mean until recently.** Every package listed above was built and
 green, and *neither shell ran any of it*: the desktop bootstrap omitted `ctx.audio`, `ctx.codec`
 and `ctx.http`, so `plugin-player` was commented out and the scanner and the source runtime sat
-PENDING, and the mobile shell was still M0 — four core services and the hello plugin. That is now
-fixed, and it is worth recording as the failure mode it was: a milestone can be complete
+PENDING, and the mobile shell was still M0 — four core services and the M0 demo plugin. That is
+now fixed, and it is worth recording as the failure mode it was: a milestone can be complete
 package-by-package and deliver nothing, because the exit criteria are about the *app*. The check
 that would have caught it earlier is a boot test per shell, which is the obvious next thing to
 write.

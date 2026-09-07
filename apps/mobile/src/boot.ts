@@ -140,7 +140,7 @@ export async function boot(): Promise<App> {
    * Every core service this shell claims to provide must actually be there.
    *
    * ⚠️ The check whose absence let this shell ship as M0 for a whole milestone:
-   * it bootstrapped four services and a hello plugin while every M1 package sat
+   * it bootstrapped four services and the M0 demo plugin while every M1 package sat
    * built, tested and unreferenced. A fiber waiting forever for a service that
    * will never arrive is indistinguishable from one that is merely slow, so the
    * only place to catch it is here, where what was registered is known.

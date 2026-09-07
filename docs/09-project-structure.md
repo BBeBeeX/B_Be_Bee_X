@@ -80,7 +80,6 @@ B_Be_Bee/
 │  ├─ plugin-ui/           ✅       the ctx.ui contribution registry
 │  ├─ plugin-sources/      ✅       the ctx.sources registry + catalogue (06 §4.1)
 │  ├─ plugin-inspector/    ✅       fiber tree + labelled effects (M0 exit criterion)
-│  ├─ plugin-hello/        ✅       the M0 demonstration plugin
 │  ├─ core-desktop-bridge/ ✅       renderer↔main IPC clients + the main-side host
 │
 │  ├─ ui-tokens/           ✅       design tokens as plain data, plus the
@@ -91,10 +90,8 @@ B_Be_Bee/
 │  │                                both kits meet it (08 §6)
 │  ├─ ui-kit-mobile/      ✅       React Native components
 │  ├─ ui-kit-desktop/     ✅       React DOM components
-│  ├─ plugin-hello-ui-desktop/ ✅   ┐ per-target view packages
-│  ├─ plugin-hello-ui-mobile/  ✅   ┘
-│  ├─ plugin-player-ui-desktop/ ✅  ┐ now playing, transport, queue
-│  ├─ plugin-player-ui-mobile/  ✅  ┘
+│  ├─ plugin-player-ui-desktop/ ✅  ┐ now playing,transport, queue
+│  ├─ plugin-player-ui-mobile/  ✅  ┘ 
 │  ├─ plugin-sources-ui-desktop/ ✅ ┐ library, album detail, source list,
 │  ├─ plugin-sources-ui-mobile/  ✅ ┘ import review, editor, rule tracer (08 §4)
 │  ├─ plugin-local-scanner-ui-desktop/ ✅ ┐ settings: scan roots
