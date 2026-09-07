@@ -10,7 +10,7 @@ import { createServer, type Server } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Context } from 'cordis'
 import { scopeContext } from '@BBeBee/kernel'
 import { CapabilityError } from '@BBeBee/protocol'
@@ -529,6 +529,21 @@ describe('cookie jars that survive a restart', () => {
     secure: true,
     httpOnly: true,
     ...over,
+  })
+
+  it('does not read a jar file that has never been written', async () => {
+    // Same reason as the secrets store: on desktop `fs` is an IPC bridge, and
+    // a rejected call is logged by Electron in main before this side's `catch`
+    // runs — so a source nobody has signed in to printed an ENOENT stack.
+    const root = await tempDir('bbebee-jar-fresh')
+    const ctx = await jarHarness(root)
+    const readFile = vi.spyOn(FsNode.prototype, 'readFile')
+    try {
+      await ctx.http.cookies.jar('never-signed-in').ready
+      expect(readFile).not.toHaveBeenCalled()
+    } finally {
+      readFile.mockRestore()
+    }
   })
 
   it('reloads a jar after a restart', async () => {

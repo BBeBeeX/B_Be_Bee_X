@@ -251,6 +251,16 @@ export class SecretsNode extends Service implements SecretsService {
 
   private async load(): Promise<void> {
     if (!this.file) return
+    /*
+     * The first run has no file, and asking is cheaper than being told.
+     *
+     * ⚠️ Not just tidiness. On desktop `ctx.fs` is an IPC bridge, and a
+     * rejected call is logged by Electron's `ipcMain.handle` in **main**
+     * before the renderer's `catch` below ever runs — so the expected
+     * fresh-install case printed an ENOENT stack trace at every boot. The
+     * `catch` stays for the file that exists and will not parse.
+     */
+    if (!(await this.home.fs.exists(this.file))) return
     try {
       const text = await this.home.fs.readFile(this.file)
       const parsed: unknown = JSON.parse(text)

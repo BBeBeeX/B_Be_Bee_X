@@ -713,6 +713,11 @@ export function jarStore(secrets: SecretsService, fs: FsService): JarStore {
     async read(name) {
       const file = await fileFor(name)
       if (!file) return undefined
+      // A source that has never signed in has no jar, which is the common
+      // case and not an error. It is asked rather than caught because on
+      // desktop `fs` is an IPC bridge whose rejections are logged in main
+      // before this `catch` runs — one ENOENT stack per request otherwise.
+      if (!(await fs.exists(file))) return undefined
       try {
         const cipher = await fs.readFile(file)
         const parsed: unknown = JSON.parse(xorText(base64Decode(cipher), await keyFor(name)))

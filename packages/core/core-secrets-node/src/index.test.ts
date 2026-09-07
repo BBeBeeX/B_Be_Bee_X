@@ -6,7 +6,7 @@
  * `isHardwareBacked` when there is no keychain to back it.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
@@ -81,6 +81,26 @@ describe('whose filesystem budget the store spends', () => {
       requested: ['secrets:own'] as never,
     })
     expect(await again.secrets.get('token')).toBe('abc123')
+  })
+})
+
+describe('a first run', () => {
+  it('never reads the file it already knows is not there', async () => {
+    /*
+     * Not an optimisation. On desktop `ctx.fs` is an IPC bridge, and Electron's
+     * `ipcMain.handle` logs a rejected call in **main** before the renderer's
+     * `catch` runs — so reading the file that a fresh install does not have
+     * printed an ENOENT stack trace at every first boot, for a case that was
+     * already handled.
+     */
+    const readFile = vi.spyOn(FsNode.prototype, 'readFile')
+    try {
+      const ctx = await harness()
+      expect(await ctx.secrets.get('token')).toBeUndefined()
+      expect(readFile).not.toHaveBeenCalled()
+    } finally {
+      readFile.mockRestore()
+    }
   })
 })
 
