@@ -852,7 +852,7 @@ declare module 'cordis' {
 
 ### Core schema
 
-Forward-only, versioned, in `packages/kernel/kernel/src/migrations/`. Each is a numbered module applied
+Forward-only, versioned, in `packages/kernel/src/migrations/`. Each is a numbered module applied
 in a transaction; the applied version is recorded.
 
 ```sql

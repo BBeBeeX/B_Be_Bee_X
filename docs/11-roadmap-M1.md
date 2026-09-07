@@ -139,8 +139,8 @@ thing they do, so a `DROP` cannot ride in behind a `SELECT`. `plugin-sources`,
 milestone whose plugins write core tables, so it was the last cheap moment to fix the name —
 before an install-time prompt in M5 says "read" while granting write.
 *Where.* `classifyDbAccess` and the grant parser in
-`packages/kernel/kernel/src/capability-gate/capability.ts`, the shared SQL reader in
-`packages/kernel/kernel/src/capability-gate/sql.ts`, and cases in the `db-scope` suite that both
+`packages/kernel/src/capability-gate/capability.ts`, the shared SQL reader in
+`packages/kernel/src/capability-gate/sql.ts`, and cases in the `db-scope` suite that both
 `core-db-node` and the desktop bridge run; the grammar rows in
 [03 §7](./03-plugin-system.md#capability-grammar).
 *Also closed while in there*, each of which made the verbs meaningless on its own: a
@@ -1024,7 +1024,7 @@ reaching a caller, a starved checkpoint, a player driven into `error` — and no
 a threshold on shared CI hardware is a flake generator. The ratio is printed for a human to read,
 which is what a probe is for.
 
-- **The shell wiring check** — `packages/kernel/kernel/src/bootstrap/shells.test.ts`. Reads each shell's allowlist,
+- **The shell wiring check** — `packages/kernel/src/bootstrap/shells.test.ts`. Reads each shell's allowlist,
   its generated registry and the manifests, and asserts that every configured plugin is bundled,
   that every service a configured plugin *requires* is provided by the bootstrap array or by
   another configured plugin, and that the two shells run the same feature set.

@@ -29,7 +29,7 @@ Layer 4 too, but they stay where a reader expects to find them.
 Two consequences of naming the directories after the layer's *job* rather than its number. The
 layers no longer sort into their own order — `core`, `feature`, `kernel`, `protocol`, `ui` is
 alphabetical, and the table above is the mapping to know. And the two single-package layers read
-doubled, `packages/protocol` and `packages/kernel/kernel`, which is the price of every
+doubled, `packages/protocol` and `packages/kernel`, which is the price of every
 package sitting at one depth; the alternative special-cases exactly the two layers most likely to
 gain a second package.
 
@@ -58,8 +58,8 @@ B_Be_Bee/
 │
 ├── packages/
 │   │
-│   ├── protocol/                    🔹 LAYER 0 — the contract layer
-│   │   └── protocol/               ✅        @BBeBee/protocol. ZERO runtime dependencies, no
+│   ├── protocol/                    🔹 LAYER 0 — the contract layer 
+│   │       │                                 @BBeBee/protocol. ZERO runtime dependencies, no      
 │   │       └── src/                          side effects, no platform access — which is what
 │   │           │                             makes it safe to import from any layer, and the
 │   │           │                             seam every layer is mocked at
@@ -71,8 +71,8 @@ B_Be_Bee/
 │   │           └── conformance/              shared contract suites: one test file, run
 │   │                                         against both implementations of a key (04 §18)
 │   │
-│   ├── kernel/                      🔹 LAYER 1 — infrastructure + system abstractions
-│   │   └── kernel/                 ✅        @BBeBee/kernel. Depends on protocol and cordis,
+│   ├── kernel/                      🔹 LAYER 1 — infrastructure + system abstractions  
+│   │       │                                 @BBeBee/kernel. Depends on protocol and cordis,
 │   │       └── src/                          and nothing else in the workspace — a kernel that
 │   │           │                             knows which plugins exist is not one
 │   │           ├── index.ts                  two surfaces, not equally available: the pinned
@@ -395,9 +395,9 @@ export default tseslint.config(
     // which plugins exist is not a kernel: it resolves them from a registry
     // the shell hands it, which is what lets one kernel boot two graphs.
     // `src/testing.ts` is exempt for the reason `*.test.ts` is.
-    files: ['packages/kernel/kernel/src/**/*.ts'],
-    ignores: ['packages/kernel/kernel/src/**/*.test.ts',
-              'packages/kernel/kernel/src/testing.ts'],
+    files: ['packages/kernel/src/**/*.ts'],
+    ignores: ['packages/kernel/src/**/*.test.ts',
+              'packages/kernel/src/testing.ts'],
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES,
@@ -785,7 +785,7 @@ than a typo:
 | Metro: *cannot resolve `cordis`* | `unstable_enablePackageExports` missing from `metro.config.js` — Cordis is ESM-only with an `exports` map ([04 §17](./04-core-services.md#17-runtime-compatibility-checklist)) |
 | `@Inject` fails at runtime, compiles fine | Legacy decorators. Babel needs `{ version: '2023-11' }`; `tsconfig` must not set `experimentalDecorators` |
 | A plugin sits in `pending` forever | An injected service never became ACTIVE. `ctx.inspector.render()` prints the tree and names what each fiber waits for |
-| `app.start()` resolves but a service is not ready | An un-awaited `ctx.plugin()` somewhere. `pnpm test packages/kernel/kernel` will name the file |
+| `app.start()` resolves but a service is not ready | An un-awaited `ctx.plugin()` somewhere. `pnpm test packages/kernel` will name the file |
 | `CapabilityError: … may not …` | The manifest is missing a capability, or the path/table is genuinely out of scope. Widen the manifest, never the gate |
 | `CapabilityError: host … not allowed` from a source | The document's rules reach a host it did not declare. Add it to `allowedHosts` and re-import, so the user sees it (06 §8) |
 | A source returns nothing, with no error | A rule matched nothing where the field was optional. The rule tracer names the step (06 §10); `check` finds it before a user does |

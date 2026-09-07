@@ -71,7 +71,7 @@ importers:
         version: link:../../packages/core/core-store-fs
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../packages/kernel/kernel
+        version: link:../../packages/kernel
       '@BBeBee/plugin-inspector':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-inspector
@@ -183,7 +183,7 @@ importers:
         version: link:../../packages/core/core-store-fs
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../packages/kernel/kernel
+        version: link:../../packages/kernel
       '@BBeBee/plugin-inspector':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-inspector
@@ -280,7 +280,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -295,7 +295,7 @@ importers:
         version: link:../core-desktop-bridge
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -335,7 +335,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -372,7 +372,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -387,7 +387,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -406,7 +406,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -431,7 +431,7 @@ importers:
         version: link:../core-desktop-bridge
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -468,7 +468,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -487,7 +487,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -518,7 +518,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -546,7 +546,7 @@ importers:
         version: link:../core-http-node
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -571,7 +571,7 @@ importers:
     devDependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
 
   packages/core/core-media-session-electron:
     dependencies:
@@ -580,7 +580,7 @@ importers:
         version: link:../core-desktop-bridge
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -606,13 +606,13 @@ importers:
     devDependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
 
   packages/core/core-paths-expo:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -627,7 +627,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -651,7 +651,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -670,7 +670,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -689,7 +689,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -701,7 +701,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -744,7 +744,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -756,7 +756,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -768,7 +768,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -790,7 +790,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -827,7 +827,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -883,7 +883,7 @@ importers:
         version: link:../../core/core-secrets-node
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/plugin-sources':
         specifier: workspace:*
         version: link:../plugin-sources
@@ -892,7 +892,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -926,7 +926,7 @@ importers:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -940,7 +940,7 @@ importers:
         specifier: workspace:*
         version: link:../../protocol
 
-  packages/kernel/kernel:
+  packages/kernel:
     dependencies:
       '@BBeBee/protocol':
         specifier: workspace:*
@@ -978,7 +978,7 @@ importers:
         version: link:../../core/core-paths-node
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       cordis:
         specifier: 4.0.0-rc.9
         version: 4.0.0-rc.9
@@ -994,13 +994,13 @@ importers:
     devDependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
 
   packages/ui/plugin-inspector-ui-desktop:
     dependencies:
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -1053,7 +1053,7 @@ importers:
         version: link:../../core/core-paths-node
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/plugin-local-scanner':
         specifier: workspace:*
         version: link:../../feature/plugin-local-scanner
@@ -1111,7 +1111,7 @@ importers:
         version: link:../../core/core-paths-node
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/plugin-local-scanner':
         specifier: workspace:*
         version: link:../../feature/plugin-local-scanner
@@ -1234,7 +1234,7 @@ importers:
         version: link:../../core/core-paths-node
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/plugin-sources':
         specifier: workspace:*
         version: link:../../feature/plugin-sources
@@ -1286,7 +1286,7 @@ importers:
         version: link:../../core/core-paths-node
       '@BBeBee/kernel':
         specifier: workspace:*
-        version: link:../../kernel/kernel
+        version: link:../../kernel
       '@BBeBee/plugin-sources':
         specifier: workspace:*
         version: link:../../feature/plugin-sources

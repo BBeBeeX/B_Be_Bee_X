@@ -13,7 +13,7 @@ import tseslint from 'typescript-eslint'
  *   Layer 3  packages/feature/*          business features
  *   Layer 2  packages/core/*             the only layer allowed to call a
  *                                               platform SDK or drive the kernel
- *   Layer 1  packages/kernel/kernel      DI, fibers, config, loader, gate
+ *   Layer 1  packages/kernel      DI, fibers, config, loader, gate
  *   Layer 0  packages/protocol  contracts, zero runtime
  *
  * Every glob below keys off the layer *directory*, so a package is governed by
@@ -257,10 +257,10 @@ export default tseslint.config(
     // `src/testing.ts` is exempt for the same reason `*.test.ts` is: it is the
     // `@BBeBee/kernel/testing` entry point, used only by test files, and
     // `snapshotContext` legitimately needs `node:fs` for a scratch directory.
-    files: ['packages/kernel/kernel/src/**/*.ts'],
+    files: ['packages/kernel/src/**/*.ts'],
     ignores: [
-      'packages/kernel/kernel/src/**/*.test.ts',
-      'packages/kernel/kernel/src/testing.ts',
+      'packages/kernel/src/**/*.test.ts',
+      'packages/kernel/src/testing.ts',
     ],
     rules: {
       'no-restricted-imports': [
