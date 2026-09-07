@@ -9,12 +9,16 @@ import tseslint from 'typescript-eslint'
  *
  * They are the layer model of docs/02-architecture.md §1 made mechanical:
  *
- *   Layer 4  apps/* · plugin-*-ui-* · ui-*      pages, interactions, orchestration
- *   Layer 3  plugin-* (headless) · source-rules business features
- *   Layer 2  core-*                             the only layer allowed to call a
+ *   Layer 4  apps/* · packages/ui/*      pages, interactions, orchestration
+ *   Layer 3  packages/feature/*          business features
+ *   Layer 2  packages/core/*             the only layer allowed to call a
  *                                               platform SDK or drive the kernel
- *   Layer 1  kernel                             DI, fibers, config, loader, gate
- *   Layer 0  protocol                           contracts, zero runtime
+ *   Layer 1  packages/kernel/kernel      DI, fibers, config, loader, gate
+ *   Layer 0  packages/protocol  contracts, zero runtime
+ *
+ * Every glob below keys off the layer *directory*, so a package is governed by
+ * where it lives rather than by how it is spelled. Moving a package between
+ * layers is the moment its rules change, and that is now one `git mv`.
  *
  * A layer names anything below it, but Layers 3 and 4 name Layer 2 through
  * *service keys* declared at Layer 0 — never by import. That is what the
@@ -152,20 +156,25 @@ export default tseslint.config(
   },
 
   {
-    // docs/02 §1 — THE invariant. Only packages/core-* may touch a platform
-    // SDK; everything else reaches the platform through a ctx.* service.
+    // docs/02 §1 — THE invariant. Only packages/core/* may touch a
+    // platform SDK; everything else reaches the platform through a ctx.*
+    // service.
     // Widening this list is almost always the wrong fix: add a core service.
     // `.tsx` as well as `.ts`: every view package is `.tsx`, so a glob that
     // stopped at `.ts` exempted from THE invariant exactly the packages most
     // likely to reach for a platform SDK.
     files: [
-      'packages/plugin-*/**/*.ts',
-      'packages/plugin-*/**/*.tsx',
-      'packages/ui-*/**/*.ts',
-      'packages/ui-*/**/*.tsx',
+      'packages/feature/**/*.ts',
+      'packages/feature/**/*.tsx',
+      'packages/ui/**/*.ts',
+      'packages/ui/**/*.tsx',
       'packages/protocol/**/*.ts',
     ],
-    ignores: ['packages/plugin-*-ui-*/**/*.ts', 'packages/plugin-*-ui-*/**/*.tsx'],
+    ignores: [
+      // The per-target view packages get their own, narrower rules below.
+      'packages/ui/plugin-*-ui-*/**/*.ts',
+      'packages/ui/plugin-*-ui-*/**/*.tsx',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -184,8 +193,8 @@ export default tseslint.config(
     // fetch belongs to plugin-source-runtime. Keeping it pure is what makes a
     // corpus of real source documents runnable against recorded fixtures with
     // no network — and what keeps rule evaluation testable without a kernel.
-    files: ['packages/source-rules/**/*.ts'],
-    ignores: ['packages/source-rules/**/*.test.ts'],
+    files: ['packages/feature/source-rules/**/*.ts'],
+    ignores: ['packages/feature/source-rules/**/*.test.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -199,10 +208,10 @@ export default tseslint.config(
     // `react-native` is allowed here (ADR-2 accepts a per-target view layer);
     // its capability modules are not.
     files: [
-      'packages/plugin-*-ui-mobile/**/*.ts',
-      'packages/plugin-*-ui-mobile/**/*.tsx',
-      'packages/ui-kit-mobile/**/*.ts',
-      'packages/ui-kit-mobile/**/*.tsx',
+      'packages/ui/plugin-*-ui-mobile/**/*.ts',
+      'packages/ui/plugin-*-ui-mobile/**/*.tsx',
+      'packages/ui/ui-kit-mobile/**/*.ts',
+      'packages/ui/ui-kit-mobile/**/*.tsx',
     ],
     rules: {
       'no-restricted-imports': [
@@ -226,10 +235,10 @@ export default tseslint.config(
     // Its render target is `react-dom`, which is not a platform SDK, so this
     // one bans the whole list.
     files: [
-      'packages/plugin-*-ui-desktop/**/*.ts',
-      'packages/plugin-*-ui-desktop/**/*.tsx',
-      'packages/ui-kit-desktop/**/*.ts',
-      'packages/ui-kit-desktop/**/*.tsx',
+      'packages/ui/plugin-*-ui-desktop/**/*.ts',
+      'packages/ui/plugin-*-ui-desktop/**/*.tsx',
+      'packages/ui/ui-kit-desktop/**/*.ts',
+      'packages/ui/ui-kit-desktop/**/*.tsx',
     ],
     rules: {
       'no-restricted-imports': [
@@ -248,8 +257,11 @@ export default tseslint.config(
     // `src/testing.ts` is exempt for the same reason `*.test.ts` is: it is the
     // `@BBeBee/kernel/testing` entry point, used only by test files, and
     // `snapshotContext` legitimately needs `node:fs` for a scratch directory.
-    files: ['packages/kernel/src/**/*.ts'],
-    ignores: ['packages/kernel/src/**/*.test.ts', 'packages/kernel/src/testing.ts'],
+    files: ['packages/kernel/kernel/src/**/*.ts'],
+    ignores: [
+      'packages/kernel/kernel/src/**/*.test.ts',
+      'packages/kernel/kernel/src/testing.ts',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -272,7 +284,10 @@ export default tseslint.config(
     // any runtime — headless plugin, core service, kernel, or either shell.
     // `cordis` is the sole exception, and only as a type-only import.
     files: ['packages/protocol/src/**/*.ts'],
-    ignores: ['packages/protocol/src/conformance/**/*.ts', 'packages/protocol/src/**/*.test.ts'],
+    ignores: [
+      'packages/protocol/src/conformance/**/*.ts',
+      'packages/protocol/src/**/*.test.ts',
+    ],
     rules: {
       // `^[^.]` matches bare specifiers only, leaving relative imports alone.
       // `allowTypeImports` is what lets `import type {} from 'cordis'` through,

@@ -8,15 +8,30 @@
 
 ## 1. Repository layout
 
-The tree is grouped by **layer** ([02 §1](./02-architecture.md#1-the-layer-model)), because the
-layer a package sits in is the single most useful thing to know about it: it decides what the
-package may import, who may import it, and which lint rules apply
-([§3](#3-dependency-rules)).
+**The filesystem is the layer model.** Every package lives at
+`packages/<layer>/<package>`, and the layer directory is not decoration: it is
+what [`eslint.config.js`](#3-dependency-rules) keys its rules off. A package is governed by *where
+it lives*, so moving one between layers is a `git mv` that changes its rules in the same commit.
 
-Packages stay flat under `packages/` — the grouping below is a *reading order*, not a set of
-directories. The prefix carries the layer ([§Naming](#naming)), so `packages/core-fs-expo` needs
-no nesting to say what it is, and a flat workspace keeps pnpm, Turborepo and every import
-specifier simple.
+```
+packages/protocol/    Layer 0 — contracts, zero runtime
+packages/kernel/      Layer 1 — infrastructure + system abstractions
+packages/core/        Layer 2 — core capability services
+packages/feature/     Layer 3 — business feature modules
+packages/ui/          Layer 4 — views and shared UI infrastructure
+packages/tooling/     outside the model — nothing here ships
+```
+
+Every package sits at the same depth, so `packages/*/*` is the whole workspace in one glob and
+every package's `tsconfig.json` reaches the base config by the same `../../../`. The `apps/` are
+Layer 4 too, but they stay where a reader expects to find them.
+
+Two consequences of naming the directories after the layer's *job* rather than its number. The
+layers no longer sort into their own order — `core`, `feature`, `kernel`, `protocol`, `ui` is
+alphabetical, and the table above is the mapping to know. And the two single-package layers read
+doubled, `packages/protocol` and `packages/kernel/kernel`, which is the price of every
+package sitting at one depth; the alternative special-cases exactly the two layers most likely to
+gain a second package.
 
 `✅` = built and passing `pnpm check`. Anything without it is designed but not yet written.
 
@@ -43,46 +58,42 @@ B_Be_Bee/
 │
 ├── packages/
 │   │
-│   ├── protocol/                   ✅      🔹 LAYER 0 — the contract layer
-│   │   └── src/                               @BBeBee/protocol. ZERO runtime dependencies,
-│   │       ├── services/                      no side effects, no platform access — which is
-│   │       │                                  what makes it safe to import from any layer
-│   │       │                                  and the seam every layer is mocked at
-│   │       │                                  fs · http · db · secrets · audio · player ·
-│   │       │                                  sources · ui · … (04)
-│   │       ├── entities/                      Track, Album, StreamHandle, TransportState … (07)
-│   │       ├── events.ts                      the typed event map (07 §5)
-│   │       ├── errors.ts · frac-index.ts      the small pure runtime that earns its place
-│   │       └── conformance/                   shared contract suites: one test file, run
-│   │                                          against both implementations of a key (04 §18)
+│   ├── protocol/                    🔹 LAYER 0 — the contract layer
+│   │   └── protocol/               ✅        @BBeBee/protocol. ZERO runtime dependencies, no
+│   │       └── src/                          side effects, no platform access — which is what
+│   │           │                             makes it safe to import from any layer, and the
+│   │           │                             seam every layer is mocked at
+│   │           ├── services/                 fs · http · db · secrets · audio · player ·
+│   │           │                             sources · ui · … (04)
+│   │           ├── entities/                 Track, Album, StreamHandle, TransportState … (07)
+│   │           ├── events.ts                 the typed event map (07 §5)
+│   │           ├── errors.ts · frac-index.ts the small pure runtime that earns its place
+│   │           └── conformance/              shared contract suites: one test file, run
+│   │                                         against both implementations of a key (04 §18)
 │   │
-│   ├── kernel/                     ✅      🔹 LAYER 1 — infrastructure + system abstractions
-│   │   └── src/                               @BBeBee/kernel. Depends on protocol and cordis,
-│   │       │                                  and on nothing else in the workspace — a kernel
-│   │       │                                  that knows which plugins exist is not one
-│   │       ├── index.ts                       two surfaces, and they are not equally available:
-│   │       │                                  the pinned Cordis re-exports are open to every
-│   │       │                                  layer, the bootstrap surface below them is
-│   │       │                                  Layer 2 + composition root only (02 §1)
-│   │       │                                  ── by concern, tests beside their subject:
-│   │       ├── bootstrap/                     createApp, boot order, settling, and the shell
-│   │       │                                  wiring check (app.ts · shells.test.ts)
-│   │       ├── config/                        resolve, enable/disable, defaults
-│   │       ├── loader/                        registry → ctx.plugin(), fiber-state reporting
-│   │       ├── capability-gate/               scoping and the SQL guards (03 §7).
-│   │       │                                  capability.ts · sql.ts — the latter is shared
-│   │       │                                  with apps/desktop/main, so one allowlist covers
-│   │       │                                  the gated path and the IPC host both
-│   │       ├── migrations/                    core schema migrations (07 §6)
-│   │       │                                  ── and what belongs to no single concern:
-│   │       ├── fiber-state.ts                 the FiberState mirror upstream cannot export
-│   │       ├── testing.ts                     @BBeBee/kernel/testing — snapshotContext, the
-│   │       │                                  leak check every plugin's test runs (§6)
-│   │       ├── conventions.test.ts            ┐ these three scan the whole workspace rather
-│   │       ├── layers.test.ts                 │ than the kernel: un-awaited ctx.plugin(), the
-│   │       └── cordis-assumptions.test.ts     ┘ two surfaces (§3), upstream semantics (§5.1)
+│   ├── kernel/                      🔹 LAYER 1 — infrastructure + system abstractions
+│   │   └── kernel/                 ✅        @BBeBee/kernel. Depends on protocol and cordis,
+│   │       └── src/                          and nothing else in the workspace — a kernel that
+│   │           │                             knows which plugins exist is not one
+│   │           ├── index.ts                  two surfaces, not equally available: the pinned
+│   │           │                             Cordis re-exports are open to every layer, the
+│   │           │                             bootstrap surface below them is Layer 2 + the
+│   │           │                             composition root only (02 §1)
+│   │           │                             ── by concern, tests beside their subject:
+│   │           ├── bootstrap/                createApp, boot order, settling, shell wiring
+│   │           ├── config/                   resolve, enable/disable, defaults
+│   │           ├── loader/                   registry → ctx.plugin(), fiber-state reporting
+│   │           ├── capability-gate/          scoping and the SQL guards (03 §7). sql.ts is
+│   │           │                             shared with apps/desktop/main, so one allowlist
+│   │           │                             covers the gated path and the IPC host both
+│   │           ├── migrations/               core schema migrations (07 §6)
+│   │           │                             ── and what belongs to no single concern:
+│   │           ├── fiber-state.ts            the FiberState mirror upstream cannot export
+│   │           ├── testing.ts                @BBeBee/kernel/testing — snapshotContext (§6)
+│   │           └── *.test.ts                 conventions · layers · cordis-assumptions:
+│   │                                         these scan the workspace, not the kernel
 │   │
-│   ├── core-*/                             🔹 LAYER 2 — core capability services
+│   ├── core/                        🔹 LAYER 2 — core capability services
 │   │   │                                      The ONLY packages permitted to import a platform
 │   │   │                                      SDK, and the only ones permitted to drive the
 │   │   │                                      kernel. One implementation per target per key;
@@ -116,22 +127,17 @@ B_Be_Bee/
 │   │   │                                       Layer 2 on both sides of the process boundary
 │   │   └── core-…                            ctx.ws · ctx.notify · ctx.crypto · ctx.shell
 │   │
-│   ├── source-rules/               ✅      🔹 LAYER 3 — feature plugins
-│   │   └── src/                               The rule language, as pure logic: no Cordis, no
-│   │       │                                  platform, no I/O. A document and a string in, a
-│   │       │                                  value out — which is what makes the golden corpus
-│   │       │                                  in §6 runnable with no network (06 §3)
-│   │       ├── parse.ts                       the parser
-│   │       ├── evaluate.ts                    the engine, including coercion
-│   │       ├── jsonpath.ts · template.ts      the selector and template dialects
-│   │       └── regex-guard.ts                 the ReDoS guard every user-supplied regex passes
-│   │
-│   ├── plugin-*/                           🔹 LAYER 3 — feature plugins (headless)
-│   │   │                                      One business capability each: state, persistence,
-│   │   │                                      networking, events. Import @BBeBee/protocol and
-│   │   │                                      the kernel's plugin surface — never a platform
-│   │   │                                      SDK, never a core-* package (a Layer 2
-│   │   │                                      dependency is spelled `inject: ['fs']`).
+│   ├── feature/                     🔹 LAYER 3 — business feature modules
+│   │   │                                      One business capability each, headless: state,
+│   │   │                                      persistence, networking, events. Import
+│   │   │                                      @BBeBee/protocol and the kernel's plugin surface
+│   │   │                                      — never a platform SDK, never a core-* package
+│   │   │                                      (a Layer 2 dependency is `inject: ['fs']`).
+│   │   ├── source-rules/           ✅        the rule language as pure logic: no Cordis, no
+│   │   │                                       platform, no I/O (06 §3). parse.ts the parser,
+│   │   │                                       evaluate.ts the engine and its coercion,
+│   │   │                                       jsonpath.ts · template.ts the two dialects,
+│   │   │                                       regex-guard.ts the ReDoS bound
 │   │   ├── plugin-source-runtime/  ✅        binds source-rules to ctx.http · ctx.js (06 §4)
 │   │   ├── plugin-sources/         ✅        the ctx.sources registry + catalogue (06 §4.1)
 │   │   ├── plugin-source-local/    ✅        the one provider that is not a string (06 §12)
@@ -145,17 +151,24 @@ B_Be_Bee/
 │   │   ├── plugin-log-buffer/      ✅
 │   │   ├── plugin-dsp/                       ctx.dsp — the effect chain (05 §3)
 │   │   ├── plugin-effect-eq10/               one DSP effect, as a plugin
-│   │   ├── plugin-download/                  media_bindings + the before-resolve substitution
+│   │   ├── plugin-download/                  media_bindings + before-resolve substitution
 │   │   ├── plugin-library/                   playlists, favourites, smart lists
 │   │   ├── plugin-lyrics/                    lyric providers
 │   │   ├── plugin-cache/                     the http/request cache layer
 │   │   └── plugin-…
 │   │
-│   ├── plugin-*-ui-*/                      🔹 LAYER 4 — views, one package per target
-│   │   │                                      Layout, gestures and event wiring. Anything you
-│   │   │                                      would otherwise write twice belongs in the
-│   │   │                                      headless sibling, which they import for its
-│   │   │                                      TYPES only (08 §1).
+│   ├── ui/                          🔹 LAYER 4 — views and UI infrastructure
+│   │   │                                      Layout, gestures, event wiring, and the
+│   │   │                                      orchestration that turns one user intent into a
+│   │   │                                      sequence of feature calls. Anything you would
+│   │   │                                      otherwise write twice belongs in the headless
+│   │   │                                      sibling, which views import for TYPES only.
+│   │   ├── ui-tokens/              ✅        design tokens as data + the WCAG AA gate (08 §8)
+│   │   ├── ui-core/                ✅        framework-agnostic hooks + shared prop types
+│   │   ├── ui-parity/              ✅        the component contract, and the check that both
+│   │   │                                       kits meet it (08 §6)
+│   │   ├── ui-kit-mobile/          ✅        React Native components
+│   │   ├── ui-kit-desktop/         ✅        React DOM components
 │   │   ├── plugin-player-ui-desktop/ ✅      ┐ now playing, transport, queue
 │   │   ├── plugin-player-ui-mobile/  ✅      ┘
 │   │   ├── plugin-sources-ui-desktop/ ✅     ┐ library, album detail, source list, import
@@ -164,18 +177,7 @@ B_Be_Bee/
 │   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
 │   │   └── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered
 │   │
-│   ├── ui-*/                               🔹 LAYER 4 — shared UI infrastructure
-│   │   │                                      Not plugins. The half of ADR-2's cost that can
-│   │   │                                      be paid once instead of twice.
-│   │   ├── ui-tokens/              ✅        design tokens as plain data + the WCAG AA gate (08 §8)
-│   │   ├── ui-core/                ✅        framework-agnostic hooks + the prop types both
-│   │   │                                       kits share (08 §4)
-│   │   ├── ui-parity/              ✅        the component contract, and the check that both
-│   │   │                                       kits meet it (08 §6)
-│   │   ├── ui-kit-mobile/          ✅        React Native components
-│   │   └── ui-kit-desktop/         ✅        React DOM components
-│   │
-│   └── tooling-*/                          🔧 TOOLING — outside the layer model
+│   └── tooling/                            🔧 OUTSIDE THE LAYER MODEL
 │       │                                      Development aids. Nothing here ships in an app
 │       │                                      bundle, which is why the layer rules do not
 │       │                                      apply to them.
@@ -186,49 +188,60 @@ B_Be_Bee/
 │                                             conformance suite runs on
 │
 ├── fixtures/sources/                         example source documents; the golden corpus (§6)
+├── test/stubs/                               the three native modules Node cannot load, aliased
+│                                             by vitest.config.ts: react-native-audio-api throws
+│                                             on anything genuinely native, expo-sqlite and
+│                                             expo-file-system really work (§6)
 ├── docs/                                     these documents
 ├── eslint.config.js                          flat config; the layer rules live here (§3)
-├── vitest.config.ts · vitest.global.ts
-├── pnpm-workspace.yaml
-└── package.json
+├── tsconfig.base.json                        every package tsconfig extends this
+├── vitest.config.ts · vitest.global.ts       aliases + the scratch root each run allocates under
+├── pnpm-workspace.yaml · .npmrc
+└── package.json                              the root scripts: check, gen:plugins, new:plugin
 ```
 
-### Flat packages, nested concerns
+### Why the layer is a directory
 
-Grouping by layer is how the tree above *reads*; it is not how the filesystem is arranged, and
-the difference is deliberate.
+The alternative — a flat `packages/` where the *prefix* carries the layer — is what this
+repository had until the layer model was enforced, and it worked. What it could not do is make the
+layer **structural**. Three things changed when the directory became the grouping:
 
-A `packages/layer-2/core-fs-expo/` scheme would put the layer in the path — but the layer is
-already in the *name*, and the lint config keys off that name rather than off a path
-([§3](#3-dependency-rules)). What such a scheme costs is real: every `pnpm-workspace.yaml` glob,
-every Turborepo filter, and every relative path in a tsconfig grows a segment, and a package that
-moves layer becomes a directory move — a rewritten import graph — rather than a rename.
+- **The lint rules key off location, not spelling.** `packages/core/**` is the set of
+  packages allowed to touch a platform SDK, and membership is a fact about the filesystem rather
+  than a naming convention that a package called `plugin-fs-helper` could quietly slip past.
+- **A layer change is a move.** Promoting a feature plugin into a core service is
+  `git mv packages/feature/x packages/core/x`, and its rules change with it, in the
+  same commit, visibly in review.
+- **A new package must choose.** The scaffolder writes into `feature/` or `ui/`
+  ([§7](#7-developer-workflow)), so "which layer is this?" is answered at creation instead of
+  being inferred later from what the package ended up importing.
 
-Nesting earns its keep *inside* a package instead, where it separates things a reader genuinely
+The cost is one extra path segment everywhere — in `pnpm-workspace.yaml`, in each package's
+`extends`, and in the workspace-scanning tests, which now resolve a package by scanning
+`packages/*/*` rather than by joining a name onto `packages/`. That cost is paid once, and it was
+paid when this layout landed. The scanners take the directory listing as the source of truth
+rather than a hardcoded list, so the layer directories can be renamed — as they were, from
+`layerN-*` to the bare name — without touching them.
+
+Nesting also earns its keep *inside* a package, where it separates things a reader genuinely
 confuses: `src/services/` and `src/entities/` in `protocol`, and the concern directories in
 `kernel` — `bootstrap/`, `config/`, `loader/`, `capability-gate/`, `migrations/`. The kernel is
-the one package where "which part of this does that?" is a real question, because it is the one
-package doing five unrelated jobs, and each directory keeps its own tests beside it. What stays
-at `src/` root there is what belongs to no single concern: `index.ts` (the two-surface seam),
-`fiber-state.ts` and `testing.ts` (used by all of them), and the three meta-tests, which scan the
-workspace rather than the kernel.
+the one package doing five unrelated jobs, and each directory keeps its own tests beside it.
 
 ### Naming
 
-The prefix is not decoration: it is how a reader — and the lint config in
-[§3](#3-dependency-rules) — knows which layer a package sits in and therefore what it may import.
+The **directory** decides the layer and therefore what a package may import. The **prefix**
+still says what kind of thing it is, and the two agree by construction — a `core-` package in
+`feature/` would be a mistake the reader can see.
 
-| Prefix | Layer | Meaning |
+| Directory | Layer | Prefixes it holds |
 |---|---|---|
-| `protocol` | 0 | The contracts. One package, no runtime |
-| `kernel` | 1 | The kernel. One package |
-| `core-<service>-<platform>` | 2 | A platform implementation of a core service |
-| `plugin-<feature>` | 3 | A headless feature plugin |
-| `plugin-effect-<id>` | 3 | A DSP effect |
-| `source-rules` | 3 | Pure logic beneath the source runtime; not a plugin |
-| `plugin-<feature>-ui-<target>` | 4 | Views for one target |
-| `ui-*` | 4 | Shared UI infrastructure, not a plugin |
-| `tooling-*` | — | Development aids. Outside the layer model, because nothing here ships |
+| `protocol/` | 0 | `protocol` — the contracts. One package, no runtime |
+| `kernel/` | 1 | `kernel` — one package |
+| `core/` | 2 | `core-<service>-<platform>` — one platform implementation of a core service |
+| `feature/` | 3 | `plugin-<feature>` headless, `plugin-effect-<id>` for a DSP effect, and `source-rules`, which is pure logic beneath the source runtime rather than a plugin |
+| `ui/` | 4 | `plugin-<feature>-ui-<target>` for views, `ui-*` for the infrastructure both kits share |
+| `tooling/` | — | `tooling-*`. Outside the layer model, because nothing here ships |
 
 There is deliberately **no `plugin-source-<protocol>` prefix any more**. A music backend is a
 source document ([06](./06-music-sources.md)), not a package. The only two packages with `source`
@@ -284,9 +297,11 @@ and `pnpm lint` says so.
 ## 3. Dependency rules
 
 The layer model of [02 §1](./02-architecture.md#1-the-layer-model) is worth exactly as much as its
-enforcement, so it is enforced by ESLint with `overrides` scoped by path, not by review. Each rule
-below states which layer boundary it protects. This is an abridged reading of
-`eslint.config.js` — the file itself is the authority.
+enforcement, so it is enforced by ESLint with `overrides` scoped by path, not by review. Because
+[§1](#1-repository-layout) puts every package under its layer directory, those paths *are* the
+layer: `packages/core/**` is not a naming convention that hopes to match the right
+packages, it is exactly the set of packages in Layer 2. Each rule below states which boundary it
+protects. This is an abridged reading of `eslint.config.js` — the file itself is the authority.
 
 ```js
 // eslint.config.js — the rules that matter
@@ -324,13 +339,13 @@ const COMPOSITION_ROOT = [
 
 export default tseslint.config(
   {
-    // 02 §1 — Layer 3 and the shared Layer 4 infrastructure. Both invariants
+    // 02 §1 — Layers 3 and 4, addressed by directory. Both invariants at once,
     // at once, because ESLint *replaces* a rule's options rather than merging
     // them: every block covering a file has to restate the whole ban, or the
     // narrower block silently disables the wider one.
-    files: ['packages/plugin-*/**/*.{ts,tsx}', 'packages/ui-*/**/*.{ts,tsx}',
+    files: ['packages/feature/**/*.{ts,tsx}', 'packages/ui/**/*.{ts,tsx}',
             'packages/protocol/**/*.ts'],
-    ignores: ['packages/plugin-*-ui-*/**/*.{ts,tsx}'],
+    ignores: ['packages/ui/plugin-*-ui-*/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
         paths: [KERNEL_GUARD], patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES],
@@ -343,7 +358,7 @@ export default tseslint.config(
     // every fetch belongs to plugin-source-runtime. Keeping it pure is what
     // makes the rule corpus in §6 runnable without a network, and it is the
     // Layer 3 entry in 02 §1's testability table.
-    files: ['packages/source-rules/**/*.ts'],
+    files: ['packages/feature/source-rules/**/*.ts'],
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES, 'cordis', '@BBeBee/kernel'],
@@ -353,7 +368,8 @@ export default tseslint.config(
   {
     // 08 §1 — Layer 4 view packages may render, but may not reach the
     // platform. `react-native` is allowed; its capability modules are not.
-    files: ['packages/plugin-*-ui-mobile/**/*.{ts,tsx}', 'packages/ui-kit-mobile/**/*.{ts,tsx}'],
+    files: ['packages/ui/plugin-*-ui-mobile/**/*.{ts,tsx}',
+            'packages/ui/ui-kit-mobile/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
         paths: [KERNEL_GUARD],
@@ -366,7 +382,8 @@ export default tseslint.config(
     // The desktop half. `react-dom` is not a platform SDK, so this one bans
     // the whole list — without it, the block above exempts every
     // `plugin-*-ui-*` package and only puts `-ui-mobile` back under a rule.
-    files: ['packages/plugin-*-ui-desktop/**/*.{ts,tsx}', 'packages/ui-kit-desktop/**/*.{ts,tsx}'],
+    files: ['packages/ui/plugin-*-ui-desktop/**/*.{ts,tsx}',
+            'packages/ui/ui-kit-desktop/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
         paths: [KERNEL_GUARD], patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES],
@@ -378,8 +395,9 @@ export default tseslint.config(
     // which plugins exist is not a kernel: it resolves them from a registry
     // the shell hands it, which is what lets one kernel boot two graphs.
     // `src/testing.ts` is exempt for the reason `*.test.ts` is.
-    files: ['packages/kernel/src/**/*.ts'],
-    ignores: ['packages/kernel/src/**/*.test.ts', 'packages/kernel/src/testing.ts'],
+    files: ['packages/kernel/kernel/src/**/*.ts'],
+    ignores: ['packages/kernel/kernel/src/**/*.test.ts',
+              'packages/kernel/kernel/src/testing.ts'],
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES,
@@ -392,7 +410,8 @@ export default tseslint.config(
     // which is what makes it the seam every other layer is mocked at.
     // `^[^.]` matches bare specifiers only, leaving relative imports alone.
     files: ['packages/protocol/src/**/*.ts'],
-    ignores: ['packages/protocol/src/conformance/**/*.ts', 'packages/protocol/src/**/*.test.ts'],
+    ignores: ['packages/protocol/src/conformance/**/*.ts',
+              'packages/protocol/src/**/*.test.ts'],
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [{ regex: '^[^.]', allowTypeImports: true }],
@@ -427,13 +446,13 @@ export default tseslint.config(
 
 Read as a matrix, that is the layer model with nothing left implicit:
 
-| | Layer 0 `protocol` | Layer 1 `kernel` | Layer 2 `core-*` | Layer 3 `plugin-*` | Layer 4 `ui-*`, `apps/*` | Platform SDK |
+| | Layer 0 `protocol/` | Layer 1 `kernel/` | Layer 2 `core/` | Layer 3 `feature/` | Layer 4 `ui/`, `apps/*` | Platform SDK |
 |---|---|---|---|---|---|---|
 | **Layer 0** may import | — | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Layer 1** may import | ✅ | — | ❌ | ❌ | ❌ | ❌ |
 | **Layer 2** may import | ✅ | ✅ **all of it** | own package | ❌ | ❌ | ✅ **only here** |
 | **Layer 3** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | types only, of a sibling | ❌ | ❌ |
-| **Layer 4** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | ⚠️ types only | ✅ | ⚠️ view library in `ui-*`/`plugin-*-ui-*`; platform chrome in `apps/*` |
+| **Layer 4** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | ⚠️ types only | ✅ | ⚠️ view library in `ui/*`; platform chrome in `apps/*` |
 | **Composition root** may import | ✅ | ✅ | ✅ | ✅ (as registry data) | ✅ | ✅ |
 
 Three checks deliberately live in **tests** rather than ESLint, because a lint rule whose selector
@@ -480,7 +499,7 @@ packages — but nothing yet enforces it.
 }
 ```
 
-Codegen (`packages/tooling-gen-plugins`, run as `pnpm gen:plugins`) writes
+Codegen (`packages/tooling/tooling-gen-plugins`, run as `pnpm gen:plugins`) writes
 `apps/{mobile,desktop}/generated/plugins.ts`. Its output is **committed**, so a clean checkout
 builds without a pre-step and CI verifies the file is current rather than regenerating it — run it
 whenever a plugin package is added or removed.
@@ -683,7 +702,7 @@ this section is required reading until something goes wrong.
 | `pnpm build` | Emit `dist/` for every package |
 | `pnpm clean` | Remove `dist/`, `out/`, and build info |
 
-Run a single package's tests by path — `pnpm test packages/core-fs-node` — or a single file.
+Run a single package's tests by path — `pnpm test packages/core/core-fs-node` — or a single file.
 
 ### Running the apps
 
@@ -716,6 +735,11 @@ pnpm check                   # already green — the template ships passing test
 | `--name` | lowercase, hyphenated | `scrobble` → `@BBeBee/plugin-scrobble` |
 | `--kind` | `feature` (default), `effect` | Sets the package prefix. There is no `source` kind: a music backend is a document, not a package |
 | `--ui` | `none` (default), `desktop`, `mobile`, `both` | Emits the per-target view packages of [08 §1](./08-ui-architecture.md#1-the-three-package-convention) |
+
+The headless package lands in `packages/feature/`, its views in `packages/ui/`
+([§1](#1-repository-layout)). That placement is the scaffolder's most consequential output: the
+lint rules key off the layer directory, so a package written into the wrong one is silently
+governed by the wrong rules. `tooling-create-plugin`'s own test asserts the split.
 | `--capabilities` | comma-separated | Written into `BBeBee.plugin.json` ([03 §7](./03-plugin-system.md#7-capability-model)) |
 
 The scaffolder is not a nicety. With a three-package convention, a manifest format, a capability
@@ -761,7 +785,7 @@ than a typo:
 | Metro: *cannot resolve `cordis`* | `unstable_enablePackageExports` missing from `metro.config.js` — Cordis is ESM-only with an `exports` map ([04 §17](./04-core-services.md#17-runtime-compatibility-checklist)) |
 | `@Inject` fails at runtime, compiles fine | Legacy decorators. Babel needs `{ version: '2023-11' }`; `tsconfig` must not set `experimentalDecorators` |
 | A plugin sits in `pending` forever | An injected service never became ACTIVE. `ctx.inspector.render()` prints the tree and names what each fiber waits for |
-| `app.start()` resolves but a service is not ready | An un-awaited `ctx.plugin()` somewhere. `pnpm test packages/kernel` will name the file |
+| `app.start()` resolves but a service is not ready | An un-awaited `ctx.plugin()` somewhere. `pnpm test packages/kernel/kernel` will name the file |
 | `CapabilityError: … may not …` | The manifest is missing a capability, or the path/table is genuinely out of scope. Widen the manifest, never the gate |
 | `CapabilityError: host … not allowed` from a source | The document's rules reach a host it did not declare. Add it to `allowedHosts` and re-import, so the user sees it (06 §8) |
 | A source returns nothing, with no error | A rule matched nothing where the field was optional. The rule tracer names the step (06 §10); `check` finds it before a user does |

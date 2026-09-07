@@ -16,7 +16,7 @@ from Layer 3 has put the seam at the wrong altitude, and the symptom is always t
 implementations stop being interchangeable.
 
 All interfaces live in `packages/protocol/src/services/` and are applied to the context by module
-augmentation. Implementations live in `packages/core-*` and are the sole holders of platform
+augmentation. Implementations live in `packages/core/*` and are the sole holders of platform
 dependencies.
 
 > §§1–16 are the services in the order a reader meets them. §§17–18 are cross-cutting: the runtime
@@ -680,7 +680,7 @@ implementation runs it — `core-fs-node` under Vitest in Node, `core-fs-expo` u
 test on a real simulator.
 
 ```ts
-// packages/core-fs-node/test/conformance.test.ts
+// packages/core/core-fs-node/test/conformance.test.ts
 import { fsConformance } from '@BBeBee/protocol/conformance'
 fsConformance(() => createNodeFs(testHarness()))
 ```

@@ -243,7 +243,7 @@ Terms used with a precise meaning throughout these documents.
 | **Service** | A capability claimed on a stable context key (`ctx.fs`). Declared in `@BBeBee/protocol`, provided by exactly one plugin at a time within a given isolation scope. |
 | **Fiber** | Cordis's unit of plugin lifetime. Tracks state (`PENDING` → `LOADING` → `ACTIVE` → …), holds the plugin's disposables, and reloads the plugin when its dependencies change. |
 | **Effect** | A reversible side effect registered via `ctx.effect()`. The returned disposer runs automatically on unload. |
-| **Core plugin** | A plugin implementing a platform service. Lives in `packages/core-*`. Layer 2 — the only code permitted to import a platform SDK, and the only code permitted to call the kernel's bootstrap surface. |
+| **Core plugin** | A plugin implementing a platform service. Lives in `packages/core/*`. Layer 2 — the only code permitted to import a platform SDK, and the only code permitted to call the kernel's bootstrap surface. |
 | **Feature plugin** | Everything headless that is not a core plugin. Layer 3. Reaches the platform only through service keys. |
 | **Source** | One music backend, as configured by the user. Identified by `sourceUrl`, addressed by a derived **source id**. Two Navidrome servers are two sources. |
 | **Source string** | The importable text form of a source: one JSON document, or an array of them (a *source set*). The unit users share. |

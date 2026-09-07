@@ -20,8 +20,8 @@
     "dev:mobile": "pnpm --filter @BBeBee/mobile start",
     "dev:android": "pnpm --filter @BBeBee/mobile android",
     "build:desktop": "pnpm --filter @BBeBee/desktop build",
-    "gen:plugins": "node --experimental-strip-types packages/tooling-gen-plugins/src/cli.ts",
-    "new:plugin": "node --experimental-strip-types packages/tooling-create-plugin/src/cli.ts",
+    "gen:plugins": "node --experimental-strip-types packages/tooling/tooling-gen-plugins/src/cli.ts",
+    "new:plugin": "node --experimental-strip-types packages/tooling/tooling-create-plugin/src/cli.ts",
     "clean": "pnpm -r exec rm -rf dist out *.tsbuildinfo",
     "clean:all": "pnpm -r exec rm -rf dist out *.tsbuildinfo node_modules"
   },

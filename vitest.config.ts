@@ -46,8 +46,11 @@ export default defineConfig({
      * narrow enough that a shell cannot smuggle logic in behind it.
      */
     include: [
-      'packages/*/src/**/*.test.ts',
-      'packages/*/src/**/*.test.tsx',
+      // `packages/<layer>/<package>/src` — packages are grouped by layer
+      // (docs/09 §1), so the glob carries one more segment than a flat
+      // workspace would.
+      'packages/*/*/src/**/*.test.ts',
+      'packages/*/*/src/**/*.test.tsx',
       'apps/*/**/*.test.ts',
     ],
     environment: 'node',

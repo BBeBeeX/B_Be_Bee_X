@@ -220,7 +220,7 @@ export const inject = { db: null, http: { timeoutMs: 5_000 } }
 > ⚠️ **Everything named in `inject` is required, in both forms.** Cordis's `Fiber._refresh()`
 > iterates every key and parks the fiber if any implementation is missing; a `null` value in the
 > object form means "no interception config", *not* "optional". This is asserted in
-> `packages/kernel/src/cordis-assumptions.test.ts` because it is easy to assume otherwise.
+> `packages/kernel/kernel/src/cordis-assumptions.test.ts` because it is easy to assume otherwise.
 
 The fiber stays `PENDING` until every injected service is `ACTIVE`.
 

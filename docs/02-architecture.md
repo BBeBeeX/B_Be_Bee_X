@@ -69,7 +69,7 @@ worth more than its shape.
 |---|---|---|---|---|
 | **4 — UI & business function** | `apps/mobile`, `apps/desktop/renderer`, `plugin-*-ui-mobile`, `plugin-*-ui-desktop`, `ui-kit-*`, `ui-core`, `ui-parity`, `ui-tokens` | Pages, navigation, gestures and keyboard, and the orchestration that turns one user intent into a sequence of feature calls | Layers 0–3 | A platform SDK; the kernel's bootstrap surface; SQL; HTTP; domain state ([§6](#6-state-ownership)) |
 | **3 — Feature plugins** | headless `plugin-*` (`plugin-player`, `plugin-dsp`, `plugin-sources`, `plugin-source-runtime`, `plugin-download`, `plugin-library`, `plugin-lyrics`, `plugin-cache`, `plugin-local-scanner`, `plugin-log-*`), plus `source-rules` as pure logic beneath them | One business capability each, headless: state, persistence, networking, events | Layers 0–2 | A platform SDK; the kernel's bootstrap surface; another feature plugin's internals |
-| **2 — Core plugins** | `packages/core-*` | One platform capability per service key, with one implementation per target behind each key | Layers 0–1 — **directly** | Domain knowledge. A core plugin must not know what a track is |
+| **2 — Core plugins** | `packages/core/*` | One platform capability per service key, with one implementation per target behind each key | Layers 0–1 — **directly** | Domain knowledge. A core plugin must not know what a track is |
 | **1 — Kernel** | `@BBeBee/kernel` | The Cordis `Context`, DI, fibers and effects, the event bus, config loading, plugin resolution, the capability gate, core migrations | Layer 0 (and Cordis) | Importing any `core-*` or `plugin-*`. The kernel does not know which plugins exist |
 | **0 — Protocol** | `@BBeBee/protocol` | Service interfaces, entity types, the typed event map, constants, and the conformance suites that hold implementations to them | Nothing at all | Emitting a runtime value; importing any bare specifier ([09 §3](./09-project-structure.md#3-dependency-rules)) |
 
@@ -140,7 +140,7 @@ Two rules, both mechanical, both scoped by directory in
 [09 §3](./09-project-structure.md#3-dependency-rules) because code review will not catch them
 reliably:
 
-> **1. No package outside `packages/core-*` may import a platform SDK.**
+> **1. No package outside `packages/core/*` may import a platform SDK.**
 
 Not `expo-file-system`, not `node:fs`, not `electron`, not `react-native`'s native modules.
 
@@ -221,7 +221,7 @@ production uses, so a test double is a legitimate implementation rather than a s
 
 | Testing | Substitute at Layer 0 | Where |
 |---|---|---|
-| A feature plugin | An in-memory `FsService` / `HttpService` / `DbService` | `packages/tooling-fixtures` ([09 §6](./09-project-structure.md#6-testing-strategy)) |
+| A feature plugin | An in-memory `FsService` / `HttpService` / `DbService` | `packages/tooling/tooling-fixtures` ([09 §6](./09-project-structure.md#6-testing-strategy)) |
 | A core plugin | Nothing — it is held to the shared contract instead | The conformance suites in `protocol/src/conformance` ([04 §18](./04-core-services.md)) |
 | A UI package | The hooks read a fake service off a context built in the test | [08 §4](./08-ui-architecture.md#4-binding-services-to-react) |
 | The rule language | Nothing to mock: `source-rules` is pure, with no Cordis and no I/O | [06 §3](./06-music-sources.md#3-the-rule-language) |
