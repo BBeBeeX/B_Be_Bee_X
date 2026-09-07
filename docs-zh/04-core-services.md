@@ -1,10 +1,13 @@
 # 04 —— 核心服务
 
-> **本篇回答什么。** 平台抽象层：功能插件可用来触达外部世界的每一个服务键、它的
-> TypeScript 契约、它在各目标平台上的实现，以及两个平台真正存在差异的地方。
+> **本篇回答什么。** [02 §1](./02-architecture.md#1-分层模型) 的 **第 2 层**：功能插件可用来触达
+> 外部世界的每一个服务键、它的 TypeScript 契约、它在各目标平台上的实现，以及两个平台真正存在
+> 差异的地方。
 
-这些是通向沙箱之外的唯一出口。如果某个功能需要这里未列出的东西，正确答案是新增一个核心服务 —— 而绝不是直接导入平台 SDK
+这些是通向沙箱之外的唯一出口。核心插件是唯一被允许直接调用平台 SDK 或内核引导面（bootstrap surface）的一层，而这份特权正是它们存在的全部理由：它们把*这台机器的* API 转换成一份契约，让功能插件与 UI 层只需对着它写一次。如果某个功能需要这里未列出的东西，正确答案是新增一个核心服务 —— 而绝不是直接导入平台 SDK
 （[02 §1](./02-architecture.md#不变量)）。
+
+这份特权的代价是：核心插件**不持有任何领域知识**。`ctx.fs` 搬运字节，`ctx.db` 跑 SQL；两者都不知道"曲目"是什么。一项长出了功能插件层概念的核心服务，就是把接缝放错了高度，而症状永远相同 —— 两份实现不再可以互换。
 
 所有接口都位于 `packages/protocol/src/services/`，并通过模块扩充（module augmentation）应用到 Context 上。实现位于
 `packages/core-*`，它们是唯一持有平台依赖的代码。
@@ -166,6 +169,17 @@ export interface HttpService {
 一个已登录的音源必须在应用重启后保持登录状态
 （[06 §5.1](./06-music-sources.md#51-会话持久化--cookie-在应用关闭后依然存活)）。因此
 cookie 持久化是平台契约的一部分，而不是每份音源文档要在规则里自行表达的东西。
+
+**一个罐只属于一个源。** `ctx.http` 从运行时为每个源设置的拦截配置中读取 scope id
+（[06 §4.1](./06-music-sources.md#41-一个源的生命周期)），因此两台 Navidrome 服务器得到两个罐，
+其中一个设置的 cookie 绝不会被发给另一个。不经门控的调用方 —— 内核、一项核心服务、一个测试 ——
+没有作用域，因此也没有罐，而这正是正确的：本就不存在要维持的会话。
+
+**它经过信封加密，而且平台强制这一点。** `expo-secure-store` 对单个值的上限是 2048 字节，而一个
+jar 动辄更大，因此一个随机密钥放 `ctx.secrets`，jar 本身则存为在该密钥之下加密的一个文件。密钥
+一旦丢失，文件的字节也就随之失效 —— 这正是 `signOut()` 所依赖的机制。只要存在 `ctx.secrets`，
+`ctx.http` 就会自行采用它；一个需要手工接线的壳，就是一个可能忘记接线的壳，而忘记的结果，是一
+个登录看似成功、却永远存不住的应用。没有凭据存储时，各罐留在内存里，并诚实地说出自己会遗忘。
 
 ```ts
 export interface Cookie {
@@ -656,6 +670,10 @@ bug。这套套件就是本文档的可执行形式。
 核心服务而不是那个插件的一部分，因为内嵌一个解释器意味着交付原生代码，而只有 `core-*` 可以
 这么做（[02 §1](./02-architecture.md#不变量)）。
 
+**由 `core-js-quickjs-node` 实现**（桌面端与 Node），构建于编译成 WebAssembly 的 QuickJS 之上。不是 `node:vm`，而两者的差别正是全部要点：`vm` 与宿主共享一张对象图，脚本一旦够到 `this.constructor.constructor` 就出局了，而已发表的每一种缓解手段，终究是一份早晚有人绕开的黑名单。QuickJS 是一个独立的解释器 —— 里面没有宿主对象图可供够取，因为其中根本不存在宿主对象。
+
+⚠️ **`js` 是一项可选注入。** 没有沙箱的构建依然会运行每一份无需脚本的文档，并就其余文档把受影响的能力推导为*缺席*，而不是提供一个无法工作的按钮。Cordis 把插件自身 `inject` 里的每一个键都当作必需，因此这里表达为一个嵌套的 `ctx.inject(['js'], …)` —— 把它列在顶层，意味着一个缺失的核心服务会把整个源运行时一起拖垮。
+
 ```ts
 export interface JsRealm {
   /**
@@ -671,8 +689,18 @@ export interface JsRealm {
 }
 
 export interface JsLimits {
-  /** Wall clock for one eval. Exceeding it throws JsTimeoutError and unwinds the realm. */
+  /**
+   * Wall clock for one uninterrupted stretch of engine execution.
+   *
+   * ⚠️ Not the whole call. A script that awaits hands control back, and each
+   * continuation is a fresh stretch — so this bounds *loops*, which is what it
+   * is for. An implementation that armed it only around the initial evaluation
+   * leaves every continuation unbounded, which is a freeze rather than a
+   * timeout.
+   */
   timeoutMs: number
+  /** Wall clock for one eval including everything it awaits — 06 §8's "10s with network". */
+  budgetMs: number
   /** Heap ceiling. Exceeding it throws JsMemoryError. */
   memoryBytes: number
   /** Cap on the size of a returned value, before cloning. */

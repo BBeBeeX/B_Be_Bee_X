@@ -122,13 +122,14 @@
 
 | 术语 | 含义 |
 |---|---|
-| **内核（Kernel）** | `@BBeBee/kernel` —— Cordis 再加上 BBeBee 的引导启动、配置加载、插件解析与能力门禁。不是 Cordis 的概念。 |
+| **Layer 0–4** | [02 §1](./02-architecture.md#1-分层模型) 的五个层：**0** 协议、**1** 内核、**2** 核心插件、**3** 功能插件、**4** UI 与业务功能。一个包所在的层决定了它可以导入什么；Layer 2 是唯一被允许触碰平台 SDK 或驱动内核的层。 |
+| **内核（Kernel）** | `@BBeBee/kernel` —— Cordis 再加上 BBeBee 的引导启动、配置加载、插件解析与能力门禁。Layer 1。不是 Cordis 的概念。 |
 | **Context**（`ctx`） | 一个 Cordis `Context`。同时是 DI 容器、事件总线与生命周期作用域。每个插件都会获得自己的派生上下文。 |
 | **服务（Service）** | 在稳定的服务键（`ctx.fs`）上认领的一种能力。在 `@BBeBee/protocol` 中声明，在给定隔离作用域内任一时刻恰好由一个插件提供。 |
 | **Fiber** | Cordis 中插件生命周期的单位。跟踪状态（`PENDING` → `LOADING` → `ACTIVE` → …），持有插件的可清理项（disposables），并在插件依赖变化时重新加载它。 |
 | **Effect** | 通过 `ctx.effect()` 注册的一个可逆副作用。返回的 disposer 会在卸载时自动运行。 |
-| **核心插件** | 实现某个平台服务的插件。位于 `packages/core-*`。是唯一允许导入平台 SDK 的代码。 |
-| **功能插件** | 其余一切。只通过服务键触达平台。 |
+| **核心插件** | 实现某个平台服务的插件。位于 `packages/core-*`。Layer 2 —— 唯一被允许导入平台 SDK 的代码，也是唯一被允许调用内核引导表面的代码。 |
+| **功能插件** | 不属于核心插件的一切无头（headless）内容。Layer 3。只通过服务键触达平台。 |
 | **源（Source）** | 用户所配置的一个音乐后端。以 `sourceUrl` 标识，通过派生的 **source id** 寻址。两台 Navidrome 服务器就是两个源。 |
 | **源字符串（Source string）** | 源的可导入文本形式：一份 JSON 文档，或其构成的数组（一个 *source set*）。用户分享的单位。 |
 | **规则（Rule）** | 源文档中的一个字段，以 [06 §3](./06-music-sources.md#3-规则语言) 的选择器/模板语言编写。 |
@@ -138,10 +139,10 @@
 | **绑定（Binding）** | `media_bindings` 表中的一行，把某个曲目 URN 绑定到具体的本地文件。"这首曲目已下载"的实际含义即在于此。 |
 | **链（Chain）** | 播放器的源节点与输出之间的一串有序 DSP 效果。 |
 | **描述符（Descriptor）** | 一种与渲染器无关的 UI 贡献——一条路由、槽位填充、命令或设置页——由当前运行的外壳解析为真实组件。 |
-| **外壳（Shell）** | 挂载 UI 的宿主应用：`apps/mobile` 或 `apps/desktop/renderer`。 |
+| **外壳（Shell）** | 挂载 UI 的宿主应用：`apps/mobile` 或 `apps/desktop/renderer`。Layer 4，但其**组合根（composition root）**除外 —— 即把 Layer 2 的实现接入内核的那对 `boot.ts`/`plugins.ts` 文件。 |
 
 ---
 
 ## 5. 接下来读什么
 
-[02 —— 架构](./02-architecture.md)把这些决策转化为一幅分层图、一个分平台的运行时模型，以及一段启动序列。
+[02 —— 架构](./02-architecture.md)把这些决策转化为一个带设计原则的五层依赖模型、一个分平台的运行时模型，以及一段启动序列。

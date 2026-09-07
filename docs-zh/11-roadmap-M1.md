@@ -102,6 +102,7 @@ GET 与 HEAD、任意请求头、`Range`、`stream()`、`onProgress`、超时与
 
 **MD-6 —— 桌面端"关闭到托盘"入选；托盘迷你播放器不入。**
 关闭窗口是隐藏它，保住渲染进程 —— 也就是内核与音频图 —— 存活，播放期间持有 `powerSaveBlocker`。托盘上只有显示与退出，没有别的 UI。
+⚠️ 阻挡器这一半当初是作为服务建成的，此后却从未被任何东西请求：`ctx.background.acquireWakeLock` 存在、有测试、经桥触达 `powerSaveBlocker` —— 却**没有调用者**，于是隐藏的窗口一直播放到机器休眠为止。`plugin-player` 现在在传输处于播放类状态时持锁，并在暂停、队列清空与卸载时释放。`stalled` 算作播放中：每逢缓冲欠载就释放再重取的锁，在 OS 眼里是一把不停翻飞的锁；而就用户的感受而言，曲目仍然在播。
 *理由。* [10 §M1](./10-roadmap.md#m1--能播放音乐) 要求播放能在窗口隐藏后存活，而 [ADR-3](./01-overview.md#adr-3--electron-内核位于渲染进程main-是一个薄的原生宿主) 使这成为进程生命周期问题而不是 UI 问题。迷你播放器是 UI，而 MD-2 推迟了 UI。
 
 ---
@@ -113,23 +114,26 @@ GET 与 HEAD、任意请求头、`Range`、`stream()`、`onProgress`、超时与
 ```
 core-audio-webaudio         ✅  ctx.audio — shared implementation, all three targets
 core-codec-node             ✅  ctx.codec — music-metadata over ctx.fs, bounded head read
-core-codec-rn               +   ctx.codec — AudioDecoder plus a native tag reader
+core-codec-rn               ✅  ctx.codec — inherits the tag reader (it is pure JS over ctx.fs
+                                and a second one would have to agree with it), adds the device's
+                                decodeAudioData and its own supportedFormats
 core-http-node              ✅  ctx.http (M1 slice) — fetch-shaped, transport is a seam
-core-http-rn                +   ctx.http (M1 slice) — RN fetch / XHR
+core-http-rn                ✅  ctx.http (M1 slice) — the same engine over expo/fetch, which is
+                                the only RN fetch with a real ReadableStream
 core-media-session-electron ✅  ctx.mediaSession — navigator.mediaSession + MPRIS/SMTC/Now Playing
-core-media-session-rn       +   ctx.mediaSession — lock screen and media notification
+core-media-session-rn       ✅  ctx.mediaSession — lock screen and media notification
 core-device-electron        ✅  ctx.device — network, battery, media keys, hotkeys
-core-device-expo            +   ctx.device
+core-device-expo            ✅  ctx.device — expo-network, expo-battery
 core-background-electron    ✅  ctx.background — powerSaveBlocker, intervals, suspend hooks
-core-background-expo        +   ctx.background — audio session, expo-background-task
-core-desktop-bridge         ~   hosts for codec, http, media session, device; preload surface;
-                                the main→renderer event channel the last two need
+core-background-expo        ✅  ctx.background — audio session, keep-awake, expo-background-task
+core-desktop-bridge         ✅  hosts for fs, db, paths, system and http; preload surface;
+                                the main→renderer event channel the OS services need
 core-fs-node / -expo        ✅  toPlayableUri and canWatch get their first real consumer
-core-db-node / -expo        ~   the db:write:core verb check (MD-4)
+core-db-node / -expo        ✅  the db:write:core verb check (MD-4)
 
 plugin-sources              ✅  ctx.sources — registry, discovery, catalogue cache, FTS index
 plugin-source-local         ✅  MediaProvider over the filesystem, source id 'local'
-plugin-source-runtime       +   MD-7 slice: a source row, a fiber, a `=` template, a stream
+plugin-source-runtime       ✅  grown past the MD-7 slice into M2's full runtime
 plugin-local-scanner        ✅  ctx.scanner — roots, incremental walk, tag and artwork import
 plugin-player               ✅  ctx.player — transport, queue, resolution, history, persistence
 plugin-ui                   ✅  gets its first non-trivial contributions
@@ -145,9 +149,10 @@ plugin-sources-ui-*         ✅  library, album detail
 plugin-local-scanner-ui-*   ✅  settings: scan roots
 
 protocol                    ✅  catalogue reads on ctx.sources, ctx.scanner, the fractional index,
-                                the audio/codec conformance suites, the mock AudioService
-kernel                      ~   db:write:core, bootstrap sets for the new core services
-tooling-fixtures            +   dev-only: the 5,000-file corpus generator (§7)
+                                the audio/codec/http conformance suites, the mock AudioService
+kernel                      ✅  db:write:core, bootstrap sets for the new core services
+tooling-fixtures            ✅  dev-only: the ≥5,000-file corpus generator, the instrumented
+                                ctx.fs, and the byte-serving http fixture (§7)
 ```
 
 依赖方向 —— 每条箭头都是一次 `inject`，加载顺序由它们推导而来，从不显式声明（[02 §3](./02-architecture.md#3-启动顺序)）：
@@ -247,10 +252,13 @@ flowchart LR
 
 `readMetadata` 不得读整个文件。一个 40 MB 的 FLAC 只值得读一次文件头加一次 seek 到标签块，而不是让 40 MB 走一遍 IPC 通道 —— 这就是 5,000 个文件的扫描要几分钟还是要一下午的区别。
 
-- [ ] 在 `packages/protocol/src/conformance/` 新增 `codecConformance` 套件，在 Node 与真机上运行：标签、内嵌封面、时长探测、PCM 解码、非空的 `supportedFormats()`。
-- [ ] 一个契约用例断言 `readMetadata` 在大文件上不超过字节上限。
-- [ ] `supportedFormats()` 如实反映各平台；[04 §13](./04-core-services.md#13-ctxcodec--解码与元数据) 的 ⚠️ 以*上报*无法解码的内容来兑现，绝不悄悄跳过。
-- [ ] 新的桥方法与所有其他宿主一样带能力标注并做路径封闭（[03 §7](./03-plugin-system.md#门实际运行的位置)）。
+- [x] 在 `packages/protocol/src/conformance/` 新增 `codecConformance` 套件，在 Node 与真机上运行：标签、内嵌封面、时长探测、PCM 解码、非空的 `supportedFormats()`。
+      ⚠️ 在 Node 里对着 `core-codec-node` 全绿；真机那一半归冒烟矩阵。
+      PCM 用例刻意是双面的，因为 `decode` 是两个平台答案不同的成员：移动端有一个真正的解码器（`AudioDecoder`），而桌面端上解码属于音频引擎——标签读取器里再放一个解码器，等于对"这个平台能播什么"给出第二个答案。因此一份实现可以解码，*或者*以一种说清解码住在哪里的方式拒绝——它不能做的是返回一个形状像音频、里面却没有音频的东西。调用方可以处理拒绝，却无法处理谎言，这与 MD-1 的"缺席，不是打桩"是同一条规则。
+- [x] 一个契约用例断言 `readMetadata` 在大文件上不超过字节上限。
+- [x] `supportedFormats()` 如实反映各平台；[04 §13](./04-core-services.md#13-ctxcodec--解码与元数据) 的 ⚠️ 以*上报*无法解码的内容来兑现，绝不悄悄跳过。
+- [x] 新的桥方法与所有其他宿主一样带能力标注并做路径封闭（[03 §7](./03-plugin-system.md#门实际运行的位置)）。
+      ⚠️ **codec 结果上根本没有新桥方法。** `music-metadata` 是纯 JavaScript，所以它像其他一切一样经 `ctx.fs` 读取，同一份实现既跑在 `main` 里也跑在渲染进程里——一条代码路径而不是两条，而有界头部读取是一次 `readBytes`，它本来就在允许清单上、本来就被路径封闭。上面那段描述的是被替换掉的设计。真正长大的宿主是 `http`，它自带自己的闸门（§4.5）与封存用例。
 
 ### 4.2 `core-audio-webaudio` —— `ctx.audio`
 
@@ -269,11 +277,12 @@ flowchart LR
 
 `chainInput` 从第一天起就是真实节点，源连接到它，永远不直接连 `destination`。M4 在 `chainInput` 与主音量之间接入效果链，一行 `plugin-player` 代码都不用动。M1 **不**交付占位链，也没有 `ctx.dsp`：一个空的接入点是诚实的，一条直通的链是一个日后还得拆掉的谎言。
 
-- [ ] `load()` 同时支持两种策略 —— 本地文件与短的远程文件用 `buffer`，这正是 MD-5 无缝衔接得以成立的前提；其余用 `stream`。
-- [ ] `onInterruption` 与 `onRouteChange` 把各平台的事件映射到契约的形状。消费它们的*策略*住在 `plugin-player`（§4.9），不在这里。
-- [ ] `listOutputDevices` / `setOutputDevice` 在桌面端是真的；在移动端给出一条带泄漏说明的单项列表，绝不抛错。
-- [ ] 上报 `outputLatencyMs`，让 M4 有东西可补偿。
-- [ ] `audioConformance`：播放、进度前进、暂停保持位置、seek 落点、`onEnded` 恰好触发一次、`dispose()` 断开它创建的每一个节点。在 Node 里对着 `OfflineAudioContext` 与真机上全绿。
+- [x] `load()` 同时支持两种策略 —— 本地文件与短的远程文件用 `buffer`，这正是 MD-5 无缝衔接得以成立的前提；其余用 `stream`。
+- [x] `onInterruption` 与 `onRouteChange` 把各平台的事件映射到契约的形状。消费它们的*策略*住在 `plugin-player`（§4.9），不在这里。
+- [x] 流式源经 `onStalled` 上报缓冲欠载及其恢复，这是唯一能让 `stalled` 在上一层与 `paused` 区分开的东西。元素的 `waiting`/`stalled` 变为 `true`、`playing`/`canplaythrough` 变为 `false`，且只发布*变化* —— 慢网络下的元素会反复发送 `waiting`，若播放器把每一次都当成一次新的停顿，就会把恢复超时一遍遍重置。解码出的缓冲不会欠载，也就什么都不注册。
+- [x] `listOutputDevices` / `setOutputDevice` 在桌面端是真的；在移动端给出一条带泄漏说明的单项列表，绝不抛错。
+- [x] 上报 `outputLatencyMs`，让 M4 有东西可补偿。
+- [x] `audioConformance`：播放、进度前进、暂停保持位置、seek 落点、`onEnded` 恰好触发一次、`dispose()` 断开它创建的每一个节点。在 Node 里对着 `OfflineAudioContext` 与真机上全绿。
 
 ### 4.3 `core-device-*` · `core-background-*`
 
@@ -281,8 +290,8 @@ flowchart LR
 
 `ctx.background` 提供 `canRunInBackground()`、`acquireWakeLock`、`schedule`（M1 中仅被移动端扫描轮询使用，因为那里的 `ctx.fs.canWatch` 为 false）以及 `onWillSuspend`，后者是播放器做检查点的地方。
 
-- [ ] 桌面端 `canRunInBackground()` 为 `true`；移动端仅在音频持有进程时为 `true`，且该值是推导出来的，不是写死的。
-- [ ] `acquireWakeLock` 在桌面端映射为 `powerSaveBlocker` 并及时释放；泄漏的锁会被泄漏测试抓住。
+- [x] 桌面端 `canRunInBackground()` 为 `true`；移动端仅在音频持有进程时为 `true`，且该值是推导出来的，不是写死的。
+- [x] `acquireWakeLock` 在桌面端映射为 `powerSaveBlocker` 并及时释放；泄漏的锁会被泄漏测试抓住。⚠️ 而它如今有了*调用者* —— 见 MD-6。没有消费者的能力能通过它拥有的每一个测试，却什么也交付不了。
 - [ ] `onWillSuspend` 在两个平台上都于真实挂起之前触发，并在真机上验证 —— 一个从不触发的钩子比没有钩子更糟，因为下游的一切都信任它。
 
 ### 4.4 `core-media-session-electron` · `core-media-session-rn`
@@ -291,20 +300,26 @@ flowchart LR
 
 封面在移动端必须是本地 `Uri`，因此顺序是固定的：先立即发布不带封面的元数据，图像到位后再更新。绝不为等一张图而拖延整次更新。
 
-- [ ] `setSupportedCommands` 真实改变 OS 表面显示哪些按钮。
-- [ ] `onCommand` 能往返：一次锁屏按压到达 `ctx.player`，结果在一次更新内反映回去。
-- [ ] `clear()` 移除 OS 表面，于是被禁用的 `plugin-player` 不留下幽灵锁屏。
+⚠️ `setPlaybackState('stopped')` 是一种**传输状态**，不是 `clear()`。两个实现对这一点的分歧持续了恰好"没人来问"那么久：桌面端把会话设为 `none` 并保留曲目，移动端隐藏通知并丢掉它 —— 于是一条播放到底的队列，在一个平台丢了锁屏、在另一个平台保住了。移除表面有自己的成员，契约套件现在按它约束两边。
+
+- [x] `setSupportedCommands` 真实改变 OS 表面显示哪些按钮。
+- [x] `onCommand` 能往返：一次锁屏按压到达 `ctx.player`，结果在一次更新内反映回去。
+- [x] `clear()` 移除 OS 表面，于是被禁用的 `plugin-player` 不留下幽灵锁屏。
 
 ### 4.5 `core-http-node` · `core-http-rn` —— M1 切片
 
 按 MD-1：GET 与 HEAD、任意请求头、`Range`、`stream()`、`onProgress`、`timeoutMs`、`AbortSignal`、重定向处理。桌面端在 `main` 里走 Electron 的 `net` 并把流送回渲染进程，理由见 [02 §2](./02-architecture.md#桌面端) 的 CORS 与请求头。
 
-`cookies` 与 `download()` 是**缺席，不是打桩** —— 一个会抛错的成员是对契约的撒谎，这与让音源的能力是派生而非声明的是同一条原则（[06 §1.3](./06-music-sources.md#13-能力是推导出来的不是声明出来的)）。`http/request` 瀑布在没有监听者的情况下照常派发，于是 M2 的认证插件面对的是一个已经在工作的钩子。
+`cookies` 与 `download()` 是**缺席，不是打桩** —— 一个会抛错的成员是对契约的撒谎，这与让音源的能力是派生而非声明的是同一条原则（[06 §1.3](./06-music-sources.md#13-能力是推导出来的不是声明出来的)）。
 
-- [ ] `httpConformance` 只覆盖 M1 切片，写成 M2 加用例而不是重写的形态。
+⚠️ **绝不要在通往桥的路上经 `new Request()` 归一化请求。** `Request` 的头部清单携带着*请求守卫*，在浏览器里这个守卫会悄悄丢弃每一个被禁止的请求头 —— `Cookie` 就在其中。渲染进程侧的传输正是为了发送 `Cookie` 而存在的。经 `Request` 归一化，删掉的恰恰是这座桥为之而建的那一个头，而且删得悄无声息：登录看起来成功了，却永远留不下来。这也是一个本仓库里默认没有任何测试能看见的 bug，因为 Node 的 `fetch` 不实现这个守卫 —— 所以覆盖它的检查会先递上一个严格的 `Request`。`Headers` 自身携带的是"none"守卫，是安全的。
+`http/request` 瀑布在没有监听者的情况下照常派发，于是 M2 的认证插件面对的是一个已经在工作的钩子。
+
+- [x] `httpConformance` 只覆盖 M1 切片，写成 M2 加用例而不是重写的形态。
 - [x] `net:host/<glob>` 在这里、瀑布之前与之后被强制执行 —— 这项授权曾是一条毫无意义的清单字符串，正如 `db:own` 曾经那样（[03 §7](./03-plugin-system.md#执行)）。
-- [ ] 在 RN 0.86 上验证 `ReadableStream` 的可用性，若无则在移动端入口引入 `web-streams-polyfill`（[04 §17](./04-core-services.md#17-运行时兼容性清单)）。
-- [ ] Range 请求与进度对着一个真实的按字节服务的 fixture 检验，而不是 mock。
+- [x] RN 0.86 上的 `ReadableStream` —— 由 **`expo/fetch`** 解决，而不是靠 polyfill。React Native 自带的 `fetch` 以 XHR 为底、其 `Response.body` 为 `null`，垫在它上面的流就只是形状上的流：没有在文件到达之前就能播的 `Range` seek，没有 `onProgress`，也没有能与慢响应区分开的停顿。`expo/fetch` 符合 WinterCG 并返回一个真的（[04 §17](./04-core-services.md#17-运行时兼容性清单)）。
+      ⚠️ 经构造验证，未经真机验证。
+- [x] Range 请求与进度对着一个真实的按字节服务的 fixture 检验，而不是 mock。
 
 ### 4.6 `plugin-sources` · `plugin-source-local`
 
@@ -316,11 +331,11 @@ flowchart LR
 
 每个音源从第一天起就加载在自己的 `ctx.isolate('http')` 作用域里（[06 §4.1](./06-music-sources.md#41-一个源的生命周期)），即便 M1 还没有任何需要隔离的 cookie。
 
-- [ ] `listTracks` / `listAlbums` / `listArtists` 的分页与排序在 SQL 里做，绝不在 JS 里做 —— 10 万曲的曲库不能为了排序先整个物化出来。
-- [ ] `searchLocal` 折叠变音符号：`bjork` 能找到 `Björk`，以测试断言。
-- [ ] 钩子（`useTracks`、`useAlbum`、`useSearch`）住在这个无 UI 包里，由两个视图包共同导入（[08 §4](./08-ui-architecture.md#4-把服务绑定到-react)）。
-- [ ] 关联 URN 的展示折叠**不**实现，但返回的形状能承载它，于是 M2 加行为而不是改签名。
-- [ ] 缓存落地后声明 `db:read:core` + `db:write:core`；注册表半边两者都不需要，什么也不声明（MD-4）。
+- [x] `listTracks` / `listAlbums` / `listArtists` 的分页与排序在 SQL 里做，绝不在 JS 里做 —— 10 万曲的曲库不能为了排序先整个物化出来。
+- [x] `searchLocal` 折叠变音符号：`bjork` 能找到 `Björk`，以测试断言。
+- [x] 钩子（`useTracks`、`useAlbum`、`useSearch`）住在这个无 UI 包里，由两个视图包共同导入（[08 §4](./08-ui-architecture.md#4-把服务绑定到-react)）。
+- [x] 关联 URN 的展示折叠**不**实现，但返回的形状能承载它，于是 M2 加行为而不是改签名。⚠️ M2 的关联像它的运行时超过 MD-7 那样超过了这一条：`track_links`、`linkTracks` 与 `linksFor` 已建成并暴露在 `ctx.sources` 上。仍属 M2 的只剩*展示*折叠。
+- [x] 缓存落地后声明 `db:read:core` + `db:write:core`；注册表半边两者都不需要，什么也不声明（MD-4）。
 
 `plugin-source-local` 与任何提供方一样 —— 本地曲库没有特权。音源 id `local`、`auth.flow = { kind: 'none' }`，`signIn` 立即 resolve，`signOut` 清掉自己缓存的行。它是唯一一个不是文档、也永远不会是文档的提供方，因为没有可供描述的 HTTP（[06 §12](./06-music-sources.md#12-不是字符串的东西本地文件)）。
 
@@ -330,10 +345,10 @@ flowchart LR
 
 `search` 由 `ctx.sources` 维护的 FTS 索引作答，过滤到 `source_id = 'local'`。一个索引、两个入口 —— `ctx.sources.searchLocal` 面向统一目录，`provider.search` 面向扇出 —— 而不是两套会各自漂移的 tokeniser 配置。
 
-- [ ] `capabilities` 与已实现成员严格一致：`browse: true`、`search.fullText: true`、`library.read: true`、`streaming.seekable: true`、`urlExpiry: false`、`transcoding: false`。
-- [ ] `ping()` 保持廉价：根目录存在且可读，仅此而已。
-- [ ] 注册以释放器形式返回，卸载插件即移除提供方及其派生的一切。
-- [ ] 声明 `db:read:core` + `db:write:core`：它读扫描器写的行，且 `signOut()` 删除本音源的行，这是一次写（MD-4）。
+- [x] `capabilities` 与已实现成员严格一致：`browse: true`、`search.fullText: true`、`library.read: true`、`streaming.seekable: true`、`urlExpiry: false`、`transcoding: false`。
+- [x] `ping()` 保持廉价：根目录存在且可读，仅此而已。
+- [x] 注册以释放器形式返回，卸载插件即移除提供方及其派生的一切。
+- [x] 声明 `db:read:core` + `db:write:core`：它读扫描器写的行，且 `signOut()` 删除本音源的行，这是一次写（MD-4）。
 
 ### 4.7 `plugin-local-scanner` —— `ctx.scanner`
 
@@ -346,11 +361,12 @@ flowchart LR
 - **删除。** 消失的文件带走自己的 `media_bindings` 行，而一条失去绑定的本地曲目被移除 —— 对实例 `local` 而言，文件*就是*曲目。
 - **监视。** `ctx.fs.canWatch` 为真时用 `ctx.fs.watch`；否则经 `ctx.background.schedule` 轮询，并把由此产生的延迟如实写进 UI，而不是假装不存在。⚠️ 若*两者*都不存在 —— 在 `core-background-electron` 落地之前的每个桌面构建上都是如此，因为桥的 `canWatch` 为 false —— 扫描器回退到自己的定时器。没有它，桌面端曾完全没有自动重扫：文件变了，曲库却无声地保持陈旧。
 
-- [ ] `addRoot` 用 `ctx.fs.pickDirectory`，且 Android 的 SAF 授权在重启后仍然有效。
-- [ ] 写入 `tracks`、`albums`、`artists`、`track_artists`、`genres`、`track_genres`、`artworks`、`media_bindings`、`scan_roots`、`scan_entries`；声明 `db:write:core`（MD-4）。
-- [ ] 每批发出 `scan/started`、`scan/progress`、`scan/finished` 与 `library/changed`，UI 于是渐进填充，而不是等整棵树走完。
-- [ ] 扫描中途取消后数据库保持一致，下一次扫描以低成本续传。
-- [ ] 写入成批并走单一写入路径 —— [10](./10-roadmap.md#-sqlite-作为唯一存储) 的 SQLite 争用风险在这里被第一次实测（§7）。
+- [x] `addRoot` 用 `ctx.fs.pickDirectory`，且 Android 的 SAF 授权在重启后仍然有效。
+      ⚠️ 选择器调用放在*视图*包里，`addRoot` 接收它返回的 `Uri`：挑选文件夹是一次 UI 动作，而一个会弹出对话框的服务没法从测试或恢复流程驱动。SAF 那一半是真机工作。
+- [x] 写入 `tracks`、`albums`、`artists`、`track_artists`、`genres`、`track_genres`、`artworks`、`media_bindings`、`scan_roots`、`scan_entries`；声明 `db:write:core`（MD-4）。
+- [x] 每批发出 `scan/started`、`scan/progress`、`scan/finished` 与 `library/changed`，UI 于是渐进填充，而不是等整棵树走完。
+- [x] 扫描中途取消后数据库保持一致，下一次扫描以低成本续传。
+- [x] 写入成批并走单一写入路径 —— [10](./10-roadmap.md#-sqlite-作为唯一存储) 的 SQLite 争用风险在这里被第一次实测（§7）。
 
 ### 4.8 谁写目录
 
@@ -386,11 +402,13 @@ M1 里最大的包，也是用户最能感知其行为的包。
 
 **历史。** `player/track-completed` 并行派发；`play_history` 与 `track_stats` 在同一事务里写入。
 
-- [ ] 状态机的每一个转移都有对着 mock `AudioService` 的单元测试，包括加载途中被打断与预取途中队列变化。
-- [ ] 错误映射到 [06 §7](./06-music-sources.md#7-错误) 的分类法，且**任何失败路径都不清空队列**。
-- [ ] 每次曲目与状态变化都发布到 `ctx.mediaSession`，位置按 1 Hz 节流。
-- [ ] 能力：`audio`、`mediaSession`、`background`、`db:write:core`。
-- [ ] 播放中途禁用插件会停止音频、清掉锁屏、不留下任何仍连接的节点 —— 经 `ctx.inspector` 验证。
+- [x] 状态机的每一个转移都有对着 mock `AudioService` 的单元测试，包括加载途中被打断与预取途中队列变化。
+- [x] `stalled` 是播放器真正会抵达的状态，而不只是类型允许的一个值。播放中曲目的一次欠载变成 `stalled`；恢复后回到 `playing`；锁屏全程继续上报*正在播放*，于是列车每次钻进隧道它都不会闪烁。暂停、seek、一次打断与一次路由变化都把 `stalled` 当作播放中 —— 它是被饿着的 `playing`，不是 `paused`，而仅仅因为没有音频恰好出来就拒绝用户的暂停，是把这对区分用错了半边。这个状态受 `stallTimeoutMs` 约束：docs/05 §2 的 `stalled --> error: timeout exceeded`，没有它，一台服务器已消失的流会让转圈永远转下去。
+- [x] 错误映射到 [06 §7](./06-music-sources.md#7-错误) 的分类法，且**任何失败路径都不清空队列**。
+- [x] 播放时经 `ctx.background` 持有 wake lock，其余时刻放手（MD-6）。获取是异步的，因此一个在播放已停止之后才到手的锁会在抵达时即被释放，而不是被攥到别的什么东西改变状态为止 —— 这个失败没人会注意，直到一台笔记本在包里把自己耗干。`ctx.background` 保持可选：没有它的构建照旧播放，只是不持锁。
+- [x] 每次曲目与状态变化都发布到 `ctx.mediaSession`，位置按 1 Hz 节流。
+- [x] 能力：`audio`、`mediaSession`、`background`、`db:write:core`。
+- [x] 播放中途禁用插件会停止音频、清掉锁屏、不留下任何仍连接的节点 —— 经 `ctx.inspector` 验证。
 
 ### 4.10 `plugin-source-runtime` —— MD-7 切片
 
@@ -402,20 +420,22 @@ M1 里最大的包，也是用户最能感知其行为的包。
 
 它的价值与它替代的那个包相比没有变化——它是地板，因此也是回归测试：如果任何屏幕在它被配置的情况下坏掉，说明某个消费者在读取一个它从未检查过的能力。派生能力让这一点更锋利，因为一份单块的文档就真的只有一个能力，而不是对能力的一份声明式宣称。
 
-- [ ] 与 `plugin-source-local` 同时配置，没有任何屏幕因缺失能力而坏掉 —— 以断言固定，而不是靠观察。
-- [ ] 播放它即走 `stream` 策略、`stalled` → `playing` 的恢复，以及按 `Range` 的 seek。
-- [ ] 禁用该音源会销毁它的 fiber 及其隔离的 http 作用域；泄漏测试像对待任何插件一样覆盖它（[06 §4.1](./06-music-sources.md#41-一个源的生命周期)）。
-- [ ] `doc_json` 可完整往返：设置写入什么，`export()` 就逐字节输出什么。这是对 M2 导出完成标准所依托论断的最便宜的早期检查。
-- [ ] `=` 求值器拒绝任何它不理解的东西，而不是把规则当作字面量悄悄输出 —— 这个失败模式会让之后每一个规则 bug 都更难找到。
+- [x] 与 `plugin-source-local` 同时配置，没有任何屏幕因缺失能力而坏掉 —— 以断言固定，而不是靠观察。
+- [x] 播放它即走 `stream` 策略、`stalled` → `playing` 的恢复，以及按 `Range` 的 seek。⚠️ 在 `StreamerNode` 落地之前，`stream` 策略仅限桌面：React Native 没有 `HTMLMediaElement`，因此引擎宁可拒绝流式加载也不装样子（§9）。停顿路径本身与引擎无关，并已对着 mock 测过。
+- [x] 禁用该音源会销毁它的 fiber 及其隔离的 http 作用域；泄漏测试像对待任何插件一样覆盖它（[06 §4.1](./06-music-sources.md#41-一个源的生命周期)）。
+- [x] `doc_json` 可完整往返：设置写入什么，`export()` 就逐字节输出什么。这是对 M2 导出完成标准所依托论断的最便宜的早期检查。
+- [x] `=` 求值器拒绝任何它不理解的东西，而不是把规则当作字面量悄悄输出 —— 这个失败模式会让之后每一个规则 bug 都更难找到。
 
 ### 4.11 `ui-tokens` · `ui-core` · `ui-kit-mobile` · `ui-kit-desktop`
 
 令牌是纯数据（[08 §6](./08-ui-architecture.md#6-设计令牌)）；`ui-core` 是架在 `useSyncExternalStore` 上的共享钩子层；两套组件库以同名同 props 导出同一组组件 —— `Button`、`IconButton`、`TrackRow`、`Slider`、`Sheet`/`Dialog`、`List`、`EmptyState`、`Toast`。
 
-- [ ] 一致性测试**先于**第一块屏幕落地：它比对两套库导出的名字与 prop 类型，出现分歧即失败，并对两套配色都检查 WCAG AA 对比度。
-- [ ] 列表虚拟化 —— 移动端 `@shopify/flash-list`，桌面端 `@tanstack/react-virtual`。
-- [ ] 无障碍名称经共享 props 传入，只写一次（[08 §8](./08-ui-architecture.md#8-无障碍)）；桌面端可键盘导航、焦点可见、`Escape` 关闭浮层；两端都尊重减弱动效。
-- [ ] `useServiceState` 的选择器引用稳定，并有测试证明 1 Hz 的进度 tick 不会引发重渲染风暴。
+- [x] 一致性测试**先于**第一块屏幕落地：它比对两套库导出的名字与 prop 类型，出现分歧即失败，并对两套配色都检查 WCAG AA 对比度。
+- [x] 列表虚拟化 —— 移动端 `@shopify/flash-list`，桌面端 `@tanstack/react-virtual`。
+      桌面端对行做窗口化并发布 `aria-setsize`/`aria-posinset`，因为窗口化对明眼用户不可见、对读屏器是灾难，除非把真实长度大声说出来。⚠️ `estimatedItemSize` 如今是仅桌面的提示：FlashList v2 自己量行高并删掉了这个 prop，所以移动端组件库刻意不转发它 —— 传了也只是被当成提示、什么也不做。它留在共享契约里，因为一个被一套组件库忽略的 prop，比两份契约便宜。
+- [x] 无障碍名称经共享 props 传入，只写一次（[08 §8](./08-ui-architecture.md#8-无障碍)）；桌面端可键盘导航、焦点可见、`Escape` 关闭浮层；两端都尊重减弱动效。
+      ⚠️ 移动端的 `Slider` 曾是一幅进度条的*画像*：没有手势，还有一个把已有值再提交一遍的 `onAccessibilityAction` —— 一个被宣读为可调节、实则什么都调不了的控件，而且移动端上没有任何人能 seek（标准 2）。它现在经 React Native 自己的响应者系统拖动 —— 不引入 `react-native-gesture-handler`，因为组件库里的原生模块正是 `configureNative` 存在要挡住的东西 —— 拖动期间上报 `onChange`、松手时报一次 `onCommit`，钳制在自己的范围内，OS 把拖拽抢走时把进度还回来，`increment`/`decrement` 按 5% 步进。
+- [x] `useServiceState` 的选择器引用稳定，并有测试证明 1 Hz 的进度 tick 不会引发重渲染风暴。
 
 ### 4.12 视图包
 
@@ -423,11 +443,15 @@ M1 里最大的包，也是用户最能感知其行为的包。
 
 让 ADR-2 保持可负担的那条规则：**如果同一个 `if` 即将在两个包里各写一遍，它就该住进无 UI 的那个。** 这些包应当只做布局、手势与事件接线，别无其他。
 
-- [ ] 贡献是描述符；组件用 `registerView` 绑定，绝不直接交给外壳（[08 §2](./08-ui-architecture.md#2-贡献即描述符)）。
-- [ ] `ui.missingViews()` 被用到：至少一个贡献在某个目标上刻意没有视图，外壳显示"此平台不可用"而不是一个窟窿。
-- [ ] 封面先渲染 `blurhash`，再渲染图片。滚动时不出现灰色闪烁。
-- [ ] 位置在两次 1 Hz tick 之间用 `requestAnimationFrame` 插值，绝不轮询。
-- [ ] 没有 `useEffect` 干领域活，React 里没有领域状态。
+- [x] 贡献是描述符；组件用 `registerView` 绑定，绝不直接交给外壳（[08 §2](./08-ui-architecture.md#2-贡献即描述符)）。
+      ⚠️ **绑定到视图包自己的上下文，而不是外壳的。** 外壳用它从 `app.ready(['ui'])` 得到的上下文把视图渲染成 `h(Component, { ctx })` —— 注入了 `ui`、别的什么都没有。cordis 上下文对任何未被注入的属性都会*抛错*，于是每一块经自己的钩子读取 `ctx.sources`、`ctx.player` 或 `ctx.scanner` 的屏幕都在真机上抛了错。M0 演示的视图包一直注册的是包着自己上下文的闭包；M1 的视图包注册的却是裸组件。它们现在也这么做，并且各自声明自己的屏幕实际读取哪些服务。
+- [x] `ui.missingViews()` 被用到：至少一个贡献在某个目标上刻意没有视图，外壳显示"此平台不可用"而不是一个窟窿。
+      `plugin-inspector` 就是那个贡献 —— 两个外壳都运行它、只有桌面有它的视图 —— 且 `shells.test.ts` 断言这一安排仍然成立，于是哪天有人加了 `plugin-inspector-ui-mobile`，这项检查就会说这条路径不再被覆盖。
+- [x] 封面先渲染 `blurhash`，再渲染图片。滚动时不出现灰色闪烁。
+- [x] 位置在两次 1 Hz tick 之间用 `requestAnimationFrame` 插值，绝不轮询。
+- [x] 没有 `useEffect` 干领域活，React 里没有领域状态。
+- [x] 视图绝不经 `ctx.name` 读取服务。`ui-core` 的 `serviceOf` / `useService` 经 `reflect.get(name, false)` 询问，它回答 `undefined` 而不是抛错。
+      ⚠️ `ctx.player?.playNow()` 看起来是一个安全的可选项，其实不是：属性读取在 `?.` 得以短路之前就抛错了。`useService` 自己的文档注释许诺过"未加载处为 `undefined`"，实际做的却恰恰相反 —— 在每个测试构造出的根上下文上为真，在每个视图真正拿到的 scoped 上下文上为假。
 
 ### 4.13 外壳
 
@@ -438,9 +462,10 @@ M1 里最大的包，也是用户最能感知其行为的包。
 | 原生 | 重建自定义 dev client —— M1 的每个核心服务都加了原生代码 | 在 `main` 为 codec、http、media session 与 device 新建桥宿主 |
 | 路由 | 贡献的路由以动态 `expo-router` 路由接入；`placement` 决定进 tab 栏还是更多菜单 | 来自 `ctx.ui.routes` 的侧栏项，按 `order` 排序 |
 
-- [ ] 重跑 `pnpm gen:plugins` 并提交其产物（[09 §4](./09-project-structure.md#4-构建流水线)）。
-- [ ] 桌面 CSP 保持不变 —— M1 没有任何东西需要放宽它。
-- [ ] `main` 仍不含领域逻辑；每个新宿主都是机械转发（[02 §2](./02-architecture.md#桌面端)）。
+- [x] 重跑 `pnpm gen:plugins` 并提交其产物（[09 §4](./09-project-structure.md#4-构建流水线)）。
+- [x] 桌面 CSP 保持不变 —— M1 没有任何东西需要放宽它。
+- [x] **每个目标都能打包。** Android 与 iOS 用 `expo export`，桌面用 `electron-vite build`。便宜，而且是唯一能抓住"类型检查通过却*载入不了*"的包的检查 —— 那是另一种失败，而事实证明，真正在场的正是这一种：`core-secrets-node` 用 `node:fs` 打开自己的文件，这在 `main` 里正确、在沙箱化的渲染进程里不可能，于是桌面渲染进程根本无法打包它。它现在经 `ctx.fs` 持久化，用的是它被**构造**时的那个上下文，这让存储自己的文件不占*调用方*的能力预算 —— 当初伸手去够平台 API 的理由正在于此（`core-secrets-node` 自己的测试钉死了这一点：一个持有 `secrets:own` 而没有 `fs` 授权的调用方，必须仍然能够保存）。
+- [x] `main` 仍不含领域逻辑；每个新宿主都是机械转发（[02 §2](./02-architecture.md#桌面端)）。
 
 ---
 
@@ -453,9 +478,8 @@ M1 向 `@BBeBee/protocol` 添加的一切。下面的服务接口是契约，不
 加到 `packages/protocol/src/services/sources.ts` 现有的 `SourcesService` 上（MD-3）。它已声明的注册表成员 —— `register`、`providers`、`get`、`forUrn`、`searchAll` —— 保持不变且已实现。
 
 ```ts
-import type { Paged } from '../common.js'
+import type { Paged, PageRequest } from '../common.js'
 import type { Album, AlbumDetail, Artist, ArtistDetail, Track } from '../entities/catalog.js'
-import type { UrnKind } from '../urn.js'
 
 export type TrackSort = 'title' | 'artist' | 'album' | 'addedAt' | 'year' | 'duration' | 'playCount'
 
@@ -486,11 +510,13 @@ export interface SourcesService {
    * can be slow, partial, or unreachable. Both exist; they answer different
    * questions and the UI shows both.
    */
-  searchLocal(text: string, opts?: { limit?: number; kinds?: UrnKind[] }): Promise<SearchResult>
+  searchLocal(text: string, opts?: { limit?: number; sourceIds?: string[] }): Promise<SearchResult>
 
   counts(): Promise<CatalogCounts>
 }
 ```
+
+⚠️ `searchLocal` 的过滤参数是 `sourceIds`，不是本节最初勾画的 `kinds: UrnKind[]`。两个理由，第二个才是真的：它与 `CatalogQuery.sourceIds` 相符，于是"限定到这些源"在整个目录表面上只被拼写一次；而 `kinds` 过滤器在 M1 里只会有一个合法取值，因为 FTS 索引里只有曲目（`SEARCHABLE_KINDS`）。一个唯一合法实参就是其默认值的参数不是过滤器，它是一份在错误地点许下的关于 M2 的承诺 —— `kinds` 等到专辑与艺人也被索引、真的有东西可选时再落地。
 
 `ctx.library` —— 播放列表、收藏、合集 —— 随 M2 一起规范，那时才有真正做整理的东西。
 
@@ -574,10 +600,10 @@ M1 期间保持休眠：`download/*`、`dsp/*`、`source/auth-expired`、`source
 
 | # | 标准 | 如何核查 | 自动化 |
 |---|---|---|---|
-| 1 | 扫描 ≥ 5,000 个文件；对未变化曲库的增量重扫只消耗 stat 调用 | 语料生成器（§7）造出 5,000 个带标签的文件；带插桩的 `ctx.fs` 统计调用数；第二遍必须发出 `n` 次 stat、零次 `readBytes`、零次 `readMetadata`。在真机上对真实曲库重复 | ✅ Node · 每次发布跑一次真机 |
-| 2 | 播放、暂停、seek、下一曲、上一曲、队列重排 —— 三个平台全部支持 | 对着 mock `AudioService` 的传输单元测试（[05 §2](./05-audio-playback.md#播放控制状态机) 的每个转移）；真实 Context 加假核心服务的集成测试；真机冒烟矩阵验证实物 | ✅ + 真机 |
+| 1 | 扫描 ≥ 5,000 个文件；对未变化曲库的增量重扫只消耗 stat 调用 | 语料生成器（§7）造出 5,000 个带标签的文件；带插桩的 `ctx.fs` 统计调用数；第二遍必须发出 `n` 次 stat、零次 `readBytes`、零次 `readMetadata`。对着**真实的** `core-codec-node` 运行，位于 `plugin-local-scanner/src/corpus.test.ts`。在真机上对真实曲库重复 | ✅ Node · 每次发布跑一次真机 |
+| 2 | 播放、暂停、seek、下一曲、上一曲、队列重排 —— 三个平台全部支持 | 对着 mock `AudioService` 的传输单元测试（[05 §2](./05-audio-playback.md#播放控制状态机) 的每个转移）；真实 Context 加假核心服务的集成测试；两个拖动条都被驱动 —— 桌面端的 `input[type=range]`、移动端在 `ui-kit-mobile/src/slider.test.tsx` 里的响应者拖拽 —— 因为 UI 表达不出的 seek 就不是 seek；真机冒烟矩阵验证实物 | ✅ + 真机 |
 | 3 | iOS 与 Android 的锁屏与通知控件；桌面的 MPRIS/SMTC/Now Playing | `mediaSessionConformance` 对每份实现往返 `update` / `setPlaybackState` / `onCommand`；OS 表面本身靠人工 | 部分 —— 表面靠人工 |
-| 4 | 移动端切后台、桌面端隐藏窗口后播放不中断 | 桌面端：自动化检查"关闭是隐藏而非销毁"且播放期间持有 wake lock。移动端：真机冒烟，因为没有任何测试架能忠实地把应用切到后台 | 部分 |
+| 4 | 移动端切后台、桌面端隐藏窗口后播放不中断 | 桌面端：`apps/desktop/main/window-policy.test.ts` 对关闭决策的核查 —— 有托盘或在 macOS 上隐藏、没有退路之处销毁、绝不拦截退出 —— 外加 `plugin-player` 的 wake lock 套件，它钉死：播放中取锁、停顿期间持锁、暂停时释放、队列为空与卸载时释放，且播放于获取中途停止时不让锁滞留。移动端：真机冒烟，因为没有任何测试架能忠实地把应用切到后台 | 部分 |
 | 5 | 拔出耳机即暂停 | 一项策略单元测试向播放器注入合成的 `onRouteChange` / `onInterruption` 事件，并断言 [05 §5](./05-audio-playback.md#5-打断焦点与路由) 的整张表，包括"绝不继续用扬声器"。真实事件靠真机冒烟 | ✅ + 真机 |
 | 6 | 队列与进度跨重启恢复，且不自动播放 | 集成测试对着一份已填充的 `playback_state` 启动 Context，然后断言队列已恢复、`positionMs` 相符、`status !== 'playing'` | ✅ |
 | 7 | *（MD-5）* 无缝衔接的边界听不出；队列变化取消预取 | 单元：下一源在当前源结束前排入队列，且没有第二次 `AudioContext` 调度；队列变化时预取的 `AbortSignal` 触发。可听性是真机矩阵里的听感测试 | 部分 |
@@ -588,13 +614,30 @@ M1 期间保持休眠：`download/*`、`dsp/*`、`source/auth-expired`、`source
 
 在阶段 1 一次性建好，因为之后每个阶段都靠它们。
 
-- **`tooling-fixtures`**（仅开发用，不发布、不打包）。生成 5,000 个文件的语料：覆盖 `mp3`、`flac`、`m4a` 与 `opus` 的短编码，带标签、内嵌封面、ReplayGain 值，以及贴近真实的专辑/艺人分布。它还产出真实曲库里必然会出现的病态用例 —— 完全没有标签、截断的文件头、零字节文件、文件名里的 unicode 与 emoji、扩展名谎报编码的文件，以及一首超长曲目 —— 于是扫描器的错误路径默认就会被压到，而不是靠运气。
-- **带插桩的 `ctx.fs`** —— 一个按方法统计调用数的包装器，供标准 1 与扫描器自身的测试使用。它与现有的契约测试架放在一起。
+- **`tooling-fixtures`**（仅开发用，不发布、不打包）。生成 5,000 个文件的语料：带标签、内嵌封面、ReplayGain 值，以及贴近真实的专辑/艺人分布。它还产出真实曲库里必然会出现的病态用例 —— 完全没有标签、截断的文件头、零字节文件、文件名里的 unicode 与 emoji、扩展名谎报编码的文件，以及一首超长曲目 —— 于是扫描器的错误路径默认就会被压到，而不是靠运气。
+
+  ⚠️ **这些文件是逐字节写出来的，而不是编码出来的。** 真实 MPEG-1 Layer III 帧上的合法 ID3v2.4 标签，以及一条真实的 FLAC 元数据链；`music-metadata` 读这两者，与读一张 CD 抓轨一模一样。派生给外部编码器是显而易见的替代方案，而在两个要紧的方面都更糟：五千次进程孵化要几分钟而不是几秒，而且它让扫描这条标准取决于碰巧装了什么 —— 在一台机器上绿、在另一台上悄无声息地缺席。放弃掉的是可解码的音频，扫描器里没有任何东西需要它；还有 `m4a`/`opus` 覆盖，那是 `codecConformance` 的职责、不是这份语料的。
+
+  病态文件里有两个当即证明了自己：一个零字节的 `.mp3` 和一个顶着 `.mp3` 名字的 JPEG 曾被*导入* —— `core-codec-node` 把扩展名的 MIME 类型递给解析器，解析器信了它，报出 `{ codec: 'mp3' }`、背后却没有字节，于是扫描器写出了以文件命名的幽灵曲目。这比 §4.7 允许的两种诚实结果中的哪一种都更糟。它现在从内容嗅探容器，这顺带把另一个方向上"实为 FLAC 的 `.mp3`"的情形也修了。
+- **带插桩的 `ctx.fs`** —— 按方法统计调用数，供标准 1 与扫描器自身的测试使用。它对服务**实例**就地打补丁，而不是用新对象包一层：一个实例被每条 fiber 共享，而每条 fiber 经由各自 scoped 的 `Context` 到达它，所以装在根上下文上的包装器会被每个插件绕过、报出一个令人安心的零。就地打补丁正是让计数既覆盖扫描器、也覆盖经它读标签的 codec 的原因 —— 标准真正关心的正是这一对。
 - **mock `AudioService`** —— 时钟可控、`onEnded`、停顿与中断皆可控的确定性假件，因此 `plugin-player` 的测试从不触碰真实音频。从 `@BBeBee/protocol/conformance` 导出，供播放器的测试与未来的任何引擎使用。
-- **按字节服务的 fixture**，供 §4.5 使用 —— 一个本地服务器，支持 `Range`、可加延迟、可按需在响应中途停顿。
+- **按字节服务的 fixture**，供 §4.5 使用 —— 一个本地服务器，支持 `Range`、可加延迟、可按需在响应中途停顿。`httpConformance` 对着它而不是对着 mock 运行，而停顿路由当即抓到了一个真 bug：`core-http-node` 在一个*响应头*到达时就运行的 `finally` 里解除了调用方 `AbortSignal` 的挂接，于是中止一个已经开始流式传输的请求毫无作用 —— 而这正是唯一要紧的情形，因为 MD-5 的预取正是在队列变化时于下载中途被取消的。
+- **不是假件的桩** —— `test/stubs/` 把 `expo-sqlite` 别名到 `node:sqlite`、把 `expo-file-system` 别名到 `node:fs`，并把 `react-native-audio-api` 别名到一个对任何真正原生之物都抛错的表面。前两个的存在，是为了让 `ctx.db` 与 `ctx.fs` 的*第二份*实现在 CI 里、与第一份跑同一套契约套件，而不是只在一台没人凑得着的真机上跑。⚠️ 它们复现的是平台的**拒绝**，而不只是它的成功：`File.move` 在这里抛"目标已存在"，与它在手机上抛的一模一样。一个会悄悄覆盖的桩能让适配器通过套件、却仍在真实世界里失败，那正是桩最容易引入的失败模式。
+
 - **真机冒烟矩阵** —— 一台 iOS 设备、一台刻意选的低配 Android 设备，以及每个桌面 OS 一台机器。核查清单是 [05 §7](./05-audio-playback.md#7-测试音频) 的那一份，外加 MD-5 的无缝衔接边界。随每次发布运行，坦率地靠人工；假装能自动化只会得不偿失。
 
 有一项测量即使眼下还没有任何东西依赖它，也值得在 M1 期间做一次：**边播放边扫描一个 5,000 文件的曲库**，盯住单一 SQLite 数据库上的写入争用。这是对 [10](./10-roadmap.md#-sqlite-作为唯一存储) 那条风险最便宜的探针，而且只花一次运行的成本。
+
+**已做** —— `plugin-local-scanner/src/corpus.test.ts`，对着一个以文件为后盾的数据库而不是 `:memory:`，因为 WAL、锁与 busy timeout 才是被测的东西，而内存数据库的并发故事与随包发布的那份不同。播放器做检查点时没有任何保存节流，这已经是它写得最狠的时候。
+
+> `[contention] 5011 files: 18162ms quiet, 19416ms while playing (1.07×), 2795 checkpoints landed`
+> `[contention] 5011 files: 24746ms quiet, 27880ms while playing (1.13×), 3806 checkpoints landed`
+
+**争用在这个规模上不是问题。** 播放曲目时扫描要多花 7–13% —— 第二行是同一探针在完整 `pnpm test` 期间的结果，那才是更诚实的数字。成千次检查点落在扫描*进行之中*而不是排在它身后；没有一次写入被拒绝，播放器到最后仍在播放。测试断言的是那些结果 —— 一次抵达调用方的 `SQLITE_BUSY`、一个被饿死的检查点、一个被逼进 `error` 的播放器 —— 而不是时间，因为在共享 CI 硬件上设阈值就是制造 flake。比值打印出来是给人读的，探针的本分就在于此。
+
+- **外壳接线检查** —— `packages/kernel/src/shells.test.ts`。读每个外壳的允许清单、其生成的注册表与各清单文件，并断言每个被配置的插件都被打包、每个被配置插件*需要*的服务由引导数组或另一个被配置插件提供，以及两个外壳运行同一套功能集。
+
+  ⚠️ 它存在，是因为它的缺席让一个里程碑付了账。每个 M1 包都建成且全绿，而桌面外壳里 `plugin-player` 还被注释着 —— `ctx.audio` 不在任何引导数组里 —— 移动外壳仍在跑 M0 那一套：四个核心服务加演示插件。这两种状态从包内部不可见，从包外部也几乎不可见：一条在等一个永远不会来的服务的 fiber，看上去与一条只是慢的 fiber 一模一样。同一检查的运行时那一半是每个 `boot()` 里的 `await app.ready(BOOTSTRAP_SERVICES)`，它把缺失的服务变成一条点名道姓的启动错误。
 
 ---
 
@@ -610,7 +653,7 @@ M1 期间保持休眠：`download/*`、`dsp/*`、`source/auth-expired`、`source
 | Hermes 在 RN 0.86 上缺 `ReadableStream` | 阶段 1，第一次流式读取 | 移动端入口引入 `web-streams-polyfill`（[04 §17](./04-core-services.md#17-运行时兼容性清单)） |
 | `expo-sqlite` 附带的 SQLite < 3.43，`contentless_delete=1` 不可用 | 核心迁移在真机首次启动时失败 | 在迁移里断言 SQLite 版本并大声失败；在 SDK 追上之前回退为带 ⚠️ 标注的 `LIKE` 搜索 |
 | Android 14+ 的前台服务政策拒绝媒体服务 | 在较新设备上第一次后台播放 | 声明 `mediaPlayback` 服务类型及其权限；在阶段 1 的 dev 构建里验证，而不是拖到阶段 4 |
-| 扫描与播放争用同一个 SQLite 写入者 | §7 的那项测量 | 扫描写入成批；若仍持续，[10](./10-roadmap.md#-sqlite-作为唯一存储) 描述的易变表拆分仍然可用，且任何查询都不跨那条边界做 join |
+| 扫描与播放争用同一个 SQLite 写入者 | §7 的那项测量 | **已测量，且没有争用。** 5,000 文件、播放器检查点不节流时为 1.07×，没有一次写入被拒、没有一个检查点被饿。扫描写入成批，这也是主要原因。若它哪天真咬人，[10](./10-roadmap.md#-sqlite-作为唯一存储) 描述的易变表拆分仍然可用，且任何查询都不跨那条边界做 join |
 | 两套组件库从第一块屏幕起就漂移 | 一致性测试，前提是它先于屏幕落地 | 在阶段 4 开工前冻结组件集；分歧是 CI 失败，不是评审意见 |
 
 ---
@@ -620,19 +663,30 @@ M1 期间保持休眠：`download/*`、`dsp/*`、`source/auth-expired`、`source
 当以下全部为真时，M1 才算完成 —— 而不是"应用能放音乐了"，那会稍早一些到来，而且不是同一回事。
 
 - [ ] §6 的每一条完成标准都有绿色核查，或一次签收过的真机运行。
-- [ ] `fs`、`db`、`store`、`paths`、**`codec`**、**`audio`**、**`http`（M1 切片）** 与 **`mediaSession`** 的契约套件对每一份实现全绿，Expo 系的在真机上跑。
-- [ ] 每个新插件通过泄漏测试，且在播放中途禁用再启用 `plugin-player` 后，`ctx.inspector` 显示一棵干净的树。
-- [ ] `pnpm check` 全绿；`pnpm gen:plugins` 不产生任何差异。
-- [ ] `db-scope` 套件在两份 `ctx.db` 实现上都覆盖了 MD-4，且没有任何插件持有自己用不到的能力。
-- [ ] `@BBeBee/protocol` 仍然零运行时依赖，且 `core-*` 之外没有任何包导入平台 SDK —— 两者都有机械检查（[09 §3](./09-project-structure.md#3-依赖规则)）。
+      **未完成项：只剩真机运行。** §6 里每一个自动化栏位都全绿；标准 3、4、5、7 各留着一半人工的活，没有任何测试架能诚实地替它顶上。
+- [x] `fs`、`db`、`store`、`paths`、**`codec`**、**`audio`**、**`http`（M1 切片）** 与 **`mediaSession`** 的契约套件对每一份实现全绿，Expo 系的在真机上跑。⚠️ 三个 Expo 实现结果上并不需要真机就能被覆盖：`core-media-session-rn` 注入其原生表面来跑套件；`core-db-expo` 把 `expo-sqlite` 别名到 `node:sqlite`、背后是同一 API，跑 `db` *和* `db-scope`；`core-fs-expo` 把 `expo-file-system` 别名到 `node:fs`、背后是 SDK 54+ 的 `File`/`Directory`/`Paths` 表面，跑 `paths`、`fs` 与 `fs-scope`。真语句、真文件、真闸门。
+
+      **这不是一次优化。** `fs` 套件早已存在、且只对一份实现运行，而 [10](./10-roadmap.md#-抽象泄漏的速度快过修补的速度) 恰好把这个缺口点名为一条风险、其首要防线就是这套件。它泄漏了：Expo 的 `File.move` 拒绝已存在的目标，而 `rename(2)` 是替换它，于是代码库里每一次"先写临时再移动"都从真机的*第二次*启动起开始失败 —— `ctx.store` 什么也没能持久化 —— 而 CI 却一直是绿的，因为那唯一的 `move` 用例只往一条崭新的路径上移动。两半都修了：适配器清掉目标，套件则添上"move 替换已存在的目标"及其 `copy` 孪生用例。
+
+      留在真机上的，是真正属于设备的那些东西：SDK 的 SQLite *构建*（因此也有 `contentless_delete=1`）、SAF 的 `content://` 树、目录选择器、解码器，以及锁屏画不画得出来。
+- [x] 每个新插件通过泄漏测试，且在播放中途禁用再启用 `plugin-player` 后，`ctx.inspector` 显示一棵干净的树。⚠️ 写*重新启用*那一半时，抓到了它本要抓的 bug：`ctx.mediaSession.clear()` 只从 `stop()` 里运行，而禁用并不经过 `stop()` —— 于是被禁用的播放器留下一块锁屏，显示着一首并未在播的曲目，按钮也再不管用了。teardown 现在把 OS 表面一并撤下。
+- [x] `pnpm check` 全绿；`pnpm gen:plugins` 不产生任何差异。
+- [x] `db-scope` 套件在两份 `ctx.db` 实现上都覆盖了 MD-4，且没有任何插件持有自己用不到的能力。⚠️ 后一半如今是一道检查而非一种习惯（`conventions.test.ts`）：每条声明的能力都经闸门自己的 `servicesForCapability` 映射，且该包必须真的够得着那个服务。它首次运行就抓到三个超额授权 —— `core-device-electron` 请求 `shell`、`core-http-rn` 请求一个它没有 `download()` 可用的 `fs:write:downloads`（MD-1）、M0 演示插件请求 `secrets:own` —— 三个现均已移除。这在 M5 里最要紧，那时安装时提示会逐字读出清单：一个请求自己从不触碰之物的插件，是在教用户无脑点同意。
+- [x] `@BBeBee/protocol` 仍然零运行时依赖，且 `core-*` 之外没有任何包导入平台 SDK —— 两者都有机械检查（[09 §3](./09-project-structure.md#3-依赖规则)）。同一份配置如今还钉住另外两条层界：Layer 2 之上的任何东西不导入内核的引导表面、也不导入任何 `core-*` 包；内核则两者都不导入（[02 §1](./02-architecture.md#不变量)）。
 - [ ] 真机冒烟矩阵已运行并记录在案，包括无缝衔接的听感测试。
-- [ ] 文档与代码同一个 PR 更新：[03 §7](./03-plugin-system.md#能力语法) 的语法行、
-      [09](./09-project-structure.md) 的 ✅ 标记与版本矩阵，以及阶段 0 对 ADR-4 的裁决 —— 无论
-      结果如何 —— 写回 [10](./10-roadmap.md#-react-native-audio-api-尚未到-10)。
+      **唯一真正未完成的条目。** 它诚实地靠人工（§7），它覆盖的一切要么是 OS 画出的一个表面、要么是一个人必须亲耳听到的声音。
+- [x] 文档与代码同一个 PR 更新：[03 §7](./03-plugin-system.md#能力语法) 的语法行，以及 [09](./09-project-structure.md) 的 ✅ 标记与版本矩阵。
+- [ ] 阶段 0 对 ADR-4 的裁决 —— 无论结果如何 —— 写回 [10](./10-roadmap.md#-react-native-audio-api-尚未到-10)。
+      **还不能写，而把这一点说出来正是要义**：试石需要一台 iOS 真机、一台 Android 真机与一台 Electron 机器，哪一台都还没跑过它，所以裁决仍是一个假设，[10](./10-roadmap.md) 也把它记录为假设。照 Node 套件写出的裁决，等于在放决策的位置上记下一笔猜测。
 
 ### M1 明知而留破的地方
 
-值得写明，免得有人把这些报成 bug：**音源字符串无法导入** —— 设置只接受一个 URL，别无其他，因此 [06](./06-music-sources.md) 里目前除 `ruleStream` 之外的一切都无法工作；没有任何地方可以登录；搜索只覆盖扫描过的内容；不能下载任何东西，且下载替换路径没有监听者；均衡器不存在，它要加入的链也不存在；没有播放列表、评分与歌词；桌面端没有键盘快捷键、右键菜单与命令面板；没有任何东西能在运行时安装；两个 app 都没有安装器。
+值得写明，免得有人把这些报成 bug：不能下载任何东西，且下载替换路径没有监听者；均衡器不存在，它要加入的链也不存在；没有播放列表、评分与歌词；桌面端没有键盘快捷键、右键菜单与命令面板；没有任何东西能在运行时安装；两个 app 都没有安装器。
+
+过去在这份清单上的两条消失了，因为 M2 的运行时在 M1 的外壳接线完毕之前就超过了 MD-7 切片：音源字符串**可以**导入了，也**有**办法登录了。取而代之的是两条，而且都是关于移动端、而不是关于范围的：
+
+- **长的远程曲目在移动端不能流式播放。** `load({ strategy: 'stream' })` 需要 `HTMLMediaElement`，而 React Native 没有它，所以引擎宁可拒绝也不装样子。本地文件与短的远程文件走缓冲、不受影响。出路是 `StreamerNode`，而那是真机工作。
+- **脚本化的音源文档在移动端什么也不做。** `core-js-quickjs-expo` 不存在 —— Hermes 没有 WebAssembly，所以它需要一个原生模块与一次 dev client 重建。运行时把受影响的能力上报为缺席，而不是递上一个按了也没用的按钮，这正是设计好的降级（[10 §M2](./10-roadmap.md#m2--音源即字符串)）。
 
 ---
 

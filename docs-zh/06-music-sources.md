@@ -267,8 +267,8 @@ export interface LyricRule { lyric: string; format?: string; offsetMs?: string }
   "concurrentRate": "5/1000",
   "variableComment": "username:password",
   "jsLib": "function auth(){ const [u,p]=String(src.vars.get('var')||'').split(':'); const s=src.crypto.randomHex(8); return `u=${u}&t=${src.crypto.md5(p+s)}&s=${s}&v=1.16.1&c=BBeBee&f=json` }",
-  "searchUrl": "{{source.url}}/rest/search3?query={{key}}&songCount=50&songOffset={{(page-1)*50}}&{{@js:auth()}}",
-  "exploreUrl": "[{\"title\":\"Albums\",\"url\":\"{{source.url}}/rest/getAlbumList2?type=alphabeticalByName&size=100&offset={{(page-1)*100}}&{{@js:auth()}}\"}]",
+  "searchUrl": "{{source.url}}/rest/search3?query={{key}}&songCount=50&songOffset={{@js:(page-1)*50}}&{{@js:auth()}}",
+  "exploreUrl": "[{\"title\":\"Albums\",\"url\":\"{{source.url}}/rest/getAlbumList2?type=alphabeticalByName&size=100&offset={{@js:(page-1)*100}}&{{@js:auth()}}\"}]",
 
   "ruleSearch": {
     "trackList": "$.subsonic-response.searchResult3.song[*]",
@@ -351,7 +351,9 @@ export interface LyricRule { lyric: string; format?: string; offsetMs?: string }
 | `prefs` | 当前的 `StreamPrefs`（[§6](#6-流解析)）—— 音质、`saveData`、格式 |
 | `src` | [§8](#8-信任导入的源能做什么不能做什么) 的宿主对象 —— `md5`、`get`、`cache`、`vars`…… |
 
-表达式是在沙箱中求值的普通 JavaScript，因此 `{{(page-1)*50}}` 与 `{{@js:auth()}}` 是同一机制的两种语法糖。
+⚠️ **裸的 `{{ }}` 是一条路径，不是表达式。** `{{track.id}}` 与 `{{page}}` 只是把一条点分路径对照上文的作用域解析出来，仅此而已 —— `{{(page-1)*50}}` *不会*被求值，而是作为一条无法解析的路径而失败。只有 `{{@js:…}}` 才通向沙箱，而且它需要一个沙箱：在没有 `ctx.js` 的构建里，受影响的能力会被报告为缺席，而不是让规则运行起来。
+
+这个拆分是有意为之。把每个占位符都变成脚本，就会把沙箱放进源所构造的每一个 URL 的路径上 —— 包括那些根本没有沙箱的构建 —— 而它服务的只是一个 `@js:` 已经明确覆盖的算术用例。
 
 ### 3.3 组合器与后处理
 
@@ -393,7 +395,7 @@ https://api.example.org/search,{"method":"POST","body":"q={{key}}","headers":{"X
 | `headers` | 合并覆盖文档的 `header` |
 | `charset` | 解码非 UTF-8 的响应 |
 | `retry` | 调用被判为错误前的尝试次数；默认 1 |
-| `webView` | ⚠️ 在隐藏的 web view 中渲染并取回结果 DOM。仅桌面端，默认关闭，它是唯一能让一个源拥有完整浏览器的选项 —— 见 [§8](#8-信任导入的源能做什么不能做什么) |
+| `webView` | ⚠️ 在隐藏的 web view 中渲染并取回结果 DOM。仅桌面端，默认关闭，它是唯一能让一个源拥有完整浏览器的选项 —— 见 [§8](#8-信任导入的源能做什么不能做什么)。**未实现**：该选项目前被忽略而非被执行，因此依赖它的文档会照常抓取，其规则则直接对着原始响应运行 |
 
 ### 3.6 解释器保证什么
 
@@ -514,6 +516,10 @@ sequenceDiagram
 ```
 
 同样的流水线也以同样的方式跑 `browse`（`exploreUrl` → `ruleExplore` → `childUrl` → `ruleAlbum` → `ruleTrackList`）和歌词。动词只有三个 —— 抓取一份文档、从中做选择、对选择结果做强转 —— 每一项能力都只是这三者的不同组合。
+
+**浏览节点自带所属阶段。** `browse(nodeId)` 必须知道该跑上述规则中的哪一个，而它无法从 URL 推断出来。所以一个 node id 是一个自足的令牌 —— 源 id、阶段（`explore` 或 `tracks`）与要抓取的 URL —— 而不是指向运行时所持某个映射表的键。那张表熬不过一次重启，而一个正在恢复导航栈的壳，会把用户送回一个在他们离开期间就已不存在的文件夹。令牌里的源 id 在回来的路上会被核对：这不是安全边界 —— 起这一作用的是出站（egress）允许列表，而且它在每次抓取时都会被重新核对，包括对文档算出来的某个 `childUrl` —— 但它让一个来自其他源的过期 id 变成一次干脆的拒绝，而不是一次令人困惑的跨源抓取。
+
+**叶子是曲目；节点是地点。** `childUrl` 非空的条目得到一个 node id，而没有 URN。没有 `childUrl` 的条目得到 URN，可以播放 —— 并且在路过时就被缓存，载荷也在内，走的路线与一条搜索到的曲目完全相同。浏览到一首曲目、一周之后再播放它，必须能行；而这只有在那一行于它被看见时就已写入的前提下才成立。
 
 ### 4.3 分页、限流与缓存
 
@@ -784,7 +790,7 @@ export interface SourceHost {
 
 | 每条规则的墙钟时间 | 2 秒（带网络的 `@js:` 为 10 秒） | 一条把搜索挂死的规则 |
 | 每次求值的内存 | 32 MB | 一个把应用 OOM 掉的源 |
-| 每条规则的 HTTP 调用次数 | 8 | 一条把一次搜索变成爬取的规则 |
+| 每条规则的 HTTP 调用次数 | 8 —— ⚠️ **尚未强制执行**；计数器还不存在 | 一条把一次搜索变成爬取的规则 |
 | 每条规则的输出大小 | 1 MB | 一个把整页内容塞进表格单元格的选择器 |
 | 并发 | `concurrentRate`，默认保守 | 用户自己的服务器封掉用户的 IP |
 | `webView` 选项 | 仅桌面端，默认关闭，按源显式开启并带警告 | 一个带着用户会话的完整浏览器上下文，且能从一段粘贴的字符串触达 |

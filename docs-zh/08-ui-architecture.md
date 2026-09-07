@@ -1,6 +1,6 @@
 # 08 — UI 架构
 
-> **本篇回答什么。** 一个插件如何向两个不共享任何组件代码的外壳贡献用户界面、视图如何在不拥有数据的前提下找到数据，以及"逻辑"与"视图"的边界画在哪里。
+> **本篇回答什么。** [02 §1](./02-architecture.md#1-分层模型) 中的 **Layer 4**：一个插件如何向两个不共享任何组件代码的外壳贡献用户界面、视图如何在不拥有数据的前提下找到数据，以及"逻辑"与"视图"的边界画在哪里。
 
 依据 [ADR-2](./01-overview.md#adr-2--ui-拆分移动端-react-native桌面端-react-dom)，共有两个视图层：移动端用 React Native，桌面端用 React DOM。这一选择的代价完全在本文所述之处支付，而本文要讲的正是如何把这份代价控制在一定范围内。
 
@@ -16,11 +16,13 @@
 @BBeBee/plugin-scrobble-ui-desktop    ← React DOM views
 ```
 
-| 包 | 包含 | 可导入 |
-|---|---|---|
-| headless | Cordis 插件本体、全部逻辑、全部状态、全部数据库访问、全部网络操作 | 仅 `@BBeBee/protocol` |
-| `-ui-mobile` | 组件以及命名这些组件的描述符 | `react`、`react-native`、`@BBeBee/ui-kit-mobile`、headless 包的**类型** |
-| `-ui-desktop` | 组件以及命名这些组件的描述符 | `react`、`react-dom`、`@BBeBee/ui-kit-desktop`、headless 包的**类型** |
+| 包 | 层 | 包含 | 可导入 |
+|---|---|---|---|
+| headless | 3 | Cordis 插件本体、全部逻辑、全部状态、全部数据库访问、全部网络操作 | 仅 `@BBeBee/protocol` |
+| `-ui-mobile` | 4 | 组件以及命名这些组件的描述符 | `react`、`react-native`、`@BBeBee/ui-kit-mobile`、headless 包的**类型** |
+| `-ui-desktop` | 4 | 组件以及命名这些组件的描述符 | `react`、`react-dom`、`@BBeBee/ui-kit-desktop`、headless 包的**类型** |
+
+这一拆分正是 Layer 3/Layer 4 边界的具体化。Layer 4 是业务*编排*所在之处 —— 先点这个按钮，再弹那个确认框，然后跳这处导航 —— 而它所编排的业务*规则*则留在 Layer 3，在那里无需渲染器即可测试，并能原封不动地被另一个目标的视图复用。
 
 让这套约定成立的规则：
 
