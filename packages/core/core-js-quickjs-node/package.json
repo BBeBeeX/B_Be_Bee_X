@@ -1,7 +1,7 @@
 {
   "name": "@BBeBee/core-js-quickjs-node",
   "version": "0.0.0",
-  "description": "ctx.js \u2014 a QuickJS realm per source, for desktop and Node.",
+  "description": "ctx.js — a QuickJS realm per source, for desktop and Node.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -29,8 +29,9 @@
   },
   "dependencies": {
     "@BBeBee/protocol": "workspace:*",
+    "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0",
     "cordis": "4.0.0-rc.9",
-    "quickjs-emscripten": "0.32.0"
+    "quickjs-emscripten-core": "0.32.0"
   },
   "devDependencies": {
     "@BBeBee/kernel": "workspace:*"

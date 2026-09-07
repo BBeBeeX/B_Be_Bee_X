@@ -591,8 +591,8 @@ Reality, not aspiration — check before relying on a doc statement:
 - **No `pnpm source:check` / `pnpm source:record`.** They arrive with M2.
 - **No CI config in the repo.** `pnpm check` is the gate you run yourself.
 - **Pinned versions drift from the `docs/09 §5` matrix** — `typescript` is 5.9.3 (the matrix says
-  7.0.2, with a note to pin the latest 5.x if tooling lags), `quickjs-emscripten` is 0.32.0. Read
-  `package.json` and `pnpm-lock.yaml` as the authority on versions.
+  7.0.2, with a note to pin the latest 5.x if tooling lags). Read `package.json` and
+  `pnpm-lock.yaml` as the authority on versions.
 - `cordis` is pinned exactly at `4.0.0-rc.9` — **no caret, no tilde**. It is a release candidate
   whose API may change without notice. Upgrades are deliberate, manual, and their own commit.
   Plugins import Cordis types **from `@BBeBee/kernel`**, never from `cordis`, so one adapter

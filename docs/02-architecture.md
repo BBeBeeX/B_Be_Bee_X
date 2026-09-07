@@ -314,8 +314,16 @@ Two things route through `main` for reasons worth stating:
 `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` for the renderer. The preload
 exposes a single frozen `window.BBeBee` object whose methods are capability-tagged; the kernel
 wraps them per plugin ([03 §7](./03-plugin-system.md#7-capability-model)). A strict CSP is served
-for the app origin and is **not** extended — there is no scheme for loading foreign code, because
-nothing loads foreign code.
+for the app origin — there is no scheme for loading foreign code, because nothing loads foreign
+code.
+
+The one token beyond that floor is `'wasm-unsafe-eval'`, and it is there for `ctx.js`. Chromium
+gates `WebAssembly.instantiate` on `script-src`, so QuickJS cannot compile without it and the
+renderer aborts on the core service list. It grants WebAssembly compilation and **nothing else**:
+`eval` and `new Function` stay refused, which is exactly why the narrow token is used and
+`'unsafe-eval'` — which would also have made the WASM work — is not. The trade is a compiler for a
+realm with no host object graph in it ([04 §19](./04-core-services.md)), and it is the direction
+the whole source model depends on.
 
 ---
 

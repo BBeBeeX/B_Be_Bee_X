@@ -483,10 +483,10 @@ packages — but nothing yet enforces it.
 | Target | Bundler | Entry | Notes |
 |---|---|---|---|
 | Mobile | **Metro** | `apps/mobile/index.js` | Needs `unstable_enablePackageExports` for Cordis's ESM `exports` map, and `@babel/plugin-proposal-decorators` at `version: '2023-11'` |
-| Desktop renderer | **Vite** | `apps/desktop/renderer/index.html` | Native ESM in dev; strict CSP, **not** extended — nothing loads foreign code (02 §2) |
+| Desktop renderer | **Vite** | `apps/desktop/renderer/index.html` | Native ESM in dev; strict CSP whose single concession is `'wasm-unsafe-eval'`, without which QuickJS cannot compile and the boot fails — it is not `'unsafe-eval'`, so no foreign *JavaScript* loads (02 §2). Pinned by `renderer/csp.test.ts` |
 | Desktop main + preload | **electron-vite** | `apps/desktop/main/index.ts` | CJS output; externalises native deps |
 | Packages | **tsup** (or `tsc` for `protocol`) | per-package `src/index.ts` | ESM only; `protocol` emits types only |
-| QuickJS WASM | copied as an asset | `core-js-quickjs-node` | Bundled, never fetched — the CSP forbids fetching it, and a sandbox that downloads its own engine is not one (04 §19) |
+| QuickJS WASM | embedded in the bundle | `core-js-quickjs-node` | One **single-file** variant (`@jitl/quickjs-singlefile-browser-release-sync`) through `quickjs-emscripten-core`, so the engine is bytes in a JS chunk and is never fetched — a sandbox that downloads its own engine is not one (04 §19). `getQuickJS()` is what this is instead of: it picks a separate-`.wasm` variant that fetches at startup — served `index.html` by Vite in dev, refused outright by a `file://` renderer once packaged — and drags all four variants (~4 MB) into the build |
 
 ```jsonc
 // metro.config.js — the parts that are not boilerplate
@@ -549,7 +549,7 @@ these move weekly.
 | `@shopify/flash-list` | 2.3.2 | Mobile list virtualisation |
 | `@tanstack/react-virtual` | 3.14.10 | Desktop list virtualisation |
 | `music-metadata` | 11.15.0 | Tag reading on **both** targets — it is pure JS over `ctx.fs`, so `core-codec-rn` inherits it rather than adding a native reader that would have to agree with it |
-| `quickjs-emscripten` | **0.31.0** | ⚠️ `ctx.js` on desktop. Pin exactly; the WASM asset is bundled, not fetched (04 §19) |
+| `quickjs-emscripten-core` + `@jitl/quickjs-singlefile-browser-release-sync` | **0.32.0** | ⚠️ `ctx.js` on desktop. Pin both exactly and keep them equal — a variant and a core of different versions share an FFI ABI that is not versioned. The single-file variant is what makes the engine bundled rather than fetched (04 §19); the `browser` build is the environment-agnostic one, so Vitest, `main` and the sandboxed renderer all run the same realm |
 | `react-native-quickjs` | **0.4.x** | ⚠️ `ctx.js` on mobile — a native module, so it forces a dev-client rebuild. See §5.3 |
 
 ### 5.1 The Cordis RC problem

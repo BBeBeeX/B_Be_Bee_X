@@ -7,6 +7,8 @@
  * wrong answer.
  */
 
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { jsConformance } from '@BBeBee/protocol/conformance'
@@ -19,6 +21,41 @@ async function harness() {
   await tick()
   return ctx
 }
+
+describe('where the engine comes from', () => {
+  it('starts with the network and the filesystem taken away', async () => {
+  
+    const fetched: string[] = []
+    const real = globalThis.fetch
+    globalThis.fetch = (input: RequestInfo | URL) => {
+      fetched.push(String(input))
+      throw new Error('the sandbox must not fetch its own engine')
+    }
+    try {
+      const ctx = await harness()
+      const realm = await ctx.js.createRealm()
+      expect(await realm.eval('1 + 41')).toBe(42)
+      realm.dispose()
+    } finally {
+      globalThis.fetch = real
+    }
+    expect(fetched).toEqual([])
+  }, 20_000)
+
+  it('depends on a single-file variant, which is the part Node cannot show', () => {
+  
+    const pkg = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+    ) as { dependencies?: Record<string, string> }
+    const deps = Object.keys(pkg.dependencies ?? {})
+
+    expect(deps).toContain('quickjs-emscripten-core')
+    expect(deps).not.toContain('quickjs-emscripten')
+    expect(deps.filter((d) => d.startsWith('@jitl/quickjs-'))).toEqual([
+      '@jitl/quickjs-singlefile-browser-release-sync',
+    ])
+  })
+})
 
 describe(`${jsConformance.service} conformance`, () => {
   for (const check of jsConformance.checks) {

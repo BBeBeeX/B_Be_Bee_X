@@ -758,7 +758,7 @@ export class JsMemoryError extends Error {}
 
 | | Electron (`core-js-quickjs-node`) | Expo (`core-js-quickjs-rn`) |
 |---|---|---|
-| Backing | `quickjs-emscripten` (WASM) in the renderer | A QuickJS JSI module |
+| Backing | `quickjs-emscripten-core` with a single-file WASM variant, embedded in the renderer bundle | A QuickJS JSI module |
 | Isolation | A separate WASM instance per realm | A separate `JSRuntime` per realm |
 | Interrupts | QuickJS interrupt handler, checked on backward jumps | Same |
 | Async | Host functions may return promises; the realm's job queue is driven by the host | Same |

@@ -37,7 +37,14 @@ import {
   JsTimeoutError,
 } from '@BBeBee/protocol'
 import type { Disposable, JsLimits, JsRealm, JsService } from '@BBeBee/protocol'
-import { getQuickJS, type QuickJSContext, type QuickJSHandle, type QuickJSWASMModule } from 'quickjs-emscripten'
+
+import variant from '@jitl/quickjs-singlefile-browser-release-sync'
+import {
+  newQuickJSWASMModuleFromVariant,
+  type QuickJSContext,
+  type QuickJSHandle,
+  type QuickJSWASMModule,
+} from 'quickjs-emscripten-core'
 
 export interface JsQuickJsConfig {
   /** Applied where a caller does not override. */
@@ -60,7 +67,7 @@ export class JsQuickJsNode extends Service implements JsService {
 
   async [Service.init]() {
     // One WASM module for the process; realms are cheap, the module is not.
-    this.module = await getQuickJS()
+    this.module = await newQuickJSWASMModuleFromVariant(variant)
 
     // A realm outliving the service is a leaked WASM allocation that nothing
     // will ever free. Copied first: `dispose()` removes from the set.

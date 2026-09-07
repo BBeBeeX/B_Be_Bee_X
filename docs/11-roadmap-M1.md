@@ -776,7 +776,11 @@ nothing else.
 
 - [x] `pnpm gen:plugins` re-run and its output committed
       ([09 §4](./09-project-structure.md#4-build-pipelines)).
-- [x] The desktop CSP is unchanged — nothing in M1 needs it widened.
+- [x] The desktop CSP carries exactly one token beyond its floor: `'wasm-unsafe-eval'`, because
+      `ctx.js` is in the desktop bootstrap list and Chromium gates `WebAssembly.instantiate` on
+      `script-src` — without it QuickJS never compiles and `createApp` aborts. It is **not**
+      `'unsafe-eval'`, so `eval` and `new Function` stay refused and nothing about "no foreign
+      code in the renderer" changes. `renderer/csp.test.ts` fails on either direction of drift.
 - [x] **Every target bundles.** `expo export` for android and ios, and
       `electron-vite build` for desktop. Cheap, and the only thing that catches a package that
       typechecks and cannot be *loaded* — which is a different failure and, as it turned out, the
