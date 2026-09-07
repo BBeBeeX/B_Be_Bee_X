@@ -1,6 +1,7 @@
 packages:
   # One entry per layer directory; see docs/09 §1.
   - 'packages/*/*'
+  - 'packages/*'
   - 'apps/*'
 allowBuilds:
   electron: false
