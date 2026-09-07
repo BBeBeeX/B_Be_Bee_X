@@ -18,7 +18,7 @@
  */
 
 import type { Context } from 'cordis'
-import { nsPrefix as nsPrefixOf } from './migrations/runner.js'
+import { nsPrefix as nsPrefixOf } from '../migrations/runner.js'
 import { assertSqlAllowed, sanitizeSql, statementsOf } from './sql.js'
 import {
   CapabilityError,

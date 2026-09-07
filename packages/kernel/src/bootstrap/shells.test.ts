@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { PluginManifest } from '@BBeBee/protocol'
 
-const workspaceRoot = fileURLToPath(new URL('../../..', import.meta.url))
+const workspaceRoot = fileURLToPath(new URL('../../../..', import.meta.url))
 
 interface Shell {
   name: 'desktop' | 'mobile'

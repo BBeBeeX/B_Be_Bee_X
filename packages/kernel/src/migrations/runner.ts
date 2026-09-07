@@ -8,7 +8,7 @@
  */
 
 import type { Migration, SqlValue } from '@BBeBee/protocol'
-import { assertSingleStatement } from '../sql.js'
+import { assertSingleStatement } from '../capability-gate/sql.js'
 
 /** The slice of `DbService` a migration needs. Avoids a circular dependency. */
 export interface MigrationTx {

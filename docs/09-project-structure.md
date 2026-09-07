@@ -8,110 +8,210 @@
 
 ## 1. Repository layout
 
+The tree is grouped by **layer** ([02 §1](./02-architecture.md#1-the-layer-model)), because the
+layer a package sits in is the single most useful thing to know about it: it decides what the
+package may import, who may import it, and which lint rules apply
+([§3](#3-dependency-rules)).
+
+Packages stay flat under `packages/` — the grouping below is a *reading order*, not a set of
+directories. The prefix carries the layer ([§Naming](#naming)), so `packages/core-fs-expo` needs
+no nesting to say what it is, and a flat workspace keeps pnpm, Turborepo and every import
+specifier simple.
+
+`✅` = built and passing `pnpm check`. Anything without it is designed but not yet written.
+
 ```
 B_Be_Bee/
-├─ apps/                            L4 — the shells. boot.ts + plugins.ts in each
-│                                   are the composition root (02 §1)
-│  ├─ mobile/                       Expo app — the mobile shell
-│  │  ├─ app/                       expo-router routes
-│  │  ├─ generated/plugins.ts       codegen: static plugin imports (03 §6.1)
-│  │  ├─ app.config.ts
-│  │  ├─ metro.config.js
-│  │  └─ babel.config.js
-│  └─ desktop/
-│     ├─ main/                      Electron main — IPC hosts only, no domain logic
-│     ├─ preload/                   contextBridge surface
-│     ├─ renderer/                  React DOM shell + the Cordis kernel
-│     └─ electron.vite.config.ts
 │
-├─ packages/
-│  ├─ protocol/            L0       @BBeBee/protocol — types + contracts, ZERO runtime
-│  │  ├─ src/services/              fs, http, db, secrets, audio, player, sources, ui …
-│  │  ├─ src/entities/              Track, Album, StreamHandle, TransportState …
-│  │  ├─ src/events.ts              the typed event map (07 §5)
-│  │  └─ src/conformance/           shared contract test suites (04 §18)
-│  │
-│  ├─ kernel/              L1       @BBeBee/kernel — bootstrap, config, loader, capability gate
-│  │  └─ src/migrations/            core schema migrations
-│  │
-│  ├─ core-paths-node/     ✅       ┐ L2 — platform implementations.
-│  ├─ core-paths-expo/     ✅       │ The ONLY packages allowed to
-│  ├─ core-fs-node/        ✅       │ import a platform SDK, and the only
-│  ├─ core-fs-expo/        ✅       │ ones that may drive the kernel.
-│  ├─ core-db-node/        ✅       │ ✅ = built
-│  ├─ core-db-expo/        ✅       │
-│  ├─ core-store-fs/       ✅       │ shared: one impl, via ctx.fs (04 §4)
-│  ├─ core-http-node/      ✅       │ the transport is a seam; desktop fills it
-│  ├─ core-http-rn/        ✅       │ with Electron's net, mobile with expo/fetch
-│  ├─ core-js-quickjs-node/ ✅      │ ctx.js — the source sandbox (04 §19)
-│  ├─ core-js-quickjs-expo/         │ ⚠️ the one M2 gap: Hermes has no WASM
-│  ├─ core-device-electron/ ✅      │ ctx.device — network, battery, media keys
-│  ├─ core-device-expo/    ✅       │
-│  ├─ core-background-electron/ ✅  │ ctx.background — wake locks, suspend
-│  ├─ core-background-expo/ ✅      │
-│  ├─ core-media-session-electron/ ✅ ctx.mediaSession — the OS now-playing surface
-│  ├─ core-media-session-rn/ ✅     │
-│  ├─ core-codec-node/     ✅       │ ctx.codec — tags via music-metadata over
-│  ├─ core-codec-rn/       ✅       │ ctx.fs; -rn adds the device's decoder
-│  ├─ core-secrets-node/   ✅       │ ⚠️ named `-node`, but platform-free: it
-│  │                                │ persists through ctx.fs, so it loads in
-│  │                                │ Electron's sandboxed renderer too
-│  ├─ core-secrets-expo/   ✅       │
-│  ├─ core-audio-webaudio/ ✅       │ (shared: react-native-audio-api on both)
-│  └─ core-…                        ┘
+├── apps/                                   🔹 LAYER 4 — application shells
+│   ├── mobile/                     ✅        Expo app
+│   │   ├── src/boot.ts                        composition root: registers core-*-expo (02 §1)
+│   │   ├── src/plugins.ts                     the allowlist, as data — imports nothing
+│   │   ├── src/App.tsx                        mounts inside ctx.inject(['ui'], …)
+│   │   ├── generated/plugins.ts               codegen: static plugin imports (03 §6.1)
+│   │   ├── app.json · index.js                Expo entry + config
+│   │   ├── metro.config.js                    package exports + watchFolders (§4)
+│   │   ├── babel.config.js
+│   │   └── android/ · ios/                    dev-client native projects
+│   └── desktop/                    ✅        Electron app
+│       ├── main/                              IPC hosts only, no domain logic (02 §2)
+│       ├── preload/                           contextBridge surface
+│       ├── renderer/                          React DOM shell + the kernel (ADR-3)
+│       │   ├── boot.ts · plugins.ts             composition root + allowlist
+│       │   └── main.tsx · Shell.tsx             mount + chrome
+│       └── electron.vite.config.ts
 │
-│  ├─ source-rules/         ✅      ┐ L3 — the rule language: parser, engines,
-│  │                                │ combinators, coercion. Pure logic —
-│  │                                │ no Cordis, no platform, no I/O (06 §3)
-│  ├─ plugin-source-runtime/ ✅     │ binds source-rules to ctx.http · ctx.js
-│  ├─ plugin-player/       ✅       │ headless feature plugins.
-│  ├─ plugin-dsp/                   │ Import @BBeBee/protocol
-│  ├─ plugin-effect-eq10/           │ and nothing else.
-│  ├─ plugin-source-local/ ✅       │ the one provider that is not a string
-│  ├─ plugin-local-scanner/ ✅      │
-│  ├─ plugin-download/              │
-│  ├─ plugin-library/               │
-│  ├─ plugin-lyrics/                │
-│  ├─ plugin-cache/                 │
-│  ├─ plugin-log-console/  ✅       │ logging transports: Cordis exporters,
-│  ├─ plugin-log-file/     ✅       │ shared across platforms (04 §16)
-│  ├─ plugin-log-buffer/   ✅       │
-│  └─ plugin-…                      ┘
+├── packages/
+│   │
+│   ├── protocol/                   ✅      🔹 LAYER 0 — the contract layer
+│   │   └── src/                               @BBeBee/protocol. ZERO runtime dependencies,
+│   │       ├── services/                      no side effects, no platform access — which is
+│   │       │                                  what makes it safe to import from any layer
+│   │       │                                  and the seam every layer is mocked at
+│   │       │                                  fs · http · db · secrets · audio · player ·
+│   │       │                                  sources · ui · … (04)
+│   │       ├── entities/                      Track, Album, StreamHandle, TransportState … (07)
+│   │       ├── events.ts                      the typed event map (07 §5)
+│   │       ├── errors.ts · frac-index.ts      the small pure runtime that earns its place
+│   │       └── conformance/                   shared contract suites: one test file, run
+│   │                                          against both implementations of a key (04 §18)
+│   │
+│   ├── kernel/                     ✅      🔹 LAYER 1 — infrastructure + system abstractions
+│   │   └── src/                               @BBeBee/kernel. Depends on protocol and cordis,
+│   │       │                                  and on nothing else in the workspace — a kernel
+│   │       │                                  that knows which plugins exist is not one
+│   │       ├── index.ts                       two surfaces, and they are not equally available:
+│   │       │                                  the pinned Cordis re-exports are open to every
+│   │       │                                  layer, the bootstrap surface below them is
+│   │       │                                  Layer 2 + composition root only (02 §1)
+│   │       │                                  ── by concern, tests beside their subject:
+│   │       ├── bootstrap/                     createApp, boot order, settling, and the shell
+│   │       │                                  wiring check (app.ts · shells.test.ts)
+│   │       ├── config/                        resolve, enable/disable, defaults
+│   │       ├── loader/                        registry → ctx.plugin(), fiber-state reporting
+│   │       ├── capability-gate/               scoping and the SQL guards (03 §7).
+│   │       │                                  capability.ts · sql.ts — the latter is shared
+│   │       │                                  with apps/desktop/main, so one allowlist covers
+│   │       │                                  the gated path and the IPC host both
+│   │       ├── migrations/                    core schema migrations (07 §6)
+│   │       │                                  ── and what belongs to no single concern:
+│   │       ├── fiber-state.ts                 the FiberState mirror upstream cannot export
+│   │       ├── testing.ts                     @BBeBee/kernel/testing — snapshotContext, the
+│   │       │                                  leak check every plugin's test runs (§6)
+│   │       ├── conventions.test.ts            ┐ these three scan the whole workspace rather
+│   │       ├── layers.test.ts                 │ than the kernel: un-awaited ctx.plugin(), the
+│   │       └── cordis-assumptions.test.ts     ┘ two surfaces (§3), upstream semantics (§5.1)
+│   │
+│   ├── core-*/                             🔹 LAYER 2 — core capability services
+│   │   │                                      The ONLY packages permitted to import a platform
+│   │   │                                      SDK, and the only ones permitted to drive the
+│   │   │                                      kernel. One implementation per target per key;
+│   │   │                                      no domain knowledge — none of them knows what a
+│   │   │                                      track is.
+│   │   ├── core-paths-node/        ✅        ctx.paths
+│   │   ├── core-paths-expo/        ✅
+│   │   ├── core-fs-node/           ✅        ctx.fs — the virtual filesystem (04 §1)
+│   │   ├── core-fs-expo/           ✅
+│   │   ├── core-db-node/           ✅        ctx.db — node:sqlite / expo-sqlite (04 §3)
+│   │   ├── core-db-expo/           ✅
+│   │   ├── core-store-fs/          ✅        ctx.store — one impl, via ctx.fs (04 §4)
+│   │   ├── core-http-node/         ✅        ctx.http — the transport is a seam: desktop fills
+│   │   ├── core-http-rn/           ✅          it with Electron's net, mobile with expo/fetch
+│   │   ├── core-secrets-node/      ✅        ctx.secrets. ⚠️ named -node but platform-free: it
+│   │   │                                       persists through ctx.fs, so it loads in
+│   │   │                                       Electron's sandboxed renderer too
+│   │   ├── core-secrets-expo/      ✅
+│   │   ├── core-device-electron/   ✅        ctx.device — network, battery, media keys
+│   │   ├── core-device-expo/       ✅
+│   │   ├── core-background-electron/ ✅      ctx.background — wake locks, suspend
+│   │   ├── core-background-expo/   ✅
+│   │   ├── core-media-session-electron/ ✅   ctx.mediaSession — the OS now-playing surface
+│   │   ├── core-media-session-rn/  ✅
+│   │   ├── core-codec-node/        ✅        ctx.codec — tags via music-metadata over ctx.fs;
+│   │   ├── core-codec-rn/          ✅          -rn adds the device's decoder
+│   │   ├── core-audio-webaudio/    ✅        ctx.audio — react-native-audio-api on both (05 §1)
+│   │   ├── core-js-quickjs-node/   ✅        ctx.js — the source sandbox (04 §19)
+│   │   ├── core-js-quickjs-expo/             ⚠️ the one M2 gap: Hermes has no WASM
+│   │   ├── core-desktop-bridge/    ✅        renderer↔main IPC clients + the main-side host.
+│   │   │                                       Layer 2 on both sides of the process boundary
+│   │   └── core-…                            ctx.ws · ctx.notify · ctx.crypto · ctx.shell
+│   │
+│   ├── source-rules/               ✅      🔹 LAYER 3 — feature plugins
+│   │   └── src/                               The rule language, as pure logic: no Cordis, no
+│   │       │                                  platform, no I/O. A document and a string in, a
+│   │       │                                  value out — which is what makes the golden corpus
+│   │       │                                  in §6 runnable with no network (06 §3)
+│   │       ├── parse.ts                       the parser
+│   │       ├── evaluate.ts                    the engine, including coercion
+│   │       ├── jsonpath.ts · template.ts      the selector and template dialects
+│   │       └── regex-guard.ts                 the ReDoS guard every user-supplied regex passes
+│   │
+│   ├── plugin-*/                           🔹 LAYER 3 — feature plugins (headless)
+│   │   │                                      One business capability each: state, persistence,
+│   │   │                                      networking, events. Import @BBeBee/protocol and
+│   │   │                                      the kernel's plugin surface — never a platform
+│   │   │                                      SDK, never a core-* package (a Layer 2
+│   │   │                                      dependency is spelled `inject: ['fs']`).
+│   │   ├── plugin-source-runtime/  ✅        binds source-rules to ctx.http · ctx.js (06 §4)
+│   │   ├── plugin-sources/         ✅        the ctx.sources registry + catalogue (06 §4.1)
+│   │   ├── plugin-source-local/    ✅        the one provider that is not a string (06 §12)
+│   │   ├── plugin-local-scanner/   ✅        ctx.scanner — the ≥5,000-file corpus walk
+│   │   ├── plugin-player/          ✅        ctx.player — transport, queue, history (05 §2)
+│   │   ├── plugin-ui/              ✅        the ctx.ui contribution registry — descriptors
+│   │   │                                       only, so it holds no React (08 §2)
+│   │   ├── plugin-inspector/       ✅        fiber tree + labelled effects (M0 exit criterion)
+│   │   ├── plugin-log-console/     ✅        logging transports: Cordis exporters, shared
+│   │   ├── plugin-log-file/        ✅          across platforms (04 §16)
+│   │   ├── plugin-log-buffer/      ✅
+│   │   ├── plugin-dsp/                       ctx.dsp — the effect chain (05 §3)
+│   │   ├── plugin-effect-eq10/               one DSP effect, as a plugin
+│   │   ├── plugin-download/                  media_bindings + the before-resolve substitution
+│   │   ├── plugin-library/                   playlists, favourites, smart lists
+│   │   ├── plugin-lyrics/                    lyric providers
+│   │   ├── plugin-cache/                     the http/request cache layer
+│   │   └── plugin-…
+│   │
+│   ├── plugin-*-ui-*/                      🔹 LAYER 4 — views, one package per target
+│   │   │                                      Layout, gestures and event wiring. Anything you
+│   │   │                                      would otherwise write twice belongs in the
+│   │   │                                      headless sibling, which they import for its
+│   │   │                                      TYPES only (08 §1).
+│   │   ├── plugin-player-ui-desktop/ ✅      ┐ now playing, transport, queue
+│   │   ├── plugin-player-ui-mobile/  ✅      ┘
+│   │   ├── plugin-sources-ui-desktop/ ✅     ┐ library, album detail, source list, import
+│   │   ├── plugin-sources-ui-mobile/  ✅     ┘ review, editor, rule tracer (08 §4)
+│   │   ├── plugin-local-scanner-ui-desktop/ ✅ ┐ settings: scan roots
+│   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
+│   │   └── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered
+│   │
+│   ├── ui-*/                               🔹 LAYER 4 — shared UI infrastructure
+│   │   │                                      Not plugins. The half of ADR-2's cost that can
+│   │   │                                      be paid once instead of twice.
+│   │   ├── ui-tokens/              ✅        design tokens as plain data + the WCAG AA gate (08 §8)
+│   │   ├── ui-core/                ✅        framework-agnostic hooks + the prop types both
+│   │   │                                       kits share (08 §4)
+│   │   ├── ui-parity/              ✅        the component contract, and the check that both
+│   │   │                                       kits meet it (08 §6)
+│   │   ├── ui-kit-mobile/          ✅        React Native components
+│   │   └── ui-kit-desktop/         ✅        React DOM components
+│   │
+│   └── tooling-*/                          🔧 TOOLING — outside the layer model
+│       │                                      Development aids. Nothing here ships in an app
+│       │                                      bundle, which is why the layer rules do not
+│       │                                      apply to them.
+│       ├── tooling-gen-plugins/    ✅        the static registry codegen (pnpm gen:plugins)
+│       ├── tooling-create-plugin/  ✅        the scaffolder (pnpm new:plugin)
+│       └── tooling-fixtures/       ✅        the ≥5,000-file corpus generator, an instrumented
+│                                             ctx.fs, and the byte-serving http fixture the
+│                                             conformance suite runs on
 │
-│  ├─ plugin-ui/           ✅   L3  the ctx.ui contribution registry — a registry
-│  │                                of descriptors, so it holds no React
-│  ├─ plugin-sources/      ✅   L3  the ctx.sources registry + catalogue (06 §4.1)
-│  ├─ plugin-inspector/    ✅   L3  fiber tree + labelled effects (M0 exit criterion)
-│  ├─ core-desktop-bridge/ ✅   L2  renderer↔main IPC clients + the main-side host
-│
-│  ├─ ui-tokens/           ✅   L4  design tokens as plain data, plus the
-│  │                                WCAG AA gate of 08 §8
-│  ├─ ui-core/            ✅   L4  framework-agnostic React hooks, and the
-│  │                                prop types both kits share
-│  ├─ ui-parity/          ✅       the component contract, and the check that
-│  │                                both kits meet it (08 §6)
-│  ├─ ui-kit-mobile/      ✅       React Native components
-│  ├─ ui-kit-desktop/     ✅       React DOM components
-│  ├─ plugin-player-ui-desktop/ ✅  ┐ now playing,transport, queue
-│  ├─ plugin-player-ui-mobile/  ✅  ┘ 
-│  ├─ plugin-sources-ui-desktop/ ✅ ┐ library, album detail, source list,
-│  ├─ plugin-sources-ui-mobile/  ✅ ┘ import review, editor, rule tracer (08 §4)
-│  ├─ plugin-local-scanner-ui-desktop/ ✅ ┐ settings: scan roots
-│  ├─ plugin-local-scanner-ui-mobile/  ✅ ┘
-│  │
-│  ├─ tooling-gen-plugins/  ✅      the static registry codegen (pnpm gen:plugins)
-│  ├─ tooling-create-plugin/ ✅     the scaffolder (pnpm new:plugin)
-│  └─ tooling-fixtures/     ✅      dev-only: the ≥5,000-file corpus generator,
-│                                   an instrumented ctx.fs, and the byte-serving
-│                                   http fixture the conformance suite runs on
-│
-├─ fixtures/sources/                example source documents; the golden corpus (§6)
-├─ docs/                            these documents
-├─ eslint.config.js                 flat config; the architectural rules live here
-├─ vitest.config.ts
-├─ pnpm-workspace.yaml
-└─ package.json
+├── fixtures/sources/                         example source documents; the golden corpus (§6)
+├── docs/                                     these documents
+├── eslint.config.js                          flat config; the layer rules live here (§3)
+├── vitest.config.ts · vitest.global.ts
+├── pnpm-workspace.yaml
+└── package.json
 ```
+
+### Flat packages, nested concerns
+
+Grouping by layer is how the tree above *reads*; it is not how the filesystem is arranged, and
+the difference is deliberate.
+
+A `packages/layer-2/core-fs-expo/` scheme would put the layer in the path — but the layer is
+already in the *name*, and the lint config keys off that name rather than off a path
+([§3](#3-dependency-rules)). What such a scheme costs is real: every `pnpm-workspace.yaml` glob,
+every Turborepo filter, and every relative path in a tsconfig grows a segment, and a package that
+moves layer becomes a directory move — a rewritten import graph — rather than a rename.
+
+Nesting earns its keep *inside* a package instead, where it separates things a reader genuinely
+confuses: `src/services/` and `src/entities/` in `protocol`, and the concern directories in
+`kernel` — `bootstrap/`, `config/`, `loader/`, `capability-gate/`, `migrations/`. The kernel is
+the one package where "which part of this does that?" is a real question, because it is the one
+package doing five unrelated jobs, and each directory keeps its own tests beside it. What stays
+at `src/` root there is what belongs to no single concern: `index.ts` (the two-surface seam),
+`fiber-state.ts` and `testing.ts` (used by all of them), and the three meta-tests, which scan the
+workspace rather than the kernel.
 
 ### Naming
 
@@ -128,6 +228,7 @@ The prefix is not decoration: it is how a reader — and the lint config in
 | `source-rules` | 3 | Pure logic beneath the source runtime; not a plugin |
 | `plugin-<feature>-ui-<target>` | 4 | Views for one target |
 | `ui-*` | 4 | Shared UI infrastructure, not a plugin |
+| `tooling-*` | — | Development aids. Outside the layer model, because nothing here ships |
 
 There is deliberately **no `plugin-source-<protocol>` prefix any more**. A music backend is a
 source document ([06](./06-music-sources.md)), not a package. The only two packages with `source`

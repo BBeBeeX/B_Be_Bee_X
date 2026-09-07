@@ -10,8 +10,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context, Service } from 'cordis'
 import { createApp } from './app.js'
-import type { PluginRegistry } from './loader.js'
-import { tick } from './testing.js'
+import type { PluginRegistry } from '../loader/loader.js'
+import { tick } from '../testing.js'
 
 /** A service whose initialisation genuinely takes time. */
 class SlowService extends Service {

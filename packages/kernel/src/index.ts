@@ -47,14 +47,14 @@ export type { FiberStateName, FiberStateValue } from './fiber-state.js'
 // ── The bootstrap surface — Layer 2 and the composition root only ────────
 // Everything below drives the kernel rather than typing a plugin. Above Layer
 // 2 these are a lint error (docs/02 §1 — the invariant, rule 2).
-export { createApp, BootstrapError } from './app.js'
-export type { App, AppOptions, BootstrapEntry, Target } from './app.js'
+export { createApp, BootstrapError } from './bootstrap/app.js'
+export type { App, AppOptions, BootstrapEntry, Target } from './bootstrap/app.js'
 
-export { resolveConfig, isEnabled } from './config.js'
-export type { AppConfig, PluginEntry, ResolvedPlugin } from './config.js'
+export { resolveConfig, isEnabled } from './config/config.js'
+export type { AppConfig, PluginEntry, ResolvedPlugin } from './config/config.js'
 
-export { loadPlugins } from './loader.js'
-export type { LoadOptions, LoadState, LoadedPlugin, PluginRegistry, RegistryEntry } from './loader.js'
+export { loadPlugins } from './loader/loader.js'
+export type { LoadOptions, LoadState, LoadedPlugin, PluginRegistry, RegistryEntry } from './loader/loader.js'
 
 export {
   scopeContext,
@@ -70,15 +70,15 @@ export {
   tablesReferenced,
   classifyDbAccess,
   storageNamespace,
-} from './capability.js'
+} from './capability-gate/capability.js'
 export {
   sanitizeSql,
   statementsOf,
   isMultiStatement,
   assertSingleStatement,
   assertSqlAllowed,
-} from './sql.js'
-export type { CapabilityConfig, DbAccess, GrantOptions } from './capability.js'
+} from './capability-gate/sql.js'
+export type { CapabilityConfig, DbAccess, GrantOptions } from './capability-gate/capability.js'
 
 export {
   MigrationRunner,

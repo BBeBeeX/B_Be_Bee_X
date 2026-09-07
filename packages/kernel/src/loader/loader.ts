@@ -12,9 +12,9 @@
 import type { Context } from 'cordis'
 import type { Plugin } from 'cordis'
 import type { PluginManifest } from '@BBeBee/protocol'
-import { scopeContext } from './capability.js'
-import type { ResolvedPlugin } from './config.js'
-import { FiberState, fiberStateName } from './fiber-state.js'
+import { scopeContext } from '../capability-gate/capability.js'
+import type { ResolvedPlugin } from '../config/config.js'
+import { FiberState, fiberStateName } from '../fiber-state.js'
 
 /** What the codegen step emits: package id → plugin, plus its manifest. */
 export interface RegistryEntry {

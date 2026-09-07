@@ -10,7 +10,7 @@ import {
   classifyDbAccess,
   scopeContext,
 } from './capability.js'
-import { tick } from './testing.js'
+import { tick } from '../testing.js'
 
 describe('scopeContext', () => {
   it('delivers grants to every mediated service', async () => {

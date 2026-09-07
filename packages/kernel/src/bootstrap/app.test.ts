@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from 'cordis'
 import type { PluginManifest } from '@BBeBee/protocol'
 import { BootstrapError, createApp } from './app.js'
-import { diffSnapshots, snapshotContext, tick } from './testing.js'
+import { diffSnapshots, snapshotContext, tick } from '../testing.js'
 
 function manifest(id: string, over: Partial<PluginManifest> = {}): PluginManifest {
   return {

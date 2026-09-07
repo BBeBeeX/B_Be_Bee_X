@@ -9,9 +9,9 @@
  */
 
 import { Context, type Fiber, type Plugin } from 'cordis'
-import { FiberState } from './fiber-state.js'
-import { resolveConfig, type AppConfig, type ResolvedPlugin } from './config.js'
-import { loadPlugins, type LoadOptions, type LoadedPlugin, type PluginRegistry } from './loader.js'
+import { FiberState } from '../fiber-state.js'
+import { resolveConfig, type AppConfig, type ResolvedPlugin } from '../config/config.js'
+import { loadPlugins, type LoadOptions, type LoadedPlugin, type PluginRegistry } from '../loader/loader.js'
 
 export type Target = 'ios' | 'android' | 'desktop'
 
