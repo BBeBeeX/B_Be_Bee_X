@@ -1,5 +1,10 @@
 /**
- * The mobile bootstrap.
+ * The mobile bootstrap — the **composition root**.
+ *
+ * One of docs/02 §1's three deliberate exceptions to the layer model, named by
+ * path in `eslint.config.js`: the only files allowed to call `createApp` and
+ * to import a Layer 2 `core-*` package directly. Wiring, not business
+ * function — everything else under `apps/` is plain Layer 4.
  *
  * Compare with `apps/desktop/renderer/boot.ts`: the plugin registry is
  * generated from the same manifests and the config is the same list, and only

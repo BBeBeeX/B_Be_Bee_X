@@ -1,10 +1,17 @@
 /**
- * The desktop bootstrap.
+ * The desktop bootstrap — the **composition root**.
  *
  * This file *is* the platform-specific surface of the desktop app: a list of
  * which core services to register, and which plugins to enable. Everything
  * after it — every feature plugin, every contribution — is identical to mobile
  * (docs/02 §3).
+ *
+ * It is one of docs/02 §1's three deliberate exceptions to the layer model,
+ * and `eslint.config.js` names it by path: the only files allowed to call
+ * `createApp` and to import a Layer 2 `core-*` package directly. That is
+ * wiring, not business function — no orchestration, no domain types, no view
+ * code belongs here, and everything else under `apps/` is plain Layer 4.
+ * `kernel/src/layers.test.ts` fails if a second `createApp` appears elsewhere.
  *
  * The registry itself is **generated** (`pnpm gen:plugins`), so adding a
  * plugin package is not also an edit to two shells that can disagree

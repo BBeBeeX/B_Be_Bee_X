@@ -1,9 +1,14 @@
 /**
- * `@BBeBee/protocol` — the contract layer.
+ * `@BBeBee/protocol` — Layer 0, the contract layer.
  *
  * Every service interface, entity type, and event-map entry lives here, and
  * every plugin depends on this package and (almost) nothing else. It is the
- * seam that makes `core-fs-expo` and `core-fs-node` interchangeable.
+ * seam that makes `core-fs-expo` and `core-fs-node` interchangeable, and the
+ * one layer every other layer is allowed to depend on (docs/02 §1).
+ *
+ * Its emptiness is the feature: because nothing here runs, a Layer 3 plugin
+ * and a Layer 2 core plugin can share a contract without sharing a line of
+ * code, and either can be swapped for a test double at the same seam.
  *
  * Constraints this package holds itself to:
  *   - No runtime dependencies. `cordis` is a peer, imported for types only.

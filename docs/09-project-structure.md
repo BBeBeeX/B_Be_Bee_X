@@ -184,7 +184,8 @@ and `pnpm lint` says so.
 
 The layer model of [02 §1](./02-architecture.md#1-the-layer-model) is worth exactly as much as its
 enforcement, so it is enforced by ESLint with `overrides` scoped by path, not by review. Each rule
-below states which layer boundary it protects.
+below states which layer boundary it protects. This is an abridged reading of
+`eslint.config.js` — the file itself is the authority.
 
 ```js
 // eslint.config.js — the rules that matter
@@ -194,93 +195,95 @@ const PLATFORM_SDKS = [
   'child_process', 'better-sqlite3', 'music-metadata', 'ws',
 ]
 
-// 02 §1 — the kernel's two surfaces. Being *typed* by the kernel is open to
-// Layers 2-4; *driving* it is Layer 2 and the composition root only.
-const KERNEL_BOOTSTRAP = [
-  'createApp', 'BootstrapError', 'resolveConfig', 'isEnabled', 'loadPlugins',
-  'scopeContext', 'capabilityConfigOf', 'assertFs', 'assertHost', 'assertWsHost',
-  'CORE_MIGRATIONS', 'MigrationRunner',
+// 02 §1 — the kernel's plugin surface: the pinned Cordis re-exports, which
+// only *type* a plugin. An allow-list rather than a ban-list on the bootstrap
+// surface, so a new kernel export is closed to Layers 3 and 4 by default.
+const KERNEL_PLUGIN_SURFACE = [
+  'Context', 'Service', 'Inject', 'FiberState', 'fiberStateName', 'isActive', 'isSettled',
+  'Plugin', 'Fiber', 'Effect', 'EffectMeta', 'InjectSpec', 'FiberStateName', 'FiberStateValue',
 ]
 
-// The composition root: the only files that may name a Layer 2 package by
-// import and call createApp. Everything else under apps/* is Layer 4.
+const KERNEL_GUARD = {
+  name: '@BBeBee/kernel',
+  allowImportNames: KERNEL_PLUGIN_SURFACE,
+  message: 'Layers 3 and 4 may be typed by the kernel but may not drive it. See docs/02 §1.',
+}
+
+// Both forms: a gitignore-style `*` does not cross a `/`, so the bare name
+// alone would let `@BBeBee/core-desktop-bridge/main` through.
+const CORE_PACKAGES = ['@BBeBee/core-*', '@BBeBee/core-*/**']
+
+// The composition root: the only files that may call createApp and name a
+// Layer 2 package by import. `apps/*/generated/plugins.ts` is codegen and is
+// in the global `ignores`.
 const COMPOSITION_ROOT = [
   'apps/mobile/src/boot.ts', 'apps/mobile/src/plugins.ts',
   'apps/desktop/renderer/boot.ts', 'apps/desktop/renderer/plugins.ts',
-  'apps/*/generated/plugins.ts',
 ]
 
 export default tseslint.config(
   {
-    // 02 §1, invariant 1 — Layers 3 and 4 never touch a platform SDK.
-    // Only packages/core-* (Layer 2) may.
-    files: ['packages/plugin-*/**/*.ts', 'packages/ui-*/**/*.ts', 'packages/protocol/**/*.ts'],
-    ignores: ['packages/plugin-*-ui-*/**/*.ts'],
-    rules: { 'no-restricted-imports': ['error', { patterns: PLATFORM_SDKS }] },
-  },
-  {
-    // 02 §1, invariant 2 — Layers 3 and 4 may be typed by the kernel but may
-    // not drive it. A feature plugin is *handed* a context; it does not build
-    // one, resolve plugins, read the config store, or consult the gate.
-    files: ['packages/plugin-*/**/*.ts', 'packages/ui-*/**/*.ts', 'apps/**/*.{ts,tsx}'],
-    ignores: [...COMPOSITION_ROOT, '**/*.test.ts'],
+    // 02 §1 — Layer 3 and the shared Layer 4 infrastructure. Both invariants
+    // at once, because ESLint *replaces* a rule's options rather than merging
+    // them: every block covering a file has to restate the whole ban, or the
+    // narrower block silently disables the wider one.
+    files: ['packages/plugin-*/**/*.{ts,tsx}', 'packages/ui-*/**/*.{ts,tsx}',
+            'packages/protocol/**/*.ts'],
+    ignores: ['packages/plugin-*-ui-*/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          paths: [{
-            name: '@BBeBee/kernel',
-            importNames: KERNEL_BOOTSTRAP,
-            message:
-              'Layer 3/4 may import the pinned Cordis surface (Context, Service, Inject, ' +
-              'FiberState…) but not the bootstrap surface. See docs/02 §1 — the invariant.',
-          }],
-          patterns: ['@BBeBee/kernel/*'],
-        },
-      ],
+      'no-restricted-imports': ['error', {
+        paths: [KERNEL_GUARD], patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES],
+      }],
     },
   },
   {
-    // 02 §1 — Layer 4 reaches Layer 2 through service keys, never by import.
-    // The composition root is the single exception, and it is listed above.
-    files: ['apps/**/*.{ts,tsx}'],
-    ignores: COMPOSITION_ROOT,
-    rules: { 'no-restricted-imports': ['error', { patterns: ['@BBeBee/core-*'] }] },
+    // 02 §1 and 06 §3 — the rule engine is pure logic: no platform, no I/O,
+    // and no Cordis. It takes a document and a string and returns a value;
+    // every fetch belongs to plugin-source-runtime. Keeping it pure is what
+    // makes the rule corpus in §6 runnable without a network, and it is the
+    // Layer 3 entry in 02 §1's testability table.
+    files: ['packages/source-rules/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES, 'cordis', '@BBeBee/kernel'],
+      }],
+    },
+  },
+  {
+    // 08 §1 — Layer 4 view packages may render, but may not reach the
+    // platform. `react-native` is allowed; its capability modules are not.
+    files: ['packages/plugin-*-ui-mobile/**/*.{ts,tsx}', 'packages/ui-kit-mobile/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [KERNEL_GUARD],
+        patterns: [...PLATFORM_SDKS.filter((p) => !p.startsWith('react-native')),
+                   ...CORE_PACKAGES],
+      }],
+    },
+  },
+  {
+    // The desktop half. `react-dom` is not a platform SDK, so this one bans
+    // the whole list — without it, the block above exempts every
+    // `plugin-*-ui-*` package and only puts `-ui-mobile` back under a rule.
+    files: ['packages/plugin-*-ui-desktop/**/*.{ts,tsx}', 'packages/ui-kit-desktop/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [KERNEL_GUARD], patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES],
+      }],
+    },
   },
   {
     // 02 §1 — Layer 1 depends on Layer 0 and nothing else. A kernel that knows
-    // which plugins exist is no longer a kernel.
+    // which plugins exist is not a kernel: it resolves them from a registry
+    // the shell hands it, which is what lets one kernel boot two graphs.
+    // `src/testing.ts` is exempt for the reason `*.test.ts` is.
     files: ['packages/kernel/src/**/*.ts'],
-    ignores: ['**/*.test.ts'],
+    ignores: ['packages/kernel/src/**/*.test.ts', 'packages/kernel/src/testing.ts'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        { patterns: ['@BBeBee/core-*', '@BBeBee/plugin-*', '@BBeBee/ui-*', ...PLATFORM_SDKS] },
-      ],
-    },
-  },
-  {
-    // 02 §1 and 06 §3 — the rule engine is pure logic: no platform, and no I/O
-    // either. It takes a document and a string and returns a value; every fetch
-    // belongs to plugin-source-runtime. Keeping it pure is what makes the rule
-    // corpus in §6 runnable without a network, and it is the Layer 3 entry in
-    // 02 §1's testability table.
-    files: ['packages/source-rules/**/*.ts'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        { patterns: [...PLATFORM_SDKS, 'cordis', '@BBeBee/kernel'] },
-      ],
-    },
-  },
-  {
-    // 08 §1 — Layer 4 view packages may render, but may not reach the platform.
-    files: ['packages/plugin-*-ui-mobile/**/*.ts', 'packages/ui-kit-mobile/**/*.ts'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        { patterns: PLATFORM_SDKS.filter((p) => !p.startsWith('react-native')) },
-      ],
+      'no-restricted-imports': ['error', {
+        patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES,
+                   '@BBeBee/plugin-*', '@BBeBee/plugin-*/**', '@BBeBee/ui-*', '@BBeBee/ui-*/**'],
+      }],
     },
   },
   {
@@ -288,12 +291,21 @@ export default tseslint.config(
     // which is what makes it the seam every other layer is mocked at.
     // `^[^.]` matches bare specifiers only, leaving relative imports alone.
     files: ['packages/protocol/src/**/*.ts'],
-    ignores: ['packages/protocol/src/conformance/**/*.ts', '**/*.test.ts'],
+    ignores: ['packages/protocol/src/conformance/**/*.ts', 'packages/protocol/src/**/*.test.ts'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        { patterns: [{ regex: '^[^.]', allowTypeImports: true }] },
-      ],
+      'no-restricted-imports': ['error', {
+        patterns: [{ regex: '^[^.]', allowTypeImports: true }],
+      }],
+    },
+  },
+  {
+    // 02 §1 — the shells are Layer 4 and reach Layer 2 through service keys.
+    // Platform SDKs are deliberately NOT banned: a shell owns genuinely
+    // platform-bound chrome (08 §7). What it may not do is skip a layer.
+    files: ['apps/mobile/src/**/*.{ts,tsx}', 'apps/desktop/renderer/**/*.{ts,tsx}'],
+    ignores: [...COMPOSITION_ROOT, '**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', { paths: [KERNEL_GUARD], patterns: CORE_PACKAGES }],
     },
   },
   {
@@ -304,8 +316,9 @@ export default tseslint.config(
   },
   {
     // Tests are not shipped, so the SDK ban does not apply: a conformance
-    // harness legitimately needs `node:fs` to build a scratch directory.
-    files: ['**/*.test.ts'],
+    // harness legitimately needs `node:fs` to build a scratch directory, and
+    // a plugin's test legitimately loads a real core service to run against.
+    files: ['**/*.test.{ts,tsx}'],
     rules: { 'no-restricted-imports': 'off' },
   },
 )
@@ -318,25 +331,30 @@ Read as a matrix, that is the layer model with nothing left implicit:
 | **Layer 0** may import | — | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Layer 1** may import | ✅ | — | ❌ | ❌ | ❌ | ❌ |
 | **Layer 2** may import | ✅ | ✅ **all of it** | own package | ❌ | ❌ | ✅ **only here** |
-| **Layer 3** may import | ✅ | ⚠️ Cordis surface only | ❌ *(service keys instead)* | types only, of a sibling | ❌ | ❌ |
-| **Layer 4** may import | ✅ | ⚠️ Cordis surface only | ❌ *(service keys instead)* | ⚠️ types only | ✅ | ⚠️ view library in `ui-*`/`plugin-*-ui-*`; platform chrome in `apps/*` |
+| **Layer 3** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | types only, of a sibling | ❌ | ❌ |
+| **Layer 4** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | ⚠️ types only | ✅ | ⚠️ view library in `ui-*`/`plugin-*-ui-*`; platform chrome in `apps/*` |
 | **Composition root** may import | ✅ | ✅ | ✅ | ✅ (as registry data) | ✅ | ✅ |
 
-Two rules deliberately live in **tests** rather than ESLint, because a lint rule whose selector
-cannot be verified is worse than none: `conventions.test.ts` scans for un-awaited `ctx.plugin()`
-(with a self-test proving the detector fires), and the `*-scope` conformance suites check the
-capability gates. See [§6](#6-testing-strategy).
+Three checks deliberately live in **tests** rather than ESLint, because a lint rule whose selector
+cannot be verified is worse than none — each of these ships with a self-test proving its detector
+fires:
+
+| Check | Where | Protects |
+|---|---|---|
+| Un-awaited `ctx.plugin()`, and plugin entry points declared as a plain `function` | `kernel/src/conventions.test.ts` | [03 §2](./03-plugin-system.md) |
+| `KERNEL_PLUGIN_SURFACE` still equals the re-export block at the top of `kernel/src/index.ts`, and `createApp` is called only from the composition root | `kernel/src/layers.test.ts` | [02 §1](./02-architecture.md#the-invariant) |
+| Capability gates, and that no plugin holds a capability it does not use | the `*-scope` conformance suites and `conventions.test.ts` | [03 §7](./03-plugin-system.md#7-capability-model) |
+
+`layers.test.ts` exists because the allow-list is a *second copy* of the kernel's plugin surface,
+and two copies of one list drift. With it in place, adding an export to `@BBeBee/kernel` forces a
+deliberate answer to "which surface is this?" — put it in the re-export block and every layer may
+call it, put it below and only Layer 2 may.
 
 Still to add: a check that no `plugin-*-ui-*` package imports a *value* from its headless sibling,
 only types — the `⚠️ types only` cell above is currently convention rather than enforcement.
 `eslint-plugin-import`'s `no-restricted-paths` with a type-only exception covers it. The
 scaffolder already emits the right shape — the headless package is a `devDependency` of its view
 packages — but nothing yet enforces it.
-
-The cleaner long-term form of invariant 2 is a subpath export: `@BBeBee/kernel/plugin` for the
-Cordis surface and `@BBeBee/kernel` for the bootstrap surface, which would turn an `importNames`
-list into a package boundary. It is not built, because the `importNames` rule is exact today and
-a second entry point is a published-API change; recorded here so the option is not rediscovered.
 
 ---
 

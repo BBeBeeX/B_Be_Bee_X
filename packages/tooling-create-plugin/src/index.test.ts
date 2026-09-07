@@ -69,7 +69,9 @@ describe('generated headless package', () => {
   })
 
   it('depends only on the contract layer', () => {
-    // docs/02 §1 — no package outside core-* may import a platform SDK.
+    // docs/02 §1 — a Layer 3 package depends on Layer 0 and, for the pinned
+    // Cordis surface, Layer 1. Never on a `core-*` package: a Layer 2
+    // dependency is spelled `inject: ['fs']`, not an import.
     const pkg = JSON.parse(fileNamed(files, 'package.json').contents) as {
       dependencies: Record<string, string>
     }

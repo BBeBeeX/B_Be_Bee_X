@@ -150,8 +150,15 @@ Not `expo-file-system`, not `node:fs`, not `electron`, not `react-native`'s nati
 
 | Surface | Exports | Who may import it |
 |---|---|---|
-| **Plugin surface** — being *typed* by the kernel | `Context`, `Service`, `Inject`, `Plugin`, `Fiber`, `Effect`, `FiberState`, `fiberStateName`, `isActive`, `isSettled` | Layers 2, 3 and 4. These are the pinned Cordis re-exports of [09 §5.1](./09-project-structure.md#51-the-cordis-rc-problem): plugins import them from the kernel rather than from `cordis` so one adapter absorbs an upstream change |
-| **Bootstrap surface** — *driving* the kernel | `createApp`, `resolveConfig`, `loadPlugins`, `scopeContext`, `capabilityConfigOf`, `assert*`, `CORE_MIGRATIONS`, `MigrationRunner`, `AppConfig` | Layer 2 and the composition root only |
+| **Plugin surface** — being *typed* by the kernel | Exactly the pinned Cordis re-exports: `Context`, `Service`, `Inject`, `Plugin`, `Fiber`, `Effect`, `EffectMeta`, `InjectSpec`, `FiberState`, `FiberStateName`, `FiberStateValue`, `fiberStateName`, `isActive`, `isSettled` | Layers 2, 3 and 4. [09 §5.1](./09-project-structure.md#51-the-cordis-rc-problem) asks plugins to take Cordis from the kernel rather than from `cordis`, so one adapter absorbs an upstream change |
+| **Bootstrap surface** — *driving* the kernel | Everything else the kernel exports: `createApp`, the config loader, the plugin loader, the capability gate, the SQL guards, the migration runner | Layer 2 and the composition root only |
+
+The rule is written as an **allow-list of the plugin surface**, not a ban-list of the bootstrap
+surface. The bootstrap surface is long and grows; the plugin surface is short and is pinned to
+upstream Cordis's shape. So a new kernel export is closed to Layers 3 and 4 until someone says
+otherwise, which is the safe direction to fail in — and `kernel/src/layers.test.ts` fails the
+build if the two copies of that list drift apart
+([09 §3](./09-project-structure.md#3-dependency-rules)).
 
 A feature plugin does not construct a context, resolve a plugin, read the config store, or consult
 the capability gate. It is *handed* a context and works inside it. Stating it this precisely
@@ -175,7 +182,9 @@ Each is narrow, and each is named here so it can be audited rather than discover
   that call `createApp` and name Layer 2 packages by import — [§3's bootstrap table](#bootstrap-plugin-sets)
   is literally their contents. This is wiring, not business function: a composition root contains
   no orchestration, no domain types, and no view code, and the rest of `apps/*` obeys the Layer 4
-  rule like any other Layer 4 package.
+  rule like any other Layer 4 package. The exception is closed rather than open-ended: the lint
+  config names those four files by path, and `kernel/src/layers.test.ts` fails if a fifth
+  `createApp` call site appears — a second bootstrap is a second kernel.
 
 ### Key design principles
 

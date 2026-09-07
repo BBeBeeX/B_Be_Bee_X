@@ -171,8 +171,10 @@ export function render(options: CreateOptions): CreatedFile[] {
     contents: `/**
  * TODO: describe what this plugin does and why it exists.
  *
- * Reaches the platform only through \`ctx.*\` services — never a platform SDK
- * (docs/02 §1). Contributes UI as descriptors, never components (docs/08 §2).
+ * Layer 3. Reaches the platform only through \`ctx.*\` services — never a
+ * platform SDK, never a \`core-*\` package, never the kernel's bootstrap
+ * surface (docs/02 §1). Contributes UI as descriptors, never components
+ * (docs/08 §2).
  */
 
 import { Service } from 'cordis'
