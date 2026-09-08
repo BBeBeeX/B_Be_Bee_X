@@ -17,7 +17,18 @@ import { dirname, join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { servicesForCapability, type PluginManifest } from '@BBeBee/protocol'
 
-const workspaceRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..')
+/*
+ * `packages/kernel/src` → the repo root: three levels, not four.
+ *
+ * ⚠️ It was four, and every check in this file silently scanned a directory
+ * that does not exist — `readdir` of a missing path throws, and the scans that
+ * swallow their errors returned nothing to inspect, which is indistinguishable
+ * from a clean workspace. Layers 0 and 1 are single packages rather than
+ * directories of them, so they sit one level shallower than
+ * `packages/<layer>/<package>`; see the include globs in `vitest.config.ts`,
+ * which had the matching hole.
+ */
+const workspaceRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 
 /**
  * Find `ctx.plugin(...)` calls whose result is neither awaited nor returned.
@@ -83,9 +94,9 @@ async function sourceFiles(): Promise<string[]> {
     }
   }
 
-  // packages/<layer>/<package>/src — docs/09 §1. Layer 2 and Layer 3 are the
+  // packages/<layer>/<package>/src — docs/09 §1. Layers 2, 3 and 4 are the
   // ones this scan is about; the UI layer has its own conventions.
-  for (const layer of ['core', 'feature']) {
+  for (const layer of ['core', 'logs', 'feature']) {
     const base = join(packagesDir, layer)
     for (const pkg of await readdir(base).catch(() => [])) {
       await walk(join(base, pkg, 'src')).catch(() => undefined)
@@ -248,5 +259,44 @@ describe('workspace conventions', () => {
     }
 
     expect(offenders, offenders.join('\n  ')).toEqual([])
+  })
+
+  /**
+   * Every feature plugin logs, and logs through Layer 3.
+   *
+   * `ctx.logger` is the only way up to the transports: Cordis provides it,
+   * already scoped to the plugin's name, and `plugin-log-{buffer,console,file}`
+   * subscribe to it (docs/04 §16). A feature plugin that says nothing is not
+   * being tidy — it is the one whose failure arrives as an empty screen, with
+   * nothing in the ring buffer the log viewer reads and nothing in the file a
+   * bug report attaches. The scanner sitting PENDING for want of `ctx.codec`
+   * is the case that cost a day.
+   *
+   * The lint rules close the two ways around it: `no-console` in Layer 4, and
+   * a ban on importing `@BBeBee/plugin-log-*` so nobody reaches a transport
+   * directly. This is the other half — that the logging actually happens.
+   *
+   * Only plugin packages are asked. `source-rules` is pure logic with no
+   * Context to log through, which is why it carries no manifest.
+   */
+  it('every feature plugin logs through the logs layer', async () => {
+    const base = join(workspaceRoot, 'packages', 'feature')
+    const silent: string[] = []
+
+    for (const pkg of (await readdir(base)).sort()) {
+      const isPlugin = await readFile(join(base, pkg, 'BBeBee.plugin.json'), 'utf8')
+        .then(() => true)
+        .catch(() => false)
+      if (!isPlugin) continue
+
+      const sources = await packageSources(pkg)
+      if (!sources.some((source) => /\bctx\.logger\./.test(source))) silent.push(pkg)
+    }
+
+    expect(
+      silent,
+      'a feature plugin that never calls ctx.logger has no way to report a failure — ' +
+        `the log viewer and the log file are both empty for it (docs/04 §16):\n  ${silent.join('\n  ')}`,
+    ).toEqual([])
   })
 })

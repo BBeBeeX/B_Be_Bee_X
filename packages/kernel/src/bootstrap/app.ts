@@ -21,12 +21,13 @@ export class BootstrapError extends Error {
     readonly pluginIndex: number,
     override readonly cause: unknown,
   ) {
-    super(`core service #${pluginIndex} failed to start: ${String(cause)}`)
+    super(`bootstrap entry #${pluginIndex} failed to start: ${String(cause)}`)
   }
 }
 
 /**
- * One core service, optionally with its configuration.
+ * One bootstrap plugin — a core service or a log transport — optionally with
+ * its configuration.
  *
  * The tuple form matters: without it a shell has to wrap a configured service
  * in `(ctx) => void ctx.plugin(Svc, config)`, and that wrapper *returns
@@ -39,9 +40,13 @@ export type BootstrapEntry = Plugin | readonly [plugin: Plugin, config: unknown]
 export interface AppOptions {
   target: Target
   /**
-   * Core service plugins for this target — `core-fs-expo` or `core-fs-node`,
-   * and so on. Applied before any feature plugin, and never capability-gated:
-   * they *are* the thing being gated.
+   * What comes up before the registry, in order: this target's core services —
+   * `core-fs-expo` or `core-fs-node`, and so on — followed by the logs layer.
+   *
+   * Applied before any feature plugin, and never capability-gated: the core
+   * services *are* the thing being gated, and a transport that had to be
+   * granted a capability before it could record anything would be unable to
+   * report being refused one.
    */
   bootstrap: BootstrapEntry[]
   /** Statically bundled feature plugins, keyed by package id. */

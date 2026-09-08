@@ -63,8 +63,25 @@ export interface InspectorSnapshot {
 }
 
 export class Inspector extends Service {
+  /**
+   * Warnings already emitted, so a snapshot the UI takes on every render
+   * cannot turn a once-per-session fact into a log flood.
+   *
+   * The inspector is read repeatedly by definition — it is a live view of the
+   * fiber tree — so anything it logs has to be deduplicated at the source
+   * rather than by whoever is reading the file.
+   */
+  private readonly warned = new Set<string>()
+
   constructor(ctx: Context) {
     super(ctx, 'inspector')
+  }
+
+  /** Report something the tree walk should never have seen. Once. */
+  private warnOnce(key: string, message: string): void {
+    if (this.warned.has(key)) return
+    this.warned.add(key)
+    this.ctx.logger.warn(`inspector: ${message}`)
   }
 
   /**
@@ -102,6 +119,20 @@ export class Inspector extends Service {
       const state = fiberStateName(fiber.state)
       counts[state]++
 
+      /*
+       * A state this build has no name for means Cordis's own state values
+       * moved under us — `cordis` is pinned at an rc for exactly this reason
+       * (docs/09 §5). The inspector still renders, marking the fiber UNKNOWN;
+       * without this line that drift shows up only as a badge nobody reads,
+       * on the tool the architecture's central claim is checked with.
+       */
+      if (state === 'UNKNOWN') {
+        this.warnOnce(
+          `state:${String(fiber.state)}`,
+          `cordis reported fiber state ${String(fiber.state)}, which this build has no name for`,
+        )
+      }
+
       const inject = Object.keys(fiber.inject ?? {})
       const waitingFor = inject.filter((n) => !isAvailable(fiber, n))
       if (state !== 'ACTIVE' && fiber.uid !== null) {
@@ -117,8 +148,17 @@ export class Inspector extends Service {
         provides: this.providedBy(fiber),
         effects: fiber.getEffects() as EffectNode[],
         // Depth guard: a cycle in `parent` would otherwise hang the inspector,
-        // and a debugging tool that hangs is worse than none.
-        children: depth > 32 ? [] : (childrenOf.get(fiber) ?? []).map((c) => build(c, depth + 1)),
+        // and a debugging tool that hangs is worse than none. Truncating
+        // silently is nearly as bad — the tree then *looks* complete — so the
+        // one place it can happen says so.
+        children:
+          depth > 32
+            ? (this.warnOnce(
+                'depth',
+                `fiber tree deeper than 32 at '${fiber.name}'; truncating — this is a cycle in parentage`,
+              ),
+              [])
+            : (childrenOf.get(fiber) ?? []).map((c) => build(c, depth + 1)),
       }
     }
 

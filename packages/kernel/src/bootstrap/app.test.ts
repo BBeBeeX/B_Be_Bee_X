@@ -232,7 +232,7 @@ describe('bootstrap failure', () => {
         },
       ],
     })
-    await expect(app.start()).rejects.toThrow(/core service #1/)
+    await expect(app.start()).rejects.toThrow(/bootstrap entry #1/)
   })
 })
 

@@ -43,7 +43,24 @@ import { AudioWebAudio } from '@BBeBee/core-audio-webaudio'
 import { configureNative } from '@BBeBee/ui-kit-mobile'
 
 import { bundled } from '../generated/plugins'
+/*
+ * The logs layer (Layer 3). Imported here rather than enabled through the
+ * registry because it has to be *running* before the feature plugins whose
+ * first lines it exists to capture — see the bootstrap array below.
+ */
+import logBuffer from '@BBeBee/plugin-log-buffer'
+import logConsole from '@BBeBee/plugin-log-console'
+import logFile from '@BBeBee/plugin-log-file'
+
 import { BOOTSTRAP_SERVICES, ENABLED } from './plugins'
+
+/**
+ * Metro defines this in every bundle; it is `false` in a release build.
+ *
+ * Declared locally rather than pulled from a global types package so this file
+ * does not depend on which React Native types happen to be in scope.
+ */
+declare const __DEV__: boolean
 
 /**
  * Hand the kit its primitives, once, before anything renders.
@@ -135,6 +152,22 @@ export async function boot(): Promise<App> {
           fallbackLatencyMs: 100,
         },
       ],
+
+      /*
+       * The logs layer — Layer 3, and it sits here for the reason the layer
+       * exists: after the core services it writes through, before every
+       * feature plugin whose lines it must not miss (docs/09 §1).
+       *
+       * Identical to desktop's, down to the split docs/04 §16 describes: the
+       * buffer always, because the in-app log viewer and a crash report read
+       * from it; the console only in development, where someone is watching
+       * it; the file only in a shipped build, where nobody is and the log has
+       * to survive being closed.
+       */
+      [logBuffer, {}],
+      ...(__DEV__
+        ? ([[logConsole, { level: 3 }]] as const)
+        : ([[logFile, { level: 2 }]] as const)),
     ],
     registry: bundled,
     config: { plugins: ENABLED },

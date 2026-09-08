@@ -18,19 +18,27 @@ machine underneath.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Layer 4: UI & Business Function Layer                           │
+│ Layer 5: UI & Business Function Layer                           │
 │  (Pages, Interactions, Business Orchestration)                  │
 │  apps/* · plugin-*-ui-mobile · plugin-*-ui-desktop · ui-*       │
-│  ✅ Depends on: Protocol, Kernel, Core Plugins, Feature Plugins │
-│  ❌ Forbidden: Direct calls to system APIs / Kernel             │
+│  ✅ Depends on: Protocol, Kernel, Core Plugins, Logs, Features  │
+│  ❌ Forbidden: Direct calls to system APIs / Kernel / console   │
 └─────────────────────────────────────────────────────────────────┘
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ Layer 3: Feature Plugins Layer                                  │
+│ Layer 4: Feature Plugins Layer                                  │
 │  (Business Feature Modules)                                     │
 │  plugin-player · plugin-sources · plugin-download · …           │
+│  ✅ Depends on: Protocol, Kernel, Core Plugins, Logs            │
+│  ❌ Forbidden: Direct calls to system APIs / Kernel / console   │
+└─────────────────────────────────────────────────────────────────┘
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Layer 3: Logs Layer                                             │
+│  (Log Transports — where a line ends up, and nothing else)      │
+│  plugin-log-buffer · plugin-log-console · plugin-log-file       │
 │  ✅ Depends on: Protocol, Kernel, Core Plugins                  │
-│  ❌ Forbidden: Direct calls to system APIs / Kernel             │
+│  ⚠️ The ONLY layer permitted to write to the console            │
 └─────────────────────────────────────────────────────────────────┘
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -67,8 +75,9 @@ worth more than its shape.
 
 | Layer | Packages | Responsible for | May depend on | Never |
 |---|---|---|---|---|
-| **4 — UI & business function** | `apps/mobile`, `apps/desktop/renderer`, `plugin-*-ui-mobile`, `plugin-*-ui-desktop`, `ui-kit-*`, `ui-core`, `ui-parity`, `ui-tokens` | Pages, navigation, gestures and keyboard, and the orchestration that turns one user intent into a sequence of feature calls | Layers 0–3 | A platform SDK; the kernel's bootstrap surface; SQL; HTTP; domain state ([§6](#6-state-ownership)) |
-| **3 — Feature plugins** | headless `plugin-*` (`plugin-player`, `plugin-dsp`, `plugin-sources`, `plugin-source-runtime`, `plugin-download`, `plugin-library`, `plugin-lyrics`, `plugin-cache`, `plugin-local-scanner`, `plugin-log-*`), plus `source-rules` as pure logic beneath them | One business capability each, headless: state, persistence, networking, events | Layers 0–2 | A platform SDK; the kernel's bootstrap surface; another feature plugin's internals |
+| **5 — UI & business function** | `apps/mobile`, `apps/desktop/renderer`, `plugin-*-ui-mobile`, `plugin-*-ui-desktop`, `ui-kit-*`, `ui-core`, `ui-parity`, `ui-tokens` | Pages, navigation, gestures and keyboard, and the orchestration that turns one user intent into a sequence of feature calls | Layers 0–4 | A platform SDK; the kernel's bootstrap surface; SQL; HTTP; `console.*`; domain state ([§6](#6-state-ownership)) |
+| **4 — Feature plugins** | headless `plugin-*` (`plugin-player`, `plugin-dsp`, `plugin-sources`, `plugin-source-runtime`, `plugin-download`, `plugin-library`, `plugin-lyrics`, `plugin-cache`, `plugin-local-scanner`), plus `source-rules` as pure logic beneath them | One business capability each, headless: state, persistence, networking, events | Layers 0–3 | A platform SDK; the kernel's bootstrap surface; `console.*`; another feature plugin's internals |
+| **3 — Log transports** | `packages/logs/*` — `plugin-log-buffer`, `plugin-log-console`, `plugin-log-file` | Where a log line ends up, and nothing else. Each subscribes to `ctx.logger`; the shell picks which run ([04 §16](./04-core-services.md)) | Layers 0–2 | Domain knowledge; a platform SDK. A transport that knew what a track was would be a feature |
 | **2 — Core plugins** | `packages/core/*` | One platform capability per service key, with one implementation per target behind each key | Layers 0–1 — **directly** | Domain knowledge. A core plugin must not know what a track is |
 | **1 — Kernel** | `@BBeBee/kernel` | The Cordis `Context`, DI, fibers and effects, the event bus, config loading, plugin resolution, the capability gate, core migrations | Layer 0 (and Cordis) | Importing any `core-*` or `plugin-*`. The kernel does not know which plugins exist |
 | **0 — Protocol** | `@BBeBee/protocol` | Service interfaces, entity types, the typed event map, constants, and the conformance suites that hold implementations to them | Nothing at all | Emitting a runtime value; importing any bare specifier ([09 §3](./09-project-structure.md#3-dependency-rules)) |
@@ -85,25 +94,28 @@ to break the architecture while appearing to follow it.
 - **Layer 2 depends on Layer 1 by importing it.** `core-db-node` imports `MigrationRunner` and
   `scopeContext` from `@BBeBee/kernel` and calls them. That is intended: core plugins are the
   adaptation layer, so they are the layer that talks to both the kernel and the operating system.
-- **Layers 3 and 4 depend on Layer 2 without importing it.** A feature plugin writes
+- **Layers 3, 4 and 5 depend on Layer 2 without importing it.** A feature plugin writes
   `inject: ['fs', 'http']` — naming *service keys declared at Layer 0* — and the kernel binds them
   to whichever Layer 2 package the shell registered ([§3](#3-boot-sequence)). There is no
   compile-time import from a `plugin-*` to a `core-*` anywhere in the repository, and the
   `package.json` files are the proof: no feature plugin lists a core plugin as a dependency.
 
-So the arrow from Layer 3 to Layer 2 in the diagram is a **runtime** arrow. Its compile-time
+So the arrow from Layer 4 to Layer 2 in the diagram is a **runtime** arrow. Its compile-time
 counterpart goes to Layer 0 instead, and that inversion is the whole design:
 
 ```mermaid
 flowchart TD
-    subgraph L4["Layer 4 — UI & business function"]
+    subgraph L5["Layer 5 — UI & business function"]
         S["apps/* shells"]
         V["plugin-*-ui-* · ui-kit-* · ui-core"]
     end
-    subgraph L3["Layer 3 — feature plugins"]
+    subgraph L4["Layer 4 — feature plugins"]
         F1["player · queue · dsp"]
         F2["source runtime · sources · library · scanner"]
-        F3["download · lyrics · cache · logging"]
+        F3["download · lyrics · cache"]
+    end
+    subgraph L3["Layer 3 — log transports"]
+        G["plugin-log-buffer · plugin-log-console · plugin-log-file"]
     end
     subgraph L2["Layer 2 — core plugins (one implementation per target)"]
         C1["core-fs-node / core-fs-expo"]
@@ -119,8 +131,12 @@ flowchart TD
     end
     SYS["Platform SDKs · OS<br/>expo-* · node:* · electron"]
 
-    L4 -.->|"service keys, at runtime"| L3
+    L5 -.->|"service keys, at runtime"| L4
+    L5 -.->|"ctx.logger, at runtime"| L3
+    L4 -.->|"service keys, at runtime"| L2
+    L4 -.->|"ctx.logger, at runtime"| L3
     L3 -.->|"service keys, at runtime"| L2
+    L5 --> L0
     L4 --> L0
     L3 --> L0
     L2 --> L0
@@ -155,7 +171,7 @@ Not `expo-file-system`, not `node:fs`, not `electron`, not `react-native`'s nati
 
 The rule is written as an **allow-list of the plugin surface**, not a ban-list of the bootstrap
 surface. The bootstrap surface is long and grows; the plugin surface is short and is pinned to
-upstream Cordis's shape. So a new kernel export is closed to Layers 3 and 4 until someone says
+upstream Cordis's shape. So a new kernel export is closed to Layers 3, 4 and 5 until someone says
 otherwise, which is the safe direction to fail in — and `kernel/src/layers.test.ts` fails the
 build if the two copies of that list drift apart
 ([09 §3](./09-project-structure.md#3-dependency-rules)).
@@ -181,14 +197,14 @@ Each is narrow, and each is named here so it can be audited rather than discover
   `apps/desktop/renderer/boot.ts`, and the `plugins.ts` allowlist beside each are the only files
   that call `createApp` and name Layer 2 packages by import — [§3's bootstrap table](#bootstrap-plugin-sets)
   is literally their contents. This is wiring, not business function: a composition root contains
-  no orchestration, no domain types, and no view code, and the rest of `apps/*` obeys the Layer 4
-  rule like any other Layer 4 package. The exception is closed rather than open-ended: the lint
+  no orchestration, no domain types, and no view code, and the rest of `apps/*` obeys the Layer 5
+  rule like any other Layer 5 package. The exception is closed rather than open-ended: the lint
   config names those four files by path, and `kernel/src/layers.test.ts` fails if a fifth
   `createApp` call site appears — a second bootstrap is a second kernel.
 
 ### Key design principles
 
-The five layers are a means. These are what they are for, and each names the mechanism that makes
+The six layers are a means. These are what they are for, and each names the mechanism that makes
 it real rather than aspirational.
 
 **Dependency Inversion Principle (DIP).** High-level modules do not depend on low-level modules;
@@ -331,7 +347,7 @@ the whole source model depends on.
 
 Identical on both platforms except for which core plugins are registered and which loader runs.
 Boot is [§1](#1-the-layer-model)'s stack turned on its side: the layers come up in order — kernel,
-then Layer 2, then Layer 3, then the Layer 4 shell — because each is waiting on a service key the
+then Layer 2, then Layer 3, then Layer 4, then the Layer 5 shell — because each is waiting on a service key the
 one below it provides.
 
 ```mermaid
@@ -433,12 +449,12 @@ Three obligations fall out of this table and are non-negotiable for any plugin d
 ## 5. Composition: how features reach each other
 
 [§1](#1-the-layer-model) governs *vertical* dependency — who may reach down to whom. This section
-is about the *horizontal* problem it leaves open, entirely within Layer 3.
+is about the *horizontal* problem it leaves open, entirely within Layer 4.
 
 Services answer "who provides this capability". They do not answer "how does a feature modify
 another feature's behaviour without either knowing about the other". That is what Cordis's
 **waterfall** dispatch is for, and it is used as a first-class architectural mechanism here — and
-it is what keeps two Layer 3 packages from having to import each other, which the layer model
+it is what keeps two Layer 4 packages from having to import each other, which the layer model
 would allow and which experience says rots.
 
 A waterfall hook is middleware: each listener receives the arguments plus a `next` continuation,

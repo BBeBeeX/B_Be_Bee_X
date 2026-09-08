@@ -6,13 +6,13 @@
 
 These are the only doors out of the sandbox. Core plugins are the one layer permitted to call a
 platform SDK or the kernel's bootstrap surface directly, and that privilege is the whole reason
-they exist: they convert *this machine's* API into a contract that Layers 3 and 4 can be written
+they exist: they convert *this machine's* API into a contract that Layers 3, 4 and 5 can be written
 against once. If a feature needs something not listed here, the answer is to add a core service —
 never to import a platform SDK ([02 §1](./02-architecture.md#the-invariant)).
 
 The price of the privilege is that a core plugin holds **no domain knowledge**. `ctx.fs` moves
 bytes and `ctx.db` runs SQL; neither knows what a track is. A core service that grows a concept
-from Layer 3 has put the seam at the wrong altitude, and the symptom is always the same — the two
+from Layer 4 has put the seam at the wrong altitude, and the symptom is always the same — the two
 implementations stop being interchangeable.
 
 All interfaces live in `packages/protocol/src/services/` and are applied to the context by module
@@ -621,14 +621,45 @@ One implementation, shared. Locale detection comes from `ctx.device.locale`.
 ## 16. `ctx.logger` — logging as transport plugins
 
 Cordis provides `ctx.logger` itself, already scoped per plugin, so BBeBee does not define a logging
-service. What it adds is **transports**, each an ordinary plugin:
+service. What it adds is **transports**, each an ordinary plugin — and together they are
+**Layer 3** of [02 §1](./02-architecture.md#1-the-layer-model), `packages/logs/*`:
 
-| Plugin | Behaviour |
-|---|---|
-| `plugin-log-console` | Dev only. `console.*` with plugin-scoped prefixes |
-| `plugin-log-file` | Rotating NDJSON under `ctx.paths.logs`, size- and age-capped |
-| `plugin-log-buffer` | In-memory ring buffer (default 2000 entries) backing the in-app log viewer |
-| `plugin-log-crash` | On an unhandled rejection, bundles recent buffer entries plus device info into a file the user may attach to a report. Never uploads anything on its own |
+| Plugin | When it runs | Behaviour |
+|---|---|---|
+| `plugin-log-buffer` | Always | In-memory ring buffer (default 2000 entries) backing the in-app log viewer. Claims `ctx.logBuffer` |
+| `plugin-log-console` | Development only | `console.*` with plugin-scoped prefixes, at debug level. Nobody is watching a terminal in a shipped build |
+| `plugin-log-file` | Shipped builds only | Rotating NDJSON under `ctx.paths.logs`, size- and count-capped. The log has to survive the app being closed, which is the case the console cannot cover |
+| `plugin-log-crash` | *(not built)* | On an unhandled rejection, bundles recent buffer entries plus device info into a file the user may attach to a report. Never uploads anything on its own |
+
+### Why it is a layer
+
+Three rules follow from putting the transports between the core services and the features, and
+each closes a way of getting logging wrong that reads as reasonable at the call site:
+
+- **They load from the shell's `bootstrap:` array, not from the registry.** A transport enabled
+  through the config allowlist starts *alongside* the feature plugins, so it misses the first
+  lines each of them writes — which are the lines worth having when one of them did not start.
+  Bootstrap entries are applied in order and awaited, so after the core services and before the
+  first feature plugin is a position that actually exists.
+- **Nothing above Layer 3 imports a transport.** `ctx.logger` is the whole interface; which sink
+  is behind it is the shell's decision, made once, in `boot.ts`. An import would pin one
+  implementation into code whose point is not to know, and would keep it loaded for as long as
+  the importer lives.
+- **`console.*` is an error above Layer 3.** It is not a smaller version of `ctx.logger`: it skips
+  the redactor below, and it reaches neither the ring buffer that the log viewer reads nor the
+  file a bug report attaches. The shells are the one exemption, because a boot failure can happen
+  before any transport is loaded.
+
+One consequence to be deliberate about: **bootstrap entries are not capability-gated**, so
+`plugin-log-file` writes with the shell's own `ctx.fs` rather than through the gate that would
+otherwise hold it to the `fs:write:logs` its manifest declares. That is the same bargain the core
+services get, and for a related reason — a transport that had to be granted a capability before
+it could record anything would have no way to report being refused one. The manifest still
+declares the minimum, and it is what an M5 registry-loaded transport would be held to.
+
+`conventions.test.ts` also requires every feature plugin to call `ctx.logger` at all. A plugin
+that says nothing is not being tidy — it is the one whose failure arrives as an empty screen with
+nothing behind it.
 
 ```ts
 export interface LogRecord {

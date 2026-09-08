@@ -23,7 +23,9 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const workspaceRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..')
+// `packages/kernel/src` → the repo root: three levels. Layers 0 and 1 are
+// single packages, so they sit one level shallower than the layered ones.
+const workspaceRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 // Derived from this file rather than spelled out, so moving the kernel — as
 // the layer restructure of docs/09 §1 did — cannot silently point it at
 // nothing. `readFile` would throw, but a test that skips its subject is worse.
@@ -170,6 +172,70 @@ describe('the kernel has two surfaces', () => {
     // If this ever empties, the kernel stopped being a kernel.
     expect(bootstrap).toContain('createApp')
     expect(bootstrap.filter((name) => surface.has(name))).toEqual([])
+  })
+})
+
+/**
+ * Layer 3 — the log transports.
+ *
+ * The layer's whole value is that nothing above it knows which transport is
+ * loaded: a feature plugin calls `ctx.logger`, Cordis routes it, and the shell
+ * decides whether that ends up on a console, in a ring buffer, or in a file
+ * (docs/04 §16). An import from Layer 4 or 5 would undo that in one line — it
+ * pins one transport into code that must not care, and it keeps that transport
+ * alive for as long as the importer lives, so disabling logging stops working.
+ *
+ * `eslint.config.js` bans the import; this checks the ban against the real
+ * workspace, because a lint pattern that matches nothing — which is what the
+ * first spelling of it did — bans nothing and reads exactly the same.
+ */
+describe('the logs layer', () => {
+  it('is reached through ctx.logger, never by import', async () => {
+    const allowed = new Set(compositionRoot(await readFile(eslintConfig, 'utf8')))
+    const offenders: string[] = []
+
+    for (const file of await sourceFiles()) {
+      // The transports may name each other; the composition root loads them
+      // into the bootstrap array, which is the whole point of it being the
+      // composition root; the generated registries are codegen.
+      if (file.startsWith('packages/logs/')) continue
+      if (allowed.has(file)) continue
+      if (/^apps\/[^/]+\/generated\//.test(file)) continue
+
+      const source = await readFile(join(workspaceRoot, file), 'utf8')
+      if (/from '@BBeBee\/plugin-log-/.test(source)) offenders.push(file)
+    }
+
+    expect(
+      offenders,
+      'a transport imported directly, instead of logging through ctx.logger ' +
+        `(docs/04 §16):\n  ${offenders.join('\n  ')}`,
+    ).toEqual([])
+  })
+
+  it('depends on nothing above it', async () => {
+    // A transport that imported a feature package would be a feature: it could
+    // not be unloaded without taking that feature with it, and the layer would
+    // have stopped being a layer.
+    const base = join(workspaceRoot, 'packages/logs')
+    const offenders: string[] = []
+
+    for (const pkg of await readdir(base)) {
+      const manifest = join(base, pkg, 'package.json')
+      const parsed = JSON.parse(await readFile(manifest, 'utf8')) as {
+        dependencies?: Record<string, string>
+      }
+      for (const dep of Object.keys(parsed.dependencies ?? {})) {
+        // `@BBeBee/plugin-log-*` is a sibling; anything else under
+        // `@BBeBee/plugin-*` or `@BBeBee/ui-*` is above this layer, and
+        // `core-*` is below but reachable only as a service key.
+        const above = /^@BBeBee\/(ui-|core-)/.test(dep) ||
+          (dep.startsWith('@BBeBee/plugin-') && !dep.startsWith('@BBeBee/plugin-log-'))
+        if (above) offenders.push(`${pkg} depends on ${dep}`)
+      }
+    }
+
+    expect(offenders, offenders.join('\n  ')).toEqual([])
   })
 })
 

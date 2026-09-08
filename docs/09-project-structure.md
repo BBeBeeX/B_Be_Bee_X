@@ -17,14 +17,24 @@ it lives*, so moving one between layers is a `git mv` that changes its rules in 
 packages/protocol/    Layer 0 — contracts, zero runtime
 packages/kernel/      Layer 1 — infrastructure + system abstractions
 packages/core/        Layer 2 — core capability services
-packages/feature/     Layer 3 — business feature modules
-packages/ui/          Layer 4 — views and shared UI infrastructure
+packages/logs/        Layer 3 — log transports
+packages/feature/     Layer 4 — business feature modules
+packages/ui/          Layer 5 — views and shared UI infrastructure
 packages/tooling/     outside the model — nothing here ships
 ```
 
 Every package sits at the same depth, so `packages/*/*` is the whole workspace in one glob and
 every package's `tsconfig.json` reaches the base config by the same `../../../`. The `apps/` are
-Layer 4 too, but they stay where a reader expects to find them.
+Layer 5 too, but they stay where a reader expects to find them.
+
+> ⚠️ **`packages/*/*` is not quite the whole workspace, and the exception has bitten.** The two
+> single-package layers are `packages/protocol/src` and `packages/kernel/src`, one level
+> shallower than everything else — so a glob written for the deep shape misses them, silently.
+> `vitest.config.ts` carried only the deep shape for a while, and with it every test in Layers 0
+> and 1: `layers.test.ts`, `conventions.test.ts`, `shells.test.ts` and
+> `cordis-assumptions.test.ts` were not collected, and a run with the architecture's own guards
+> switched off reports success exactly like one with them on. Any tool that globs packages needs
+> both shapes.
 
 Two consequences of naming the directories after the layer's *job* rather than its number. The
 layers no longer sort into their own order — `core`, `feature`, `kernel`, `protocol`, `ui` is
@@ -38,7 +48,7 @@ gain a second package.
 ```
 B_Be_Bee/
 │
-├── apps/                                   🔹 LAYER 4 — application shells
+├── apps/                                   🔹 LAYER 5 — application shells
 │   ├── mobile/                     ✅        Expo app
 │   │   ├── src/boot.ts                        composition root: registers core-*-expo (02 §1)
 │   │   ├── src/plugins.ts                     the allowlist, as data — imports nothing
@@ -127,12 +137,25 @@ B_Be_Bee/
 │   │   │                                       Layer 2 on both sides of the process boundary
 │   │   └── core-…                            ctx.ws · ctx.notify · ctx.crypto · ctx.shell
 │   │
-│   ├── feature/                     🔹 LAYER 3 — business feature modules
+│   ├── logs/                        🔹 LAYER 3 — log transports
+│   │   │                                      Cordis exporters, shared across platforms, that
+│   │   │                                      decide where a line ends up. The only layer that
+│   │   │                                      may write to the console; everything above it
+│   │   │                                      logs through ctx.logger (04 §16). Loaded from
+│   │   │                                      each shell's bootstrap array, so they are running
+│   │   │                                      before the first feature plugin starts.
+│   │   ├── plugin-log-buffer/      ✅        ctx.logBuffer — the ring the log viewer reads
+│   │   ├── plugin-log-console/     ✅        development only: console.* with scoped prefixes
+│   │   ├── plugin-log-file/        ✅        shipped builds only: rotating NDJSON via ctx.fs
+│   │   └── plugin-log-crash/                 a crash bundle the user may attach to a report
+│   │
+│   ├── feature/                     🔹 LAYER 4 — business feature modules
 │   │   │                                      One business capability each, headless: state,
 │   │   │                                      persistence, networking, events. Import
 │   │   │                                      @BBeBee/protocol and the kernel's plugin surface
 │   │   │                                      — never a platform SDK, never a core-* package
-│   │   │                                      (a Layer 2 dependency is `inject: ['fs']`).
+│   │   │                                      (a Layer 2 dependency is `inject: ['fs']`), and
+│   │   │                                      never a transport (logging is `ctx.logger`).
 │   │   ├── source-rules/           ✅        the rule language as pure logic: no Cordis, no
 │   │   │                                       platform, no I/O (06 §3). parse.ts the parser,
 │   │   │                                       evaluate.ts the engine and its coercion,
@@ -146,9 +169,6 @@ B_Be_Bee/
 │   │   ├── plugin-ui/              ✅        the ctx.ui contribution registry — descriptors
 │   │   │                                       only, so it holds no React (08 §2)
 │   │   ├── plugin-inspector/       ✅        fiber tree + labelled effects (M0 exit criterion)
-│   │   ├── plugin-log-console/     ✅        logging transports: Cordis exporters, shared
-│   │   ├── plugin-log-file/        ✅          across platforms (04 §16)
-│   │   ├── plugin-log-buffer/      ✅
 │   │   ├── plugin-dsp/                       ctx.dsp — the effect chain (05 §3)
 │   │   ├── plugin-effect-eq10/               one DSP effect, as a plugin
 │   │   ├── plugin-download/                  media_bindings + before-resolve substitution
@@ -157,7 +177,7 @@ B_Be_Bee/
 │   │   ├── plugin-cache/                     the http/request cache layer
 │   │   └── plugin-…
 │   │
-│   ├── ui/                          🔹 LAYER 4 — views and UI infrastructure
+│   ├── ui/                          🔹 LAYER 5 — views and UI infrastructure
 │   │   │                                      Layout, gestures, event wiring, and the
 │   │   │                                      orchestration that turns one user intent into a
 │   │   │                                      sequence of feature calls. Anything you would
@@ -253,27 +273,29 @@ The example documents this repository ships live in `fixtures/sources/`, not in 
 
 ## 2. Package layering
 
-The same five layers as [02 §1](./02-architecture.md#1-the-layer-model), drawn as the actual
+The same six layers as [02 §1](./02-architecture.md#1-the-layer-model), drawn as the actual
 `package.json` graph. Every node is annotated with its layer, and every edge here is a real
 `dependencies` entry — the runtime edges that service keys create are deliberately absent, because
 this is the build graph.
 
 ```mermaid
 flowchart TD
-    apps["apps/* — L4 shells<br/>(boot.ts = composition root)"] --> uikit["ui-kit-mobile · ui-kit-desktop — L4"]
+    apps["apps/* — L5 shells<br/>(boot.ts = composition root)"] --> uikit["ui-kit-mobile · ui-kit-desktop — L5"]
     apps --> kernel["@BBeBee/kernel — L1"]
-    apps --> pluginui["plugin-*-ui-* — L4"]
+    apps --> pluginui["plugin-*-ui-* — L5"]
     pluginui --> uikit
-    pluginui --> uicore["ui-core — L4"]
+    pluginui --> uicore["ui-core — L5"]
     uikit --> uicore
-    uikit --> tokens["ui-tokens — L4"]
+    uikit --> tokens["ui-tokens — L5"]
     uicore --> protocol["@BBeBee/protocol — L0"]
-    pluginui -.->|types only| headless["plugin-* (headless) — L3"]
+    pluginui -.->|types only| headless["plugin-* (headless) — L4"]
     headless --> protocol
+    logs["plugin-log-* — L3"] --> protocol
     core["core-* — L2"] --> protocol
     core --> kernel
     kernel --> protocol
     apps --> core
+    apps --> logs
 ```
 
 Every arrow that is not into `@BBeBee/protocol` is a convenience. The arrows *into* `protocol` are
@@ -283,14 +305,21 @@ Two edges are worth reading twice, because they are the ones the layer model con
 than forbids:
 
 - **`apps/* → @BBeBee/kernel` and `apps/* → core-*`** exist only for the composition root — the
-  `boot.ts` / `plugins.ts` pair per shell. Every other file under `apps/*` is plain Layer 4 and is
+  `boot.ts` / `plugins.ts` pair per shell. Every other file under `apps/*` is plain Layer 5 and is
   linted as such ([§3](#3-dependency-rules)).
+- **`apps/* → plugin-log-*`** is the same exception for the same reason. The transports are
+  bootstrap entries, not registry ones — they come up after the core services and before the
+  feature plugins, which is what Layer 3 *means* — and only the composition root may name a
+  plugin by import. Nothing else in the repository imports a transport; everything logs through
+  `ctx.logger` ([04 §16](./04-core-services.md)).
 - **`core-* → @BBeBee/kernel`** is the one place the bootstrap surface is imported by a package
   rather than by a shell: `core-db-*` runs the core migrations and scopes contexts for the
   capability gate. That is Layer 2 doing its job as the adaptation layer.
 
-There is no `plugin-* → core-*` edge, on purpose. If one ever appears, the layer model is broken
-and `pnpm lint` says so.
+There is no `plugin-* → core-*` edge, on purpose, and no `plugin-* → plugin-log-*` edge either.
+If one ever appears, the layer model is broken and `pnpm lint` says so — with
+`layers.test.ts` behind it, because a lint pattern that matches nothing forbids nothing and reads
+exactly like one that works.
 
 ---
 
@@ -313,7 +342,7 @@ const PLATFORM_SDKS = [
 
 // 02 §1 — the kernel's plugin surface: the pinned Cordis re-exports, which
 // only *type* a plugin. An allow-list rather than a ban-list on the bootstrap
-// surface, so a new kernel export is closed to Layers 3 and 4 by default.
+// surface, so a new kernel export is closed to Layers 3, 4 and 5 by default.
 const KERNEL_PLUGIN_SURFACE = [
   'Context', 'Service', 'Inject', 'FiberState', 'fiberStateName', 'isActive', 'isSettled',
   'Plugin', 'Fiber', 'Effect', 'EffectMeta', 'InjectSpec', 'FiberStateName', 'FiberStateValue',
@@ -322,12 +351,18 @@ const KERNEL_PLUGIN_SURFACE = [
 const KERNEL_GUARD = {
   name: '@BBeBee/kernel',
   allowImportNames: KERNEL_PLUGIN_SURFACE,
-  message: 'Layers 3 and 4 may be typed by the kernel but may not drive it. See docs/02 §1.',
+  message: 'Layers 3, 4 and 5 may be typed by the kernel but may not drive it. See docs/02 §1.',
 }
 
 // Both forms: a gitignore-style `*` does not cross a `/`, so the bare name
 // alone would let `@BBeBee/core-desktop-bridge/main` through.
 const CORE_PACKAGES = ['@BBeBee/core-*', '@BBeBee/core-*/**']
+
+// 04 §16 — Layer 3. Everything above it logs through `ctx.logger`, so nothing
+// above it names a transport: an import pins one implementation into code
+// whose point is not to know, and keeps it loaded for as long as the importer
+// lives.
+const LOG_PACKAGES = ['@BBeBee/plugin-log-*', '@BBeBee/plugin-log-*/**']
 
 // The composition root: the only files that may call createApp and name a
 // Layer 2 package by import. `apps/*/generated/plugins.ts` is codegen and is
@@ -339,16 +374,41 @@ const COMPOSITION_ROOT = [
 
 export default tseslint.config(
   {
-    // 02 §1 — Layers 3 and 4, addressed by directory. Both invariants at once,
-    // at once, because ESLint *replaces* a rule's options rather than merging
-    // them: every block covering a file has to restate the whole ban, or the
+    // 02 §1 — Layers 4 and 5, addressed by directory. Every invariant at once,
+    // because ESLint *replaces* a rule's options rather than merging them:
+    // every block covering a file has to restate the whole ban, or the
     // narrower block silently disables the wider one.
     files: ['packages/feature/**/*.{ts,tsx}', 'packages/ui/**/*.{ts,tsx}',
             'packages/protocol/**/*.ts'],
     ignores: ['packages/ui/plugin-*-ui-*/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
-        paths: [KERNEL_GUARD], patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES],
+        paths: [KERNEL_GUARD],
+        patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES, ...LOG_PACKAGES],
+      }],
+      // 04 §16 — the other half of the same rule. A line written straight to
+      // the console skips the redactor and reaches neither the ring buffer nor
+      // the log file, which are what a bug report carries.
+      'no-console': 'error',
+    },
+  },
+  {
+    // 02 §1 — Layer 3 itself. Bound by THE invariant like everything above
+    // core, and exempt from `no-console`, which is the layer's job: it is the
+    // whole of plugin-log-console, and plugin-log-file's last resort when the
+    // write it exists to perform is the thing that failed.
+    //
+    // The negated pair is load-bearing. An extglob (`plugin-!(log-)*`) parses,
+    // matches nothing, and bans nothing while looking correct.
+    files: ['packages/logs/**/*.ts'],
+    ignores: ['packages/logs/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [KERNEL_GUARD],
+        patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES,
+                   '@BBeBee/plugin-*', '@BBeBee/plugin-*/**',
+                   '!@BBeBee/plugin-log-*', '!@BBeBee/plugin-log-*/**',
+                   '@BBeBee/ui-*', '@BBeBee/ui-*/**'],
       }],
     },
   },
@@ -357,16 +417,17 @@ export default tseslint.config(
     // and no Cordis. It takes a document and a string and returns a value;
     // every fetch belongs to plugin-source-runtime. Keeping it pure is what
     // makes the rule corpus in §6 runnable without a network, and it is the
-    // Layer 3 entry in 02 §1's testability table.
+    // Layer 4 entry in 02 §1's testability table.
     files: ['packages/feature/source-rules/**/*.ts'],
     rules: {
       'no-restricted-imports': ['error', {
-        patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES, 'cordis', '@BBeBee/kernel'],
+        patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES, ...LOG_PACKAGES,
+                   'cordis', '@BBeBee/kernel'],
       }],
     },
   },
   {
-    // 08 §1 — Layer 4 view packages may render, but may not reach the
+    // 08 §1 — Layer 5 view packages may render, but may not reach the
     // platform. `react-native` is allowed; its capability modules are not.
     files: ['packages/ui/plugin-*-ui-mobile/**/*.{ts,tsx}',
             'packages/ui/ui-kit-mobile/**/*.{ts,tsx}'],
@@ -374,8 +435,9 @@ export default tseslint.config(
       'no-restricted-imports': ['error', {
         paths: [KERNEL_GUARD],
         patterns: [...PLATFORM_SDKS.filter((p) => !p.startsWith('react-native')),
-                   ...CORE_PACKAGES],
+                   ...CORE_PACKAGES, ...LOG_PACKAGES],
       }],
+      'no-console': 'error',
     },
   },
   {
@@ -386,8 +448,10 @@ export default tseslint.config(
             'packages/ui/ui-kit-desktop/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', {
-        paths: [KERNEL_GUARD], patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES],
+        paths: [KERNEL_GUARD],
+        patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES, ...LOG_PACKAGES],
       }],
+      'no-console': 'error',
     },
   },
   {
@@ -419,18 +483,25 @@ export default tseslint.config(
     },
   },
   {
-    // 02 §1 — the shells are Layer 4 and reach Layer 2 through service keys.
-    // Platform SDKs are deliberately NOT banned: a shell owns genuinely
+    // 02 §1 — the shells are Layer 5 and reach Layers 2 and 3 through service
+    // keys. Platform SDKs are deliberately NOT banned: a shell owns genuinely
     // platform-bound chrome (08 §7). What it may not do is skip a layer.
+    //
+    // `no-console` is not set here either, and that is deliberate: a shell has
+    // to be able to report a failure that happened before any transport was
+    // loaded — a core service throwing means there is no ring buffer to read
+    // back and no file being written.
     files: ['apps/mobile/src/**/*.{ts,tsx}', 'apps/desktop/renderer/**/*.{ts,tsx}'],
     ignores: [...COMPOSITION_ROOT, '**/*.test.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': ['error', { paths: [KERNEL_GUARD], patterns: CORE_PACKAGES }],
+      'no-restricted-imports': ['error', {
+        paths: [KERNEL_GUARD], patterns: [...CORE_PACKAGES, ...LOG_PACKAGES],
+      }],
     },
   },
   {
     // 02 §2 — main is an IPC host. Domain logic there breaks platform symmetry,
-    // and it would put Layer 3 concerns below Layer 2.
+    // and it would put Layer 4 concerns below Layer 2.
     files: ['apps/desktop/main/**/*.ts'],
     rules: { 'no-restricted-imports': ['error', { patterns: ['@BBeBee/plugin-*'] }] },
   },
@@ -439,21 +510,22 @@ export default tseslint.config(
     // harness legitimately needs `node:fs` to build a scratch directory, and
     // a plugin's test legitimately loads a real core service to run against.
     files: ['**/*.test.{ts,tsx}'],
-    rules: { 'no-restricted-imports': 'off' },
+    rules: { 'no-restricted-imports': 'off', 'no-console': 'off' },
   },
 )
 ```
 
 Read as a matrix, that is the layer model with nothing left implicit:
 
-| | Layer 0 `protocol/` | Layer 1 `kernel/` | Layer 2 `core/` | Layer 3 `feature/` | Layer 4 `ui/`, `apps/*` | Platform SDK |
-|---|---|---|---|---|---|---|
-| **Layer 0** may import | — | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Layer 1** may import | ✅ | — | ❌ | ❌ | ❌ | ❌ |
-| **Layer 2** may import | ✅ | ✅ **all of it** | own package | ❌ | ❌ | ✅ **only here** |
-| **Layer 3** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | types only, of a sibling | ❌ | ❌ |
-| **Layer 4** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | ⚠️ types only | ✅ | ⚠️ view library in `ui/*`; platform chrome in `apps/*` |
-| **Composition root** may import | ✅ | ✅ | ✅ | ✅ (as registry data) | ✅ | ✅ |
+| | Layer 0 `protocol/` | Layer 1 `kernel/` | Layer 2 `core/` | Layer 3 `logs/` | Layer 4 `feature/` | Layer 5 `ui/`, `apps/*` | Platform SDK | `console.*` |
+|---|---|---|---|---|---|---|---|---|
+| **Layer 0** may import | — | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Layer 1** may import | ✅ | — | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Layer 2** may import | ✅ | ✅ **all of it** | own package | ❌ | ❌ | ❌ | ✅ **only here** | ❌ |
+| **Layer 3** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | a sibling transport | ❌ | ❌ | ❌ | ✅ **only here** |
+| **Layer 4** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | ❌ *(`ctx.logger`)* | types only, of a sibling | ❌ | ❌ | ❌ |
+| **Layer 5** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | ❌ *(`ctx.logger`)* | ⚠️ types only | ✅ | ⚠️ view library in `ui/*`; platform chrome in `apps/*` | ❌ |
+| **Composition root** may import | ✅ | ✅ | ✅ | ✅ (as bootstrap entries) | ✅ (as registry data) | ✅ | ✅ | ✅ |
 
 Three checks deliberately live in **tests** rather than ESLint, because a lint rule whose selector
 cannot be verified is worse than none — each of these ships with a self-test proving its detector
@@ -462,6 +534,7 @@ fires:
 | Check | Where | Protects |
 |---|---|---|
 | Un-awaited `ctx.plugin()`, and plugin entry points declared as a plain `function` | `kernel/src/conventions.test.ts` | [03 §2](./03-plugin-system.md) |
+| Every feature plugin calls `ctx.logger`, and nothing outside Layer 3 imports a transport | `kernel/src/conventions.test.ts`, `kernel/src/layers.test.ts` | [04 §16](./04-core-services.md) |
 | `KERNEL_PLUGIN_SURFACE` still equals the re-export block at the top of `kernel/src/index.ts`, and `createApp` is called only from the composition root | `kernel/src/layers.test.ts` | [02 §1](./02-architecture.md#the-invariant) |
 | Capability gates, and that no plugin holds a capability it does not use | the `*-scope` conformance suites and `conventions.test.ts` | [03 §7](./03-plugin-system.md#7-capability-model) |
 

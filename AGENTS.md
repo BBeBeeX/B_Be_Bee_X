@@ -92,10 +92,16 @@ layers is a `git mv` that changes its rules in the same commit.
 packages/protocol/    Layer 0 — contracts, zero runtime, zero dependencies
 packages/kernel/      Layer 1 — Cordis Context, DI, fibers, config, loader, gate, migrations
 packages/core/        Layer 2 — core capability services; the ONLY layer touching platform SDKs
-packages/feature/     Layer 3 — headless business features
-packages/ui/          Layer 4 — views and UI infrastructure  (apps/* are Layer 4 too)
+packages/logs/        Layer 3 — log transports; the ONLY layer that may write to the console
+packages/feature/     Layer 4 — headless business features
+packages/ui/          Layer 5 — views and UI infrastructure  (apps/* are Layer 5 too)
 packages/tooling/     outside the model — nothing here ships
 ```
+
+Layer 3 is thin on purpose: three plugins that subscribe to `ctx.logger` and put the lines
+somewhere — a ring buffer, a console, a rotating file. It sits above core because
+`plugin-log-file` writes through `ctx.fs`, and below feature because **every layer above it logs
+and none of them may know which transport is loaded** (docs/04 §16).
 
 ### "Depends on" means two different things
 
@@ -104,26 +110,39 @@ to break the architecture while appearing to follow it.
 
 - **Layer 2 depends on Layer 1 by importing it.** `core-db-node` imports `MigrationRunner` and
   `scopeContext` from `@BBeBee/kernel` and calls them. That is intended.
-- **Layers 3 and 4 depend on Layer 2 *without importing it*.** A feature plugin writes
+- **Layers 3, 4 and 5 depend on Layer 2 *without importing it*.** A feature plugin writes
   `inject: ['fs', 'http']` — naming service keys declared at Layer 0 — and the kernel binds them
   to whatever the shell registered. There is **no compile-time import from a `plugin-*` to a
   `core-*` anywhere in the repository**, and the `package.json` files are the proof.
+- **Layers 4 and 5 depend on Layer 3 the same way, through `ctx.logger`.** Cordis provides that
+  service itself, already scoped to the plugin's name, so a feature plugin calls
+  `ctx.logger.warn(…)` and never names a transport. `console.log` is not a smaller version of
+  that — it skips the redactor and never reaches the ring buffer or the log file, which are what
+  a bug report actually carries — so `no-console` is an error above Layer 3, and
+  `conventions.test.ts` requires every feature plugin to call `ctx.logger` at all.
 
 ### Import matrix
 
-| | L0 `protocol/` | L1 `kernel/` | L2 `core/` | L3 `feature/` | L4 `ui/`, `apps/*` | Platform SDK |
-|---|---|---|---|---|---|---|
-| **L0** may import | — | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **L1** may import | ✅ | — | ❌ | ❌ | ❌ | ❌ |
-| **L2** may import | ✅ | ✅ all of it | own package | ❌ | ❌ | ✅ **only here** |
-| **L3** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys)* | types only, of a sibling | ❌ | ❌ |
-| **L4** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys)* | ⚠️ types only | ✅ | ⚠️ view lib in `ui/*`; chrome in `apps/*` |
-| **Composition root** | ✅ | ✅ | ✅ | ✅ (as data) | ✅ | ✅ |
+| | L0 `protocol/` | L1 `kernel/` | L2 `core/` | L3 `logs/` | L4 `feature/` | L5 `ui/`, `apps/*` | Platform SDK |
+|---|---|---|---|---|---|---|---|
+| **L0** may import | — | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **L1** may import | ✅ | — | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **L2** may import | ✅ | ✅ all of it | own package | ❌ | ❌ | ❌ | ✅ **only here** |
+| **L3** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys)* | a sibling transport | ❌ | ❌ | ❌ |
+| **L4** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys)* | ❌ *(`ctx.logger`)* | types only, of a sibling | ❌ | ❌ |
+| **L5** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys)* | ❌ *(`ctx.logger`)* | ⚠️ types only | ✅ | ⚠️ view lib in `ui/*`; chrome in `apps/*` |
+| **Composition root** | ✅ | ✅ | ✅ | ✅ | ✅ (as data) | ✅ | ✅ |
 
-The kernel's **plugin surface** — the only kernel exports Layers 3 and 4 may import — is exactly:
+`console.*` is an error everywhere above Layer 3, and available inside it: writing to the console
+is what `plugin-log-console` *is*, and it is `plugin-log-file`'s last resort when the write it
+exists to perform is the thing that failed. The shells are the one exemption — a boot failure can
+happen before any transport has loaded, and the composition root is where the pieces do not exist
+yet.
+
+The kernel's **plugin surface** — the only kernel exports Layers 3, 4 and 5 may import — is exactly:
 `Context`, `Service`, `Inject`, `Plugin`, `Fiber`, `Effect`, `EffectMeta`, `InjectSpec`,
 `FiberState`, `FiberStateName`, `FiberStateValue`, `fiberStateName`, `isActive`, `isSettled`.
-It is an **allow-list**, so a new kernel export is closed to Layers 3 and 4 by default.
+It is an **allow-list**, so a new kernel export is closed to Layers 3, 4 and 5 by default.
 `packages/kernel/src/layers.test.ts` fails the build if the ESLint copy of that list drifts from
 the re-export block at the top of `packages/kernel/src/index.ts`.
 
@@ -146,7 +165,8 @@ does not know what a track is. HTTP routes through `main` because a renderer `fe
 `Origin`/`Referer`/`Cookie`/`User-Agent` and is subject to CORS.
 
 Desktop renderer runs with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`,
-and a strict CSP that is **not** extended — nothing loads foreign code.
+and a strict CSP whose only concession is `'wasm-unsafe-eval'`, for QuickJS — no foreign
+*JavaScript* loads.
 
 ---
 
@@ -159,6 +179,7 @@ packages/protocol/          @BBeBee/protocol: services/, entities/, events.ts, c
 packages/kernel/            @BBeBee/kernel:  bootstrap/, config/, loader/, capability-gate/,
                                              migrations/, plus workspace-scanning tests
 packages/core/core-*        one implementation per target per service key
+packages/logs/plugin-log-*  the three transports: buffer, console, file
 packages/feature/plugin-*   headless features; plus source-rules (pure logic, no Cordis, no I/O)
 packages/ui/                ui-tokens, ui-core, ui-parity, ui-kit-{mobile,desktop},
                             plugin-*-ui-{mobile,desktop}
@@ -174,8 +195,9 @@ test/stubs/                 the three native modules Node cannot load, aliased b
 | `protocol/` | 0 | `protocol` |
 | `kernel/` | 1 | `kernel` |
 | `core/` | 2 | `core-<service>-<platform>` |
-| `feature/` | 3 | `plugin-<feature>`, `plugin-effect-<id>`, and `source-rules` |
-| `ui/` | 4 | `plugin-<feature>-ui-<target>`, `ui-*` |
+| `logs/` | 3 | `plugin-log-<sink>` |
+| `feature/` | 4 | `plugin-<feature>`, `plugin-effect-<id>`, and `source-rules` |
+| `ui/` | 5 | `plugin-<feature>-ui-<target>`, `ui-*` |
 | `tooling/` | — | `tooling-*` |
 
 There is deliberately **no `plugin-source-<protocol>` prefix**. A music backend is a document,
@@ -289,6 +311,8 @@ no `experimentalDecorators`, Babel `@babel/plugin-proposal-decorators` `{ versio
 - [ ] Every listener, timer, socket and audio node registered through `ctx.effect()` or returned
       as a disposer; long async work takes an `AbortSignal`.
 - [ ] No module-level mutable state.
+- [ ] It logs, and it logs through `ctx.logger` — never `console.*`, which skips the redactor and
+      reaches neither the ring buffer nor the log file.
 - [ ] `Config` schema present if configurable, with defaults.
 - [ ] `BBeBee.plugin.json` declares the **minimum** capabilities that work.
 - [ ] Own tables declared via `ctx.db.defineSchema('plugin:<id>', …)`.
@@ -417,9 +441,9 @@ shells); plugin config → the kernel. **React holds no domain state** — only 
 ### The three-package convention
 
 ```
-@BBeBee/plugin-scrobble               ← headless (L3): service, state, events, persistence
-@BBeBee/plugin-scrobble-ui-mobile     ← React Native views (L4)
-@BBeBee/plugin-scrobble-ui-desktop    ← React DOM views (L4)
+@BBeBee/plugin-scrobble               ← headless (L4): service, state, events, persistence
+@BBeBee/plugin-scrobble-ui-mobile     ← React Native views (L5)
+@BBeBee/plugin-scrobble-ui-desktop    ← React DOM views (L5)
 ```
 
 > **A UI package contains no logic that would need to be written twice.**
@@ -501,7 +525,8 @@ the workspace) and **"the player plays the same track with and without `plugin-d
 Test conventions in this repo:
 
 - Tests live beside their subject as `*.test.ts` / `*.test.tsx` under `src/`; vitest's include
-  globs are `packages/*/*/src/**/*.test.{ts,tsx}` and `apps/*/**/*.test.ts`.
+  globs are `packages/*/*/src/**/*.test.{ts,tsx}`, `packages/*/src/**/*.test.{ts,tsx}` — Layers 0
+  and 1 are packages, not directories of packages — and `apps/*/**/*.test.ts`.
 - Environment is `node`. A test needing a DOM opts in per file with `// @vitest-environment jsdom`
   — `environmentMatchGlobs` was removed in Vitest 4 and failed silently.
 - `test/stubs/` aliases the three native modules Node cannot load: `react-native-audio-api` throws
@@ -590,6 +615,11 @@ Reality, not aspiration — check before relying on a doc statement:
 - **No Turborepo and no `turbo.json`.** The root scripts orchestrate with `pnpm -r`.
 - **No `pnpm source:check` / `pnpm source:record`.** They arrive with M2.
 - **No CI config in the repo.** `pnpm check` is the gate you run yourself.
+- **Layers 0 and 1 are single packages, not directories of them** — `packages/protocol/src` and
+  `packages/kernel/src` sit one level shallower than `packages/<layer>/<package>/src`. The vitest
+  include globs and the kernel tests' own `workspaceRoot` both have to carry both shapes; when
+  they carried only the deep one, every kernel and protocol test silently stopped being collected
+  and the run stayed green.
 - **Pinned versions drift from the `docs/09 §5` matrix** — `typescript` is 5.9.3 (the matrix says
   7.0.2, with a note to pin the latest 5.x if tooling lags). Read `package.json` and
   `pnpm-lock.yaml` as the authority on versions.

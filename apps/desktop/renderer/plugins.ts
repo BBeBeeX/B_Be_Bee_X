@@ -35,13 +35,20 @@ export const BOOTSTRAP_SERVICES = [
   'codec',
   'http',
   'audio',
+  // Layer 3. `plugin-log-buffer` is a bootstrap entry like the services above
+  // it, so the service it contributes is promised here rather than being
+  // reached through the registry (docs/09 §1).
+  'logBuffer',
 ] as const
 
 export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-ui': {},
-  '@BBeBee/plugin-log-console': { config: { level: 3 } },
-  '@BBeBee/plugin-log-buffer': {},
-  '@BBeBee/plugin-log-file': {},
+  /*
+   * No `plugin-log-*` here, deliberately. The logs layer loads from the
+   * `bootstrap:` array in `boot.ts`, which is what puts it between the core
+   * services and the feature plugins — a transport in this list would start
+   * alongside the features it is meant to be recording (docs/09 §1).
+   */
   '@BBeBee/plugin-inspector': {},
   '@BBeBee/plugin-inspector-ui-desktop': {},
 

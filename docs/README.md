@@ -63,9 +63,11 @@ A Cordis `Context` is created inside the app's single JavaScript runtime — Her
 Electron renderer on desktop. That context is **Layer 1**, the kernel. **Layer 2** is a small set
 of **core plugins** that claim service keys (`ctx.fs`, `ctx.http`, `ctx.db`, `ctx.js`, …); they are
 the *only* code in the repository allowed to import a platform SDK or to drive the kernel, and
-there is one implementation per target behind each key. Above them, **Layer 3** feature plugins
-provide playback, DSP, downloads, the library and the sources, and **Layer 4** — the shells and the
-view packages — turns those into pages; neither may reach past Layer 2 to the platform. All
+there is one implementation per target behind each key. Above them sits **Layer 3**, three log
+transports that subscribe to `ctx.logger` and decide where a line ends up; then **Layer 4** feature
+plugins provide playback, DSP, downloads, the library and the sources, and **Layer 5** — the shells
+and the view packages — turns those into pages. None of them may reach past Layer 2 to the
+platform, or past Layer 3 to a console. All
 contracts — service interfaces, entity types, and the typed event map — live in **Layer 0**, a
 single runtime-free package, `@BBeBee/protocol`, which every other layer depends on and which is
 the seam that makes implementations interchangeable. Features compose with each other through Cordis
@@ -80,9 +82,9 @@ from.
 
 ## Conventions used in these documents
 
-- **Layer 0–4** — the five layers of [02 §1](./02-architecture.md#1-the-layer-model): protocol,
-  kernel, core plugins, feature plugins, UI & business function. Written as "Layer 2" throughout;
-  a package's layer is what decides which imports it may write.
+- **Layer 0–5** — the six layers of [02 §1](./02-architecture.md#1-the-layer-model): protocol,
+  kernel, core plugins, log transports, feature plugins, UI & business function. Written as
+  "Layer 2" throughout; a package's layer is what decides which imports it may write.
 - **Service key** — a name claimed on the context, e.g. `ctx.player`. Written with the `ctx.`
   prefix throughout so it is never confused with a package name.
 - **Package name** — always fully qualified, e.g. `@BBeBee/plugin-download`.

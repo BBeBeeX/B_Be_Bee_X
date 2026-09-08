@@ -51,6 +51,20 @@ export default defineConfig({
       // workspace would.
       'packages/*/*/src/**/*.test.ts',
       'packages/*/*/src/**/*.test.tsx',
+      /*
+       * ⚠️ And `packages/<package>/src`, which is not the same shape.
+       *
+       * Layers 0 and 1 are single packages, not directories of them, so
+       * `packages/kernel/src` and `packages/protocol/src` sit one level
+       * shallower than everything else — and the glob above, added when the
+       * packages were grouped by layer, stopped matching them. Vitest reports
+       * files it did not collect as nothing at all, so the run stayed green
+       * while `layers.test.ts`, `conventions.test.ts`, `shells.test.ts` and
+       * `cordis-assumptions.test.ts` — the checks the architecture is
+       * *enforced* by — had not run in some time.
+       */
+      'packages/*/src/**/*.test.ts',
+      'packages/*/src/**/*.test.tsx',
       'apps/*/**/*.test.ts',
     ],
     environment: 'node',

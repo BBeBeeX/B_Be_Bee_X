@@ -27,9 +27,9 @@ keeps ADR-2 from doubling the *whole* feature instead of just its pixels.
 | `-ui-mobile` | 4 | Components and the descriptors that name them | `react`, `react-native`, `@BBeBee/ui-kit-mobile`, the headless package's **types** |
 | `-ui-desktop` | 4 | Components and the descriptors that name them | `react`, `react-dom`, `@BBeBee/ui-kit-desktop`, the headless package's **types** |
 
-The split is the Layer 3/Layer 4 boundary made concrete. Layer 4 is where business *orchestration*
+The split is the Layer 4/Layer 5 boundary made concrete. Layer 5 is where business *orchestration*
 lives — this button, then that confirmation, then this navigation — while the business *rule* it
-orchestrates stays at Layer 3, where it can be tested without a renderer and reused by the other
+orchestrates stays at Layer 4, where it can be tested without a renderer and reused by the other
 target's views unchanged.
 
 The rule that makes it work:

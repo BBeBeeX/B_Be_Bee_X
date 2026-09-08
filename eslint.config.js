@@ -9,8 +9,10 @@ import tseslint from 'typescript-eslint'
  *
  * They are the layer model of docs/02-architecture.md §1 made mechanical:
  *
- *   Layer 4  apps/* · packages/ui/*      pages, interactions, orchestration
- *   Layer 3  packages/feature/*          business features
+ *   Layer 5  apps/* · packages/ui/*      pages, interactions, orchestration
+ *   Layer 4  packages/feature/*          business features
+ *   Layer 3  packages/logs/*             log transports — the only layer that
+ *                                               may write to the console
  *   Layer 2  packages/core/*             the only layer allowed to call a
  *                                               platform SDK or drive the kernel
  *   Layer 1  packages/kernel      DI, fibers, config, loader, gate
@@ -20,10 +22,16 @@ import tseslint from 'typescript-eslint'
  * where it lives rather than by how it is spelled. Moving a package between
  * layers is the moment its rules change, and that is now one `git mv`.
  *
- * A layer names anything below it, but Layers 3 and 4 name Layer 2 through
+ * A layer names anything below it, but Layers 3, 4 and 5 name Layer 2 through
  * *service keys* declared at Layer 0 — never by import. That is what the
  * `@BBeBee/core-*` bans below are for; the docs/09 §3 matrix is this file,
  * read as a table.
+ *
+ * Layer 3 is reached the same way and by the same rule: a feature plugin logs
+ * through `ctx.logger`, which Cordis provides and the transports subscribe to,
+ * so it never names `@BBeBee/plugin-log-*` either. The pair of rules that make
+ * that real are the `LOG_PACKAGES` ban and `no-console` — one closes the
+ * import, the other closes the way around it.
  */
 
 /** Platform SDKs. See docs/02-architecture.md §1 — "the invariant". */
@@ -64,7 +72,7 @@ const PLATFORM_SDKS = [
  *
  * Expressed as an allow-list rather than a ban-list on purpose. The bootstrap
  * surface is long and grows; this one is short and is pinned to the shape of
- * upstream Cordis. A new kernel export is therefore closed to Layers 3 and 4
+ * upstream Cordis. A new kernel export is therefore closed to Layers 3, 4 and 5
  * by default, which is the safe direction to fail in — and
  * `kernel/src/layers.test.ts` keeps this list identical to the re-export block
  * at the top of `kernel/src/index.ts`.
@@ -93,7 +101,7 @@ const KERNEL_GUARD = {
   name: '@BBeBee/kernel',
   allowImportNames: KERNEL_PLUGIN_SURFACE,
   message:
-    'Layers 3 and 4 may import the pinned Cordis surface (Context, Service, Inject, ' +
+    'Layers 3, 4 and 5 may import the pinned Cordis surface (Context, Service, Inject, ' +
     'FiberState, …) but not the bootstrap surface — a plugin is handed a context, it ' +
     'does not build one. See docs/02 §1 — the invariant.',
 }
@@ -106,11 +114,26 @@ const KERNEL_GUARD = {
 const CORE_PACKAGES = ['@BBeBee/core-*', '@BBeBee/core-*/**']
 
 /**
+ * Layer 3 packages — the log transports — named as import patterns.
+ *
+ * Everything above Layer 3 logs through `ctx.logger`: Cordis provides it,
+ * already scoped per plugin, and a transport is a plugin that subscribes to it
+ * (docs/04 §16). So a feature or view package importing a transport is the
+ * same mistake as importing `core-fs-node` to read a file — it hard-wires one
+ * implementation into code whose whole point is not to know which one is
+ * loaded, and it makes the transport unloadable while that importer lives.
+ *
+ * Both forms for the same reason as `CORE_PACKAGES`: a gitignore-style `*`
+ * does not cross a `/`.
+ */
+const LOG_PACKAGES = ['@BBeBee/plugin-log-*', '@BBeBee/plugin-log-*/**']
+
+/**
  * The composition root: the only files allowed to call `createApp` and to name
  * a Layer 2 package by import. docs/02 §1 — "three deliberate exceptions".
  *
  * This is wiring, not business function. Everything else under `apps` is plain
- * Layer 4 and is linted as such. The generated `plugins.ts` beside each is the
+ * Layer 5 and is linted as such. The generated `plugins.ts` beside each is the
  * codegen half of the same job, and is in the global `ignores` above.
  */
 const COMPOSITION_ROOT = [
@@ -182,8 +205,23 @@ export default tseslint.config(
         // *replaces* a rule's options rather than merging them, so every block
         // that covers a file has to restate the whole ban. Splitting these
         // across two blocks would silently disable the first.
-        { paths: [KERNEL_GUARD], patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES] },
+        {
+          paths: [KERNEL_GUARD],
+          patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES, ...LOG_PACKAGES],
+        },
       ],
+      /*
+       * docs/04 §16 — everything above Layer 3 logs through `ctx.logger`.
+       *
+       * `console.log` is not a smaller version of that; it is a different
+       * thing wearing the same word. A line written straight to the console
+       * skips the redactor — so a token in an error object reaches a terminal
+       * and, on desktop, the devtools of a renderer that ships to users — and
+       * it is absent from the ring buffer and the log file, which are what a
+       * bug report actually carries. The transports are Layer 3 precisely so
+       * that "output a log line" has one answer everywhere above it.
+       */
+      'no-console': 'error',
     },
   },
 
@@ -198,8 +236,19 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES, 'cordis', '@BBeBee/kernel'] },
+        {
+          patterns: [
+            ...PLATFORM_SDKS,
+            ...CORE_PACKAGES,
+            ...LOG_PACKAGES,
+            'cordis',
+            '@BBeBee/kernel',
+          ],
+        },
       ],
+      // It has no `ctx` to log through, and a rule engine that printed would
+      // print once per rule per track. It returns values; the runtime logs.
+      'no-console': 'error',
     },
   },
 
@@ -221,9 +270,11 @@ export default tseslint.config(
           patterns: [
             ...PLATFORM_SDKS.filter((p) => !p.startsWith('react-native')),
             ...CORE_PACKAGES,
+            ...LOG_PACKAGES,
           ],
         },
       ],
+      'no-console': 'error',
     },
   },
 
@@ -243,7 +294,58 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': [
         'error',
-        { paths: [KERNEL_GUARD], patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES] },
+        {
+          paths: [KERNEL_GUARD],
+          patterns: [...PLATFORM_SDKS, ...CORE_PACKAGES, ...LOG_PACKAGES],
+        },
+      ],
+      'no-console': 'error',
+    },
+  },
+
+  {
+    /*
+     * docs/02 §1 — Layer 3, the log transports.
+     *
+     * Above Layer 2 and below Layer 4: it is bound by THE invariant like every
+     * other layer above core — a transport that wrote with `node:fs` would run
+     * on one platform and not the other, which is why `plugin-log-file` asks
+     * for `ctx.fs` and gets whichever implementation the shell registered.
+     *
+     * What it does *not* inherit is `no-console`. Writing to the console is
+     * this layer's job — it is the whole of `plugin-log-console`, and it is
+     * `plugin-log-file`'s last resort when the write it exists to perform is
+     * the thing that failed. A transport that reported that failure through
+     * `ctx.logger` would be feeding it back to itself.
+     *
+     * It may not import Layer 4 or 5 either: a transport that knew what a
+     * track was would be a feature, and would make the log layer unloadable
+     * without taking the feature with it.
+     */
+    files: ['packages/logs/**/*.ts'],
+    ignores: ['packages/logs/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [KERNEL_GUARD],
+          patterns: [
+            ...PLATFORM_SDKS,
+            ...CORE_PACKAGES,
+            // Gitignore syntax, negation included: every sibling plugin is
+            // out of reach except another transport. An extglob
+            // (`plugin-!(log-)*`) parses here and matches nothing, which bans
+            // nothing and looks right — the negated pair is the spelling that
+            // actually fires, and `layers.test.ts` checks the ban by
+            // exercising it rather than by reading it.
+            '@BBeBee/plugin-*',
+            '@BBeBee/plugin-*/**',
+            '!@BBeBee/plugin-log-*',
+            '!@BBeBee/plugin-log-*/**',
+            '@BBeBee/ui-*',
+            '@BBeBee/ui-*/**',
+          ],
+        },
       ],
     },
   },
@@ -326,8 +428,18 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': [
         'error',
-        { paths: [KERNEL_GUARD], patterns: CORE_PACKAGES },
+        { paths: [KERNEL_GUARD], patterns: [...CORE_PACKAGES, ...LOG_PACKAGES] },
       ],
+      /*
+       * `no-console` is deliberately NOT set here, unlike Layers 3 and 4.
+       *
+       * A shell has to be able to report a failure that happened *before* the
+       * transports were loaded — `createApp` throwing on a core service means
+       * there is no ring buffer to read back and no log file being written.
+       * The composition root is exempt from the ban for the same reason it is
+       * exempt from every other one: it is the place where the pieces do not
+       * exist yet.
+       */
     },
   },
 
@@ -347,6 +459,8 @@ export default tseslint.config(
     files: ['**/*.test.ts', '**/*.test.tsx'],
     rules: {
       'no-restricted-imports': 'off',
+      // Same bargain: a corpus run prints its summary, and nothing ships it.
+      'no-console': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-function-type': 'off',
     },

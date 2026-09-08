@@ -86,13 +86,13 @@ importers:
         version: link:../../packages/ui/plugin-local-scanner-ui-desktop
       '@BBeBee/plugin-log-buffer':
         specifier: workspace:*
-        version: link:../../packages/feature/plugin-log-buffer
+        version: link:../../packages/logs/plugin-log-buffer
       '@BBeBee/plugin-log-console':
         specifier: workspace:*
-        version: link:../../packages/feature/plugin-log-console
+        version: link:../../packages/logs/plugin-log-console
       '@BBeBee/plugin-log-file':
         specifier: workspace:*
-        version: link:../../packages/feature/plugin-log-file
+        version: link:../../packages/logs/plugin-log-file
       '@BBeBee/plugin-player':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-player
@@ -195,13 +195,13 @@ importers:
         version: link:../../packages/ui/plugin-local-scanner-ui-mobile
       '@BBeBee/plugin-log-buffer':
         specifier: workspace:*
-        version: link:../../packages/feature/plugin-log-buffer
+        version: link:../../packages/logs/plugin-log-buffer
       '@BBeBee/plugin-log-console':
         specifier: workspace:*
-        version: link:../../packages/feature/plugin-log-console
+        version: link:../../packages/logs/plugin-log-console
       '@BBeBee/plugin-log-file':
         specifier: workspace:*
-        version: link:../../packages/feature/plugin-log-file
+        version: link:../../packages/logs/plugin-log-file
       '@BBeBee/plugin-player':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-player
@@ -506,13 +506,13 @@ importers:
         version: link:../core-store-fs
       '@BBeBee/plugin-log-buffer':
         specifier: workspace:*
-        version: link:../../feature/plugin-log-buffer
+        version: link:../../logs/plugin-log-buffer
       '@BBeBee/plugin-log-console':
         specifier: workspace:*
-        version: link:../../feature/plugin-log-console
+        version: link:../../logs/plugin-log-console
       '@BBeBee/plugin-log-file':
         specifier: workspace:*
-        version: link:../../feature/plugin-log-file
+        version: link:../../logs/plugin-log-file
 
   packages/core/core-http-node:
     dependencies:
@@ -743,52 +743,6 @@ importers:
         specifier: ^19.2.0
         version: 19.2.18
 
-  packages/feature/plugin-log-buffer:
-    dependencies:
-      '@BBeBee/kernel':
-        specifier: workspace:*
-        version: link:../../kernel
-      '@BBeBee/protocol':
-        specifier: workspace:*
-        version: link:../../protocol
-      cordis:
-        specifier: 4.0.0-rc.9
-        version: 4.0.0-rc.9
-
-  packages/feature/plugin-log-console:
-    dependencies:
-      '@BBeBee/kernel':
-        specifier: workspace:*
-        version: link:../../kernel
-      '@BBeBee/protocol':
-        specifier: workspace:*
-        version: link:../../protocol
-      cordis:
-        specifier: 4.0.0-rc.9
-        version: 4.0.0-rc.9
-
-  packages/feature/plugin-log-file:
-    dependencies:
-      '@BBeBee/kernel':
-        specifier: workspace:*
-        version: link:../../kernel
-      '@BBeBee/protocol':
-        specifier: workspace:*
-        version: link:../../protocol
-      cordis:
-        specifier: 4.0.0-rc.9
-        version: 4.0.0-rc.9
-    devDependencies:
-      '@BBeBee/core-fs-node':
-        specifier: workspace:*
-        version: link:../../core/core-fs-node
-      '@BBeBee/core-paths-node':
-        specifier: workspace:*
-        version: link:../../core/core-paths-node
-      '@BBeBee/plugin-log-buffer':
-        specifier: workspace:*
-        version: link:../plugin-log-buffer
-
   packages/feature/plugin-player:
     dependencies:
       '@BBeBee/kernel':
@@ -951,6 +905,52 @@ importers:
       cordis:
         specifier: 4.0.0-rc.9
         version: 4.0.0-rc.9
+
+  packages/logs/plugin-log-buffer:
+    dependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+
+  packages/logs/plugin-log-console:
+    dependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+
+  packages/logs/plugin-log-file:
+    dependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+    devDependencies:
+      '@BBeBee/core-fs-node':
+        specifier: workspace:*
+        version: link:../../core/core-fs-node
+      '@BBeBee/core-paths-node':
+        specifier: workspace:*
+        version: link:../../core/core-paths-node
+      '@BBeBee/plugin-log-buffer':
+        specifier: workspace:*
+        version: link:../plugin-log-buffer
 
   packages/protocol:
     devDependencies:

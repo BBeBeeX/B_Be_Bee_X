@@ -118,6 +118,12 @@ export class SourceLocal extends Service {
     // proxy is not the function the fiber collects, and returning it leaves
     // the provider behind (docs/03 §2).
     const off = this.ctx.sources.register(this.provider())
+
+    // One line per source at startup is what makes "my local music is gone"
+    // answerable from a log file: either this is here and the provider
+    // registered, or it is not and the failure is upstream of the library
+    // screen that rendered empty (docs/04 §16).
+    this.ctx.logger.info(`source-local: registered '${this.sourceId}' as ${this.displayName}`)
     return () => off()
   }
 
@@ -266,6 +272,12 @@ export class SourceLocal extends Service {
     try {
       listing = await this.ctx.fs.list(uri)
     } catch (error) {
+      // Logged as well as thrown: the throw becomes a message on a screen the
+      // user may not be looking at, and by the time they report "the folder is
+      // empty" the only durable record is this line. Which folder failed is
+      // the whole diagnosis — a revoked SAF permission looks exactly like a
+      // removed drive from the UI.
+      this.ctx.logger.warn(`source-local: cannot read ${uri}: ${String(error)}`)
       throw new ProviderError(`cannot read ${uri}: ${String(error)}`, this.sourceId)
     }
 

@@ -237,14 +237,15 @@ Terms used with a precise meaning throughout these documents.
 
 | Term | Meaning |
 |---|---|
-| **Layer 0–4** | The five layers of [02 §1](./02-architecture.md#1-the-layer-model): **0** protocol, **1** kernel, **2** core plugins, **3** feature plugins, **4** UI & business function. A package's layer decides what it may import; Layer 2 is the only one allowed to touch a platform SDK or drive the kernel. |
+| **Layer 0–5** | The six layers of [02 §1](./02-architecture.md#1-the-layer-model): **0** protocol, **1** kernel, **2** core plugins, **3** log transports, **4** feature plugins, **5** UI & business function. A package's layer decides what it may import; Layer 2 is the only one allowed to touch a platform SDK or drive the kernel, and Layer 3 the only one allowed to write to the console. |
 | **Kernel** | `@BBeBee/kernel` — Cordis plus BBeBee's bootstrap, config loading, plugin resolution, and capability gate. Layer 1. Not a Cordis concept. |
 | **Context** (`ctx`) | A Cordis `Context`. Simultaneously a DI container, an event bus, and a lifecycle scope. Every plugin receives its own derived context. |
 | **Service** | A capability claimed on a stable context key (`ctx.fs`). Declared in `@BBeBee/protocol`, provided by exactly one plugin at a time within a given isolation scope. |
 | **Fiber** | Cordis's unit of plugin lifetime. Tracks state (`PENDING` → `LOADING` → `ACTIVE` → …), holds the plugin's disposables, and reloads the plugin when its dependencies change. |
 | **Effect** | A reversible side effect registered via `ctx.effect()`. The returned disposer runs automatically on unload. |
 | **Core plugin** | A plugin implementing a platform service. Lives in `packages/core/*`. Layer 2 — the only code permitted to import a platform SDK, and the only code permitted to call the kernel's bootstrap surface. |
-| **Feature plugin** | Everything headless that is not a core plugin. Layer 3. Reaches the platform only through service keys. |
+| **Feature plugin** | Everything headless that is not a core plugin or a log transport. Layer 4. Reaches the platform only through service keys, and logs only through `ctx.logger`. |
+| **Log transport** | A plugin that subscribes to `ctx.logger` and puts the lines somewhere: a ring buffer, the console, a rotating file. Layer 3. Loaded from the shell's bootstrap array, so it is running before the first feature plugin starts. |
 | **Source** | One music backend, as configured by the user. Identified by `sourceUrl`, addressed by a derived **source id**. Two Navidrome servers are two sources. |
 | **Source string** | The importable text form of a source: one JSON document, or an array of them (a *source set*). The unit users share. |
 | **Rule** | One field of a source document, written in the selector/template language of [06 §3](./06-music-sources.md#3-the-rule-language). |
@@ -254,7 +255,7 @@ Terms used with a precise meaning throughout these documents.
 | **Binding** | A `media_bindings` row tying a track URN to a concrete local file. What "this track is downloaded" actually means. |
 | **Chain** | An ordered list of DSP effects between the player's source node and the output. |
 | **Descriptor** | A renderer-agnostic UI contribution — a route, slot filling, command, or settings page — resolved to real components by whichever shell is running. |
-| **Shell** | The host application that mounts the UI: `apps/mobile` or `apps/desktop/renderer`. Layer 4, except for its **composition root** — the `boot.ts`/`plugins.ts` pair that wires Layer 2 implementations into the kernel. |
+| **Shell** | The host application that mounts the UI: `apps/mobile` or `apps/desktop/renderer`. Layer 5, except for its **composition root** — the `boot.ts`/`plugins.ts` pair that wires Layer 2 implementations into the kernel. |
 
 ---
 

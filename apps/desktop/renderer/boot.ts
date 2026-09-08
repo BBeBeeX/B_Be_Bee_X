@@ -39,6 +39,14 @@ import { JsQuickJsNode } from '@BBeBee/core-js-quickjs-node'
 import { CodecNode } from '@BBeBee/core-codec-node'
 import { HttpNode } from '@BBeBee/core-http-node'
 import { AudioWebAudio } from '@BBeBee/core-audio-webaudio'
+/*
+ * The logs layer (Layer 3). Imported here rather than enabled through the
+ * registry because it has to be *running* before the feature plugins whose
+ * first lines it exists to capture — see the bootstrap array below.
+ */
+import logBuffer from '@BBeBee/plugin-log-buffer'
+import logConsole from '@BBeBee/plugin-log-console'
+import logFile from '@BBeBee/plugin-log-file'
 
 import { bundled } from '../generated/plugins.js'
 import { BOOTSTRAP_SERVICES, ENABLED } from './plugins.js'
@@ -56,6 +64,19 @@ declare global {
 }
 
 const APP_VERSION = '0.0.0'
+
+/**
+ * Development build or shipped build.
+ *
+ * Read from how the renderer was loaded: Vite serves it over http in dev
+ * (`loadURL`), a packaged app is opened from disk (`loadFile`). No build-time
+ * define is involved, which matters because a sandboxed renderer has no
+ * `process` to read one from — and because the answer stays right if the
+ * bundler changes.
+ */
+function isDevelopment(): boolean {
+  return location.protocol === 'http:' || location.protocol === 'https:'
+}
 
 /** Electron's `process.platform`, as the protocol names it. */
 function hostPlatform(): 'macos' | 'windows' | 'linux' {
@@ -153,6 +174,27 @@ export async function boot(): Promise<App> {
        * package mobile loads, with a different context factory (docs/05 §1).
        */
       AudioWebAudio,
+
+      /*
+       * The logs layer — Layer 3, and it sits here for the reason the layer
+       * exists: after the core services it writes through, before every
+       * feature plugin whose lines it must not miss (docs/09 §1).
+       *
+       * A transport loaded from the registry alongside the features would be
+       * subscribing to `ctx.logger` *while* they start, and the lines lost
+       * that way are exactly the ones worth having — a scanner that failed on
+       * its first pass, a source that would not initialise.
+       *
+       * Which transports run is the shell's call, and the split is the one
+       * docs/04 §16 describes: the buffer always, because the in-app log
+       * viewer and a crash report read from it; the console only in
+       * development, where someone is watching it; the file only in a shipped
+       * build, where nobody is and the log has to survive being closed.
+       */
+      [logBuffer, {}],
+      ...(isDevelopment()
+        ? ([[logConsole, { level: 3 }]] as const)
+        : ([[logFile, { level: 2 }]] as const)),
     ],
     registry: bundled,
     config: { plugins: ENABLED },

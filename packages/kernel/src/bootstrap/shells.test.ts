@@ -26,7 +26,9 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { PluginManifest } from '@BBeBee/protocol'
 
-const workspaceRoot = fileURLToPath(new URL('../../../../..', import.meta.url))
+// `packages/kernel/src/bootstrap` → the repo root. One less `..` than the
+// layered packages need: Layer 1 is a package, not a directory of them.
+const workspaceRoot = fileURLToPath(new URL('../../../..', import.meta.url))
 
 interface Shell {
   name: 'desktop' | 'mobile'
@@ -236,6 +238,42 @@ describe.each(SHELLS)('the $name shell', (shell) => {
  * `plugin-inspector-ui-mobile` the path stops being covered and nothing else
  * would say so.
  */
+/**
+ * Where the logs layer comes up (docs/09 §1).
+ *
+ * It is Layer 3 — above the core services it writes through, below the feature
+ * plugins it records — and that ordering is not decoration: a transport loaded
+ * from the registry subscribes to `ctx.logger` *while* the features are
+ * starting, so the lines it misses are the first ones each of them wrote, which
+ * are the lines worth having when one of them did not start.
+ *
+ * The only place that ordering exists is the `bootstrap:` array, so this checks
+ * the two halves that can drift apart: nothing enables a transport through the
+ * config allowlist, and each shell's boot file actually loads all three.
+ */
+describe.each(SHELLS)('the $name shell logs layer', (shell) => {
+  const bootFile = shell.configFile.replace(/plugins\.ts$/, 'boot.ts')
+
+  it('is not enabled through the registry', async () => {
+    const { enabled } = await shellLists(shell)
+    const throughRegistry = enabled.filter((id) => id.startsWith('@BBeBee/plugin-log-'))
+    expect(
+      throughRegistry,
+      `${shell.name}: a transport in ENABLED starts alongside the features it is ` +
+        `meant to be recording; it belongs in the bootstrap array:\n  ${throughRegistry.join('\n  ')}`,
+    ).toEqual([])
+  })
+
+  it('is loaded from the bootstrap array instead', async () => {
+    const source = await readFile(join(workspaceRoot, bootFile), 'utf8')
+    for (const transport of ['plugin-log-buffer', 'plugin-log-console', 'plugin-log-file']) {
+      expect(source, `${shell.name}: ${bootFile} does not load ${transport}`).toContain(
+        `@BBeBee/${transport}`,
+      )
+    }
+  })
+})
+
 describe('a contribution with no view on one target', () => {
   it('is genuinely configured, so missingViews() is exercised', async () => {
     const desktop = await shellLists(SHELLS.find((s) => s.name === 'desktop')!)

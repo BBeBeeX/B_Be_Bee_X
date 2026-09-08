@@ -14,9 +14,6 @@ import pluginInspector from '@BBeBee/plugin-inspector'
 import pluginInspectorUi from '@BBeBee/plugin-inspector-ui-desktop'
 import pluginLocalScanner from '@BBeBee/plugin-local-scanner'
 import pluginLocalScannerUi from '@BBeBee/plugin-local-scanner-ui-desktop'
-import pluginLogBuffer from '@BBeBee/plugin-log-buffer'
-import pluginLogConsole from '@BBeBee/plugin-log-console'
-import pluginLogFile from '@BBeBee/plugin-log-file'
 import pluginPlayer from '@BBeBee/plugin-player'
 import pluginPlayerUi from '@BBeBee/plugin-player-ui-desktop'
 import pluginSourceLocal from '@BBeBee/plugin-source-local'
@@ -24,6 +21,9 @@ import pluginSourceRuntime from '@BBeBee/plugin-source-runtime'
 import pluginSources from '@BBeBee/plugin-sources'
 import pluginSourcesUi from '@BBeBee/plugin-sources-ui-desktop'
 import pluginUi from '@BBeBee/plugin-ui'
+import pluginLogBuffer from '@BBeBee/plugin-log-buffer'
+import pluginLogConsole from '@BBeBee/plugin-log-console'
+import pluginLogFile from '@BBeBee/plugin-log-file'
 
 export const bundled: PluginRegistry = {
   "@BBeBee/core-audio-webaudio": {
@@ -86,21 +86,6 @@ export const bundled: PluginRegistry = {
     manifest: {"id":"@BBeBee/plugin-local-scanner-ui-desktop","version":"0.0.0","displayName":"Local Scanner (desktop views)","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["scanner"]}},
     builtin: true,
   },
-  "@BBeBee/plugin-log-buffer": {
-    plugin: pluginLogBuffer,
-    manifest: {"id":"@BBeBee/plugin-log-buffer","version":"0.0.0","displayName":"Log Buffer","description":"In-app log ring buffer.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["logBuffer"]}},
-    builtin: true,
-  },
-  "@BBeBee/plugin-log-console": {
-    plugin: pluginLogConsole,
-    manifest: {"id":"@BBeBee/plugin-log-console","version":"0.0.0","displayName":"Console Logs","description":"Development console transport.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
-    builtin: true,
-  },
-  "@BBeBee/plugin-log-file": {
-    plugin: pluginLogFile,
-    manifest: {"id":"@BBeBee/plugin-log-file","version":"0.0.0","displayName":"Log File","description":"Rotating NDJSON log file.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:write:logs","fs:read:logs"]},
-    builtin: true,
-  },
   "@BBeBee/plugin-player": {
     plugin: pluginPlayer,
     manifest: {"id":"@BBeBee/plugin-player","version":"0.0.0","displayName":"Player","description":"ctx.player — transport, queue, resolution, history.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["audio","mediaSession","background","db:read:core","db:write:core"],"contributes":{"services":["player"]}},
@@ -134,6 +119,21 @@ export const bundled: PluginRegistry = {
   "@BBeBee/plugin-ui": {
     plugin: pluginUi,
     manifest: {"id":"@BBeBee/plugin-ui","version":"0.0.0","displayName":"UI Registry","description":"The ctx.ui contribution registry.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["ui"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-log-buffer": {
+    plugin: pluginLogBuffer,
+    manifest: {"id":"@BBeBee/plugin-log-buffer","version":"0.0.0","displayName":"Log Buffer","description":"In-app log ring buffer.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["logBuffer"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-log-console": {
+    plugin: pluginLogConsole,
+    manifest: {"id":"@BBeBee/plugin-log-console","version":"0.0.0","displayName":"Console Logs","description":"Development console transport.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
+    builtin: true,
+  },
+  "@BBeBee/plugin-log-file": {
+    plugin: pluginLogFile,
+    manifest: {"id":"@BBeBee/plugin-log-file","version":"0.0.0","displayName":"Log File","description":"Rotating NDJSON log file.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:write:logs","fs:read:logs"]},
     builtin: true,
   },
 }
