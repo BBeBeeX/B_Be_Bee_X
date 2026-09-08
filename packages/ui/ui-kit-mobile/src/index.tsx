@@ -126,8 +126,11 @@ function buttonStyle(variant: ButtonVariant, disabled: boolean): Record<string, 
   const p = c()
   const base = {
     minHeight: tokens.size.touchTarget,
-    paddingHorizontal: tokens.space[4],
-    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.space[5],
+    // A pill, as on desktop. The shape is the only cue that survives a UI
+    // with almost no borders, and the two kits have to agree on it or the
+    // same plugin looks like two products (docs/08 §6).
+    borderRadius: tokens.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     opacity: disabled ? 0.5 : 1,
@@ -136,7 +139,9 @@ function buttonStyle(variant: ButtonVariant, disabled: boolean): Record<string, 
   }
   switch (variant) {
     case 'secondary':
-      return { ...base, backgroundColor: p.bg.raised, borderColor: p.border.strong }
+      // Outlined, not filled — a filled secondary beside a filled primary
+      // makes two primaries.
+      return { ...base, backgroundColor: 'transparent', borderColor: p.border.strong }
     case 'ghost':
       return { ...base, backgroundColor: 'transparent' }
     case 'danger':
@@ -149,7 +154,8 @@ function buttonStyle(variant: ButtonVariant, disabled: boolean): Record<string, 
 function labelColor(variant: ButtonVariant): string {
   const p = c()
   if (variant === 'primary') return p.accent.on
-  if (variant === 'danger') return p.bg.base
+  if (variant === 'danger') return p.bg.sunken
+  if (variant === 'ghost') return p.text.secondary
   return p.text.primary
 }
 
@@ -233,9 +239,11 @@ export function TextField(props: TextFieldProps): ReactElement {
     autoCapitalize: 'none',
     style: {
       borderWidth: 1,
-      borderColor: invalid ? scheme.state.error : scheme.border.strong,
+      // Filled rather than outlined: on a dark canvas an outlined box reads as
+      // a disabled field, and the fill is what says "type here".
+      borderColor: invalid ? scheme.state.error : 'transparent',
       borderRadius: tokens.radius.sm,
-      backgroundColor: scheme.bg.raised,
+      backgroundColor: scheme.bg.overlay,
       color: scheme.text.primary,
       paddingHorizontal: tokens.space[3],
       paddingVertical: tokens.space[2],
@@ -260,8 +268,22 @@ export function TextField(props: TextFieldProps): ReactElement {
   )
 }
 
+/**
+ * Weight follows size — the same rule the desktop kit applies.
+ *
+ * The licensed display face is a lookup rather than a download, so the scale
+ * has to carry the design: a heading is recognisable by being heavy and large,
+ * not by being set in something distinctive.
+ */
+function weightFor(variant: NonNullable<TextProps['variant']>): string {
+  if (variant === 'display' || variant === 'xl') return tokens.font.weight.heavy
+  if (variant === 'lg') return tokens.font.weight.bold
+  return tokens.font.weight.regular
+}
+
 export function Text(props: TextProps): ReactElement {
   const { variant = 'md' } = props
+  const tight = variant === 'display' || variant === 'xl'
   return h(
     native.Text as never,
     {
@@ -272,7 +294,10 @@ export function Text(props: TextProps): ReactElement {
       allowFontScaling: true,
       style: {
         fontSize: tokens.font.size[variant],
-        lineHeight: tokens.font.size[variant] * tokens.font.lineHeight.normal,
+        fontWeight: weightFor(variant),
+        lineHeight:
+          tokens.font.size[variant] *
+          (tight ? tokens.font.lineHeight.tight : tokens.font.lineHeight.normal),
         color: toneColor(props.tone),
       },
     },
@@ -325,7 +350,10 @@ export function TrackRow(props: TrackRowProps): ReactElement {
         gap: tokens.space[3],
         height: tokens.size.row,
         paddingHorizontal: tokens.space[3],
-        backgroundColor: active ? p.accent.muted : 'transparent',
+        borderRadius: tokens.radius.sm,
+        // The playing row is green *text*, not a filled row: a fill here would
+        // compete with the press highlight and the two would read the same.
+        backgroundColor: 'transparent',
       },
     },
     showArtwork
@@ -454,13 +482,15 @@ export function Slider(props: SliderProps): ReactElement {
         // — must not leave the thumb stranded where the finger left it.
         onResponderTerminate: () => setDragging(undefined),
         onResponderTerminationRequest: () => false,
-        style: { height: 4, borderRadius: 2, backgroundColor: p.border.subtle },
+        style: { height: 4, borderRadius: 2, backgroundColor: p.bg.overlay },
       },
       h(native.View as never, {
         style: {
           height: 4,
           borderRadius: 2,
-          backgroundColor: p.accent.base,
+          // White at rest, like the desktop scrubber: a green rail at rest
+          // competes with every other accent on the screen.
+          backgroundColor: p.text.primary,
           width: `${props.max > 0 ? Math.min(100, (value / props.max) * 100) : 0}%`,
         },
       }),

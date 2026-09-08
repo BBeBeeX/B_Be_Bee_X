@@ -78,33 +78,68 @@ const toneColor = (tone: Tone | undefined): string => {
   }
 }
 
-function buttonStyle(variant: ButtonVariant, disabled: boolean): CSSProperties {
+/**
+ * A control is a **pill**, and the primary one grows a little under the
+ * pointer.
+ *
+ * Both are load-bearing rather than fashion. The fully rounded shape is what
+ * separates an action from a surface in a UI with almost no borders — when
+ * every panel is a dark rectangle, roundness is the only cue left that
+ * something is pressable. The 1.04 scale on hover replaces the colour change a
+ * lighter theme would use: on near-black, "slightly lighter" is invisible, and
+ * "slightly larger" is not.
+ */
+function buttonStyle(variant: ButtonVariant, disabled: boolean, hovered: boolean): CSSProperties {
   const p = c()
   const base: CSSProperties = {
     minHeight: tokens.size.touchTarget,
-    padding: `0 ${tokens.space[4]}px`,
-    borderRadius: tokens.radius.md,
+    padding: `0 ${tokens.space[5]}px`,
+    borderRadius: tokens.radius.pill,
     fontFamily: tokens.font.family.ui,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.medium,
+    fontSize: tokens.font.size.sm,
+    fontWeight: tokens.font.weight.bold,
+    letterSpacing: 0.2,
     cursor: disabled ? 'not-allowed' : 'pointer',
     // Never `outline: none`. Keyboard users lose the focus ring, which
     // docs/08 8 requires to be visible.
     outlineColor: p.border.strong,
     opacity: disabled ? 0.5 : 1,
-    transitionDuration: `${tokens.duration.fast}ms`,
+    transition: `transform ${tokens.duration.fast}ms, background-color ${tokens.duration.fast}ms, color ${tokens.duration.fast}ms, border-color ${tokens.duration.fast}ms`,
+    transform: hovered && !disabled ? 'scale(1.04)' : 'scale(1)',
     border: `1px solid transparent`,
   }
   switch (variant) {
     case 'secondary':
-      return { ...base, background: p.bg.raised, color: p.text.primary, borderColor: p.border.strong }
+      // Outlined, never filled: a filled secondary next to a filled primary
+      // makes two primaries.
+      return {
+        ...base,
+        background: 'transparent',
+        color: p.text.primary,
+        borderColor: hovered && !disabled ? p.text.primary : p.border.strong,
+      }
     case 'ghost':
-      return { ...base, background: 'transparent', color: p.text.primary }
+      return {
+        ...base,
+        background: 'transparent',
+        color: hovered && !disabled ? p.text.primary : p.text.secondary,
+        transform: 'scale(1)',
+      }
     case 'danger':
-      return { ...base, background: p.state.error, color: p.bg.base }
+      return { ...base, background: p.state.error, color: p.bg.sunken }
     default:
-      return { ...base, background: p.accent.base, color: p.accent.on }
+      return {
+        ...base,
+        background: hovered && !disabled ? p.accent.hover : p.accent.base,
+        color: p.accent.on,
+      }
   }
+}
+
+/** Pointer-over state, since this kit styles inline and has no `:hover`. */
+function useHover(): [boolean, { onMouseEnter: () => void; onMouseLeave: () => void }] {
+  const [hovered, setHovered] = useState(false)
+  return [hovered, { onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) }]
 }
 
 export function Button(props: ButtonProps) {
@@ -112,15 +147,17 @@ export function Button(props: ButtonProps) {
   // `loading` disables as well as showing progress: a second press during a
   // request is the classic double-submit.
   const off = disabled || loading
+  const [hovered, hoverProps] = useHover()
   return h(
     'button',
     {
       ...common(props),
+      ...hoverProps,
       type: 'button',
       disabled: off,
       'aria-busy': loading || undefined,
       onClick: off ? undefined : props.onPress,
-      style: buttonStyle(variant, off),
+      style: buttonStyle(variant, off, hovered),
     },
     loading ? '…' : (props.children as ReactNode),
   )
@@ -128,15 +165,17 @@ export function Button(props: ButtonProps) {
 
 export function IconButton(props: IconButtonProps): ReactElement {
   const { variant = 'ghost', disabled = false, size = tokens.size.icon } = props
+  const [hovered, hoverProps] = useHover()
   return h(
     'button',
     {
       ...common(props),
+      ...hoverProps,
       type: 'button',
       disabled,
       onClick: disabled ? undefined : props.onPress,
       style: {
-        ...buttonStyle(variant, disabled),
+        ...buttonStyle(variant, disabled, hovered),
         width: tokens.size.touchTarget,
         minHeight: tokens.size.touchTarget,
         padding: 0,
@@ -144,6 +183,8 @@ export function IconButton(props: IconButtonProps): ReactElement {
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: size,
+        // Round, because an icon has no text to give a pill its shape.
+        borderRadius: tokens.radius.pill,
       },
     },
     props.icon,
@@ -165,8 +206,10 @@ export function TextField(props: TextFieldProps): ReactElement {
     boxSizing: 'border-box' as const,
     padding: `${tokens.space[2]}px ${tokens.space[3]}px`,
     borderRadius: tokens.radius.sm,
-    border: `1px solid ${invalid ? scheme.state.error : scheme.border.strong}`,
-    background: scheme.bg.raised,
+    // Filled rather than outlined: on a dark canvas a box drawn in outline
+    // reads as a disabled field, and the fill is what says "type here".
+    border: `1px solid ${invalid ? scheme.state.error : 'transparent'}`,
+    background: scheme.bg.overlay,
     color: scheme.text.primary,
     // Monospace for a rule and for a pasted document: alignment is how an
     // author spots an unbalanced brace, and a proportional font hides it.
@@ -211,6 +254,20 @@ export function TextField(props: TextFieldProps): ReactElement {
   )
 }
 
+/**
+ * Weight follows size.
+ *
+ * The type scale is doing the work the typeface cannot — the licensed face is
+ * a lookup, not a download (see `ui-tokens`) — so a heading is recognisable by
+ * being *heavy and large*, not by being set in something distinctive. A 40px
+ * title at regular weight reads as a paragraph that got out of hand.
+ */
+function weightFor(variant: NonNullable<TextProps['variant']>): string {
+  if (variant === 'display' || variant === 'xl') return tokens.font.weight.heavy
+  if (variant === 'lg') return tokens.font.weight.bold
+  return tokens.font.weight.regular
+}
+
 export function Text(props: TextProps) {
   const { variant = 'md' } = props
   return h(
@@ -220,7 +277,11 @@ export function Text(props: TextProps) {
       style: {
         fontFamily: tokens.font.family.ui,
         fontSize: tokens.font.size[variant],
-        lineHeight: tokens.font.lineHeight.normal,
+        fontWeight: weightFor(variant),
+        lineHeight:
+          variant === 'display' || variant === 'xl'
+            ? tokens.font.lineHeight.tight
+            : tokens.font.lineHeight.normal,
         color: toneColor(props.tone),
         display: props.numberOfLines ? '-webkit-box' : undefined,
         WebkitLineClamp: props.numberOfLines,
@@ -264,6 +325,7 @@ export function Artwork(props: ArtworkProps) {
 export function TrackRow(props: TrackRowProps) {
   const { active = false, showArtwork = true, showAlbum = false } = props
   const p = c()
+  const [hovered, hoverProps] = useHover()
   const artists = props.track.artists?.map((a) => a.name).join(', ')
   return h(
     'div',
@@ -282,15 +344,21 @@ export function TrackRow(props: TrackRowProps) {
       onKeyDown: (event: { key: string }) => {
         if (event.key === 'Enter' || event.key === ' ') props.onPress?.()
       },
+      ...hoverProps,
       style: {
         display: 'flex',
         alignItems: 'center',
         gap: tokens.space[3],
         height: tokens.size.row,
         padding: `0 ${tokens.space[3]}px`,
+        borderRadius: tokens.radius.sm,
         cursor: props.onPress ? 'pointer' : 'default',
+        // The playing row is green *text* on the same surface as its
+        // neighbours — a filled row would compete with the hover fill, and
+        // then "playing" and "pointer is here" look like the same thing.
         color: active ? p.accent.base : p.text.primary,
-        background: active ? p.accent.muted : 'transparent',
+        background: hovered ? p.bg.overlay : 'transparent',
+        transition: `background-color ${tokens.duration.fast}ms`,
       },
     },
     showArtwork
@@ -313,6 +381,7 @@ export function TrackRow(props: TrackRowProps) {
 
 export function Slider(props: SliderProps) {
   const { disabled = false } = props
+  const [hovered, hoverProps] = useHover()
   // Track the drag locally so the thumb follows the pointer even while the
   // caller is still on the previous value.
   const [dragging, setDragging] = useState<number | undefined>(undefined)
@@ -328,6 +397,7 @@ export function Slider(props: SliderProps) {
 
   return h('input', {
     ...common(props),
+    ...hoverProps,
     type: 'range',
     min: 0,
     max: props.max,
@@ -345,7 +415,19 @@ export function Slider(props: SliderProps) {
     onPointerUp: () => commit(value),
     onKeyUp: () => commit(value),
     onBlur: () => setDragging(undefined),
-    style: { width: '100%', accentColor: c().accent.base },
+    /*
+     * White until you touch it, then green.
+     *
+     * `accent-color` paints the filled part of the rail and the thumb
+     * together, which is the whole control here — a scrubber that is green at
+     * rest competes with every other accent on the screen, and one that never
+     * turns green gives no feedback that it is grabbable.
+     */
+    style: {
+      width: '100%',
+      accentColor: hovered || dragging !== undefined ? c().accent.base : c().text.primary,
+      cursor: disabled ? 'default' : 'pointer',
+    },
   })
 }
 

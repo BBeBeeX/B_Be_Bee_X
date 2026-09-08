@@ -20,7 +20,13 @@ export * from './color.js'
 export type Scheme = 'light' | 'dark'
 
 export interface Palette {
-  bg: { base: string; raised: string; overlay: string }
+  /**
+   * `sunken` is the chrome the app sits *in* — the desktop rail and the
+   * transport bar — and it is deliberately darker than `base` rather than
+   * lighter. The layout reads as panels floating on a backdrop, which is what
+   * makes a sidebar feel like furniture instead of another card.
+   */
+  bg: { sunken: string; base: string; raised: string; overlay: string }
   text: { primary: string; secondary: string; disabled: string }
   accent: { base: string; hover: string; muted: string; on: string }
   state: { error: string; warn: string; ok: string }
@@ -40,19 +46,36 @@ export interface Palette {
  * runs that on every change.
  */
 const dark: Palette = {
-  bg: { base: '#0B0B0F', raised: '#15151C', overlay: '#1E1E28' },
-  text: { primary: '#F5F5F7', secondary: '#B4B4C4', disabled: '#7A7A8C' },
-  accent: { base: '#9B85FF', hover: '#B4A2FF', muted: '#2A2340', on: '#0B0B0F' },
-  state: { error: '#FF8080', warn: '#FFC04D', ok: '#5BE0A0' },
-  border: { subtle: '#2A2A36', strong: '#6E6E86' },
+  bg: { sunken: '#000000', base: '#121212', raised: '#181818', overlay: '#282828' },
+  text: { primary: '#FFFFFF', secondary: '#B3B3B3', disabled: '#6A6A6A' },
+  /**
+   * A green accent on near-black, and `on` is **black**.
+   *
+   * The accent is a fill first and a text colour second: it is the play
+   * button, the active row, the progress that has already played. Light text
+   * on a saturated green never clears AA — black on it clears 8:1 — which is
+   * why `on` is the darkest value in the palette rather than the lightest.
+   */
+  accent: { base: '#1DB954', hover: '#1ED760', muted: '#1B3D2B', on: '#000000' },
+  state: { error: '#F15E6C', warn: '#FFA42B', ok: '#1ED760' },
+  border: { subtle: '#282828', strong: '#7A7A7A' },
 }
 
+/**
+ * The same design, inverted — not the same hues lightened.
+ *
+ * The accent is the one value that cannot survive the trip: `#1DB954` on white
+ * is 2.6:1, so it fails as a boundary *and* as a fill under white text. The
+ * light scheme therefore uses a deeper green of the same family, which is what
+ * keeps "the accent" one idea across two schemes instead of one idea and one
+ * illegible souvenir of it.
+ */
 const light: Palette = {
-  bg: { base: '#FFFFFF', raised: '#F5F5F8', overlay: '#EDEDF2' },
-  text: { primary: '#16161C', secondary: '#54546A', disabled: '#8A8A9C' },
-  accent: { base: '#5B3FD1', hover: '#4A31B5', muted: '#EAE4FF', on: '#FFFFFF' },
-  state: { error: '#B3261E', warn: '#8A5A00', ok: '#0F6E4A' },
-  border: { subtle: '#E2E2EA', strong: '#86869A' },
+  bg: { sunken: '#F1F1F1', base: '#FFFFFF', raised: '#F6F6F6', overlay: '#EDEDED' },
+  text: { primary: '#000000', secondary: '#5E5E5E', disabled: '#8C8C8C' },
+  accent: { base: '#12833C', hover: '#0D6E36', muted: '#D7F2E2', on: '#FFFFFF' },
+  state: { error: '#C1291F', warn: '#8A5A00', ok: '#0E7A3D' },
+  border: { subtle: '#E5E5E5', strong: '#767676' },
 }
 
 export const palettes: Record<Scheme, Palette> = { light, dark }
@@ -69,12 +92,25 @@ export const tokens = {
   radius: { sm: 4, md: 8, lg: 16, pill: 999 } as const,
   font: {
     family: {
-      ui: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+      /**
+       * A geometric grotesque, then whatever the machine actually has.
+       *
+       * The named faces are looked up, never shipped: the renderer's CSP
+       * allows no foreign fonts, and a typeface is licensed to whoever
+       * installed it, not to this app. So the stack degrades to the system UI
+       * font, which is why the type scale below carries the weight of the
+       * design rather than the family does.
+       */
+      ui: '"Circular Std", Circular, Montserrat, Figtree, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
       mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
     },
     /** Relative on mobile, so the OS text-size setting is honoured (docs/08 §8). */
     size: { xs: 11, sm: 13, md: 15, lg: 20, xl: 28, display: 40 } as const,
-    weight: { regular: '400', medium: '500', bold: '700' } as const,
+    /**
+     * `heavy` is not decoration: the display sizes are set in it, and a 40px
+     * title at weight 700 reads as a large paragraph rather than a heading.
+     */
+    weight: { regular: '400', medium: '500', bold: '700', heavy: '900' } as const,
     lineHeight: { tight: 1.2, normal: 1.45, loose: 1.7 } as const,
   },
   duration: { fast: 120, normal: 200, slow: 320 } as const,
@@ -108,6 +144,8 @@ const CHECKED_PAIRS: {
   bg: (p: Palette) => string
   large?: boolean
 }[] = [
+  { pair: 'text.primary on bg.sunken', fg: (p) => p.text.primary, bg: (p) => p.bg.sunken },
+  { pair: 'text.secondary on bg.sunken', fg: (p) => p.text.secondary, bg: (p) => p.bg.sunken },
   { pair: 'text.primary on bg.base', fg: (p) => p.text.primary, bg: (p) => p.bg.base },
   { pair: 'text.primary on bg.raised', fg: (p) => p.text.primary, bg: (p) => p.bg.raised },
   { pair: 'text.primary on bg.overlay', fg: (p) => p.text.primary, bg: (p) => p.bg.overlay },
