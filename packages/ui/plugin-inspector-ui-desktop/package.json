@@ -28,13 +28,17 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@BBeBee/protocol": "workspace:*",
     "@BBeBee/kernel": "workspace:*",
+    "@BBeBee/protocol": "workspace:*",
     "cordis": "4.0.0-rc.9",
     "react": "19.2.3"
   },
   "devDependencies": {
     "@BBeBee/plugin-inspector": "workspace:*",
-    "@types/react": "^19.2.0"
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.7",
+    "react-dom": "19.2.3",
+    "vitest": "^4.1.11"
   }
 }

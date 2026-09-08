@@ -128,6 +128,18 @@ export interface UiService {
 no React at all. The shells cast at the boundary — one `as ComponentType` in one place per shell,
 rather than a React dependency reaching into the contract layer.
 
+> ⚠️ **Register a component bound to *your* context, never the shell's.** A shell renders a view
+> as `h(Component, { ctx })` with the context it was mounted on — `app.ready(['ui'])`, which has
+> `ui` injected and nothing else — and a cordis context throws for any property outside its inject
+> list. A screen that reads `ctx.player` or `ctx.inspector` off the forwarded prop therefore throws
+> *during render*, on a device, while every test that built a plain root context passed. Every view
+> package here closes over the context its own plugin was applied with (a local `bound(ctx, Screen)`
+> helper) and forwards the shell's other props; the one that did not shipped a page that rendered
+> as a black window.
+>
+> The shells catch it either way — a view that throws is caught per route and rendered as a named
+> failure, not as an unmounted app — but the boundary is a net, not the contract.
+
 ### Slots
 
 Well-known extension points, enumerated in `@BBeBee/protocol` so both shells implement the same set:

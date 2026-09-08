@@ -70,7 +70,7 @@ function Fiber({ node }: { node: FiberNode }): ReactElement {
   )
 }
 
-export function InspectorPanel({ ctx }: { ctx: Context }) {
+export function InspectorPanel({ ctx }: { ctx: Context }): ReactElement {
   const [snap, setSnap] = useState<InspectorSnapshot>(() => ctx.inspector.snapshot())
   // The fiber tree has no change event — plugins load and unload without
   // telling anyone — so the inspector polls. Cheap, and it is a dev tool.
@@ -97,6 +97,35 @@ export const name = 'plugin-inspector-ui-desktop'
 export const inject = ['ui', 'inspector']
 
 /**
+ * Bind a screen to *this* plugin's context, not the shell's.
+ *
+ * ⚠️ **This is what made the inspector page a black window.** The shell renders
+ * a view as `h(Component, { ctx })` with **its own** context — the one
+ * `main.tsx` got from `app.ready(['ui'])`, which has `ui` injected and nothing
+ * else. A cordis context throws for any property that was not injected, so
+ * `InspectorPanel` reading `ctx.inspector` off the forwarded context threw
+ * `cannot get property "inspector" without inject` *during render*. React has
+ * no error boundary above the shell, so it unmounted the whole tree and left
+ * the page showing the body's background.
+ *
+ * Registering a closure over the context this plugin was applied with is the
+ * fix, and it is what every other view package here already did — this one was
+ * the last that did not. The shell's props are still forwarded, so a view that
+ * takes more than `ctx` keeps working.
+ */
+function bound<P extends { ctx: Context }>(
+  ctx: Context,
+  Screen: (props: P) => ReactElement | null,
+): (props: Omit<P, 'ctx'>) => ReactElement | null {
+  // `h(Screen, …)`, not `Screen(…)`: calling a component as a function splices
+  // its hooks into this one's list, which works right up until someone renders
+  // it conditionally. An element keeps them separate.
+  return function Bound(props) {
+    return h(Screen, { ...props, ctx } as P)
+  }
+}
+
+/**
  * ⚠️ `async` is load-bearing, not decoration.
  *
  * Cordis decides "is this a class?" with `!!func.prototype`. A plain
@@ -107,9 +136,7 @@ export const inject = ['ui', 'inspector']
  */
 export async function apply(ctx: Context) {
   return ctx.effect(function* () {
-    yield ctx.ui.registerView(INSPECTOR_VIEW, ({ ctx: viewCtx }: { ctx: Context }) =>
-      h(InspectorPanel, { ctx: viewCtx }),
-    )
+    yield ctx.ui.registerView(INSPECTOR_VIEW, bound(ctx, InspectorPanel))
     yield ctx.ui.contribute({
       kind: 'route',
       id: INSPECTOR_VIEW,

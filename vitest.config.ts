@@ -66,6 +66,10 @@ export default defineConfig({
       'packages/*/src/**/*.test.ts',
       'packages/*/src/**/*.test.tsx',
       'apps/*/**/*.test.ts',
+      // `.tsx` under `apps/` too. The shells hold one piece of renderable
+      // code each — the sidebar and the pane that renders contributed views —
+      // and without this the file testing it is collected as nothing.
+      'apps/*/**/*.test.tsx',
     ],
     environment: 'node',
     /*

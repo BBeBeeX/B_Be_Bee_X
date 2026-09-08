@@ -6,7 +6,14 @@
  * ADR-2's desktop half (docs/08 §3).
  */
 
-import { createElement as h, useEffect, useState, type ComponentType } from 'react'
+import {
+  Component,
+  createElement as h,
+  useEffect,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from 'react'
 import type { Context } from 'cordis'
 import type { RouteContribution, SettingsContribution } from '@BBeBee/protocol'
 
@@ -60,6 +67,37 @@ function useEntries(ctx: Context): { routes: readonly RouteContribution[]; entri
       .map((s) => ({ id: s.id, title: s.title, group: 'settings' as const })),
   ]
   return { routes: state.routes, entries }
+}
+
+class ViewBoundary extends Component<
+  { title: string; onError: (error: Error) => void; children?: ReactNode },
+  { error?: Error }
+> {
+  override state: { error?: Error } = {}
+
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error }
+  }
+
+  override componentDidCatch(error: Error): void {
+    this.props.onError(error)
+  }
+
+  override render(): ReactNode {
+    const { error } = this.state
+    if (!error) return this.props.children
+
+    return h(
+      'div',
+      { style: { padding: 24, color: '#FF5C5C', fontFamily: 'ui-monospace, monospace' } },
+      h('h2', { style: { fontSize: 16, margin: '0 0 8px' } }, `"${this.props.title}" failed to render`),
+      h(
+        'pre',
+        { style: { margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, color: '#FFB020' } },
+        error.stack ?? error.message,
+      ),
+    )
+  }
 }
 
 export function Shell({ ctx }: { ctx: Context }) {
@@ -131,7 +169,18 @@ export function Shell({ ctx }: { ctx: Context }) {
       'main',
       { style: { overflow: 'auto' } },
       View
-        ? h(View, { ctx })
+        ? h(
+            ViewBoundary,
+            {
+              // Remounts on navigation, which is what clears a failed view once
+              // the user goes somewhere else and comes back.
+              key: active?.id,
+              title: active?.title ?? 'This view',
+              onError: (error) =>
+                ctx.logger.error(`ui: view "${active?.id}" threw: ${error.stack ?? error.message}`),
+            },
+            h(View, { ctx }),
+          )
         : h(
             'div',
             { style: { padding: 24, color: '#A0A0AE' } },

@@ -460,6 +460,12 @@ via `ctx.ui.registerView(id, component)`. `registerView` takes `unknown` deliber
 `@BBeBee/protocol` must not depend on React. Shells must render a placeholder, not break, when a
 contribution has no view for their target.
 
+> ⚠️ **Register a component bound to your own `ctx`, not the shell's.** The shell renders views
+> with the context it was mounted on (`app.ready(['ui'])` — `ui` injected and nothing else), and a
+> cordis context throws for any property outside its inject list. Reading `ctx.player` or
+> `ctx.inspector` off the forwarded prop throws during render; every view package closes over its
+> own plugin context with a local `bound(ctx, Screen)` for exactly this reason.
+
 ### Hooks
 
 `@BBeBee/ui-core` provides `useService` and `useServiceState(key, events, select)` over
