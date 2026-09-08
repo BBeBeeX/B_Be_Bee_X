@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Strict CSP. `BBeBee-plugin:` is listed ahead of M5's dynamic loader
          (docs/03 §6.2) so the policy does not have to change to enable it.
-
+         `'wasm-unsafe-eval'` is what lets QuickJS compile, and is not
+         `'unsafe-eval'`: no foreign JavaScript loads (docs/02 §2). -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' BBeBee-plugin:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'"
