@@ -334,7 +334,6 @@ export function Artwork(props: ArtworkProps): ReactElement {
 
 export function TrackRow(props: TrackRowProps): ReactElement {
   const { active = false, showArtwork = true, showAlbum = false } = props
-  const p = c()
   const artists = props.track.artists?.map((a) => a.name).join(', ')
   return h(
     native.Pressable as never,

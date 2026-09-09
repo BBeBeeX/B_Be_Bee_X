@@ -45,7 +45,7 @@ Read `01` and `02` first — they establish the vocabulary everything else uses.
 | 05 | `docs/05-audio-playback.md` | `ctx.audio`, `ctx.player`, the DSP chain |
 | 06 | `docs/06-music-sources.md` | The source document, the rule language, the runtime, trust |
 | 07 | `docs/07-data-model.md` | URNs, every table, the typed event map, migrations |
-| 08 | `docs/08-ui-architecture.md` | One plugin, two shells: descriptors, hooks, tokens |
+| 08 | `docs/08-ui-architecture.md` | One plugin, two shells: descriptors, hooks, tokens, and visual design |
 | 09 | `docs/09-project-structure.md` | Layout, dependency rules, build pipelines, testing, workflow |
 | 10 | `docs/10-roadmap.md` | Milestones with exit criteria, and the risk register |
 | 11 | `docs/11-roadmap-M1.md` | The current milestone in detail |
@@ -480,6 +480,36 @@ Tokens are **data, not components** (`@BBeBee/ui-tokens`, which also holds the W
 gate). Component parity between the two kits is a contract: both export the same component names
 with the same props, and `ui-parity` fails CI on divergence — without it the kits drift silently
 and every plugin author pays. Accessibility is not a phase-two concern.
+
+### Visual design language and style guide
+
+The visual presentation is an **immersive, dark-first streaming media aesthetic** (docs/08 §6):
+
+- **Surface hierarchy (luminance stepping, not borders)**:
+  - `bg.sunken` (`#000000`): Outer chassis, desktop sidebar/navigation rail, persistent bottom transport bar.
+  - `bg.base` (`#121212`): Main content canvas and scrollable lists.
+  - `bg.raised` (`#181818`): Media cards (album/playlist tiles) and elevated panels.
+  - `bg.overlay` (`#282828`): Modal dialogs, context menus, tooltips, and row/card hover states.
+  - `border.subtle` (`#282828`): Structural dividers; `border.strong` (`#7A7A7A`): Accessible focus outlines.
+- **Signature accent & contrast rules**:
+  - `accent.base` (`#1DB954`): High-vitality green for play buttons, active row titles, track scrubber fill, and toggles.
+  - `accent.on` is **black (`#000000`)**: Text or icons rendered on top of green fills must be black to meet WCAG AA (>8:1 contrast). Never place white text on green.
+  - Text hierarchy: `#FFFFFF` (`text.primary`) for titles and active items; `#B3B3B3` (`text.secondary`) for artists, album names, durations, and column headers; `#6A6A6A` (`text.disabled`).
+- **Typography (geometric grotesque)**:
+  - Stack: `"Circular Std", Circular, Montserrat, Figtree, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.
+  - Weight follows size: Display and XL headings use heavy `900` or bold `700` with tight line-height (`1.2`); track titles use bold `700` or medium `500`; secondary metadata uses regular `400`.
+- **Shapes & micro-interactions**:
+  - Controls are **pills (`radius.pill: 999`)**; primary buttons grow slightly on hover (`scale(1.04)` over `120ms`) to provide tactile feedback against dark canvases. Icon buttons are circular.
+  - Media cards (`radius.md: 8`, square artwork `radius.sm: 4`) reveal a floating circular green play button (`48px`, `#1DB954`, black play glyph) in the bottom-right corner of the cover on pointer hover.
+  - Track rows (`56px` height) show index/play button toggle on hover, highlight to `#282828`, and illuminate active playing track titles in vibrant green (`#1DB954`) with an audio equalizer icon.
+  - Seek scrubbers and volume sliders use a subtle grey track that fills with green (`#1DB954`) and reveals a circular thumb on hover/drag.
+- **Artwork & atmospheric theming**:
+  - Square artwork for tracks and albums; circular avatars for artists.
+  - Artwork renders `blurhash` first, with fallback to `artworks.dominant_color` to prevent grey flashes or layout shifts.
+  - Playlist and album detail hero banners extract `artworks.dominant_color` to generate a dynamic atmospheric vertical gradient fading into the `#121212` base canvas.
+- **Layout paradigm**:
+  - Desktop: 3-pane layout — sunken `#000000` sidebar/rail, rounded `#121212` content card with dynamic hero header gradient, and full-width persistent sunken `#000000` / `#181818` bottom transport bar.
+  - Mobile: Full-bleed dark screens with bottom tab bar, persistent floating mini-player, and expandable full-screen now-playing sheet.
 
 ---
 

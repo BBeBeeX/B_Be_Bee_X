@@ -50,7 +50,7 @@ Read `01` and `02` first — they establish the vocabulary every other document 
 | 05 | [Audio & Playback](./05-audio-playback.md) | The audio engine, the transport state machine, and the DSP effect chain |
 | 06 | [Music Sources](./06-music-sources.md) | The source string: its JSON, the rule language, the runtime, trust, import, and how a broken source is repaired |
 | 07 | [Data Model](./07-data-model.md) | Identity (URNs), every table, every runtime type, the event map, and migrations |
-| 08 | [UI Architecture](./08-ui-architecture.md) | How one plugin contributes UI to two very different shells |
+| 08 | [UI Architecture](./08-ui-architecture.md) | How one plugin contributes UI to two very different shells, tokens, and the visual design system |
 | 09 | [Project Structure](./09-project-structure.md) | Monorepo layout, build pipelines, version matrix, testing strategy |
 | 10 | [Roadmap & Risks](./10-roadmap.md) | Milestones with exit criteria, and what could go wrong |
 | 11 | [M1 Execution Plan](./11-roadmap-M1.md) | The current milestone in detail: work packages, build order, and how each M1 exit criterion is verified |

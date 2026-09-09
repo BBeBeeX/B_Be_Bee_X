@@ -18,7 +18,10 @@ of files on disk, a self-hosted server, whatever a source string describes. Two 
 underneath. There is no privileged "core" that owns the features: the library is a plugin, the
 downloader is a plugin, and so is the filesystem access the downloader uses. And a music source is
 not a package at all — it is a JSON document the user imports, interpreted by one built-in runtime
-([ADR-5](#adr-5--music-sources-are-imported-strings-interpreted-by-one-runtime)).
+([ADR-5](#adr-5--music-sources-are-imported-strings-interpreted-by-one-runtime)). Visually, the
+application follows an immersive dark-first streaming media aesthetic — pure black chrome, deep
+charcoal canvases, vibrant green playback accents, geometric grotesque typography, and pill-shaped
+interactive controls — detailed in [08 — UI Architecture](./08-ui-architecture.md#6-visual-design-language--design-tokens).
 
 ### Why build it this way
 
