@@ -102,7 +102,9 @@ export class Scanner extends Service implements ScannerService {
   static inject = ['fs', 'db', 'codec']
 
   private readonly config: Required<ScannerConfig>
-    private rootList: ScanRoot[] = []
+
+  private readonly ownCtx: Context
+  private rootList: ScanRoot[] = []
   private current?: ScanProgress
   private abort?: AbortController
   private watchers: Disposable[] = []
@@ -114,6 +116,7 @@ export class Scanner extends Service implements ScannerService {
 
   constructor(ctx: Context, config: ScannerConfig = {}) {
     super(ctx, 'scanner')
+    this.ownCtx = ctx
     this.config = {
       batchSize: config.batchSize ?? 200,
       extensions: (config.extensions ?? DEFAULT_EXTENSIONS).map((e) => e.toLowerCase()),
@@ -127,7 +130,7 @@ export class Scanner extends Service implements ScannerService {
     // A descriptor, not a component: the settings page is listed even on a
     // target whose view package was not loaded, which is what lets a shell
     // show "not available on this platform" rather than a hole (docs/08 §3).
-    this.ctx.inject(['ui'], (scoped) =>
+    this.ownCtx.inject(['ui'], (scoped) =>
       scoped.ui.contribute({
         kind: 'settings',
         id: SCANNER_VIEWS.settings,
@@ -176,25 +179,25 @@ export class Scanner extends Service implements ScannerService {
       recursive: opts.recursive ?? true,
       enabled: true,
     }
-    await this.ctx.db.exec(
+    await this.ownCtx.db.exec(
       `INSERT INTO scan_roots (id, uri, recursive, enabled) VALUES (?, ?, ?, 1)
        ON CONFLICT(uri) DO UPDATE SET enabled = 1`,
       [root.id, root.uri, root.recursive ? 1 : 0],
     )
     this.rootList = await this.loadRoots()
     await this.startWatching()
-    this.ctx.emit('scan/roots-changed', this.rootList)
+    this.ownCtx.emit('scan/roots-changed', this.rootList)
     return root
   }
 
   async removeRoot(id: string, opts: { forgetTracks?: boolean } = {}): Promise<void> {
     if (opts.forgetTracks) {
-      const entries = await this.ctx.db.query<{ uri: string }>(
+      const entries = await this.ownCtx.db.query<{ uri: string }>(
         'SELECT uri FROM scan_entries WHERE root_id = ?',
         [id],
       )
       const removed: string[] = []
-      await this.ctx.db.transaction(async (tx) => {
+      await this.ownCtx.db.transaction(async (tx) => {
         for (const entry of entries) {
           const { removedTrackUrn } = await forgetFile(
             { tx, sourceId: this.config.sourceId, now: Date.now() },
@@ -203,20 +206,20 @@ export class Scanner extends Service implements ScannerService {
           if (removedTrackUrn) removed.push(removedTrackUrn)
         }
       })
-      if (removed.length > 0) this.ctx.emit('library/changed', 'track', removed)
+      if (removed.length > 0) this.ownCtx.emit('library/changed', 'track', removed)
     }
     // `scan_entries` cascades from the root row.
-    await this.ctx.db.exec('DELETE FROM scan_roots WHERE id = ?', [id])
+    await this.ownCtx.db.exec('DELETE FROM scan_roots WHERE id = ?', [id])
     this.rootList = await this.loadRoots()
     await this.startWatching()
-    this.ctx.emit('scan/roots-changed', this.rootList)
+    this.ownCtx.emit('scan/roots-changed', this.rootList)
   }
 
   async setEnabled(id: string, on: boolean): Promise<void> {
-    await this.ctx.db.exec('UPDATE scan_roots SET enabled = ? WHERE id = ?', [on ? 1 : 0, id])
+    await this.ownCtx.db.exec('UPDATE scan_roots SET enabled = ? WHERE id = ?', [on ? 1 : 0, id])
     this.rootList = await this.loadRoots()
     await this.startWatching()
-    this.ctx.emit('scan/roots-changed', this.rootList)
+    this.ownCtx.emit('scan/roots-changed', this.rootList)
   }
 
   /* ── the walk ──────────────────────────────────────────────────────── */
@@ -281,7 +284,7 @@ export class Scanner extends Service implements ScannerService {
     summary: ScanSummary,
     opts: { full: boolean; signal: AbortSignal },
   ): Promise<void> {
-    this.ctx.emit('scan/started', root.id)
+    this.ownCtx.emit('scan/started', root.id)
     this.current = { rootId: root.id, done: 0 }
 
     let files: FileStat[]
@@ -291,7 +294,7 @@ export class Scanner extends Service implements ScannerService {
       files = walked.files
       truncated = walked.truncated
     } catch (error) {
-      await this.ctx.db.exec('UPDATE scan_roots SET last_error = ? WHERE id = ?', [
+      await this.ownCtx.db.exec('UPDATE scan_roots SET last_error = ? WHERE id = ?', [
         String(error),
         root.id,
       ])
@@ -300,7 +303,7 @@ export class Scanner extends Service implements ScannerService {
       // A root that could not be walked at all is maximally incomplete, and
       // nothing was reconciled — say so rather than reporting a clean scan
       // that happened to change nothing.
-      this.ctx.emit('scan/finished', root.id, {
+      this.ownCtx.emit('scan/finished', root.id, {
         added: summary.added,
         updated: summary.updated,
         removed: summary.removed,
@@ -313,7 +316,7 @@ export class Scanner extends Service implements ScannerService {
     this.current = { rootId: root.id, done: 0, total: files.length }
 
     const known = new Map<string, EntryRow>()
-    for (const row of await this.ctx.db.query<EntryRow>(
+    for (const row of await this.ownCtx.db.query<EntryRow>(
       'SELECT uri, size, mtime, status, track_urn FROM scan_entries WHERE root_id = ?',
       [root.id],
     )) {
@@ -327,10 +330,10 @@ export class Scanner extends Service implements ScannerService {
       const changed = await this.importBatch(root, batch, known, seen, summary, opts.full)
 
       this.current = { rootId: root.id, done: Math.min(i + batch.length, files.length), total: files.length }
-      this.ctx.emit('scan/progress', root.id, this.current.done, files.length)
+      this.ownCtx.emit('scan/progress', root.id, this.current.done, files.length)
       // Emitted per batch, so the library fills progressively rather than
       // after the whole walk — and so the FTS index keeps up.
-      if (changed.length > 0) this.ctx.emit('library/changed', 'track', changed)
+      if (changed.length > 0) this.ownCtx.emit('library/changed', 'track', changed)
     }
 
     /*
@@ -357,12 +360,12 @@ export class Scanner extends Service implements ScannerService {
       if (gone.length > 0) await this.forgetGone(gone, summary)
     }
 
-    await this.ctx.db.exec(
+    await this.ownCtx.db.exec(
       'UPDATE scan_roots SET last_scan_at = ?, last_error = NULL WHERE id = ?',
       [Date.now(), root.id],
     )
     this.rootList = await this.loadRoots()
-    this.ctx.emit('scan/finished', root.id, {
+    this.ownCtx.emit('scan/finished', root.id, {
       added: summary.added,
       updated: summary.updated,
       // Reported rather than inferred: a caller cannot tell a complete scan
@@ -400,9 +403,9 @@ export class Scanner extends Service implements ScannerService {
         continue
       }
       try {
-        const metadata = await this.ctx.codec.readMetadata(file.uri)
+        const metadata = await this.ownCtx.codec.readMetadata(file.uri)
         const artwork = metadata.hasArtwork
-          ? await this.ctx.codec.readArtwork(file.uri).catch(() => undefined)
+          ? await this.ownCtx.codec.readArtwork(file.uri).catch(() => undefined)
           : undefined
         prepared.push({ file, metadata, ...(artwork ? { artwork } : {}) })
       } catch (error) {
@@ -410,7 +413,7 @@ export class Scanner extends Service implements ScannerService {
       }
     }
 
-    await this.ctx.db.transaction(async (tx) => {
+    await this.ownCtx.db.transaction(async (tx) => {
       for (const item of prepared) {
         if (item.unchanged) continue
 
@@ -467,7 +470,7 @@ export class Scanner extends Service implements ScannerService {
   /** Files that are gone take their binding, and any orphaned track, with them. */
   private async forgetGone(uris: string[], summary: ScanSummary): Promise<void> {
     const removed: string[] = []
-    await this.ctx.db.transaction(async (tx) => {
+    await this.ownCtx.db.transaction(async (tx) => {
       for (const uri of uris) {
         const { removedTrackUrn } = await forgetFile(
           { tx, sourceId: this.config.sourceId, now: Date.now() },
@@ -478,19 +481,19 @@ export class Scanner extends Service implements ScannerService {
         summary.removed++
       }
     })
-    if (removed.length > 0) this.ctx.emit('library/changed', 'track', removed)
+    if (removed.length > 0) this.ownCtx.emit('library/changed', 'track', removed)
   }
 
   /** Ensure all scanned tracks and albums in the catalogue are recorded in library_items. */
   private async syncLibraryItems(): Promise<void> {
-    await this.ctx.db.exec(
+    await this.ownCtx.db.exec(
       `INSERT OR IGNORE INTO library_items (urn, kind, source_id, added_at, pinned, sort_key)
        SELECT t.urn, 'track', t.source_id, t.fetched_at, 0, t.sort_title
        FROM tracks t
        WHERE t.source_id = ?`,
       [this.config.sourceId],
     )
-    await this.ctx.db.exec(
+    await this.ownCtx.db.exec(
       `INSERT OR IGNORE INTO library_items (urn, kind, source_id, added_at, pinned, sort_key)
        SELECT al.urn, 'album', al.source_id, al.fetched_at, 0, al.sort_title
        FROM albums al
@@ -540,7 +543,7 @@ export class Scanner extends Service implements ScannerService {
         if (++listed > MAX_SCAN_DIRS) break
         let listing: FileStat[]
         try {
-          listing = await this.ctx.fs.list(dir)
+          listing = await this.ownCtx.fs.list(dir)
         } catch {
           /*
            * An unreadable directory is not a scan *failure* — a permissions
@@ -568,7 +571,8 @@ export class Scanner extends Service implements ScannerService {
 
     const truncated = queue.length > 0 || listed >= MAX_SCAN_DIRS || unreadable > 0
     if (unreadable > 0) {
-      this.ctx.logger.warn(
+      const ctx = this.ownCtx
+      ctx.logger.warn(
         `scanner: ${unreadable} director${unreadable === 1 ? 'y' : 'ies'} under ${uri} could ` +
           'not be read. This scan will not remove anything, because it did not see everything.',
       )
@@ -579,7 +583,8 @@ export class Scanner extends Service implements ScannerService {
       // the user can fix once they know it is there.
       const limit =
         listed >= MAX_SCAN_DIRS ? `${MAX_SCAN_DIRS} directories` : `depth ${MAX_SCAN_DEPTH}`
-      this.ctx.logger.warn(
+      const ctx = this.ownCtx
+      ctx.logger.warn(
         `scanner: stopped at ${limit} under ${uri} — a directory symlink loop, ` +
           'or a tree larger than any real library. This scan will not remove ' +
           'anything, because it did not see everything.',
@@ -603,10 +608,10 @@ export class Scanner extends Service implements ScannerService {
     const enabled = this.rootList.filter((r) => r.enabled)
     if (enabled.length === 0) return
 
-    if (this.ctx.fs.canWatch) {
+    if (this.ownCtx.fs.canWatch) {
       for (const root of enabled) {
         try {
-          const off = await this.ctx.fs.watch(root.uri, () => this.scheduleRescan(root.id))
+          const off = await this.ownCtx.fs.watch(root.uri, () => this.scheduleRescan(root.id))
           this.watchers.push(off)
         } catch {
           // A root that cannot be watched still gets scanned on demand.
@@ -626,7 +631,7 @@ export class Scanner extends Service implements ScannerService {
     // own timer. Without that fallback there was no automatic rescan on
     // desktop at all: files changed and the library silently stayed stale.
     let scheduled = false
-    this.ctx.inject(['background'], (scoped) => {
+    this.ownCtx.inject(['background'], (scoped) => {
       scheduled = true
       let cancelled = false
       void scoped.background
@@ -680,7 +685,7 @@ export class Scanner extends Service implements ScannerService {
   /* ── bookkeeping ───────────────────────────────────────────────────── */
 
   private async loadRoots(): Promise<ScanRoot[]> {
-    const rows = await this.ctx.db.query<{
+    const rows = await this.ownCtx.db.query<{
       id: string
       uri: string
       recursive: number
@@ -717,7 +722,7 @@ export class Scanner extends Service implements ScannerService {
       sourceName: 'This device',
       sourceComment: 'Files on this device. Managed by the scanner, not imported.',
     })
-    await this.ctx.db.exec(
+    await this.ownCtx.db.exec(
       `INSERT INTO sources (id, source_url, name, source_type, doc_json, doc_hash,
                             enabled, imported_at, updated_at)
        VALUES (?, ?, 'This device', 'music', ?, ?, 1, ?, ?)
@@ -741,6 +746,7 @@ export const name = 'plugin-local-scanner'
  * `ctx.scanner` is usable.
  */
 export async function apply(ctx: Context, config: ScannerConfig = {}) {
+  ctx.logger.info('plugin-local-scanner: loaded')
   const fiber = await ctx.plugin(Scanner, config)
   return () => void fiber.dispose()
 }

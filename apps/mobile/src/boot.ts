@@ -184,8 +184,8 @@ export async function boot(): Promise<App> {
        * to survive being closed.
        */
       [logBuffer, {}],
-      ...(__DEV__
-        ? ([[logConsole, { level: 3, debug: isDebug() }]] as const)
+      ...(isDebug()
+        ? ([[logConsole, { level: 3, debug: true }]] as const)
         : ([[logFile, { level: 2 }]] as const)),
     ],
     registry: bundled,
