@@ -429,7 +429,7 @@ The scale relies on **"weight follows size"**:
   - Displays index number, artwork thumbnail (`48px` square, `radius.sm: 4px`), track title in
     `#FFFFFF`, artists in `#B3B3B3`, album name, and duration.
   - On hover, the row illuminates (`#282828`), the track number is replaced by a play icon (`▶`),
-    and quick actions (heart/save, context menu `···`) become visible.
+    and quick actions (heart/loved toggle button `♥`/`♡` via `onToggleLoved`, context menu `···`) become visible.
   - When actively playing, the track title, track number, and equalizer icon illuminate in
     signature green (`#1DB954`).
 - **Scrubbers & sliders (`Slider`)**:
@@ -454,14 +454,16 @@ The scale relies on **"weight follows size"**:
     Search, Your Library) and scrollable playlist list.
   - **Center main content card (`#121212`, rounded corners)**: Scrollable canvas hosting the
     dynamic gradient hero header, action bar (large green circular play button, heart/save, `···`),
-    and virtualized track list or media card grid.
+    and virtualized track list or media card grid. The Library view organizes items through
+    top-level scopes (`All`, `Local`, `Favorites`) and content views (`Tracks`, `Albums`).
   - **Persistent bottom playback bar (sunken `#000000` / `#181818`)**: Spans the entire window width.
     Left: current track artwork thumbnail, track title (`#FFFFFF`), artist subtitle (`#B3B3B3`),
     save button. Center: transport buttons (shuffle, previous, oversized circular play/pause button,
     next, repeat) and time scrubber. Right: volume slider and utility toggles (queue, lyrics,
     device picker).
 - **Mobile Shell**:
-  - Clean full-bleed dark views with bottom navigation tab bar.
+  - Clean full-bleed dark views with bottom navigation tab bar and scoped library filtering
+    (`All` / `Local` / `Favorites`).
   - Persistent mini-player docked directly above the tab bar showing cover thumbnail, marquee title,
     artist name, play/pause toggle, and a hairline playback progress bar.
   - Full-screen now-playing sheet: Expanding the mini-player slides up an immersive player featuring

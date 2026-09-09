@@ -52,6 +52,8 @@ export interface TrackRowProps extends CommonProps {
   onPress?: () => void
   /** Overflow. Desktop also binds right-click; mobile a long-press. */
   onMore?: () => void
+  /** Toggle loved/favorite status. */
+  onToggleLoved?: () => void
   /** This is the *playing* track, which is not the same as selected. */
   active?: boolean
   showArtwork?: boolean

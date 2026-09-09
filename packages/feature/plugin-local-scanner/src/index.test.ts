@@ -161,6 +161,18 @@ describe('scanning', () => {
       "SELECT value FROM external_ids WHERE namespace = 'isrc'",
     )
     expect(external?.value, 'recorded now so M2 can link on it').toBe('ISRC123')
+
+    const libraryTracks = await h.db.query<{ urn: string; kind: string; source_id: string }>(
+      "SELECT urn, kind, source_id FROM library_items WHERE kind = 'track'",
+    )
+    expect(libraryTracks).toHaveLength(2)
+    expect(libraryTracks[0]!.source_id).toBe('local')
+
+    const libraryAlbums = await h.db.query<{ urn: string; kind: string; source_id: string }>(
+      "SELECT urn, kind, source_id FROM library_items WHERE kind = 'album'",
+    )
+    expect(libraryAlbums).toHaveLength(1)
+    expect(libraryAlbums[0]!.source_id).toBe('local')
   })
 
   it('rescans an unchanged library with stat calls and nothing else', async () => {
@@ -386,6 +398,7 @@ describe('scanning', () => {
       'a binding whose file is gone is deleted, not left to fail at play time',
     ).toHaveLength(0)
     expect(await h.db.query('SELECT uri FROM scan_entries WHERE uri = ?', [a])).toHaveLength(0)
+    expect(await h.db.query("SELECT urn FROM library_items WHERE kind = 'track'")).toHaveLength(1)
   })
 
   it('gives the same track the same URN on every scan', async () => {
@@ -400,6 +413,43 @@ describe('scanning', () => {
     const after = await h.db.query<{ urn: string }>('SELECT urn FROM tracks')
     expect(after).toHaveLength(1)
     expect(after[0]!.urn).toBe(before!.urn)
+  })
+
+  it('manages library_items for scanned tracks and albums', async () => {
+    const h = await harness()
+    const t1 = await h.write('t1.mp3')
+    const t2 = await h.write('t2.mp3')
+
+    h.codec.tags.set(t1, { title: 'Track 1', album: 'Album A', artist: 'Artist A', hasArtwork: false })
+    h.codec.tags.set(t2, { title: 'Track 2', album: 'Album A', artist: 'Artist A', hasArtwork: false })
+
+    await h.scanner.addRoot(h.uri)
+    await h.scanner.scan()
+
+    const itemsBefore = await h.db.query<{ urn: string; kind: string }>(
+      'SELECT urn, kind FROM library_items ORDER BY kind, urn',
+    )
+    expect(itemsBefore.filter((i) => i.kind === 'album')).toHaveLength(1)
+    expect(itemsBefore.filter((i) => i.kind === 'track')).toHaveLength(2)
+
+    // Remove one track: album should still be in library_items
+    await rm(new URL(t1))
+    await h.scanner.scan()
+
+    const itemsMid = await h.db.query<{ urn: string; kind: string }>(
+      'SELECT urn, kind FROM library_items ORDER BY kind, urn',
+    )
+    expect(itemsMid.filter((i) => i.kind === 'album')).toHaveLength(1)
+    expect(itemsMid.filter((i) => i.kind === 'track')).toHaveLength(1)
+
+    // Remove the remaining track: album should be removed from library_items
+    await rm(new URL(t2))
+    await h.scanner.scan()
+
+    const itemsAfter = await h.db.query<{ urn: string; kind: string }>(
+      'SELECT urn, kind FROM library_items',
+    )
+    expect(itemsAfter).toHaveLength(0)
   })
 
   it('checkpoints per batch and reports progress', async () => {
@@ -466,6 +516,7 @@ describe('roots', () => {
 
     await h.scanner.removeRoot(root.id, { forgetTracks: true })
     expect(await h.db.query('SELECT urn FROM tracks')).toHaveLength(0)
+    expect(await h.db.query('SELECT urn FROM library_items')).toHaveLength(0)
     expect(await h.db.query('SELECT id FROM scan_roots')).toHaveLength(0)
   })
 })

@@ -273,4 +273,47 @@ describe('LibraryScreen', () => {
       'tapping a track with no player must be a no-op, not an uncaught error',
     ).toEqual([])
   })
+
+  it('switches between all, local, and favorites scopes', async () => {
+    const { ctx, admin } = await harness()
+    await withTrack(admin)
+
+    await withListLayout(async () => {
+      const view = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Initially "All" scope shows the track
+      expect(view.container.textContent).toContain('Jóga')
+
+      // Find the Favorites button and click it
+      const favoritesBtn = Array.from(view.container.querySelectorAll('button')).find(
+        (b) => b.textContent === 'Favorites',
+      )
+      expect(favoritesBtn).toBeTruthy()
+
+      await act(async () => {
+        favoritesBtn!.click()
+        await tick()
+      })
+
+      // In favorites scope, since Jóga is not loved yet, empty state is shown
+      expect(view.container.textContent).toContain('No favorites yet')
+
+      // Click "Local" button
+      const localBtn = Array.from(view.container.querySelectorAll('button')).find(
+        (b) => b.textContent === 'Local',
+      )
+      expect(localBtn).toBeTruthy()
+
+      await act(async () => {
+        localBtn!.click()
+        await tick()
+      })
+
+      // In local scope, Jóga is from 'local' source so it appears
+      expect(view.container.textContent).toContain('Jóga')
+    })
+  })
 })

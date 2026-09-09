@@ -422,6 +422,10 @@ export function useSourceTrace(ctx: Context, sourceId: string | undefined): Trac
   return { events, running, run, clear }
 }
 
+export function useSetLoved(ctx: Context): (urn: string, loved: boolean) => Promise<void> {
+  return useCallback((urn: string, loved: boolean) => ctx.sources.setLoved(urn, loved), [ctx])
+}
+
 
 /** A pasted document's display name, before anything has validated it. */
 function nameOf(value: unknown): string {

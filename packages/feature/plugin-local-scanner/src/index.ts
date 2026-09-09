@@ -254,6 +254,9 @@ export class Scanner extends Service implements ScannerService {
         if (abort.signal.aborted) break
         await this.scanRoot(root, summary, { full: opts.full ?? false, signal: abort.signal })
       }
+      if (!abort.signal.aborted) {
+        await this.syncLibraryItems()
+      }
     } finally {
       signal?.removeEventListener('abort', onExternalAbort)
       this.abort = undefined
@@ -467,6 +470,25 @@ export class Scanner extends Service implements ScannerService {
       }
     })
     if (removed.length > 0) this.ctx.emit('library/changed', 'track', removed)
+  }
+
+  /** Ensure all scanned tracks and albums in the catalogue are recorded in library_items. */
+  private async syncLibraryItems(): Promise<void> {
+    await this.ctx.db.exec(
+      `INSERT OR IGNORE INTO library_items (urn, kind, source_id, added_at, pinned, sort_key)
+       SELECT t.urn, 'track', t.source_id, t.fetched_at, 0, t.sort_title
+       FROM tracks t
+       WHERE t.source_id = ?`,
+      [this.config.sourceId],
+    )
+    await this.ctx.db.exec(
+      `INSERT OR IGNORE INTO library_items (urn, kind, source_id, added_at, pinned, sort_key)
+       SELECT al.urn, 'album', al.source_id, al.fetched_at, 0, al.sort_title
+       FROM albums al
+       WHERE al.source_id = ?
+         AND EXISTS (SELECT 1 FROM tracks t WHERE t.album_urn = al.urn)`,
+      [this.config.sourceId],
+    )
   }
 
   /**

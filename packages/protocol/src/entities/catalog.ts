@@ -93,6 +93,7 @@ export interface Track {
   available?: boolean
   artwork?: ArtworkRef
   externalIds?: ExternalIds
+  loved?: boolean
 }
 
 /** Identifiers that let the same recording be recognised across providers. */

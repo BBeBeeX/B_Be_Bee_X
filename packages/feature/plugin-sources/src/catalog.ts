@@ -54,6 +54,7 @@ interface TrackRow {
   blurhash: string | null
   dominant_color: string | null
   artwork_source_url: string | null
+  loved?: number | null
 }
 
 interface AlbumRow {
@@ -185,11 +186,13 @@ export class Catalog {
     const order = trackOrder(query.sort)
     const direction = query.desc ? 'DESC' : 'ASC'
     const filter = sourceFilter('t', query.sourceIds)
+    const lovedFilter = query.onlyLoved ? ' AND COALESCE(st.loved, 0) = 1' : ''
 
     const rows = await this.db.query<TrackRow>(
       `SELECT t.urn, t.title, t.sort_title, t.album_urn, al.title AS album_title,
               t.track_no, t.disc_no, t.duration_ms, t.year, t.explicit, t.bpm,
               t.replay_gain_track, t.replay_gain_album, t.peak_track, t.available,
+              COALESCE(st.loved, 0) AS loved,
               ${ARTWORK_COLUMNS}
          FROM tracks t
          LEFT JOIN albums al ON al.urn = t.album_urn
@@ -197,7 +200,7 @@ export class Catalog {
          LEFT JOIN track_stats st ON st.urn = t.urn
          LEFT JOIN track_artists ta ON ta.track_urn = t.urn AND ta.ordinal = 0
          LEFT JOIN artists primary_artist ON primary_artist.urn = ta.artist_urn
-        WHERE 1 = 1${filter.sql}
+        WHERE 1 = 1${filter.sql}${lovedFilter}
         ORDER BY ${order} ${direction}, t.urn ASC
         LIMIT ? OFFSET ?`,
       [...filter.params, limit + 1, offset],
@@ -213,13 +216,16 @@ export class Catalog {
     const order = query.sort === 'year' ? 'al.year' : 'COALESCE(al.sort_title, al.title)'
     const direction = query.desc ? 'DESC' : 'ASC'
     const filter = sourceFilter('al', query.sourceIds)
+    const lovedFilter = query.onlyLoved
+      ? ' AND EXISTS (SELECT 1 FROM tracks t JOIN track_stats st ON st.urn = t.urn WHERE t.album_urn = al.urn AND st.loved = 1)'
+      : ''
 
     const rows = await this.db.query<AlbumRow>(
       `SELECT al.urn, al.title, al.sort_title, al.album_type, al.release_date, al.year,
               al.track_count, al.disc_count, al.is_various, ${ARTWORK_COLUMNS}
          FROM albums al
          LEFT JOIN artworks aw ON aw.id = al.artwork_id
-        WHERE 1 = 1${filter.sql}
+        WHERE 1 = 1${filter.sql}${lovedFilter}
         ORDER BY ${order} ${direction}, al.urn ASC
         LIMIT ? OFFSET ?`,
       [...filter.params, limit + 1, offset],
@@ -265,10 +271,12 @@ export class Catalog {
       `SELECT t.urn, t.title, t.sort_title, t.album_urn, al.title AS album_title,
               t.track_no, t.disc_no, t.duration_ms, t.year, t.explicit, t.bpm,
               t.replay_gain_track, t.replay_gain_album, t.peak_track, t.available,
+              COALESCE(st.loved, 0) AS loved,
               ${ARTWORK_COLUMNS}
          FROM tracks t
          LEFT JOIN albums al ON al.urn = t.album_urn
          LEFT JOIN artworks aw ON aw.id = t.artwork_id
+         LEFT JOIN track_stats st ON st.urn = t.urn
         WHERE t.album_urn = ?
         ORDER BY COALESCE(t.disc_no, 1) ASC, COALESCE(t.track_no, 0) ASC, t.urn ASC`,
       [urn],
@@ -310,6 +318,15 @@ export class Catalog {
     return { tracks: row?.tracks ?? 0, albums: row?.albums ?? 0, artists: row?.artists ?? 0 }
   }
 
+  async setLoved(urn: string, loved: boolean): Promise<void> {
+    await this.db.exec(
+      `INSERT INTO track_stats (urn, loved)
+       VALUES (?, ?)
+       ON CONFLICT(urn) DO UPDATE SET loved = excluded.loved`,
+      [urn, loved ? 1 : 0],
+    )
+  }
+
   /* ── search ────────────────────────────────────────────────────────── */
 
   /**
@@ -333,12 +350,14 @@ export class Catalog {
       `SELECT t.urn, t.title, t.sort_title, t.album_urn, al.title AS album_title,
               t.track_no, t.disc_no, t.duration_ms, t.year, t.explicit, t.bpm,
               t.replay_gain_track, t.replay_gain_album, t.peak_track, t.available,
+              COALESCE(st.loved, 0) AS loved,
               ${ARTWORK_COLUMNS}
          FROM tracks_fts f
          JOIN tracks_fts_map m ON m.rowid = f.rowid
          JOIN tracks t ON t.urn = m.urn
          LEFT JOIN albums al ON al.urn = t.album_urn
          LEFT JOIN artworks aw ON aw.id = t.artwork_id
+         LEFT JOIN track_stats st ON st.urn = t.urn
         WHERE tracks_fts MATCH ?${filter.sql}
         ORDER BY rank
         LIMIT ?`,
@@ -478,6 +497,7 @@ export class Catalog {
       peakTrack: row.peak_track ?? undefined,
       available: row.available === 1,
       artwork: artworkOf(row),
+      loved: row.loved !== undefined && row.loved !== null ? row.loved === 1 : undefined,
     }))
   }
 

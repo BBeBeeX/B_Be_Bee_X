@@ -24,7 +24,10 @@ export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
     // The picker is what carries a durable permission grant on Android; a
     // typed path would not, so there is deliberately no text field here.
     const uri = await ctx.fs.pickDirectory()
-    if (uri) await ctx.scanner.addRoot(uri)
+    if (uri) {
+      const root = await ctx.scanner.addRoot(uri)
+      void ctx.scanner.scan({ rootId: root.id })
+    }
   }
 
   return h(
@@ -41,6 +44,7 @@ export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
         // mid-scan makes the screen look like it lost the button.
         disabled: scan.running,
         onPress: () => void ctx.scanner.scan(),
+        accessibilityLabel: 'Scan now',
         children: scan.running ? 'Scanning…' : 'Scan now',
       }),
       scan.running
@@ -99,6 +103,13 @@ export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
               ? h(Text, { variant: 'sm', tone: 'error', numberOfLines: 1, children: root.lastError })
               : null,
           ),
+          h(Button, {
+            variant: 'ghost',
+            disabled: scan.running || !root.enabled,
+            onPress: () => void ctx.scanner.scan({ rootId: root.id }),
+            accessibilityLabel: `Scan ${root.uri}`,
+            children: 'Scan',
+          }),
           h(Button, {
             variant: 'ghost',
             onPress: () => void ctx.scanner.setEnabled(root.id, !root.enabled),

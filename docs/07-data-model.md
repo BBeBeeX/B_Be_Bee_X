@@ -610,7 +610,9 @@ CREATE TABLE track_stats (
 ```
 
 `play_history` is the append-only truth; `track_stats` is a derived cache updated in the same
-transaction as the history insert. Keeping both means "most played" is a single indexed read while
+transaction as the history insert. `loved` (0/1) records whether the track is marked as a user
+favorite, toggled via `ctx.sources.setLoved(urn, loved)` and queried via `CatalogQuery.onlyLoved`
+to drive the default Favorites library. Keeping both means "most played" is a single indexed read while
 the raw record remains available for recomputation — and `scrobble_state` gives offline scrobbles
 a durable outbox that survives a kill mid-submit.
 

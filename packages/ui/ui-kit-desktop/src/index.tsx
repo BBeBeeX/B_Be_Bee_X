@@ -373,8 +373,24 @@ export function TrackRow(props: TrackRowProps) {
     showAlbum && props.track.albumTitle
       ? h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1, children: props.track.albumTitle })
       : null,
+    props.onToggleLoved
+      ? h(
+          'span',
+          { onClick: (e: { stopPropagation: () => void }) => e.stopPropagation() },
+          h(IconButton, {
+            icon: props.track.loved ? '♥' : '♡',
+            accessibilityLabel: props.track.loved ? 'Unlike' : 'Like',
+            variant: props.track.loved ? 'primary' : 'ghost',
+            onPress: props.onToggleLoved,
+          }),
+        )
+      : null,
     props.onMore
-      ? h(IconButton, { icon: '⋯', accessibilityLabel: 'More', onPress: props.onMore })
+      ? h(
+          'span',
+          { onClick: (e: { stopPropagation: () => void }) => e.stopPropagation() },
+          h(IconButton, { icon: '⋯', accessibilityLabel: 'More', onPress: props.onMore }),
+        )
       : null,
   )
 }

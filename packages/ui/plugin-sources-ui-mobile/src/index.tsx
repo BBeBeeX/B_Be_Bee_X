@@ -6,15 +6,16 @@
  * a single-column list rather than a grid, because a phone has one column.
  */
 
-import { createElement as h, useState } from 'react'
+import { createElement as h, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Album, ImportReport, PlayerService, Track, TraceEvent } from '@BBeBee/protocol'
+import type { Album, CatalogQuery, ImportReport, PlayerService, Track, TraceEvent } from '@BBeBee/protocol'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
   useAlbum,
   useAlbums,
+  useSetLoved,
   useSourceEditor,
   useSourceImport,
   useSourceTrace,
@@ -49,6 +50,14 @@ function Failed({ error, onRetry }: { error: Error; onRetry: () => void }): Reac
   })
 }
 
+const SCOPES = [
+  { id: 'all', label: 'All' },
+  { id: 'local', label: 'Local' },
+  { id: 'favorites', label: 'Favorites' },
+] as const
+
+export type LibraryScope = (typeof SCOPES)[number]['id']
+
 export function LibraryScreen({
   ctx,
   onOpenAlbum,
@@ -57,10 +66,50 @@ export function LibraryScreen({
   onOpenAlbum?: (urn: string) => void
 }): ReactElement {
   const native = nativePrimitives()
+  const [scope, setScope] = useState<LibraryScope>('all')
   const [tab, setTab] = useState<'tracks' | 'albums'>('tracks')
-  const tracks = useTracks(ctx, { sort: 'title' })
-  const albums = useAlbums(ctx, { sort: 'title' })
+  const setLoved = useSetLoved(ctx)
+
+  const query = useMemo<CatalogQuery>(() => {
+    const base: CatalogQuery = { sort: 'title' }
+    if (scope === 'local') {
+      return { ...base, sourceIds: ['local'] }
+    }
+    if (scope === 'favorites') {
+      return { ...base, onlyLoved: true }
+    }
+    return base
+  }, [scope])
+
+  const tracks = useTracks(ctx, query)
+  const albums = useAlbums(ctx, query)
   const active = tab === 'tracks' ? tracks : albums
+
+  const trackEmpty =
+    scope === 'favorites'
+      ? h(EmptyState, {
+          icon: '♥',
+          title: 'No favorites yet',
+          description: 'Tap the heart icon on any track to add it to your favorites.',
+        })
+      : scope === 'local'
+        ? h(EmptyState, {
+            icon: '📁',
+            title: 'No local music',
+            description: 'Add a folder in Settings and it will appear here as it is scanned.',
+          })
+        : h(EmptyState, {
+            icon: '📁',
+            title: 'No music yet',
+            description: 'Add a folder in Settings and it will appear here as it is scanned.',
+          })
+
+  const albumEmpty =
+    scope === 'favorites'
+      ? h(EmptyState, { icon: '♥', title: 'No favorite albums yet' })
+      : scope === 'local'
+        ? h(EmptyState, { icon: '💿', title: 'No local albums' })
+        : h(EmptyState, { icon: '💿', title: 'No albums yet' })
 
   return h(
     native.View as never,
@@ -68,17 +117,45 @@ export function LibraryScreen({
     h(
       native.View as never,
       {
-        accessibilityRole: 'tablist',
-        style: { flexDirection: 'row', gap: tokens.space[2], padding: tokens.space[3] },
+        style: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingHorizontal: tokens.space[3],
+          paddingVertical: tokens.space[2],
+        },
       },
-      (['tracks', 'albums'] as const).map((id) =>
-        h(Button, {
-          key: id,
-          variant: tab === id ? 'primary' : 'ghost',
-          onPress: () => setTab(id),
-          accessibilityLabel: `Show ${id}`,
-          children: id === 'tracks' ? 'Tracks' : 'Albums',
-        }),
+      h(
+        native.View as never,
+        {
+          accessibilityRole: 'tablist',
+          style: { flexDirection: 'row', gap: tokens.space[2] },
+        },
+        SCOPES.map(({ id, label }) =>
+          h(Button, {
+            key: id,
+            variant: scope === id ? 'primary' : 'ghost',
+            onPress: () => setScope(id),
+            accessibilityLabel: `Show ${label}`,
+            children: label,
+          }),
+        ),
+      ),
+      h(
+        native.View as never,
+        {
+          accessibilityRole: 'tablist',
+          style: { flexDirection: 'row', gap: tokens.space[2] },
+        },
+        (['tracks', 'albums'] as const).map((id) =>
+          h(Button, {
+            key: id,
+            variant: tab === id ? 'secondary' : 'ghost',
+            onPress: () => setTab(id),
+            accessibilityLabel: `Show ${id}`,
+            children: id === 'tracks' ? 'Tracks' : 'Albums',
+          }),
+        ),
       ),
     ),
     active.status === 'error' && active.error
@@ -92,16 +169,13 @@ export function LibraryScreen({
               estimatedItemSize: tokens.size.row,
               keyExtractor: (track) => track.urn,
               onEndReached: tracks.loadMore,
-              empty: h(EmptyState, {
-                icon: '📁',
-                title: 'No music yet',
-                description: 'Add a folder in Settings and it will appear here as it is scanned.',
-              }),
+              empty: trackEmpty,
               renderItem: (track) =>
                 h(TrackRow, {
                   track,
                   showAlbum: true,
                   onPress: () => void serviceOf<PlayerService>(ctx, 'player')?.playNow([track.urn]),
+                  onToggleLoved: () => void setLoved(track.urn, !track.loved),
                 }),
             })
           : h(List<Album>, {
@@ -110,7 +184,7 @@ export function LibraryScreen({
               estimatedItemSize: tokens.size.row,
               keyExtractor: (album) => album.urn,
               onEndReached: albums.loadMore,
-              empty: h(EmptyState, { icon: '💿', title: 'No albums yet' }),
+              empty: albumEmpty,
               renderItem: (album) =>
                 h(
                   native.Pressable as never,

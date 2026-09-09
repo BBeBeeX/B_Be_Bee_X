@@ -378,6 +378,14 @@ export function TrackRow(props: TrackRowProps): ReactElement {
           children: props.track.albumTitle,
         })
       : null,
+    props.onToggleLoved
+      ? h(IconButton, {
+          icon: props.track.loved ? '♥' : '♡',
+          accessibilityLabel: props.track.loved ? 'Unlike' : 'Like',
+          variant: props.track.loved ? 'primary' : 'ghost',
+          onPress: props.onToggleLoved,
+        })
+      : null,
     props.onMore
       ? h(IconButton, { icon: '⋯', accessibilityLabel: 'More', onPress: props.onMore })
       : null,

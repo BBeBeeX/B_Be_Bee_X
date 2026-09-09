@@ -173,4 +173,28 @@ describe('LibraryScreen on mobile', () => {
     })
     expect(container.textContent).toContain('No music yet')
   })
+
+  it('switches between all, local, and favorites scopes', async () => {
+    const { ctx, admin } = await harness()
+    await withTrack(admin)
+
+    const { container } = render(h(LibraryScreen, { ctx }))
+    await act(async () => {
+      await tick()
+    })
+
+    expect(container.textContent).toContain('Jóga')
+
+    const favoritesBtn = Array.from(container.querySelectorAll('[data-host]')).find(
+      (el) => el.textContent === 'Favorites',
+    ) as HTMLElement | undefined
+    expect(favoritesBtn).toBeTruthy()
+
+    await act(async () => {
+      favoritesBtn!.click()
+      await tick()
+    })
+
+    expect(container.textContent).toContain('No favorites yet')
+  })
 })

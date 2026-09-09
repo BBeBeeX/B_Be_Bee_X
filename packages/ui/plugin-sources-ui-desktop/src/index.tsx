@@ -10,15 +10,16 @@
  * blank pane and tells the user nothing about which one they are looking at.
  */
 
-import { createElement as h, useState } from 'react'
+import { createElement as h, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Album, ImportReport, PlayerService, Track, TraceEvent } from '@BBeBee/protocol'
+import type { Album, CatalogQuery, ImportReport, PlayerService, Track, TraceEvent } from '@BBeBee/protocol'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
   useAlbum,
   useAlbums,
+  useSetLoved,
   useSourceEditor,
   useSourceImport,
   useSourceTrace,
@@ -58,6 +59,14 @@ function Failed({ error, onRetry }: { error: Error; onRetry: () => void }): Reac
   })
 }
 
+const SCOPES = [
+  { id: 'all', label: 'All' },
+  { id: 'local', label: 'Local' },
+  { id: 'favorites', label: 'Favorites' },
+] as const
+
+export type LibraryScope = (typeof SCOPES)[number]['id']
+
 export function LibraryScreen({
   ctx,
   onOpenAlbum,
@@ -65,9 +74,23 @@ export function LibraryScreen({
   ctx: Context
   onOpenAlbum?: (urn: string) => void
 }): ReactElement {
+  const [scope, setScope] = useState<LibraryScope>('all')
   const [tab, setTab] = useState<'tracks' | 'albums'>('tracks')
-  const tracks = useTracks(ctx, { sort: 'title' })
-  const albums = useAlbums(ctx, { sort: 'title' })
+  const setLoved = useSetLoved(ctx)
+
+  const query = useMemo<CatalogQuery>(() => {
+    const base: CatalogQuery = { sort: 'title' }
+    if (scope === 'local') {
+      return { ...base, sourceIds: ['local'] }
+    }
+    if (scope === 'favorites') {
+      return { ...base, onlyLoved: true }
+    }
+    return base
+  }, [scope])
+
+  const tracks = useTracks(ctx, query)
+  const albums = useAlbums(ctx, query)
   const active = tab === 'tracks' ? tracks : albums
 
   return h(
@@ -76,18 +99,48 @@ export function LibraryScreen({
     h(
       'div',
       {
-        role: 'tablist',
-        'aria-label': 'Library',
-        style: { display: 'flex', gap: tokens.space[2], padding: tokens.space[3] },
+        style: {
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: tokens.space[3],
+          padding: `${tokens.space[2]}px ${tokens.space[3]}px`,
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+        },
       },
-      (['tracks', 'albums'] as const).map((id) =>
-        h(Button, {
-          key: id,
-          variant: tab === id ? 'primary' : 'ghost',
-          onPress: () => setTab(id),
-          accessibilityLabel: `Show ${id}`,
-          children: id === 'tracks' ? 'Tracks' : 'Albums',
-        }),
+      h(
+        'div',
+        {
+          role: 'tablist',
+          'aria-label': 'Library Scope',
+          style: { display: 'flex', gap: tokens.space[2] },
+        },
+        SCOPES.map(({ id, label }) =>
+          h(Button, {
+            key: id,
+            variant: scope === id ? 'primary' : 'ghost',
+            onPress: () => setScope(id),
+            accessibilityLabel: `Show ${label}`,
+            children: label,
+          }),
+        ),
+      ),
+      h(
+        'div',
+        {
+          role: 'tablist',
+          'aria-label': 'Library View',
+          style: { display: 'flex', gap: tokens.space[2] },
+        },
+        (['tracks', 'albums'] as const).map((id) =>
+          h(Button, {
+            key: id,
+            variant: tab === id ? 'secondary' : 'ghost',
+            onPress: () => setTab(id),
+            accessibilityLabel: `Show ${id}`,
+            children: id === 'tracks' ? 'Tracks' : 'Albums',
+          }),
+        ),
       ),
     ),
     active.status === 'error' && active.error
@@ -95,31 +148,61 @@ export function LibraryScreen({
       : active.status === 'loading' && active.items.length === 0
         ? h(Pending, { label: 'Loading your library…' })
         : tab === 'tracks'
-          ? h(TrackList, { ctx, tracks: tracks.items, onEndReached: tracks.loadMore })
-          : h(AlbumGrid, { albums: albums.items, onOpenAlbum, onEndReached: albums.loadMore }),
+          ? h(TrackList, {
+              ctx,
+              tracks: tracks.items,
+              scope,
+              onToggleLoved: (urn, loved) => void setLoved(urn, loved),
+              onEndReached: tracks.loadMore,
+            })
+          : h(AlbumGrid, {
+              albums: albums.items,
+              scope,
+              onOpenAlbum,
+              onEndReached: albums.loadMore,
+            }),
   )
 }
 
 function TrackList({
   ctx,
   tracks,
+  scope,
+  onToggleLoved,
   onEndReached,
 }: {
   ctx: Context
   tracks: readonly Track[]
+  scope: LibraryScope
+  onToggleLoved: (urn: string, loved: boolean) => void
   onEndReached: () => void
 }): ReactElement {
+  const empty =
+    scope === 'favorites'
+      ? h(EmptyState, {
+          icon: '♥',
+          title: 'No favorites yet',
+          description: 'Click the heart icon on any track to add it to your favorites.',
+        })
+      : scope === 'local'
+        ? h(EmptyState, {
+            icon: '📁',
+            title: 'No local music',
+            description: 'Add a folder in Settings and it will appear here as it is scanned.',
+          })
+        : h(EmptyState, {
+            icon: '📁',
+            title: 'No music yet',
+            description: 'Add a folder in Settings and it will appear here as it is scanned.',
+          })
+
   return h(List<Track>, {
     items: tracks,
     accessibilityLabel: 'Tracks',
     estimatedItemSize: tokens.size.row,
     keyExtractor: (track) => track.urn,
     onEndReached,
-    empty: h(EmptyState, {
-      icon: '📁',
-      title: 'No music yet',
-      description: 'Add a folder in Settings and it will appear here as it is scanned.',
-    }),
+    empty,
     renderItem: (track) =>
       h(TrackRow, {
         track,
@@ -127,26 +210,36 @@ function TrackList({
         // Playing one track queues just that track; queueing the whole list
         // is a decision for the album screen, where "the rest" has a meaning.
         onPress: () => void serviceOf<PlayerService>(ctx, 'player')?.playNow([track.urn]),
+        onToggleLoved: () => onToggleLoved(track.urn, !track.loved),
       }),
   })
 }
 
 function AlbumGrid({
   albums,
+  scope,
   onOpenAlbum,
   onEndReached,
 }: {
   albums: readonly Album[]
+  scope: LibraryScope
   onOpenAlbum?: (urn: string) => void
   onEndReached: () => void
 }): ReactElement {
+  const empty =
+    scope === 'favorites'
+      ? h(EmptyState, { icon: '♥', title: 'No favorite albums yet' })
+      : scope === 'local'
+        ? h(EmptyState, { icon: '💿', title: 'No local albums' })
+        : h(EmptyState, { icon: '💿', title: 'No albums yet' })
+
   return h(List<Album>, {
     items: albums,
     accessibilityLabel: 'Albums',
     estimatedItemSize: 220,
     keyExtractor: (album) => album.urn,
     onEndReached,
-    empty: h(EmptyState, { icon: '💿', title: 'No albums yet' }),
+    empty,
     renderItem: (album) =>
       h(
         'button',

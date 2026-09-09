@@ -290,6 +290,8 @@ export interface CatalogQuery {
   desc?: boolean
   /** Restrict to given sources. Absent means every source. */
   sourceIds?: string[]
+  /** Restrict to loved/favorited tracks. */
+  onlyLoved?: boolean
   page?: PageRequest
 }
 
@@ -447,6 +449,9 @@ export interface SourcesService {
   searchLocal(text: string, opts?: { limit?: number; sourceIds?: string[] }): Promise<SearchResult>
 
   counts(): Promise<CatalogCounts>
+
+  /** Set or clear the loved status of a track. */
+  setLoved(urn: string, loved: boolean): Promise<void>
 }
 
 declare module 'cordis' {

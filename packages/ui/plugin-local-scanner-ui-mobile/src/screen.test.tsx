@@ -170,4 +170,45 @@ describe('ScanRootsScreen on mobile', () => {
     expect(pick, 'the picker is what carries the SAF grant on Android').toHaveBeenCalled()
     expect(addRoot, 'and what it returns becomes a scan root').toHaveBeenCalledWith(`file://${dir}`)
   })
+
+  it('offers a scan button that starts a scan', async () => {
+    const { ctx } = await harness()
+    const scan = vi.spyOn(ctx.scanner, 'scan')
+
+    const { container } = render(h(ScanRootsScreen, { ctx }))
+    await act(async () => {
+      await tick()
+    })
+
+    const button = pressableNamed(container, 'Scan now')
+    expect(button, 'the mobile screen has a scan button').toBeTruthy()
+
+    await act(async () => {
+      button!.click()
+      await tick()
+    })
+    expect(scan, 'pressing it walks the roots').toHaveBeenCalled()
+  })
+
+  it('offers a per-folder scan button that scans that specific root', async () => {
+    const { ctx } = await harness()
+    const dir = await tempDir('bbebee-scan-root-mobile-per-folder')
+    const root = await ctx.scanner.addRoot(`file://${dir}`)
+    const scan = vi.spyOn(ctx.scanner, 'scan')
+
+    const { container } = render(h(ScanRootsScreen, { ctx }))
+    await act(async () => {
+      await tick()
+    })
+
+    const scanBtn = pressableNamed(container, `Scan file://${dir}`)
+    expect(scanBtn).toBeTruthy()
+
+    await act(async () => {
+      scanBtn!.click()
+      await tick()
+    })
+
+    expect(scan).toHaveBeenCalledWith({ rootId: root.id })
+  })
 })

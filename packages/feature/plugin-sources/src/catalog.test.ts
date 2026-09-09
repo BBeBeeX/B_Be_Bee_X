@@ -172,6 +172,34 @@ describe('catalogue reads', () => {
     expect((await sources.listTracks({ sourceIds: ['navidrome-home'] })).items).toHaveLength(0)
   })
 
+  it('filters by loved status and updates loved status', async () => {
+    const { sources } = await fixture()
+    const joga = `BBeBee:${SOURCE}:track:joga`
+
+    // Initially not loved
+    const initialLoved = await sources.listTracks({ onlyLoved: true })
+    expect(initialLoved.items).toHaveLength(0)
+
+    // Mark as loved
+    await sources.setLoved(joga, true)
+    const afterLoved = await sources.listTracks({ onlyLoved: true })
+    expect(afterLoved.items).toHaveLength(1)
+    expect(afterLoved.items[0]?.urn).toBe(joga)
+    expect(afterLoved.items[0]?.loved).toBe(true)
+
+    // Albums containing loved track
+    const lovedAlbums = await sources.listAlbums({ onlyLoved: true })
+    expect(lovedAlbums.items).toHaveLength(1)
+    expect(lovedAlbums.items[0]?.title).toBe('Homogenic')
+
+    // Unmark loved
+    await sources.setLoved(joga, false)
+    const unloved = await sources.listTracks({ onlyLoved: true })
+    expect(unloved.items).toHaveLength(0)
+    const unlovedAlbums = await sources.listAlbums({ onlyLoved: true })
+    expect(unlovedAlbums.items).toHaveLength(0)
+  })
+
   it('returns an album with its tracks in disc and track order', async () => {
     const { sources } = await fixture()
     const album = await sources.getAlbum(`BBeBee:${SOURCE}:album:homogenic`)

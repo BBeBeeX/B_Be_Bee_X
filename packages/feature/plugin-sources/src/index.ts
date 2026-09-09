@@ -999,6 +999,11 @@ export class Sources extends Service implements SourcesService {
     return this.catalog.counts()
   }
 
+  async setLoved(urn: string, loved: boolean): Promise<void> {
+    await this.catalog.setLoved(urn, loved)
+    this.ctx.emit('library/changed', 'track', [urn])
+  }
+
   /** Re-index tracks directly. `library/changed` is the usual route. */
   reindex(urns: string[]): Promise<void> {
     return this.catalog.index(urns)

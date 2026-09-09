@@ -119,6 +119,12 @@ export async function importTrack(
         now,
       ],
     )
+    await tx.exec(
+      `INSERT INTO library_items (urn, kind, source_id, added_at, pinned, sort_key)
+       VALUES (?, 'album', ?, ?, 0, ?)
+       ON CONFLICT(urn) DO UPDATE SET sort_key = excluded.sort_key`,
+      [albumUrn, sourceId, now, sortKey(meta.album) ?? null],
+    )
   }
 
   const trackUrn = urn(sourceId, 'track', trackId(input.uri))
@@ -156,6 +162,13 @@ export async function importTrack(
       artworkRef ?? null,
       now,
     ],
+  )
+
+  await tx.exec(
+    `INSERT INTO library_items (urn, kind, source_id, added_at, pinned, sort_key)
+     VALUES (?, 'track', ?, ?, 0, ?)
+     ON CONFLICT(urn) DO UPDATE SET sort_key = excluded.sort_key`,
+    [trackUrn, sourceId, now, sortKey(title) ?? null],
   )
 
   // A join with a role, not a string: "Artist feat. Other" as free text makes
@@ -288,7 +301,25 @@ export async function forgetFile(
   )
   if ((remaining?.n ?? 0) > 0) return {}
 
+  const track = await tx.get<{ album_urn: string | null }>(
+    'SELECT album_urn FROM tracks WHERE urn = ?',
+    [binding.track_urn],
+  )
+
   await tx.exec('DELETE FROM tracks WHERE urn = ?', [binding.track_urn])
+  await tx.exec('DELETE FROM library_items WHERE urn = ?', [binding.track_urn])
+
+  if (track?.album_urn) {
+    const remainingInAlbum = await tx.get<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM tracks WHERE album_urn = ?',
+      [track.album_urn],
+    )
+    if ((remainingInAlbum?.n ?? 0) === 0) {
+      await tx.exec('DELETE FROM library_items WHERE urn = ?', [track.album_urn])
+      await tx.exec('DELETE FROM albums WHERE urn = ?', [track.album_urn])
+    }
+  }
+
   return { removedTrackUrn: binding.track_urn }
 }
 

@@ -731,8 +731,8 @@ props — `Button`, `IconButton`, `TrackRow`, `Slider`, `Sheet`/`Dialog`, `List`
 ### 4.12 The view packages
 
 `plugin-player-ui-{mobile,desktop}`, `plugin-sources-ui-{mobile,desktop}`,
-`plugin-local-scanner-ui-{mobile,desktop}`. Five screens per MD-2: library (tracks and albums),
-album detail, queue, now playing (full screen on mobile, bottom bar on desktop), and settings for
+`plugin-local-scanner-ui-{mobile,desktop}`. Five screens per MD-2: library (tracks and albums, with
+scope filtering for `All`, `Local`, and `Favorites`), album detail, queue, now playing (full screen on mobile, bottom bar on desktop), and settings for
 scan roots and URL sources. The last one is the seed of M2's source list
 ([08 §4](./08-ui-architecture.md#the-source-surfaces)) — a list with add and remove, and
 deliberately no import review screen, because there is nothing yet to review.
@@ -817,6 +817,8 @@ export interface CatalogQuery {
   desc?: boolean
   /** Restrict to given sources. Absent means every source. */
   sourceIds?: string[]
+  /** Restrict to loved/favorited tracks. */
+  onlyLoved?: boolean
   page?: PageRequest
 }
 
@@ -842,6 +844,9 @@ export interface SourcesService {
   searchLocal(text: string, opts?: { limit?: number; sourceIds?: string[] }): Promise<SearchResult>
 
   counts(): Promise<CatalogCounts>
+
+  /** Mark or unmark a track as loved / favorited. */
+  setLoved(urn: string, loved: boolean): Promise<void>
 }
 ```
 
