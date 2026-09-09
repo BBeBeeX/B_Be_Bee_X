@@ -102,7 +102,7 @@ export class Scanner extends Service implements ScannerService {
   static inject = ['fs', 'db', 'codec']
 
   private readonly config: Required<ScannerConfig>
-  private rootList: ScanRoot[] = []
+    private rootList: ScanRoot[] = []
   private current?: ScanProgress
   private abort?: AbortController
   private watchers: Disposable[] = []
@@ -162,7 +162,13 @@ export class Scanner extends Service implements ScannerService {
 
   async addRoot(uri: Uri, opts: { recursive?: boolean } = {}): Promise<ScanRoot> {
     const existing = this.rootList.find((r) => r.uri === uri)
-    if (existing) return existing
+    if (existing) {
+      if (!existing.enabled) {
+        await this.setEnabled(existing.id, true)
+        return this.rootList.find((r) => r.id === existing.id) ?? { ...existing, enabled: true }
+      }
+      return existing
+    }
 
     const root: ScanRoot = {
       id: stableId('root', uri),
@@ -177,6 +183,7 @@ export class Scanner extends Service implements ScannerService {
     )
     this.rootList = await this.loadRoots()
     await this.startWatching()
+    this.ctx.emit('scan/roots-changed', this.rootList)
     return root
   }
 
@@ -202,12 +209,14 @@ export class Scanner extends Service implements ScannerService {
     await this.ctx.db.exec('DELETE FROM scan_roots WHERE id = ?', [id])
     this.rootList = await this.loadRoots()
     await this.startWatching()
+    this.ctx.emit('scan/roots-changed', this.rootList)
   }
 
   async setEnabled(id: string, on: boolean): Promise<void> {
     await this.ctx.db.exec('UPDATE scan_roots SET enabled = ? WHERE id = ?', [on ? 1 : 0, id])
     this.rootList = await this.loadRoots()
     await this.startWatching()
+    this.ctx.emit('scan/roots-changed', this.rootList)
   }
 
   /* ── the walk ──────────────────────────────────────────────────────── */

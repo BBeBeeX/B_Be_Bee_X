@@ -519,6 +519,32 @@ describe('roots', () => {
     expect(await h.db.query('SELECT urn FROM library_items')).toHaveLength(0)
     expect(await h.db.query('SELECT id FROM scan_roots')).toHaveLength(0)
   })
+
+  it('emits scan/roots-changed when roots are added, disabled, or removed', async () => {
+    const h = await harness()
+    const changes: number[] = []
+    h.ctx.on('scan/roots-changed', (roots) => changes.push(roots.length))
+
+    const root = await h.scanner.addRoot(h.uri)
+    expect(changes).toEqual([1])
+
+    await h.scanner.setEnabled(root.id, false)
+    expect(changes).toEqual([1, 1])
+
+    await h.scanner.removeRoot(root.id)
+    expect(changes).toEqual([1, 1, 0])
+  })
+
+  it('re-enables a disabled root when addRoot is called with the same uri', async () => {
+    const h = await harness()
+    const root = await h.scanner.addRoot(h.uri)
+    await h.scanner.setEnabled(root.id, false)
+    expect(h.scanner.roots[0]!.enabled).toBe(false)
+
+    const readded = await h.scanner.addRoot(h.uri)
+    expect(readded.enabled).toBe(true)
+    expect(h.scanner.roots[0]!.enabled).toBe(true)
+  })
 })
 
 describe('keeping up with the filesystem', () => {
@@ -586,6 +612,21 @@ describe('tag handling', () => {
     // The extension is not part of a title, and the name is URL-decoded.
     const track = await h.db.get<{ title: string }>('SELECT title FROM tracks')
     expect(track?.title).toBe('01 - Untagged Song')
+  })
+
+  it('allows caller contexts without db capabilities to add and remove roots', async () => {
+    const h = await harness()
+    const callerCtx = h.ctx.extend()
+    callerCtx.intercept('db', {
+      pluginId: '@BBeBee/plugin-local-scanner-ui-desktop',
+      scopeId: '@BBeBee/plugin-local-scanner-ui-desktop',
+      granted: [],
+    })
+    const root = await callerCtx.scanner.addRoot(h.uri)
+    expect(root.uri).toBe(h.uri)
+    expect(callerCtx.scanner.roots).toHaveLength(1)
+    await callerCtx.scanner.removeRoot(root.id)
+    expect(callerCtx.scanner.roots).toHaveLength(0)
   })
 })
 

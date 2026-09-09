@@ -17,7 +17,7 @@ import { shallowArrayEqual, useServiceState } from '@BBeBee/ui-core'
 export function useScanRoots(ctx: Context): readonly ScanRoot[] {
   return useServiceState(
     ctx,
-    ['scan/finished', 'scan/started', 'library/changed'],
+    ['scan/roots-changed', 'scan/finished', 'scan/started', 'library/changed'],
     () => ctx.scanner.roots,
     { isEqual: shallowArrayEqual },
   )

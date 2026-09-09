@@ -31,10 +31,16 @@ export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
   const addFolder = async () => {
     // The picker is what carries a durable permission grant on Android; a
     // typed path would not, so there is deliberately no text field here.
-    const uri = await ctx.fs.pickDirectory()
-    if (uri) {
-      const root = await ctx.scanner.addRoot(uri)
-      void ctx.scanner.scan({ rootId: root.id })
+    try {
+      const uri = await ctx.fs.pickDirectory()
+      if (uri) {
+        const root = await ctx.scanner.addRoot(uri)
+        void ctx.scanner.scan({ rootId: root.id }).catch((err) => {
+          ctx.logger?.error('failed to scan newly added root %s: %s', root.id, err)
+        })
+      }
+    } catch (err) {
+      ctx.logger?.error('failed to add folder: %s', err)
     }
   }
 

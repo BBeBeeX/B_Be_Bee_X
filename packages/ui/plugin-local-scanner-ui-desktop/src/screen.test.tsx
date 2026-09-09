@@ -147,22 +147,23 @@ describe('ScanRootsScreen', () => {
     const pick = vi.spyOn(admin.fs, 'pickDirectory').mockResolvedValue(`file://${dir}`)
     const addRoot = vi.spyOn(ctx.scanner, 'addRoot')
 
-    const { container } = await withListLayout(async () => {
-      const view = render(h(ScanRootsScreen, { ctx }))
+    await withListLayout(async () => {
+      const { container } = render(h(ScanRootsScreen, { ctx }))
       await act(async () => {
         await tick()
       })
-      return view
-    })
 
-    await act(async () => {
-      buttonNamed(container, 'Add folder')!.click()
-      await tick()
-      await tick()
-    })
+      expect(container.textContent).toContain('No folders yet')
 
-    expect(pick, 'the picker is what carries the permission grant').toHaveBeenCalled()
-    expect(addRoot, 'and what it returns becomes a scan root').toHaveBeenCalledWith(`file://${dir}`)
+      await act(async () => {
+        buttonNamed(container, 'Add folder')!.click()
+        for (let i = 0; i < 20; i++) await tick()
+      })
+
+      expect(pick, 'the picker is what carries the permission grant').toHaveBeenCalled()
+      expect(addRoot, 'and what it returns becomes a scan root').toHaveBeenCalledWith(`file://${dir}`)
+      expect(container.textContent).toContain(dir)
+    })
   })
 
   it('shows a folder that was added, and a way to remove it', async () => {
@@ -180,6 +181,32 @@ describe('ScanRootsScreen', () => {
 
     expect(container.textContent).toContain(dir)
     expect(buttonNamed(container, `Remove file://${dir}`)).toBeTruthy()
+  })
+
+  it('removes a folder when remove button is clicked', async () => {
+    const { ctx } = await harness()
+    const dir = await tempDir('bbebee-scan-root-remove')
+    await ctx.scanner.addRoot(`file://${dir}`)
+
+    await withListLayout(async () => {
+      const { container } = render(h(ScanRootsScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      expect(container.textContent).toContain(dir)
+
+      const removeBtn = buttonNamed(container, `Remove file://${dir}`)
+      expect(removeBtn).toBeTruthy()
+
+      await act(async () => {
+        removeBtn!.click()
+        for (let i = 0; i < 20; i++) await tick()
+      })
+
+      expect(container.textContent).not.toContain(dir)
+      expect(container.textContent).toContain('No folders yet')
+    })
   })
 
   it('offers a per-folder scan button that scans that specific root', async () => {

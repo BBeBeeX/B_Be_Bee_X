@@ -41,7 +41,7 @@ import type { HttpRequest, HttpResponse } from './services/http.js'
 import type { AuthStatus } from './services/sources.js'
 import type { CheckReport } from './services/source-document.js'
 import type { SourceError } from './errors.js'
-import type { ScanSummary } from './services/scanner.js'
+import type { ScanRoot, ScanSummary } from './services/scanner.js'
 import type { UrnKind } from './urn.js'
 
 declare module 'cordis' {
@@ -115,6 +115,7 @@ declare module 'cordis' {
 
     /* ── library & scanning ─────────────────────────── emit ── */
     'library/changed'(kind: UrnKind, urns: string[]): void
+    'scan/roots-changed'(roots: readonly ScanRoot[]): void
     'scan/started'(rootId: string): void
     'scan/progress'(rootId: string, done: number, total?: number): void
     /**
@@ -167,6 +168,7 @@ export const DISPATCH_MODES = {
   'download/completed': 'emit',
   'download/failed': 'emit',
   'library/changed': 'emit',
+  'scan/roots-changed': 'emit',
   'scan/started': 'emit',
   'scan/progress': 'emit',
   'scan/finished': 'emit',

@@ -85,6 +85,10 @@ function createWindow(): BrowserWindow {
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     void window.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    // In development, forward renderer logs (from plugin-log-console) directly to the terminal stdout.
+    window.webContents.on('console-message', (_event, _level, message) => {
+      process.stdout.write(`${message}\n`)
+    })
   } else {
     void window.loadFile(join(here, '../renderer/index.html'))
   }
@@ -229,7 +233,8 @@ function registerHandlers(): void {
   })
 
   ipcMain.handle('dialog:pickDirectory', async (event) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
+    const target = BrowserWindow.fromWebContents(event.sender)
+    const window = target && !target.isDestroyed() ? target : undefined
     const result = window
       ? await dialog.showOpenDialog(window, { properties: ['openDirectory'] })
       : await dialog.showOpenDialog({ properties: ['openDirectory'] })
@@ -375,7 +380,8 @@ void app.whenReady().then(async () => {
         net.fetch(url, init as Parameters<typeof net.fetch>[1]) as never,
       system: systemHost(() => bridge.host),
       pickDirectory: async (sender) => {
-        const window = sender ? BrowserWindow.fromWebContents(sender as Electron.WebContents) : mainWindow
+        const target = (sender ? BrowserWindow.fromWebContents(sender as Electron.WebContents) : undefined) ?? mainWindow
+        const window = target && !target.isDestroyed() ? target : undefined
         const result = window
           ? await dialog.showOpenDialog(window, { properties: ['openDirectory'] })
           : await dialog.showOpenDialog({ properties: ['openDirectory'] })
