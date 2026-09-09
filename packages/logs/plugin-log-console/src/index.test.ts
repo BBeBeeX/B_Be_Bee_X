@@ -47,4 +47,22 @@ describe('plugin-log-console', () => {
       console.log = originalLog
     }
   })
+
+  it('suppresses logs when debug is false', async () => {
+    const ctx = new Context()
+    const logs: string[] = []
+    const originalLog = console.log
+
+    console.log = vi.fn((line: string) => {
+      logs.push(line)
+    })
+
+    try {
+      await ctx.plugin(pluginLogConsole, { level: 3, debug: false })
+      ctx.logger.info('should be suppressed')
+      expect(logs).toHaveLength(0)
+    } finally {
+      console.log = originalLog
+    }
+  })
 })

@@ -63,6 +63,25 @@ import { BOOTSTRAP_SERVICES, ENABLED } from './plugins'
 declare const __DEV__: boolean
 
 /**
+ * Whether the mobile app is running in debug mode.
+ *
+ * Only active in development (`__DEV__`).
+ * Can be enabled via `EXPO_PUBLIC_DEBUG=1`, `DEBUG=1`, `BBEBEE_DEBUG=1`,
+ * or global flag `__DEBUG__`.
+ */
+export function isDebug(): boolean {
+  if (typeof __DEV__ !== 'undefined' && !__DEV__) return false
+  if (typeof (globalThis as unknown as { __DEBUG__?: boolean }).__DEBUG__ === 'boolean') {
+    return (globalThis as unknown as { __DEBUG__?: boolean }).__DEBUG__ === true
+  }
+  const envDebug =
+    typeof process !== 'undefined' && process.env
+      ? process.env['EXPO_PUBLIC_DEBUG'] ?? process.env['DEBUG'] ?? process.env['BBEBEE_DEBUG']
+      : undefined
+  return envDebug !== undefined && envDebug !== '' && envDebug !== '0' && envDebug !== 'false'
+}
+
+/**
  * Hand the kit its primitives, once, before anything renders.
  *
  * `ui-kit-mobile` deliberately does not import `react-native` itself — that is
@@ -166,7 +185,7 @@ export async function boot(): Promise<App> {
        */
       [logBuffer, {}],
       ...(__DEV__
-        ? ([[logConsole, { level: 3 }]] as const)
+        ? ([[logConsole, { level: 3, debug: isDebug() }]] as const)
         : ([[logFile, { level: 2 }]] as const)),
     ],
     registry: bundled,

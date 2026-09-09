@@ -35,6 +35,11 @@ const api = {
   },
   platform: process.platform,
   versions: { electron: process.versions.electron, node: process.versions.node },
+  isDebug: Boolean(
+    (process.env['DEBUG'] && process.env['DEBUG'] !== '0' && process.env['DEBUG'] !== 'false') ||
+    process.env['BBEBEE_DEBUG'] ||
+    process.argv.includes('--debug'),
+  ),
 } as const
 
 export type BBeBeeBridge = typeof api

@@ -59,6 +59,7 @@ declare global {
       dialog: { pickDirectory(): Promise<string | undefined> }
       platform: string
       versions: { electron: string; node: string }
+      isDebug?: boolean
     }
   }
 }
@@ -76,6 +77,13 @@ const APP_VERSION = '0.0.0'
  */
 function isDevelopment(): boolean {
   return location.protocol === 'http:' || location.protocol === 'https:'
+}
+
+function isDebug(): boolean {
+  return Boolean(
+    window.BBeBee?.isDebug ||
+    (typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug'))
+  )
 }
 
 /** Electron's `process.platform`, as the protocol names it. */
@@ -193,7 +201,7 @@ export async function boot(): Promise<App> {
        */
       [logBuffer, {}],
       ...(isDevelopment()
-        ? ([[logConsole, { level: 3 }]] as const)
+        ? ([[logConsole, { level: 3, debug: isDebug() }]] as const)
         : ([[logFile, { level: 2 }]] as const)),
     ],
     registry: bundled,

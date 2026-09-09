@@ -13,6 +13,8 @@ export interface ConsoleLogConfig {
   level?: number
   /** Off by default: log lines are for developers, secrets are for nobody. */
   raw?: boolean
+  /** When false, console logging is disabled. Defaults to true. */
+  debug?: boolean
 }
 
 export const name = 'plugin-log-console'
@@ -61,6 +63,7 @@ function formatTemplate(template: string, args: unknown[]): { text: string; unus
 }
 
 export async function apply(ctx: Context, config: ConsoleLogConfig = {}) {
+  if (config.debug === false) return
   const maxLevel = config.level ?? 2
 
   return ctx.logger.exporter({

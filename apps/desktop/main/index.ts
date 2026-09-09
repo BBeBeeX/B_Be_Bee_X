@@ -65,6 +65,12 @@ let quitting = false
 let tray: Tray | undefined
 let mainWindow: BrowserWindow | undefined
 
+function isDebug(): boolean {
+  const val = process.env['DEBUG'] || process.env['BBEBEE_DEBUG']
+  if (val && val !== '0' && val !== 'false') return true
+  return process.argv.includes('--debug')
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1180,
@@ -85,12 +91,15 @@ function createWindow(): BrowserWindow {
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     void window.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    // In development, forward renderer logs (from plugin-log-console) directly to the terminal stdout.
+  } else {
+    void window.loadFile(join(here, '../renderer/index.html'))
+  }
+
+  // Forward renderer logs (from plugin-log-console) to the terminal stdout only in debug mode.
+  if (isDebug()) {
     window.webContents.on('console-message', (_event, _level, message) => {
       process.stdout.write(`${message}\n`)
     })
-  } else {
-    void window.loadFile(join(here, '../renderer/index.html'))
   }
 
   // External links open in the user's browser, never in an app window — an
