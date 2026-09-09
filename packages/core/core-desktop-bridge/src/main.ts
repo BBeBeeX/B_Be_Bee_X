@@ -19,6 +19,7 @@
  */
 
 import { Context } from 'cordis'
+import { pathToFileURL } from 'node:url'
 import { assertSqlAllowed } from '@BBeBee/kernel'
 import { uriContains, type DbService, type FsService, type PathsService } from '@BBeBee/protocol'
 import { PathsNode } from '@BBeBee/core-paths-node'
@@ -107,6 +108,11 @@ export interface HostOptions {
   httpFetch?: (input: string, init: HttpFetchInit) => Promise<HttpFetchResponse>
   /** Concurrent in-flight bridged requests. Bounds sockets held by one renderer. */
   maxOpenRequests?: number
+  /**
+   * Ask the user to choose a directory from the OS file dialog.
+   * In Electron, this uses `dialog.showOpenDialog`.
+   */
+  pickDirectory?: (sender?: unknown) => Promise<string | undefined>
 }
 
 /** The slice of `RequestInit` the host forwards. Structural, like `IpcHost`. */
@@ -231,6 +237,17 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     system: () => system,
   }
 
+  const extraRoots = new Set<string>()
+
+  try {
+    const rows = await ctx.db.query<{ uri: string }>('SELECT uri FROM scan_roots')
+    for (const row of rows) {
+      if (row.uri) extraRoots.add(row.uri)
+    }
+  } catch {
+    /* Table may not exist yet in test harnesses without migrations */
+  }
+
   /**
    * Every location the app is allowed to touch.
    *
@@ -252,7 +269,8 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     if (typeof uri !== 'string') throw new TypeError('bridge: expected a uri')
     // SAF content:// uris are opaque and are granted by the user picking them.
     if (uri.startsWith('content://')) return
-    if (!roots().some((root) => uriContains(root, uri))) {
+    const allRoots = [...roots(), ...extraRoots]
+    if (!allRoots.some((root) => uriContains(root, uri))) {
       throw new Error(`bridge: ${uri} is outside every application directory`)
     }
   }
@@ -273,11 +291,33 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     }
 
     const callArgs = Array.isArray(args) ? args : []
+    if (service === 'fs' && method === 'pickDirectory') {
+      if (options.pickDirectory) {
+        const picked = await options.pickDirectory(event?.sender)
+        if (!picked) return undefined
+        const uri = picked.startsWith('file://')
+          ? picked.replace(/\/$/, '')
+          : pathToFileURL(picked).href.replace(/\/$/, '')
+        extraRoots.add(uri)
+        return uri
+      }
+    }
+
     if (service === 'fs') {
       for (const index of URI_ARGS[method] ?? []) assertContained(callArgs[index])
     }
     if (service === 'db' && typeof callArgs[0] === 'string') {
       assertSqlAllowed(callArgs[0], 'the bridge')
+      if (/scan_roots/i.test(callArgs[0]) && Array.isArray(callArgs[1])) {
+        for (const arg of callArgs[1]) {
+          if (typeof arg === 'string' && (arg.startsWith('file://') || arg.startsWith('/'))) {
+            const uri = arg.startsWith('file://')
+              ? arg.replace(/\/$/, '')
+              : pathToFileURL(arg).href.replace(/\/$/, '')
+            extraRoots.add(uri)
+          }
+        }
+      }
     }
 
     // A call carrying a transaction token is routed into that transaction's
@@ -302,7 +342,11 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     const fn = (target as unknown as Record<string, (...a: unknown[]) => unknown>)[method]
     if (typeof fn !== 'function') throw new Error(`bridge: ${service} has no method "${method}"`)
     void event
-    return fn.apply(target, callArgs)
+    const result = await fn.apply(target, callArgs)
+    if (service === 'fs' && method === 'pickDirectory' && typeof result === 'string') {
+      extraRoots.add(result.replace(/\/$/, ''))
+    }
+    return result
   })
 
   /* ── Chunked reads ────────────────────────────────────────────────── */

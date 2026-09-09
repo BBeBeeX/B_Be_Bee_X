@@ -49,7 +49,10 @@ function fakeIpc() {
   return { host, invoke }
 }
 
-async function makeBridge(dir: string) {
+async function makeBridge(
+  dir: string,
+  options: Partial<Parameters<typeof createHost>[1]> = {},
+) {
   const { host, invoke } = fakeIpc()
 
   // Every well-known path is redirected into the scratch directory *before*
@@ -72,7 +75,7 @@ async function makeBridge(dir: string) {
         for (const handler of [...pushed]) handler(payload as BridgeEvent)
       },
     },
-    { appName: 'BBeBee', resolvePath: (kind) => layout[kind] },
+    { appName: 'BBeBee', resolvePath: (kind) => layout[kind], ...options },
   )
 
   const api: BridgeApi = {
@@ -253,5 +256,39 @@ describe('bridge specifics', () => {
     } finally {
       ;(globalThis as { window?: unknown }).window = saved
     }
+  })
+
+  it('pickDirectory forwards to host picker and grants access to user-picked folder outside app dirs', async () => {
+    const dir = await mkdtemp(join(root, 'pick-'))
+    const outside = await mkdtemp(join(root, 'outside-music-'))
+    const { ctx } = await makeBridge(dir, {
+      pickDirectory: async () => outside,
+    })
+
+    const picked = await ctx.fs.pickDirectory()
+    expect(picked).toBe(pathToFileURL(outside).href.replace(/\/$/, ''))
+
+    // Accessing files inside the picked directory should be allowed by assertContained
+    const testFile = ctx.fs.join(picked!, 'song.mp3')
+    await expect(ctx.fs.exists(testFile)).resolves.toBe(false)
+  })
+
+  it('scan_roots rows grant access across restarts', async () => {
+    const dir = await mkdtemp(join(root, 'scanroots-'))
+    const outside = await mkdtemp(join(root, 'saved-root-'))
+    const outsideUri = pathToFileURL(outside).href.replace(/\/$/, '')
+
+    // First run: add scan root to database
+    const { ctx: ctx1, mainHost: host1 } = await makeBridge(dir)
+    await ctx1.db.exec(
+      'INSERT INTO scan_roots (id, uri, recursive, enabled) VALUES (?, ?, ?, ?)',
+      ['r1', outsideUri, 1, 1],
+    )
+    await host1.dispose()
+
+    // Second run: new bridge instance with same db
+    const { ctx: ctx2 } = await makeBridge(dir)
+    const testFile = ctx2.fs.join(outsideUri, 'song.mp3')
+    await expect(ctx2.fs.exists(testFile)).resolves.toBe(false)
   })
 })

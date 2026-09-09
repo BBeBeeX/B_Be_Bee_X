@@ -45,6 +45,7 @@ async function harness(respond: (url: string, init: HttpFetchInit) => Response) 
   const mainHost = await createHost(host, {
     appName: 'BBeBee',
     resolvePath: () => undefined,
+    databaseFileName: ':memory:',
     httpFetch: (url, init) => {
       seen.push({ url, init })
       init.signal?.addEventListener('abort', () => aborted.push(url))

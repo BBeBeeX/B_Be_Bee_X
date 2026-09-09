@@ -374,6 +374,13 @@ void app.whenReady().then(async () => {
       httpFetch: (url, init) =>
         net.fetch(url, init as Parameters<typeof net.fetch>[1]) as never,
       system: systemHost(() => bridge.host),
+      pickDirectory: async (sender) => {
+        const window = sender ? BrowserWindow.fromWebContents(sender as Electron.WebContents) : mainWindow
+        const result = window
+          ? await dialog.showOpenDialog(window, { properties: ['openDirectory'] })
+          : await dialog.showOpenDialog({ properties: ['openDirectory'] })
+        return result.canceled ? undefined : result.filePaths[0]
+      },
     },
   )
 
