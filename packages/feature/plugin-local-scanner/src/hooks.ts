@@ -10,15 +10,15 @@
 import { useEffect, useState } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { ScanProgress, ScanRoot, ScanSummary } from '@BBeBee/protocol'
+import type { ScanProgress, ScanSpecifiedDir, ScanSummary } from '@BBeBee/protocol'
 import { shallowArrayEqual, useServiceState } from '@BBeBee/ui-core'
 
 /** The configured folders. */
-export function useScanRoots(ctx: Context): readonly ScanRoot[] {
+export function useScanSpecifiedDirs(ctx: Context): readonly ScanSpecifiedDir[] {
   return useServiceState(
     ctx,
-    ['scan/roots-changed', 'scan/finished', 'scan/started', 'library/changed'],
-    () => ctx.scanner.roots,
+    ['scan/specified-dirs-changed', 'scan/finished', 'scan/started', 'library/changed'],
+    () => ctx.scanner.specifiedDirs,
     { isEqual: shallowArrayEqual },
   )
 }
@@ -44,14 +44,14 @@ export function useScanState(ctx: Context): ScanState {
   useEffect(() => {
     const offs = [
       ctx.on('scan/started', () => setState((prev) => ({ ...prev, running: true }))),
-      ctx.on('scan/progress', (rootId: string, done: number, total?: number) =>
+      ctx.on('scan/progress', (specifiedDirId: string, done: number, total?: number) =>
         setState((prev) => ({
           ...prev,
           running: true,
-          progress: { rootId, done, ...(total === undefined ? {} : { total }) },
+          progress: { specifiedDirId, done, ...(total === undefined ? {} : { total }) },
         })),
       ),
-      ctx.on('scan/finished', (_rootId: string, summary: ScanSummary) =>
+      ctx.on('scan/finished', (_specifiedDirId: string, summary: ScanSummary) =>
         // `progress` is cleared, not left at its last value: a bar frozen at
         // 90% after a finished scan is worse than no bar.
         setState({ running: false, lastSummary: summary }),

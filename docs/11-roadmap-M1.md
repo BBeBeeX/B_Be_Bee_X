@@ -575,12 +575,12 @@ Separate from `plugin-source-local`, because scanning is a different concern fro
   to its own timer. Without that there was no automatic rescan on desktop at all: files changed and
   the library silently stayed stale.
 
-- [x] `addRoot` uses `ctx.fs.pickDirectory`, and the Android SAF grant survives a relaunch.
-      ⚠️ The picker call sits in the *view* package and `addRoot` takes the `Uri` it returns:
+- [x] `addSpecifiedDir` uses `ctx.fs.pickDirectory`, and the Android SAF grant survives a relaunch.
+      ⚠️ The picker call sits in the *view* package and `addSpecifiedDir` takes the `Uri` it returns:
       choosing a folder is a UI act, and a service that opened a dialog could not be driven from
       a test or a restore. The SAF half is device work.
 - [x] Writes `tracks`, `albums`, `artists`, `track_artists`, `genres`, `track_genres`, `artworks`,
-      `media_bindings`, `scan_roots`, `scan_entries`; declares `db:write:core` (MD-4).
+      `media_bindings`, `scan_specified_dirs`, `scan_entries`; declares `db:write:core` (MD-4).
 - [x] Emits `scan/started`, `scan/progress`, `scan/finished` and `library/changed` per batch, so
       the UI fills progressively instead of after the whole walk.
 - [x] Cancelling mid-scan leaves the database consistent, and the next scan resumes cheaply.
@@ -867,7 +867,7 @@ actually curates.
 // packages/protocol/src/services/scanner.ts
 import type { Uri } from '../common.js'
 
-export interface ScanRoot {
+export interface ScanSpecifiedDir {
   id: string
   uri: Uri
   recursive: boolean
@@ -878,17 +878,17 @@ export interface ScanRoot {
 
 export interface ScanSummary { added: number; updated: number; removed: number; errors: number }
 
-export interface ScanProgress { rootId: string; done: number; total?: number }
+export interface ScanProgress { specifiedDirId: string; done: number; total?: number }
 
 export interface ScannerService {
-  readonly roots: readonly ScanRoot[]
-  addRoot(uri: Uri, opts?: { recursive?: boolean }): Promise<ScanRoot>
-  /** `forgetTracks` also drops the catalogue rows this root produced. */
-  removeRoot(id: string, opts?: { forgetTracks?: boolean }): Promise<void>
+  readonly specifiedDirs: readonly ScanSpecifiedDir[]
+  addSpecifiedDir(uri: Uri, opts?: { recursive?: boolean }): Promise<ScanSpecifiedDir>
+  /** `forgetTracks` also drops the catalogue rows this specified dir produced. */
+  removeSpecifiedDir(id: string, opts?: { forgetTracks?: boolean }): Promise<void>
   setEnabled(id: string, on: boolean): Promise<void>
 
   /** `full` re-reads metadata even where (size, mtime) is unchanged. */
-  scan(opts?: { rootId?: string; full?: boolean; signal?: AbortSignal }): Promise<ScanSummary>
+  scan(opts?: { specifiedDirId?: string; full?: boolean; signal?: AbortSignal }): Promise<ScanSummary>
   cancel(): void
   readonly progress: ScanProgress | undefined
 }

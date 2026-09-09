@@ -240,7 +240,7 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
   const extraRoots = new Set<string>()
 
   try {
-    const rows = await ctx.db.query<{ uri: string }>('SELECT uri FROM scan_roots')
+    const rows = await ctx.db.query<{ uri: string }>('SELECT uri FROM scan_specified_dirs')
     for (const row of rows) {
       if (row.uri) extraRoots.add(row.uri)
     }
@@ -308,7 +308,7 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     }
     if (service === 'db' && typeof callArgs[0] === 'string') {
       assertSqlAllowed(callArgs[0], 'the bridge')
-      if (/scan_roots/i.test(callArgs[0]) && Array.isArray(callArgs[1])) {
+      if (/scan_specified_dir/i.test(callArgs[0]) && Array.isArray(callArgs[1])) {
         for (const arg of callArgs[1]) {
           if (typeof arg === 'string' && (arg.startsWith('file://') || arg.startsWith('/'))) {
             const uri = arg.startsWith('file://')

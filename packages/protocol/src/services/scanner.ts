@@ -15,7 +15,7 @@
 import type {} from 'cordis'
 import type { Uri } from '../common.js'
 
-export interface ScanRoot {
+export interface ScanSpecifiedDir {
   id: string
   uri: Uri
   recursive: boolean
@@ -48,14 +48,14 @@ export interface ScanSummary {
 }
 
 export interface ScanProgress {
-  rootId: string
+  specifiedDirId: string
   done: number
   /** Absent until the walk has enumerated the tree. */
   total?: number
 }
 
 export interface ScannerService {
-  readonly roots: readonly ScanRoot[]
+  readonly specifiedDirs: readonly ScanSpecifiedDir[]
 
   /**
    * Add a folder to scan.
@@ -63,20 +63,20 @@ export interface ScannerService {
    * The Uri must already carry durable permission — on Android that means it
    * came from `ctx.fs.pickDirectory()`, whose SAF grant is persisted.
    */
-  addRoot(uri: Uri, opts?: { recursive?: boolean }): Promise<ScanRoot>
+  addSpecifiedDir(uri: Uri, opts?: { recursive?: boolean }): Promise<ScanSpecifiedDir>
 
-  /** `forgetTracks` also drops the catalogue rows this root produced. */
-  removeRoot(id: string, opts?: { forgetTracks?: boolean }): Promise<void>
+  /** `forgetTracks` also drops the catalogue rows this specified dir produced. */
+  removeSpecifiedDir(id: string, opts?: { forgetTracks?: boolean }): Promise<void>
   setEnabled(id: string, on: boolean): Promise<void>
 
   /**
-   * Walk the roots, importing what changed.
+   * Walk the specified dirs, importing what changed.
    *
    * Incremental by `(size, mtime)`: an unchanged file costs one `stat` and
    * nothing else. `full` re-reads metadata regardless, for when the tag reader
    * itself has changed.
    */
-  scan(opts?: { rootId?: string; full?: boolean; signal?: AbortSignal }): Promise<ScanSummary>
+  scan(opts?: { specifiedDirId?: string; full?: boolean; signal?: AbortSignal }): Promise<ScanSummary>
 
   /** Cancel the walk in flight. It checkpoints per batch, so this costs one batch. */
   cancel(): void

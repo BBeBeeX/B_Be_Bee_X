@@ -133,7 +133,7 @@ describe('scanning', () => {
       hasArtwork: true,
     })
 
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
     const summary = await h.scanner.scan()
 
     expect(summary.added, 'the .txt is not audio').toBe(2)
@@ -179,7 +179,7 @@ describe('scanning', () => {
     // M1's first exit criterion, as a count rather than an intention.
     const h = await harness()
     for (let i = 0; i < 10; i++) await h.write(`t${i}.mp3`)
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
 
     const first = await h.scanner.scan()
     expect(first.added).toBe(10)
@@ -197,7 +197,7 @@ describe('scanning', () => {
   it('re-imports a file whose size or mtime changed', async () => {
     const h = await harness()
     const a = await h.write('a.mp3')
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
     await h.scanner.scan()
 
     h.codec.metadataReads.length = 0
@@ -214,7 +214,7 @@ describe('scanning', () => {
   it('re-reads everything when asked for a full scan', async () => {
     const h = await harness()
     await h.write('a.mp3')
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
     await h.scanner.scan()
 
     h.codec.metadataReads.length = 0
@@ -228,7 +228,7 @@ describe('scanning', () => {
     await h.write('good.mp3')
     h.codec.failures.add(bad)
 
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
     const summary = await h.scanner.scan()
 
     expect(summary).toMatchObject({ added: 1, errors: 1 })
@@ -251,7 +251,7 @@ describe('scanning', () => {
     await writeFile(join(h.dir, 'sub', 'b.mp3'), 'x')
     await symlink(h.dir, join(h.dir, 'sub', 'loop'), 'dir')
 
-    await h.scanner.addRoot(h.uri, { recursive: true })
+    await h.scanner.addSpecifiedDir(h.uri, { recursive: true })
     const summary = await h.scanner.scan()
 
     // The guarantee is termination and a bounded result — not perfect
@@ -274,7 +274,7 @@ describe('scanning', () => {
      */
     const h = await harness()
     await h.write('keep-me.mp3')
-    await h.scanner.addRoot(h.uri, { recursive: true })
+    await h.scanner.addSpecifiedDir(h.uri, { recursive: true })
     const first = await h.scanner.scan()
     expect(first.added).toBe(1)
     expect(first.incomplete, 'a clean tree is complete').toBeFalsy()
@@ -304,7 +304,7 @@ describe('scanning', () => {
     const h = await harness()
     await mkdir(join(h.dir, 'private'), { recursive: true })
     await writeFile(join(h.dir, 'private', 'keep-me.mp3'), 'x')
-    await h.scanner.addRoot(h.uri, { recursive: true })
+    await h.scanner.addSpecifiedDir(h.uri, { recursive: true })
 
     const first = await h.scanner.scan()
     expect(first.added, 'the file imports while the folder is readable').toBe(1)
@@ -337,10 +337,10 @@ describe('scanning', () => {
     await mkdir(join(h.dir, 'b'), { recursive: true })
     await symlink(join(h.dir, 'b'), join(h.dir, 'a', 'to-b'), 'dir')
     await symlink(join(h.dir, 'a'), join(h.dir, 'b', 'to-a'), 'dir')
-    await h.scanner.addRoot(h.uri, { recursive: true })
+    await h.scanner.addSpecifiedDir(h.uri, { recursive: true })
 
     const seen: { incomplete?: boolean }[] = []
-    h.ctx.on('scan/finished', (_rootId, summary) => void seen.push(summary))
+    h.ctx.on('scan/finished', (_specifiedDirId, summary) => void seen.push(summary))
     await h.scanner.scan()
 
     expect(seen.at(-1)?.incomplete).toBe(true)
@@ -358,7 +358,7 @@ describe('scanning', () => {
     await symlink(join(h.dir, 'b'), join(h.dir, 'a', 'to-b'), 'dir')
     await symlink(join(h.dir, 'a'), join(h.dir, 'b', 'to-a'), 'dir')
 
-    await h.scanner.addRoot(h.uri, { recursive: true })
+    await h.scanner.addSpecifiedDir(h.uri, { recursive: true })
     const summary = await h.scanner.scan()
 
     expect(summary.errors).toBe(0)
@@ -372,11 +372,11 @@ describe('scanning', () => {
     await h.write('top.mp3')
     await h.write('deep/nested.mp3')
 
-    await h.scanner.addRoot(h.uri, { recursive: false })
+    await h.scanner.addSpecifiedDir(h.uri, { recursive: false })
     expect((await h.scanner.scan()).added).toBe(1)
 
-    await h.scanner.removeRoot(h.scanner.roots[0]!.id)
-    await h.scanner.addRoot(h.uri, { recursive: true })
+    await h.scanner.removeSpecifiedDir(h.scanner.specifiedDirs[0]!.id)
+    await h.scanner.addSpecifiedDir(h.uri, { recursive: true })
     expect((await h.scanner.scan()).added).toBe(2)
   })
 
@@ -384,7 +384,7 @@ describe('scanning', () => {
     const h = await harness()
     const a = await h.write('a.mp3')
     await h.write('b.mp3')
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
     await h.scanner.scan()
     expect(await h.db.query('SELECT urn FROM tracks')).toHaveLength(2)
 
@@ -405,7 +405,7 @@ describe('scanning', () => {
     // Otherwise a rescan orphans every playlist entry and play record.
     const h = await harness()
     await h.write('a.mp3')
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
     await h.scanner.scan()
     const before = await h.db.get<{ urn: string }>('SELECT urn FROM tracks')
 
@@ -423,7 +423,7 @@ describe('scanning', () => {
     h.codec.tags.set(t1, { title: 'Track 1', album: 'Album A', artist: 'Artist A', hasArtwork: false })
     h.codec.tags.set(t2, { title: 'Track 2', album: 'Album A', artist: 'Artist A', hasArtwork: false })
 
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
     await h.scanner.scan()
 
     const itemsBefore = await h.db.query<{ urn: string; kind: string }>(
@@ -457,10 +457,10 @@ describe('scanning', () => {
     for (let i = 0; i < 5; i++) await h.write(`t${i}.mp3`)
     const progress: number[] = []
     const changed: number[] = []
-    h.ctx.on('scan/progress', (_root, done) => void progress.push(done))
+    h.ctx.on('scan/progress', (_specifiedDirId, done) => void progress.push(done))
     h.ctx.on('library/changed', (_kind, urns) => void changed.push(urns.length))
 
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
     await h.scanner.scan()
 
     // batchSize is 2, so 5 files are three batches — each one a checkpoint.
@@ -471,7 +471,7 @@ describe('scanning', () => {
   it('stops when cancelled, and says so', async () => {
     const h = await harness()
     for (let i = 0; i < 6; i++) await h.write(`t${i}.mp3`)
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
 
     const abort = new AbortController()
     h.ctx.on('scan/progress', () => abort.abort())
@@ -484,66 +484,66 @@ describe('scanning', () => {
   })
 })
 
-describe('roots', () => {
-  it('persists roots and reloads them', async () => {
+describe('specified dirs', () => {
+  it('persists specified dirs and reloads them', async () => {
     const h = await harness()
-    const root = await h.scanner.addRoot(h.uri)
-    expect(h.scanner.roots).toHaveLength(1)
+    const dir = await h.scanner.addSpecifiedDir(h.uri)
+    expect(h.scanner.specifiedDirs).toHaveLength(1)
 
-    const rows = await h.db.query<{ id: string; uri: string }>('SELECT id, uri FROM scan_roots')
-    expect(rows[0]).toMatchObject({ id: root.id, uri: h.uri })
+    const rows = await h.db.query<{ id: string; uri: string }>('SELECT id, uri FROM scan_specified_dirs')
+    expect(rows[0]).toMatchObject({ id: dir.id, uri: h.uri })
 
     // Adding the same folder twice is a no-op, not a duplicate.
-    await h.scanner.addRoot(h.uri)
-    expect(h.scanner.roots).toHaveLength(1)
+    await h.scanner.addSpecifiedDir(h.uri)
+    expect(h.scanner.specifiedDirs).toHaveLength(1)
   })
 
-  it('disables a root without forgetting it', async () => {
+  it('disables a specified dir without forgetting it', async () => {
     const h = await harness()
     await h.write('a.mp3')
-    const root = await h.scanner.addRoot(h.uri)
-    await h.scanner.setEnabled(root.id, false)
+    const dir = await h.scanner.addSpecifiedDir(h.uri)
+    await h.scanner.setEnabled(dir.id, false)
 
     expect((await h.scanner.scan()).added).toBe(0)
-    expect(h.scanner.roots[0]!.enabled).toBe(false)
+    expect(h.scanner.specifiedDirs[0]!.enabled).toBe(false)
   })
 
-  it('removing a root can take its tracks with it', async () => {
+  it('removing a specified dir can take its tracks with it', async () => {
     const h = await harness()
     await h.write('a.mp3')
-    const root = await h.scanner.addRoot(h.uri)
+    const dir = await h.scanner.addSpecifiedDir(h.uri)
     await h.scanner.scan()
 
-    await h.scanner.removeRoot(root.id, { forgetTracks: true })
+    await h.scanner.removeSpecifiedDir(dir.id, { forgetTracks: true })
     expect(await h.db.query('SELECT urn FROM tracks')).toHaveLength(0)
     expect(await h.db.query('SELECT urn FROM library_items')).toHaveLength(0)
-    expect(await h.db.query('SELECT id FROM scan_roots')).toHaveLength(0)
+    expect(await h.db.query('SELECT id FROM scan_specified_dirs')).toHaveLength(0)
   })
 
-  it('emits scan/roots-changed when roots are added, disabled, or removed', async () => {
+  it('emits scan/specified-dirs-changed when specified dirs are added, disabled, or removed', async () => {
     const h = await harness()
     const changes: number[] = []
-    h.ctx.on('scan/roots-changed', (roots) => changes.push(roots.length))
+    h.ctx.on('scan/specified-dirs-changed', (dirs) => changes.push(dirs.length))
 
-    const root = await h.scanner.addRoot(h.uri)
+    const dir = await h.scanner.addSpecifiedDir(h.uri)
     expect(changes).toEqual([1])
 
-    await h.scanner.setEnabled(root.id, false)
+    await h.scanner.setEnabled(dir.id, false)
     expect(changes).toEqual([1, 1])
 
-    await h.scanner.removeRoot(root.id)
+    await h.scanner.removeSpecifiedDir(dir.id)
     expect(changes).toEqual([1, 1, 0])
   })
 
-  it('re-enables a disabled root when addRoot is called with the same uri', async () => {
+  it('re-enables a disabled specified dir when addSpecifiedDir is called with the same uri', async () => {
     const h = await harness()
-    const root = await h.scanner.addRoot(h.uri)
-    await h.scanner.setEnabled(root.id, false)
-    expect(h.scanner.roots[0]!.enabled).toBe(false)
+    const dir = await h.scanner.addSpecifiedDir(h.uri)
+    await h.scanner.setEnabled(dir.id, false)
+    expect(h.scanner.specifiedDirs[0]!.enabled).toBe(false)
 
-    const readded = await h.scanner.addRoot(h.uri)
+    const readded = await h.scanner.addSpecifiedDir(h.uri)
     expect(readded.enabled).toBe(true)
-    expect(h.scanner.roots[0]!.enabled).toBe(true)
+    expect(h.scanner.specifiedDirs[0]!.enabled).toBe(true)
   })
 })
 
@@ -554,7 +554,7 @@ describe('keeping up with the filesystem', () => {
     // there is no automatic rescan at all, and the library silently goes stale.
     const h = await harness({ pollIntervalMinutes: 1 / 600, canWatch: false }) // 100 ms
     await h.write('a.mp3')
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
     await h.scanner.scan()
     expect(await h.db.query('SELECT urn FROM tracks')).toHaveLength(1)
 
@@ -571,7 +571,7 @@ describe('keeping up with the filesystem', () => {
     // would fight over the abort controller and orphan one another.
     const h = await harness()
     for (let i = 0; i < 6; i++) await h.write(`t${i}.mp3`)
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
 
     const [first, second] = await Promise.all([h.scanner.scan(), h.scanner.scan()])
     expect(first, 'the second caller joined the first scan').toBe(second)
@@ -606,7 +606,7 @@ describe('tag handling', () => {
     const h = await harness()
     await h.write('01 - Untagged Song.mp3')
     h.codec.tags.clear()
-    await h.scanner.addRoot(h.uri)
+    await h.scanner.addSpecifiedDir(h.uri)
     await h.scanner.scan()
 
     // The extension is not part of a title, and the name is URL-decoded.
@@ -614,7 +614,7 @@ describe('tag handling', () => {
     expect(track?.title).toBe('01 - Untagged Song')
   })
 
-  it('allows caller contexts without db capabilities to add and remove roots', async () => {
+  it('allows caller contexts without db capabilities to add and remove specified dirs', async () => {
     const h = await harness()
     const callerCtx = h.ctx.extend()
     callerCtx.intercept('db', {
@@ -622,11 +622,11 @@ describe('tag handling', () => {
       scopeId: '@BBeBee/plugin-local-scanner-ui-desktop',
       granted: [],
     })
-    const root = await callerCtx.scanner.addRoot(h.uri)
-    expect(root.uri).toBe(h.uri)
-    expect(callerCtx.scanner.roots).toHaveLength(1)
-    await callerCtx.scanner.removeRoot(root.id)
-    expect(callerCtx.scanner.roots).toHaveLength(0)
+    const dir = await callerCtx.scanner.addSpecifiedDir(h.uri)
+    expect(dir.uri).toBe(h.uri)
+    expect(callerCtx.scanner.specifiedDirs).toHaveLength(1)
+    await callerCtx.scanner.removeSpecifiedDir(dir.id)
+    expect(callerCtx.scanner.specifiedDirs).toHaveLength(0)
   })
 })
 

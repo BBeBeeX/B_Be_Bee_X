@@ -186,7 +186,7 @@ export const CORE_MIGRATIONS: Migration[] = [
       `CREATE INDEX idx_bindings_track ON media_bindings(track_urn)`,
       `CREATE UNIQUE INDEX idx_bindings_uri ON media_bindings(uri)`,
 
-      `CREATE TABLE scan_roots (
+      `CREATE TABLE scan_specified_dirs (
         id            TEXT PRIMARY KEY,
         uri           TEXT NOT NULL UNIQUE,
         recursive     INTEGER NOT NULL DEFAULT 1,
@@ -198,16 +198,16 @@ export const CORE_MIGRATIONS: Migration[] = [
       )`,
       // (size, mtime) is the incremental-scan key: unchanged files cost one stat.
       `CREATE TABLE scan_entries (
-        uri        TEXT PRIMARY KEY,
-        root_id    TEXT NOT NULL REFERENCES scan_roots(id) ON DELETE CASCADE,
-        size       INTEGER NOT NULL,
-        mtime      INTEGER NOT NULL,
-        track_urn  TEXT REFERENCES tracks(urn) ON DELETE SET NULL,
-        status     TEXT NOT NULL,
-        error      TEXT,
-        scanned_at INTEGER NOT NULL
+        uri              TEXT PRIMARY KEY,
+        specified_dir_id TEXT NOT NULL REFERENCES scan_specified_dirs(id) ON DELETE CASCADE,
+        size             INTEGER NOT NULL,
+        mtime            INTEGER NOT NULL,
+        track_urn        TEXT REFERENCES tracks(urn) ON DELETE SET NULL,
+        status           TEXT NOT NULL,
+        error            TEXT,
+        scanned_at       INTEGER NOT NULL
       )`,
-      `CREATE INDEX idx_scan_entries_root ON scan_entries(root_id, status)`,
+      `CREATE INDEX idx_scan_entries_specified_dir ON scan_entries(specified_dir_id, status)`,
 
       /* ── Playlists and library ─────────────────────────────────────── */
       `CREATE TABLE playlists (

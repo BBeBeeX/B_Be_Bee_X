@@ -41,7 +41,7 @@ import type { HttpRequest, HttpResponse } from './services/http.js'
 import type { AuthStatus } from './services/sources.js'
 import type { CheckReport } from './services/source-document.js'
 import type { SourceError } from './errors.js'
-import type { ScanRoot, ScanSummary } from './services/scanner.js'
+import type { ScanSpecifiedDir, ScanSummary } from './services/scanner.js'
 import type { UrnKind } from './urn.js'
 
 declare module 'cordis' {
@@ -115,9 +115,9 @@ declare module 'cordis' {
 
     /* ── library & scanning ─────────────────────────── emit ── */
     'library/changed'(kind: UrnKind, urns: string[]): void
-    'scan/roots-changed'(roots: readonly ScanRoot[]): void
-    'scan/started'(rootId: string): void
-    'scan/progress'(rootId: string, done: number, total?: number): void
+    'scan/specified-dirs-changed'(dirs: readonly ScanSpecifiedDir[]): void
+    'scan/started'(specifiedDirId: string): void
+    'scan/progress'(specifiedDirId: string, done: number, total?: number): void
     /**
      * A walk finished, or stopped early.
      *
@@ -125,7 +125,7 @@ declare module 'cordis' {
      * listener that cannot tell a complete scan from a truncated one will
      * report "0 removed" as though the library were reconciled.
      */
-    'scan/finished'(rootId: string, summary: ScanSummary): void
+    'scan/finished'(specifiedDirId: string, summary: ScanSummary): void
 
     /* ── dsp ───────────────────────────────────── waterfall ── */
     'dsp/build-chain'(segments: EffectSegment[], next: () => EffectSegment[]): EffectSegment[]
@@ -168,7 +168,7 @@ export const DISPATCH_MODES = {
   'download/completed': 'emit',
   'download/failed': 'emit',
   'library/changed': 'emit',
-  'scan/roots-changed': 'emit',
+  'scan/specified-dirs-changed': 'emit',
   'scan/started': 'emit',
   'scan/progress': 'emit',
   'scan/finished': 'emit',

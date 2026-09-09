@@ -62,8 +62,8 @@ async function seedV1Catalogue(harness: {
     `INSERT INTO track_genres (track_urn, genre_id) VALUES ('BBeBee:nas:track:1', 'g1')`,
     `INSERT INTO media_bindings (id, track_urn, uri, origin, created_at)
      VALUES ('b1', 'BBeBee:nas:track:1', 'file:///a.flac', 'scan', 1000)`,
-    `INSERT INTO scan_roots (id, uri) VALUES ('r1', 'file:///music')`,
-    `INSERT INTO scan_entries (uri, root_id, size, mtime, track_urn, status, scanned_at)
+    `INSERT INTO scan_specified_dirs (id, uri) VALUES ('r1', 'file:///music')`,
+    `INSERT INTO scan_entries (uri, specified_dir_id, size, mtime, track_urn, status, scanned_at)
      VALUES ('file:///a.flac', 'r1', 1, 1, 'BBeBee:nas:track:1', 'ok', 1000)`,
     `INSERT INTO tracks_fts_map (rowid, urn) VALUES (7, 'BBeBee:nas:track:1')`,
     `INSERT INTO playlists (urn, instance_id, name, created_at, updated_at)
@@ -350,7 +350,7 @@ describe('CORE_MIGRATIONS', () => {
       'sources', 'source_vars', 'accounts', 'cookie_jars', 'artworks',
       'artists', 'albums', 'tracks', 'track_artists', 'album_artists',
       'genres', 'track_genres', 'external_ids', 'track_links',
-      'media_bindings', 'scan_roots', 'scan_entries',
+      'media_bindings', 'scan_specified_dirs', 'scan_entries',
       'playlists', 'playlist_items', 'library_items', 'collections', 'collection_items',
       'queue_items', 'playback_state', 'play_history', 'track_stats',
       'download_tasks', 'download_policies',

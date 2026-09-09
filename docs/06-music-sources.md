@@ -1184,7 +1184,7 @@ can substitute a downloaded file for a stream without the player noticing
 ### The local scanner
 
 `plugin-local-scanner` is separate from `plugin-source-local` because scanning is a different
-concern from serving. It walks `scan_roots` via `ctx.fs.list`, and for each file whose
+concern from serving. It walks `scan_specified_dirs` via `ctx.fs.list`, and for each file whose
 `(size, mtime)` differs from the recorded `scan_entries` row, calls `ctx.codec.readMetadata`,
 extracts artwork, and writes catalogue rows.
 

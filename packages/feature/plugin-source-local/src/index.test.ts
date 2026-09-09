@@ -84,7 +84,7 @@ async function harness() {
   await tick()
 
   const uri = pathToFileURL(dir).href.replace(/\/$/, '')
-  await ctx.scanner.addRoot(uri)
+  await ctx.scanner.addSpecifiedDir(uri)
   await ctx.scanner.scan()
   await tick()
 

@@ -98,7 +98,7 @@ describe(`a library of ${TRACKS} files`, () => {
     'imports on the first pass and costs stat calls only on the second',
     async () => {
       const h = await harness()
-      await h.scanner.addRoot(pathToFileURL(corpus.root).href.replace(/\/$/, ''))
+      await h.scanner.addSpecifiedDir(pathToFileURL(corpus.root).href.replace(/\/$/, ''))
 
       const first = await h.scanner.scan()
 
@@ -147,7 +147,7 @@ describe(`a library of ${TRACKS} files`, () => {
        * a ceiling per file says nothing about a scan of five thousand.
        */
       const h = await harness()
-      await h.scanner.addRoot(pathToFileURL(corpus.root).href.replace(/\/$/, ''))
+      await h.scanner.addSpecifiedDir(pathToFileURL(corpus.root).href.replace(/\/$/, ''))
       h.fs.reset()
       await h.scanner.scan()
 
@@ -278,7 +278,7 @@ describe('scanning while playing', () => {
 
       const scanner = ctx.scanner as Scanner
       const player = ctx.player as Player
-      await scanner.addRoot(pathToFileURL(corpus.root).href.replace(/\/$/, ''))
+      await scanner.addSpecifiedDir(pathToFileURL(corpus.root).href.replace(/\/$/, ''))
 
       // A quiet scan first, for something to compare against.
       const quietStart = performance.now()

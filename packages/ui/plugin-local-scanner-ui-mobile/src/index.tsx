@@ -10,9 +10,9 @@ import { createElement as h } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { ScanRoot } from '@BBeBee/protocol'
+import type { ScanSpecifiedDir } from '@BBeBee/protocol'
 import { SCANNER_VIEWS } from '@BBeBee/plugin-local-scanner/views'
-import { summarise, useScanRoots, useScanState } from '@BBeBee/plugin-local-scanner/hooks'
+import { summarise, useScanSpecifiedDirs, useScanState } from '@BBeBee/plugin-local-scanner/hooks'
 import {
   Button,
   EmptyState,
@@ -23,9 +23,9 @@ import {
 } from '@BBeBee/ui-kit-mobile'
 import { tokens } from '@BBeBee/ui-tokens'
 
-export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
+export function ScanSpecifiedDirsScreen({ ctx }: { ctx: Context }): ReactElement {
   const native = nativePrimitives()
-  const roots = useScanRoots(ctx)
+  const dirs = useScanSpecifiedDirs(ctx)
   const scan = useScanState(ctx)
 
   const addFolder = async () => {
@@ -34,9 +34,9 @@ export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
     try {
       const uri = await ctx.fs.pickDirectory()
       if (uri) {
-        const root = await ctx.scanner.addRoot(uri)
-        void ctx.scanner.scan({ rootId: root.id }).catch((err) => {
-          ctx.logger?.error('failed to scan newly added root %s: %s', root.id, err)
+        const dir = await ctx.scanner.addSpecifiedDir(uri)
+        void ctx.scanner.scan({ specifiedDirId: dir.id }).catch((err) => {
+          ctx.logger?.error('failed to scan newly added specified dir %s: %s', dir.id, err)
         })
       }
     } catch (err) {
@@ -85,17 +85,17 @@ export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
             children: `Last scan: ${summarise(scan.lastSummary)}`,
           })
         : null,
-    h(List<ScanRoot>, {
-      items: roots,
+    h(List<ScanSpecifiedDir>, {
+      items: dirs,
       accessibilityLabel: 'Music folders',
       estimatedItemSize: tokens.size.row,
-      keyExtractor: (root) => root.id,
+      keyExtractor: (dir) => dir.id,
       empty: h(EmptyState, {
         icon: '📁',
         title: 'No folders yet',
         description: 'Add one and its music appears in your library as it is scanned.',
       }),
-      renderItem: (root) =>
+      renderItem: (dir) =>
         h(
           native.View as never,
           {
@@ -104,38 +104,38 @@ export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
               alignItems: 'center',
               gap: tokens.space[3],
               height: tokens.size.row,
-              opacity: root.enabled ? 1 : 0.5,
+              opacity: dir.enabled ? 1 : 0.5,
             },
           },
           h(
             native.View as never,
             { style: { flex: 1, minWidth: 0 } },
-            h(Text, { numberOfLines: 1, children: root.uri }),
+            h(Text, { numberOfLines: 1, children: dir.uri }),
             // The reason a folder failed, kept in front of the user rather
             // than only in a log they will never open.
-            root.lastError
-              ? h(Text, { variant: 'sm', tone: 'error', numberOfLines: 1, children: root.lastError })
+            dir.lastError
+              ? h(Text, { variant: 'sm', tone: 'error', numberOfLines: 1, children: dir.lastError })
               : null,
           ),
           h(Button, {
             variant: 'ghost',
-            disabled: scan.running || !root.enabled,
-            onPress: () => void ctx.scanner.scan({ rootId: root.id }),
-            accessibilityLabel: `Scan ${root.uri}`,
+            disabled: scan.running || !dir.enabled,
+            onPress: () => void ctx.scanner.scan({ specifiedDirId: dir.id }),
+            accessibilityLabel: `Scan ${dir.uri}`,
             children: 'Scan',
           }),
           h(Button, {
             variant: 'ghost',
-            onPress: () => void ctx.scanner.setEnabled(root.id, !root.enabled),
-            accessibilityLabel: root.enabled ? `Disable ${root.uri}` : `Enable ${root.uri}`,
-            children: root.enabled ? 'Disable' : 'Enable',
+            onPress: () => void ctx.scanner.setEnabled(dir.id, !dir.enabled),
+            accessibilityLabel: dir.enabled ? `Disable ${dir.uri}` : `Enable ${dir.uri}`,
+            children: dir.enabled ? 'Disable' : 'Enable',
           }),
           h(IconButton, {
             icon: '🗑',
-            // Removing a root keeps its tracks by default: losing a library
+            // Removing a specified dir keeps its tracks by default: losing a library
             // to a mis-clicked button is far worse than a stale row.
-            accessibilityLabel: `Remove ${root.uri}`,
-            onPress: () => void ctx.scanner.removeRoot(root.id),
+            accessibilityLabel: `Remove ${dir.uri}`,
+            onPress: () => void ctx.scanner.removeSpecifiedDir(dir.id),
           }),
         ),
     }),
@@ -183,7 +183,7 @@ export const inject = ['ui', 'scanner', 'fs']
 
 export async function apply(ctx: Context) {
   return ctx.effect(function* () {
-    yield ctx.ui.registerView(SCANNER_VIEWS.settings, bound(ctx, ScanRootsScreen))
+    yield ctx.ui.registerView(SCANNER_VIEWS.settings, bound(ctx, ScanSpecifiedDirsScreen))
   }, 'scanner-ui-mobile')
 }
 

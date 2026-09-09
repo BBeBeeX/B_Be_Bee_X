@@ -27,7 +27,7 @@ import scannerPlugin from '@BBeBee/plugin-local-scanner'
 import { SCANNER_VIEWS } from '@BBeBee/plugin-local-scanner/views'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
-import { ScanRootsScreen, inject } from './index.js'
+import { ScanSpecifiedDirsScreen, inject } from './index.js'
 import plugin from './index.js'
 
 afterEach(cleanup)
@@ -92,13 +92,13 @@ describe('the scan screen is reachable', () => {
   })
 })
 
-describe('ScanRootsScreen', () => {
+describe('ScanSpecifiedDirsScreen', () => {
   it('offers a scan button that starts a scan', async () => {
     const { ctx } = await harness()
     const scan = vi.spyOn(ctx.scanner, 'scan')
 
     const { container } = await withListLayout(async () => {
-      const view = render(h(ScanRootsScreen, { ctx }))
+      const view = render(h(ScanSpecifiedDirsScreen, { ctx }))
       await act(async () => {
         await tick()
       })
@@ -112,13 +112,13 @@ describe('ScanRootsScreen', () => {
       button!.click()
       await tick()
     })
-    expect(scan, 'pressing it walks the roots').toHaveBeenCalled()
+    expect(scan, 'pressing it walks the specified dirs').toHaveBeenCalled()
   })
 
-  it('offers a way to add a folder, since a scan with no roots does nothing', async () => {
+  it('offers a way to add a folder, since a scan with no folders does nothing', async () => {
     const { ctx } = await harness()
     const { container } = await withListLayout(async () => {
-      const view = render(h(ScanRootsScreen, { ctx }))
+      const view = render(h(ScanSpecifiedDirsScreen, { ctx }))
       await act(async () => {
         await tick()
       })
@@ -140,15 +140,15 @@ describe('ScanRootsScreen', () => {
    */
   it('picks a folder through ctx.fs, which it may only reach if it declares it', async () => {
     const { ctx, admin } = await harness()
-    const dir = await tempDir('bbebee-picked-root')
+    const dir = await tempDir('bbebee-picked-dir')
     // Spied through the root context: the same service instance the scoped
     // `ctx` resolves, but reachable here without `inject` in the way. `FsNode`
     // has no dialog to open, so the picked uri has to come from the stub.
     const pick = vi.spyOn(admin.fs, 'pickDirectory').mockResolvedValue(`file://${dir}`)
-    const addRoot = vi.spyOn(ctx.scanner, 'addRoot')
+    const addSpecifiedDir = vi.spyOn(ctx.scanner, 'addSpecifiedDir')
 
     await withListLayout(async () => {
-      const { container } = render(h(ScanRootsScreen, { ctx }))
+      const { container } = render(h(ScanSpecifiedDirsScreen, { ctx }))
       await act(async () => {
         await tick()
       })
@@ -161,18 +161,18 @@ describe('ScanRootsScreen', () => {
       })
 
       expect(pick, 'the picker is what carries the permission grant').toHaveBeenCalled()
-      expect(addRoot, 'and what it returns becomes a scan root').toHaveBeenCalledWith(`file://${dir}`)
+      expect(addSpecifiedDir, 'and what it returns becomes a scan specified dir').toHaveBeenCalledWith(`file://${dir}`)
       expect(container.textContent).toContain(dir)
     })
   })
 
   it('shows a folder that was added, and a way to remove it', async () => {
     const { ctx } = await harness()
-    const dir = await tempDir('bbebee-scan-root')
-    await ctx.scanner.addRoot(`file://${dir}`)
+    const dir = await tempDir('bbebee-scan-dir')
+    await ctx.scanner.addSpecifiedDir(`file://${dir}`)
 
     const { container } = await withListLayout(async () => {
-      const view = render(h(ScanRootsScreen, { ctx }))
+      const view = render(h(ScanSpecifiedDirsScreen, { ctx }))
       await act(async () => {
         await tick()
       })
@@ -185,11 +185,11 @@ describe('ScanRootsScreen', () => {
 
   it('removes a folder when remove button is clicked', async () => {
     const { ctx } = await harness()
-    const dir = await tempDir('bbebee-scan-root-remove')
-    await ctx.scanner.addRoot(`file://${dir}`)
+    const dir = await tempDir('bbebee-scan-dir-remove')
+    await ctx.scanner.addSpecifiedDir(`file://${dir}`)
 
     await withListLayout(async () => {
-      const { container } = render(h(ScanRootsScreen, { ctx }))
+      const { container } = render(h(ScanSpecifiedDirsScreen, { ctx }))
       await act(async () => {
         await tick()
       })
@@ -209,14 +209,14 @@ describe('ScanRootsScreen', () => {
     })
   })
 
-  it('offers a per-folder scan button that scans that specific root', async () => {
+  it('offers a per-folder scan button that scans that specific specified dir', async () => {
     const { ctx } = await harness()
-    const dir = await tempDir('bbebee-scan-root-per-folder')
-    const root = await ctx.scanner.addRoot(`file://${dir}`)
+    const dir = await tempDir('bbebee-scan-dir-per-folder')
+    const specifiedDir = await ctx.scanner.addSpecifiedDir(`file://${dir}`)
     const scan = vi.spyOn(ctx.scanner, 'scan')
 
     const { container } = await withListLayout(async () => {
-      const view = render(h(ScanRootsScreen, { ctx }))
+      const view = render(h(ScanSpecifiedDirsScreen, { ctx }))
       await act(async () => {
         await tick()
       })
@@ -231,6 +231,6 @@ describe('ScanRootsScreen', () => {
       await tick()
     })
 
-    expect(scan).toHaveBeenCalledWith({ rootId: root.id })
+    expect(scan).toHaveBeenCalledWith({ specifiedDirId: specifiedDir.id })
   })
 })

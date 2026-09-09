@@ -273,15 +273,15 @@ describe('bridge specifics', () => {
     await expect(ctx.fs.exists(testFile)).resolves.toBe(false)
   })
 
-  it('scan_roots rows grant access across restarts', async () => {
+  it('scan_specified_dirs rows grant access across restarts', async () => {
     const dir = await mkdtemp(join(root, 'scanroots-'))
     const outside = await mkdtemp(join(root, 'saved-root-'))
     const outsideUri = pathToFileURL(outside).href.replace(/\/$/, '')
 
-    // First run: add scan root to database
+    // First run: add scan specified dir to database
     const { ctx: ctx1, mainHost: host1 } = await makeBridge(dir)
     await ctx1.db.exec(
-      'INSERT INTO scan_roots (id, uri, recursive, enabled) VALUES (?, ?, ?, ?)',
+      'INSERT INTO scan_specified_dirs (id, uri, recursive, enabled) VALUES (?, ?, ?, ?)',
       ['r1', outsideUri, 1, 1],
     )
     await host1.dispose()

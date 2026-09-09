@@ -24,7 +24,7 @@ import type {
   Disposable,
   FileStat,
   ScanProgress,
-  ScanRoot,
+  ScanSpecifiedDir,
   ScanSummary,
   ScannerService,
   Uri,
@@ -104,7 +104,7 @@ export class Scanner extends Service implements ScannerService {
   private readonly config: Required<ScannerConfig>
 
   private readonly ownCtx: Context
-  private rootList: ScanRoot[] = []
+  private specifiedDirList: ScanSpecifiedDir[] = []
   private current?: ScanProgress
   private abort?: AbortController
   private watchers: Disposable[] = []
@@ -140,7 +140,7 @@ export class Scanner extends Service implements ScannerService {
     )
 
     await this.ensureSourceRow()
-    this.rootList = await this.loadRoots()
+    this.specifiedDirList = await this.loadSpecifiedDirs()
     await this.startWatching()
 
     return () => {
@@ -153,47 +153,47 @@ export class Scanner extends Service implements ScannerService {
     }
   }
 
-  get roots(): readonly ScanRoot[] {
-    return this.rootList
+  get specifiedDirs(): readonly ScanSpecifiedDir[] {
+    return this.specifiedDirList
   }
 
   get progress(): ScanProgress | undefined {
     return this.current
   }
 
-  /* ── roots ─────────────────────────────────────────────────────────── */
+  /* ── specified dirs ────────────────────────────────────────────────── */
 
-  async addRoot(uri: Uri, opts: { recursive?: boolean } = {}): Promise<ScanRoot> {
-    const existing = this.rootList.find((r) => r.uri === uri)
+  async addSpecifiedDir(uri: Uri, opts: { recursive?: boolean } = {}): Promise<ScanSpecifiedDir> {
+    const existing = this.specifiedDirList.find((r) => r.uri === uri)
     if (existing) {
       if (!existing.enabled) {
         await this.setEnabled(existing.id, true)
-        return this.rootList.find((r) => r.id === existing.id) ?? { ...existing, enabled: true }
+        return this.specifiedDirList.find((r) => r.id === existing.id) ?? { ...existing, enabled: true }
       }
       return existing
     }
 
-    const root: ScanRoot = {
-      id: stableId('root', uri),
+    const dir: ScanSpecifiedDir = {
+      id: stableId('specified_dir', uri),
       uri,
       recursive: opts.recursive ?? true,
       enabled: true,
     }
     await this.ownCtx.db.exec(
-      `INSERT INTO scan_roots (id, uri, recursive, enabled) VALUES (?, ?, ?, 1)
+      `INSERT INTO scan_specified_dirs (id, uri, recursive, enabled) VALUES (?, ?, ?, 1)
        ON CONFLICT(uri) DO UPDATE SET enabled = 1`,
-      [root.id, root.uri, root.recursive ? 1 : 0],
+      [dir.id, dir.uri, dir.recursive ? 1 : 0],
     )
-    this.rootList = await this.loadRoots()
+    this.specifiedDirList = await this.loadSpecifiedDirs()
     await this.startWatching()
-    this.ownCtx.emit('scan/roots-changed', this.rootList)
-    return root
+    this.ownCtx.emit('scan/specified-dirs-changed', this.specifiedDirList)
+    return dir
   }
 
-  async removeRoot(id: string, opts: { forgetTracks?: boolean } = {}): Promise<void> {
+  async removeSpecifiedDir(id: string, opts: { forgetTracks?: boolean } = {}): Promise<void> {
     if (opts.forgetTracks) {
       const entries = await this.ownCtx.db.query<{ uri: string }>(
-        'SELECT uri FROM scan_entries WHERE root_id = ?',
+        'SELECT uri FROM scan_entries WHERE specified_dir_id = ?',
         [id],
       )
       const removed: string[] = []
@@ -208,18 +208,18 @@ export class Scanner extends Service implements ScannerService {
       })
       if (removed.length > 0) this.ownCtx.emit('library/changed', 'track', removed)
     }
-    // `scan_entries` cascades from the root row.
-    await this.ownCtx.db.exec('DELETE FROM scan_roots WHERE id = ?', [id])
-    this.rootList = await this.loadRoots()
+    // `scan_entries` cascades from the specified dir row.
+    await this.ownCtx.db.exec('DELETE FROM scan_specified_dirs WHERE id = ?', [id])
+    this.specifiedDirList = await this.loadSpecifiedDirs()
     await this.startWatching()
-    this.ownCtx.emit('scan/roots-changed', this.rootList)
+    this.ownCtx.emit('scan/specified-dirs-changed', this.specifiedDirList)
   }
 
   async setEnabled(id: string, on: boolean): Promise<void> {
-    await this.ownCtx.db.exec('UPDATE scan_roots SET enabled = ? WHERE id = ?', [on ? 1 : 0, id])
-    this.rootList = await this.loadRoots()
+    await this.ownCtx.db.exec('UPDATE scan_specified_dirs SET enabled = ? WHERE id = ?', [on ? 1 : 0, id])
+    this.specifiedDirList = await this.loadSpecifiedDirs()
     await this.startWatching()
-    this.ownCtx.emit('scan/roots-changed', this.rootList)
+    this.ownCtx.emit('scan/specified-dirs-changed', this.specifiedDirList)
   }
 
   /* ── the walk ──────────────────────────────────────────────────────── */
@@ -229,14 +229,14 @@ export class Scanner extends Service implements ScannerService {
   }
 
   /**
-   * Walk the roots.
+   * Walk the specified dirs.
    *
    * Serialised: a watch event, a poll and a manual scan can all arrive at
    * once, and two concurrent walks would fight over `this.abort` — the second
    * overwriting it, orphaning the first, which then keeps writing rows nobody
    * can cancel. Callers that arrive during a scan get the one already running.
    */
-  async scan(opts: { rootId?: string; full?: boolean; signal?: AbortSignal } = {}): Promise<ScanSummary> {
+  async scan(opts: { specifiedDirId?: string; full?: boolean; signal?: AbortSignal } = {}): Promise<ScanSummary> {
     if (this.inFlight) return this.inFlight
     const run = this.runScan(opts)
     this.inFlight = run
@@ -248,11 +248,11 @@ export class Scanner extends Service implements ScannerService {
   }
 
   private async runScan(
-    opts: { rootId?: string; full?: boolean; signal?: AbortSignal } = {},
+    opts: { specifiedDirId?: string; full?: boolean; signal?: AbortSignal } = {},
   ): Promise<ScanSummary> {
     const summary: ScanSummary = { added: 0, updated: 0, removed: 0, errors: 0 }
-    const roots = this.rootList.filter(
-      (r) => r.enabled && (opts.rootId === undefined || r.id === opts.rootId),
+    const dirs = this.specifiedDirList.filter(
+      (r) => r.enabled && (opts.specifiedDirId === undefined || r.id === opts.specifiedDirId),
     )
 
     const abort = new AbortController()
@@ -262,9 +262,9 @@ export class Scanner extends Service implements ScannerService {
     signal?.addEventListener('abort', onExternalAbort)
 
     try {
-      for (const root of roots) {
+      for (const dir of dirs) {
         if (abort.signal.aborted) break
-        await this.scanRoot(root, summary, { full: opts.full ?? false, signal: abort.signal })
+        await this.scanSpecifiedDir(dir, summary, { full: opts.full ?? false, signal: abort.signal })
       }
       if (!abort.signal.aborted) {
         await this.syncLibraryItems()
@@ -279,31 +279,31 @@ export class Scanner extends Service implements ScannerService {
     return summary
   }
 
-  private async scanRoot(
-    root: ScanRoot,
+  private async scanSpecifiedDir(
+    dir: ScanSpecifiedDir,
     summary: ScanSummary,
     opts: { full: boolean; signal: AbortSignal },
   ): Promise<void> {
-    this.ownCtx.emit('scan/started', root.id)
-    this.current = { rootId: root.id, done: 0 }
+    this.ownCtx.emit('scan/started', dir.id)
+    this.current = { specifiedDirId: dir.id, done: 0 }
 
     let files: FileStat[]
     let truncated: boolean
     try {
-      const walked = await this.walk(root.uri, root.recursive, opts.signal)
+      const walked = await this.walk(dir.uri, dir.recursive, opts.signal)
       files = walked.files
       truncated = walked.truncated
     } catch (error) {
-      await this.ownCtx.db.exec('UPDATE scan_roots SET last_error = ? WHERE id = ?', [
+      await this.ownCtx.db.exec('UPDATE scan_specified_dirs SET last_error = ? WHERE id = ?', [
         String(error),
-        root.id,
+        dir.id,
       ])
       summary.errors++
       summary.incomplete = true
-      // A root that could not be walked at all is maximally incomplete, and
+      // A specified dir that could not be walked at all is maximally incomplete, and
       // nothing was reconciled — say so rather than reporting a clean scan
       // that happened to change nothing.
-      this.ownCtx.emit('scan/finished', root.id, {
+      this.ownCtx.emit('scan/finished', dir.id, {
         added: summary.added,
         updated: summary.updated,
         removed: summary.removed,
@@ -313,12 +313,12 @@ export class Scanner extends Service implements ScannerService {
       return
     }
 
-    this.current = { rootId: root.id, done: 0, total: files.length }
+    this.current = { specifiedDirId: dir.id, done: 0, total: files.length }
 
     const known = new Map<string, EntryRow>()
     for (const row of await this.ownCtx.db.query<EntryRow>(
-      'SELECT uri, size, mtime, status, track_urn FROM scan_entries WHERE root_id = ?',
-      [root.id],
+      'SELECT uri, size, mtime, status, track_urn FROM scan_entries WHERE specified_dir_id = ?',
+      [dir.id],
     )) {
       known.set(row.uri, row)
     }
@@ -327,17 +327,17 @@ export class Scanner extends Service implements ScannerService {
     for (let i = 0; i < files.length; i += this.config.batchSize) {
       if (opts.signal.aborted) break
       const batch = files.slice(i, i + this.config.batchSize)
-      const changed = await this.importBatch(root, batch, known, seen, summary, opts.full)
+      const changed = await this.importBatch(dir, batch, known, seen, summary, opts.full)
 
-      this.current = { rootId: root.id, done: Math.min(i + batch.length, files.length), total: files.length }
-      this.ownCtx.emit('scan/progress', root.id, this.current.done, files.length)
+      this.current = { specifiedDirId: dir.id, done: Math.min(i + batch.length, files.length), total: files.length }
+      this.ownCtx.emit('scan/progress', dir.id, this.current.done, files.length)
       // Emitted per batch, so the library fills progressively rather than
       // after the whole walk — and so the FTS index keeps up.
       if (changed.length > 0) this.ownCtx.emit('library/changed', 'track', changed)
     }
 
     /*
-     * ⚠️ Reconciliation only runs on a *complete* view of the root.
+     * ⚠️ Reconciliation only runs on a *complete* view of the specified dir.
      *
      * "Not in `seen`" means "gone from disk" only if the walk actually
      * reached everywhere. A walk stopped by the depth cap or the directory
@@ -351,7 +351,7 @@ export class Scanner extends Service implements ScannerService {
      * above says why.
      */
     const complete = !opts.signal.aborted && !truncated
-    // Sticky across roots: one root that could not be fully walked makes the
+    // Sticky across specified dirs: one specified dir that could not be fully walked makes the
     // whole scan's reconciliation partial, and a caller must not read the
     // aggregate as authoritative.
     if (!complete) summary.incomplete = true
@@ -361,11 +361,11 @@ export class Scanner extends Service implements ScannerService {
     }
 
     await this.ownCtx.db.exec(
-      'UPDATE scan_roots SET last_scan_at = ?, last_error = NULL WHERE id = ?',
-      [Date.now(), root.id],
+      'UPDATE scan_specified_dirs SET last_scan_at = ?, last_error = NULL WHERE id = ?',
+      [Date.now(), dir.id],
     )
-    this.rootList = await this.loadRoots()
-    this.ownCtx.emit('scan/finished', root.id, {
+    this.specifiedDirList = await this.loadSpecifiedDirs()
+    this.ownCtx.emit('scan/finished', dir.id, {
       added: summary.added,
       updated: summary.updated,
       // Reported rather than inferred: a caller cannot tell a complete scan
@@ -379,7 +379,7 @@ export class Scanner extends Service implements ScannerService {
 
   /** One transaction per batch: a checkpoint, not an all-or-nothing scan. */
   private async importBatch(
-    root: ScanRoot,
+    dir: ScanSpecifiedDir,
     batch: FileStat[],
     known: Map<string, EntryRow>,
     seen: Set<string>,
@@ -419,7 +419,7 @@ export class Scanner extends Service implements ScannerService {
 
         if (item.error || !item.metadata) {
           summary.errors++
-          await this.writeEntry(tx, root.id, item.file, 'error', null, item.error ?? 'unreadable')
+          await this.writeEntry(tx, dir.id, item.file, 'error', null, item.error ?? 'unreadable')
           continue
         }
 
@@ -437,7 +437,7 @@ export class Scanner extends Service implements ScannerService {
         if (known.has(item.file.uri)) summary.updated++
         else summary.added++
         changed.push(trackUrn)
-        await this.writeEntry(tx, root.id, item.file, 'ok', trackUrn, null)
+        await this.writeEntry(tx, dir.id, item.file, 'ok', trackUrn, null)
       }
     })
 
@@ -446,24 +446,24 @@ export class Scanner extends Service implements ScannerService {
 
   private async writeEntry(
     tx: { exec(sql: string, params?: (string | number | null)[]): Promise<unknown> },
-    rootId: string,
+    specifiedDirId: string,
     file: FileStat,
     status: string,
     trackUrn: string | null,
     error: string | null,
   ): Promise<void> {
     await tx.exec(
-      `INSERT INTO scan_entries (uri, root_id, size, mtime, track_urn, status, error, scanned_at)
+      `INSERT INTO scan_entries (uri, specified_dir_id, size, mtime, track_urn, status, error, scanned_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(uri) DO UPDATE SET
-         root_id    = excluded.root_id,
-         size       = excluded.size,
-         mtime      = excluded.mtime,
-         track_urn  = excluded.track_urn,
-         status     = excluded.status,
-         error      = excluded.error,
-         scanned_at = excluded.scanned_at`,
-      [file.uri, rootId, file.size, file.mtime, trackUrn, status, error, Date.now()],
+         specified_dir_id = excluded.specified_dir_id,
+         size             = excluded.size,
+         mtime            = excluded.mtime,
+         track_urn        = excluded.track_urn,
+         status           = excluded.status,
+         error            = excluded.error,
+         scanned_at       = excluded.scanned_at`,
+      [file.uri, specifiedDirId, file.size, file.mtime, trackUrn, status, error, Date.now()],
     )
   }
 
@@ -504,7 +504,7 @@ export class Scanner extends Service implements ScannerService {
   }
 
   /**
-   * Breadth-first walk of a scan root.
+   * Breadth-first walk of a scan specified dir.
    *
    * ⚠️ **Bounded on purpose.** `ctx.fs.list` follows directory symlinks, so a
    * library containing `ln -s . loop` — or two directories linking to each
@@ -605,16 +605,16 @@ export class Scanner extends Service implements ScannerService {
     this.watchers = []
     if (this.disposed) return
 
-    const enabled = this.rootList.filter((r) => r.enabled)
+    const enabled = this.specifiedDirList.filter((r) => r.enabled)
     if (enabled.length === 0) return
 
     if (this.ownCtx.fs.canWatch) {
-      for (const root of enabled) {
+      for (const dir of enabled) {
         try {
-          const off = await this.ownCtx.fs.watch(root.uri, () => this.scheduleRescan(root.id))
+          const off = await this.ownCtx.fs.watch(dir.uri, () => this.scheduleRescan(dir.id))
           this.watchers.push(off)
         } catch {
-          // A root that cannot be watched still gets scanned on demand.
+          // A specified dir that cannot be watched still gets scanned on demand.
         }
       }
       return
@@ -674,17 +674,17 @@ export class Scanner extends Service implements ScannerService {
     })
   }
 
-  private scheduleRescan(rootId: string): void {
+  private scheduleRescan(specifiedDirId: string): void {
     // Debounced: copying 200 files in should be one rescan, not 200.
     if (this.watchTimer) clearTimeout(this.watchTimer)
     this.watchTimer = setTimeout(() => {
-      void this.scan({ rootId }).catch(() => undefined)
+      void this.scan({ specifiedDirId }).catch(() => undefined)
     }, this.config.watchDebounceMs)
   }
 
   /* ── bookkeeping ───────────────────────────────────────────────────── */
 
-  private async loadRoots(): Promise<ScanRoot[]> {
+  private async loadSpecifiedDirs(): Promise<ScanSpecifiedDir[]> {
     const rows = await this.ownCtx.db.query<{
       id: string
       uri: string
@@ -692,7 +692,7 @@ export class Scanner extends Service implements ScannerService {
       enabled: number
       last_scan_at: number | null
       last_error: string | null
-    }>('SELECT id, uri, recursive, enabled, last_scan_at, last_error FROM scan_roots')
+    }>('SELECT id, uri, recursive, enabled, last_scan_at, last_error FROM scan_specified_dirs')
 
     return rows.map((row) => ({
       id: row.id,

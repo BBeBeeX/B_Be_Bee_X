@@ -29,7 +29,7 @@ import { CodecNode } from '@BBeBee/core-codec-node'
 import scannerPlugin from '@BBeBee/plugin-local-scanner'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import { configureNative } from '@BBeBee/ui-kit-mobile'
-import { ScanRootsScreen, inject } from './index.js'
+import { ScanSpecifiedDirsScreen, inject } from './index.js'
 
 afterEach(cleanup)
 
@@ -114,10 +114,10 @@ function pressableNamed(container: HTMLElement, text: string): HTMLElement | und
   )
 }
 
-describe('ScanRootsScreen on mobile', () => {
+describe('ScanSpecifiedDirsScreen on mobile', () => {
   it('says there are no folders yet, rather than showing a blank screen', async () => {
     const { ctx } = await harness()
-    const { container } = render(h(ScanRootsScreen, { ctx }))
+    const { container } = render(h(ScanSpecifiedDirsScreen, { ctx }))
     await act(async () => {
       await tick()
     })
@@ -128,10 +128,10 @@ describe('ScanRootsScreen on mobile', () => {
 
   it('shows a folder that was added, and a way to remove it', async () => {
     const { ctx } = await harness()
-    const dir = await tempDir('bbebee-scan-root-mobile')
-    await ctx.scanner.addRoot(`file://${dir}`)
+    const dir = await tempDir('bbebee-scan-dir-mobile')
+    await ctx.scanner.addSpecifiedDir(`file://${dir}`)
 
-    const { container } = render(h(ScanRootsScreen, { ctx }))
+    const { container } = render(h(ScanSpecifiedDirsScreen, { ctx }))
     await act(async () => {
       await tick()
     })
@@ -149,14 +149,14 @@ describe('ScanRootsScreen on mobile', () => {
    */
   it('picks a folder through ctx.fs, which it may only reach if it declares it', async () => {
     const { ctx, admin } = await harness()
-    const dir = await tempDir('bbebee-picked-root-mobile')
+    const dir = await tempDir('bbebee-picked-dir-mobile')
     // Spied through the root context: the same service instance the scoped
     // `ctx` resolves, but reachable here without `inject` in the way. `FsNode`
     // has no dialog to open, so the picked uri has to come from the stub.
     const pick = vi.spyOn(admin.fs, 'pickDirectory').mockResolvedValue(`file://${dir}`)
-    const addRoot = vi.spyOn(ctx.scanner, 'addRoot')
+    const addSpecifiedDir = vi.spyOn(ctx.scanner, 'addSpecifiedDir')
 
-    const { container } = render(h(ScanRootsScreen, { ctx }))
+    const { container } = render(h(ScanSpecifiedDirsScreen, { ctx }))
     await act(async () => {
       await tick()
     })
@@ -168,14 +168,14 @@ describe('ScanRootsScreen on mobile', () => {
     })
 
     expect(pick, 'the picker is what carries the SAF grant on Android').toHaveBeenCalled()
-    expect(addRoot, 'and what it returns becomes a scan root').toHaveBeenCalledWith(`file://${dir}`)
+    expect(addSpecifiedDir, 'and what it returns becomes a scan specified dir').toHaveBeenCalledWith(`file://${dir}`)
   })
 
   it('offers a scan button that starts a scan', async () => {
     const { ctx } = await harness()
     const scan = vi.spyOn(ctx.scanner, 'scan')
 
-    const { container } = render(h(ScanRootsScreen, { ctx }))
+    const { container } = render(h(ScanSpecifiedDirsScreen, { ctx }))
     await act(async () => {
       await tick()
     })
@@ -187,16 +187,16 @@ describe('ScanRootsScreen on mobile', () => {
       button!.click()
       await tick()
     })
-    expect(scan, 'pressing it walks the roots').toHaveBeenCalled()
+    expect(scan, 'pressing it walks the specified dirs').toHaveBeenCalled()
   })
 
-  it('offers a per-folder scan button that scans that specific root', async () => {
+  it('offers a per-folder scan button that scans that specific specified dir', async () => {
     const { ctx } = await harness()
-    const dir = await tempDir('bbebee-scan-root-mobile-per-folder')
-    const root = await ctx.scanner.addRoot(`file://${dir}`)
+    const dir = await tempDir('bbebee-scan-dir-mobile-per-folder')
+    const specifiedDir = await ctx.scanner.addSpecifiedDir(`file://${dir}`)
     const scan = vi.spyOn(ctx.scanner, 'scan')
 
-    const { container } = render(h(ScanRootsScreen, { ctx }))
+    const { container } = render(h(ScanSpecifiedDirsScreen, { ctx }))
     await act(async () => {
       await tick()
     })
@@ -209,6 +209,6 @@ describe('ScanRootsScreen on mobile', () => {
       await tick()
     })
 
-    expect(scan).toHaveBeenCalledWith({ rootId: root.id })
+    expect(scan).toHaveBeenCalledWith({ specifiedDirId: specifiedDir.id })
   })
 })

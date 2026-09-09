@@ -99,7 +99,7 @@ erDiagram
     queue_items }o--|| tracks : "references"
     playback_state ||--o| queue_items : "points at"
 
-    scan_roots ||--o{ scan_entries : "yields"
+    scan_specified_dirs ||--o{ scan_entries : "yields"
     scan_entries }o--o| tracks : "produces"
 
     artworks ||--o{ tracks : "illustrates"
@@ -442,7 +442,7 @@ iOS evicts something. A binding whose file is missing is deleted rather than lef
 time.
 
 ```sql
-CREATE TABLE scan_roots (
+CREATE TABLE scan_specified_dirs (
   id            TEXT PRIMARY KEY,
   uri           TEXT NOT NULL UNIQUE,
   recursive     INTEGER NOT NULL DEFAULT 1,
@@ -454,16 +454,16 @@ CREATE TABLE scan_roots (
 );
 
 CREATE TABLE scan_entries (
-  uri        TEXT PRIMARY KEY,
-  root_id    TEXT NOT NULL REFERENCES scan_roots(id) ON DELETE CASCADE,
-  size       INTEGER NOT NULL,
-  mtime      INTEGER NOT NULL,
-  track_urn  TEXT REFERENCES tracks(urn) ON DELETE SET NULL,
-  status     TEXT NOT NULL,                  -- ok|error|skipped|pending
-  error      TEXT,
-  scanned_at INTEGER NOT NULL
+  uri              TEXT PRIMARY KEY,
+  specified_dir_id TEXT NOT NULL REFERENCES scan_specified_dirs(id) ON DELETE CASCADE,
+  size             INTEGER NOT NULL,
+  mtime            INTEGER NOT NULL,
+  track_urn        TEXT REFERENCES tracks(urn) ON DELETE SET NULL,
+  status           TEXT NOT NULL,                  -- ok|error|skipped|pending
+  error            TEXT,
+  scanned_at       INTEGER NOT NULL
 );
-CREATE INDEX idx_scan_entries_root ON scan_entries(root_id, status);
+CREATE INDEX idx_scan_entries_specified_dir ON scan_entries(specified_dir_id, status);
 ```
 
 `(size, mtime)` is the incremental-scan key: unchanged files cost one `stat` and nothing more
@@ -817,9 +817,9 @@ declare module 'cordis' {
 
     // library / scanning
     'library/changed'(kind: 'track' | 'album' | 'artist' | 'playlist', urns: string[]): void
-    'scan/started'(rootId: string): void
-    'scan/progress'(rootId: string, done: number, total?: number): void
-    'scan/finished'(rootId: string, summary: { added: number; updated: number; errors: number }): void
+    'scan/started'(specifiedDirId: string): void
+    'scan/progress'(specifiedDirId: string, done: number, total?: number): void
+    'scan/finished'(specifiedDirId: string, summary: { added: number; updated: number; errors: number }): void
 
     // dsp
     'dsp/build-chain'(segments: EffectSegment[], next: (s: EffectSegment[]) => EffectSegment[]): EffectSegment[]

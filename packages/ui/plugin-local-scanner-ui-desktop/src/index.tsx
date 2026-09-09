@@ -10,14 +10,14 @@ import { createElement as h } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { ScanRoot } from '@BBeBee/protocol'
+import type { ScanSpecifiedDir } from '@BBeBee/protocol'
 import { SCANNER_VIEWS } from '@BBeBee/plugin-local-scanner/views'
-import { summarise, useScanRoots, useScanState } from '@BBeBee/plugin-local-scanner/hooks'
+import { summarise, useScanSpecifiedDirs, useScanState } from '@BBeBee/plugin-local-scanner/hooks'
 import { Button, EmptyState, IconButton, List, Text } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
 
-export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
-  const roots = useScanRoots(ctx)
+export function ScanSpecifiedDirsScreen({ ctx }: { ctx: Context }): ReactElement {
+  const dirs = useScanSpecifiedDirs(ctx)
   const scan = useScanState(ctx)
 
   const addFolder = async () => {
@@ -27,13 +27,13 @@ export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
     try {
       const uri = await ctx.fs.pickDirectory()
       if (uri) {
-        ctx.logger?.info('Directory selected: %s, adding to scan roots', uri)
-        const root = await ctx.scanner.addRoot(uri)
-        ctx.logger?.info('Scan root added: %s (%s), starting scan', root.id, root.uri)
-        void ctx.scanner.scan({ rootId: root.id }).catch((err) => {
+        ctx.logger?.info('Directory selected: %s, adding to scan specified dirs', uri)
+        const dir = await ctx.scanner.addSpecifiedDir(uri)
+        ctx.logger?.info('Scan specified dir added: %s (%s), starting scan', dir.id, dir.uri)
+        void ctx.scanner.scan({ specifiedDirId: dir.id }).catch((err) => {
           const errObj = err as { name?: string; message?: string; stack?: string }
           const details = err instanceof Error ? (err.stack ?? `${err.name}: ${err.message}`) : (typeof err === 'object' && err !== null ? (errObj.stack ?? `${errObj.name ?? 'Error'}: ${errObj.message ?? JSON.stringify(err)}`) : String(err))
-          ctx.logger?.error('failed to scan newly added root %s: %s', root.id, details)
+          ctx.logger?.error('failed to scan newly added specified dir %s: %s', dir.id, details)
         })
       } else {
         ctx.logger?.info('Directory picker cancelled by user')
@@ -92,17 +92,17 @@ export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
             children: `Last scan: ${summarise(scan.lastSummary)}`,
           })
         : null,
-    h(List<ScanRoot>, {
-      items: roots,
+    h(List<ScanSpecifiedDir>, {
+      items: dirs,
       accessibilityLabel: 'Music folders',
       estimatedItemSize: tokens.size.row,
-      keyExtractor: (root) => root.id,
+      keyExtractor: (dir) => dir.id,
       empty: h(EmptyState, {
         icon: '📁',
         title: 'No folders yet',
         description: 'Add one and its music appears in your library as it is scanned.',
       }),
-      renderItem: (root) =>
+      renderItem: (dir) =>
         h(
           'div',
           {
@@ -111,46 +111,46 @@ export function ScanRootsScreen({ ctx }: { ctx: Context }): ReactElement {
               alignItems: 'center',
               gap: tokens.space[3],
               height: tokens.size.row,
-              opacity: root.enabled ? 1 : 0.5,
+              opacity: dir.enabled ? 1 : 0.5,
             },
           },
           h(
             'div',
             { style: { flex: 1, minWidth: 0 } },
-            h(Text, { numberOfLines: 1, children: root.uri }),
+            h(Text, { numberOfLines: 1, children: dir.uri }),
             // The reason a folder failed, kept in front of the user rather
             // than only in a log they will never open.
-            root.lastError
-              ? h(Text, { variant: 'sm', tone: 'error', numberOfLines: 1, children: root.lastError })
+            dir.lastError
+              ? h(Text, { variant: 'sm', tone: 'error', numberOfLines: 1, children: dir.lastError })
               : null,
           ),
           h(Button, {
             variant: 'ghost',
-            disabled: scan.running || !root.enabled,
+            disabled: scan.running || !dir.enabled,
             onPress: () => {
-              ctx.logger?.info('Scanning specific root: %s (%s)', root.id, root.uri)
-              void ctx.scanner.scan({ rootId: root.id })
+              ctx.logger?.info('Scanning specific dir: %s (%s)', dir.id, dir.uri)
+              void ctx.scanner.scan({ specifiedDirId: dir.id })
             },
-            accessibilityLabel: `Scan ${root.uri}`,
+            accessibilityLabel: `Scan ${dir.uri}`,
             children: 'Scan',
           }),
           h(Button, {
             variant: 'ghost',
             onPress: () => {
-              ctx.logger?.info('%s root: %s (%s)', root.enabled ? 'Disabling' : 'Enabling', root.id, root.uri)
-              void ctx.scanner.setEnabled(root.id, !root.enabled)
+              ctx.logger?.info('%s specified dir: %s (%s)', dir.enabled ? 'Disabling' : 'Enabling', dir.id, dir.uri)
+              void ctx.scanner.setEnabled(dir.id, !dir.enabled)
             },
-            accessibilityLabel: root.enabled ? `Disable ${root.uri}` : `Enable ${root.uri}`,
-            children: root.enabled ? 'Disable' : 'Enable',
+            accessibilityLabel: dir.enabled ? `Disable ${dir.uri}` : `Enable ${dir.uri}`,
+            children: dir.enabled ? 'Disable' : 'Enable',
           }),
           h(IconButton, {
             icon: '🗑',
-            // Removing a root keeps its tracks by default: losing a library
+            // Removing a specified dir keeps its tracks by default: losing a library
             // to a mis-clicked button is far worse than a stale row.
-            accessibilityLabel: `Remove ${root.uri}`,
+            accessibilityLabel: `Remove ${dir.uri}`,
             onPress: () => {
-              ctx.logger?.info('Removing root: %s (%s)', root.id, root.uri)
-              void ctx.scanner.removeRoot(root.id)
+              ctx.logger?.info('Removing specified dir: %s (%s)', dir.id, dir.uri)
+              void ctx.scanner.removeSpecifiedDir(dir.id)
             },
           }),
         ),
@@ -200,7 +200,7 @@ export const inject = ['ui', 'scanner', 'fs']
 export async function apply(ctx: Context) {
   ctx.logger?.info('plugin-local-scanner-ui-desktop registered view for %s', SCANNER_VIEWS.settings)
   return ctx.effect(function* () {
-    yield ctx.ui.registerView(SCANNER_VIEWS.settings, bound(ctx, ScanRootsScreen))
+    yield ctx.ui.registerView(SCANNER_VIEWS.settings, bound(ctx, ScanSpecifiedDirsScreen))
   }, 'scanner-ui-desktop')
 }
 

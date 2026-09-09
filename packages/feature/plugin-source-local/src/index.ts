@@ -217,12 +217,12 @@ export class SourceLocal extends Service {
     }
   }
 
-  /** Cheap by contract: the roots exist and are readable, nothing more. */
+  /** Cheap by contract: the specified dirs exist and are readable, nothing more. */
   async ping(): Promise<boolean> {
-    const roots = this.scannerCtx?.scanner.roots ?? []
-    if (roots.length === 0) return true
-    for (const root of roots) {
-      if (root.enabled && (await this.ctx.fs.exists(root.uri))) return true
+    const specifiedDirs = this.scannerCtx?.scanner.specifiedDirs ?? []
+    if (specifiedDirs.length === 0) return true
+    for (const dir of specifiedDirs) {
+      if (dir.enabled && (await this.ctx.fs.exists(dir.uri))) return true
     }
     return false
   }
@@ -249,15 +249,15 @@ export class SourceLocal extends Service {
    * browses as empty rather than as tracks that cannot play.
    */
   async browse(nodeId?: string, _page?: PageRequest): Promise<Paged<BrowseEntry>> {
-    const roots = this.scannerCtx?.scanner.roots.filter((r) => r.enabled) ?? []
+    const specifiedDirs = this.scannerCtx?.scanner.specifiedDirs.filter((r) => r.enabled) ?? []
 
     if (!nodeId) {
-      if (roots.length === 1) return this.browseFolder(roots[0]!.uri)
+      if (specifiedDirs.length === 1) return this.browseFolder(specifiedDirs[0]!.uri)
       return {
-        items: roots.map((root) => ({
-          id: root.uri,
-          title: lastSegment(root.uri),
-          subtitle: root.uri,
+        items: specifiedDirs.map((dir) => ({
+          id: dir.uri,
+          title: lastSegment(dir.uri),
+          subtitle: dir.uri,
           kind: 'folder' as const,
           leaf: false,
         })),
