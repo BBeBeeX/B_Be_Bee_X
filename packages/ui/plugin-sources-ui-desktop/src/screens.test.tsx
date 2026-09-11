@@ -11,7 +11,7 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { createElement as h } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Context } from 'cordis'
+import { Context, Service } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
@@ -272,6 +272,45 @@ describe('LibraryScreen', () => {
       reported.map(String),
       'tapping a track with no player must be a no-op, not an uncaught error',
     ).toEqual([])
+  })
+
+  it('plays track and navigates to player.now-playing on click', async () => {
+    const { admin } = await harness()
+    await withTrack(admin)
+
+    const calls: string[] = []
+    class PlayerStub extends Service {
+      constructor(c: Context) { super(c, 'player') }
+      playNow = async (urns: string[]) => void calls.push(`play:${urns.join(',')}`)
+    }
+    class UiStub extends Service {
+      constructor(c: Context) { super(c, 'ui') }
+      navigate = (id: string) => void calls.push(`nav:${id}`)
+    }
+    await admin.plugin(PlayerStub)
+    await admin.plugin(UiStub)
+    await tick()
+
+    let scoped: Context | undefined
+    admin.inject(['sources', 'ui', 'player'], (s) => void (scoped = s))
+    await tick()
+
+    await withListLayout(async () => {
+      const view = render(h(LibraryScreen, { ctx: scoped! }))
+      await act(async () => {
+        await tick()
+      })
+
+      const row = view.container.querySelector('[role="row"]') as HTMLElement
+      expect(row).toBeTruthy()
+      await act(async () => {
+        row.click()
+        await tick()
+      })
+
+      expect(calls).toContain('play:BBeBee:local:track:1')
+      expect(calls).toContain('nav:player.now-playing')
+    })
   })
 
   it('switches between all, local, and favorites scopes', async () => {

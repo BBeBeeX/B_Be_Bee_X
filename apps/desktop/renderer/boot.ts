@@ -180,8 +180,41 @@ export async function boot(): Promise<App> {
        * `ctx.audio`. The renderer's own `AudioContext` satisfies the ADR-4
        * contract, which *is* the standard Web Audio API — so this is the same
        * package mobile loads, with a different context factory (docs/05 §1).
+       *
+       * `fetchBytes` bridges local and remote audio data:
+       *  - For `file:` or local disk paths, fetching through the renderer's `fetch`
+       *    violates CSP and Chromium Fetch API restrictions. It reads bytes directly
+       *    from `main` via `BBeBeeBridge.call('fs', 'readBytes', ...)`.
+       *  - For remote streams, `transport` (`bridgeFetch()`) routes through `main`
+       *    to bypass renderer CORS restrictions and support custom headers.
        */
-      AudioWebAudio,
+      [
+        AudioWebAudio,
+        {
+          fetchBytes: async (
+            src: string,
+            opts: { headers?: Record<string, string>; signal?: AbortSignal },
+          ) => {
+            const isLocal =
+              src.startsWith('file:') || src.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(src)
+            if (isLocal) {
+              opts?.signal?.throwIfAborted()
+              const bridge = window.BBeBeeBridge
+              if (bridge) {
+                const raw = await bridge.call('fs', 'readBytes', [src])
+                opts?.signal?.throwIfAborted()
+                if (raw instanceof ArrayBuffer) return raw
+                const bytes = raw as Uint8Array
+                return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+              }
+            }
+            const fetchFn = transport ?? fetch
+            const response = await fetchFn(src, { headers: opts?.headers, signal: opts?.signal })
+            if (!response.ok) throw new Error(`audio: ${response.status} loading ${src}`)
+            return response.arrayBuffer()
+          },
+        },
+      ],
 
       /*
        * The logs layer — Layer 3, and it sits here for the reason the layer

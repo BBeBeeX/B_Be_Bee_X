@@ -44,4 +44,13 @@ describe('the renderer CSP', () => {
     expect(scripts).not.toContain("'unsafe-eval'")
     expect(scripts).not.toContain("'unsafe-inline'")
   })
+
+  it('allows media elements to play local blobs and streams', () => {
+    const media = policy.get('media-src') ?? []
+    expect(media).toContain("'self'")
+    expect(media).toContain('blob:')
+    expect(media).toContain('data:')
+    expect(media).toContain('http:')
+    expect(media).toContain('https:')
+  })
 })

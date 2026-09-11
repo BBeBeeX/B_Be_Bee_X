@@ -37,7 +37,15 @@ function mockAudioPlugin(mock: MockAudio) {
     }
   }
   // Cordis services are objects on the context; delegate every member.
-  Object.assign(MockAudioService.prototype, mock.service)
+  Object.assign(MockAudioService.prototype, mock.service, {
+    load(this: MockAudioService, src: any, opts: any) {
+      const config = this[Service.resolveConfig]() as { granted?: string[]; pluginId?: string } | undefined
+      if (config && config.granted && !config.granted.includes('audio')) {
+        throw new Error(`${config.pluginId} was not granted audio`)
+      }
+      return mock.service.load(src, opts)
+    },
+  })
   return MockAudioService
 }
 
@@ -1080,4 +1088,44 @@ describe('lifecycle', () => {
     const problems = diffSnapshots(before, snapshotContext(ctx))
     expect(problems, problems?.join('; ')).toBeUndefined()
   })
+
+  it('safely queries device and codec services when registered in context', async () => {
+    class DeviceStub extends Service {
+      constructor(ctx: Context) {
+        super(ctx, 'device')
+      }
+      async network() {
+        return { online: true, type: 'wifi' as const, metered: false }
+      }
+    }
+    class CodecStub extends Service {
+      constructor(ctx: Context) {
+        super(ctx, 'codec')
+      }
+      supportedFormats() {
+        return ['flac', 'mp3']
+      }
+    }
+
+    const { ctx, player } = await harness()
+    await ctx.plugin(DeviceStub)
+    await ctx.plugin(CodecStub)
+    await tick()
+
+    await player.playNow([urn('1')])
+    expect(player.state.status).toBe('playing')
+  })
+
+  it('allows callers without audio capability (such as UI plugins) to trigger playback via Player', async () => {
+    const { ctx } = await harness()
+    const callerCtx = ctx.intercept('audio', {
+      pluginId: '@BBeBee/plugin-player-ui-desktop',
+      scopeId: '@BBeBee/plugin-player-ui-desktop',
+      granted: [],
+    })
+    const callerPlayer = (callerCtx as unknown as { player: Player }).player
+    await callerPlayer.playNow([urn('1')])
+    expect(callerPlayer.state.status).toBe('playing')
+  })
 })
+

@@ -8,8 +8,10 @@
  */
 
 export const PLAYER_VIEWS = {
-  /** The full-screen player on mobile; the bottom bar on desktop. */
+  /** The full-screen player on mobile; the main screen on desktop. */
   nowPlaying: 'player.now-playing',
+  /** The persistent bottom bar on desktop. */
+  nowPlayingBar: 'player.now-playing-bar',
   /** The up-next list. */
   queue: 'player.queue',
 } as const

@@ -104,17 +104,43 @@ export function Shell({ ctx }: { ctx: Context }) {
   const { entries } = useEntries(ctx)
   const [activeId, setActiveId] = useState<string | undefined>()
 
+  useEffect(() => {
+    const off = ctx.on('ui/navigate', (routeId: string) => {
+      setActiveId(routeId)
+    })
+    return () => void off()
+  }, [ctx])
+
   const active = entries.find((e) => e.id === activeId) ?? entries[0]
   const View = active
     ? (ctx.ui.viewFor(active.id) as ComponentType<{ ctx: Context }> | undefined)
     : undefined
+  const BottomBar = ctx.ui.viewFor('player.now-playing-bar') as
+    | ComponentType<{ ctx: Context }>
+    | undefined
 
   return h(
     'div',
-    { style: { display: 'grid', gridTemplateColumns: '220px 1fr', height: '100vh' } },
+    {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: '220px 1fr',
+        gridTemplateRows: BottomBar ? '1fr auto' : '1fr',
+        height: '100vh',
+        overflow: 'hidden',
+      },
+    },
     h(
       'nav',
-      { style: { borderRight: '1px solid #1E1E28', padding: 12, background: '#0E0E14' } },
+      {
+        style: {
+          borderRight: '1px solid #1E1E28',
+          padding: 12,
+          background: '#0E0E14',
+          minHeight: 0,
+          overflowY: 'auto',
+        },
+      },
       h(
         'div',
         { style: { fontSize: 12, color: '#5A5A68', padding: '8px 10px', letterSpacing: 1 } },
@@ -167,7 +193,7 @@ export function Shell({ ctx }: { ctx: Context }) {
     ),
     h(
       'main',
-      { style: { overflow: 'auto' } },
+      { style: { overflow: 'auto', minHeight: 0 } },
       View
         ? h(
             ViewBoundary,
@@ -191,5 +217,12 @@ export function Shell({ ctx }: { ctx: Context }) {
               : 'No plugin has contributed a route.',
           ),
     ),
+    BottomBar
+      ? h(
+          'footer',
+          { style: { gridColumn: '1 / -1' } },
+          h(BottomBar, { ctx }),
+        )
+      : null,
   )
 }

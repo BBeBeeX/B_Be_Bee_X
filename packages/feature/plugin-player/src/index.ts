@@ -142,6 +142,10 @@ export class Player extends Service implements PlayerService {
   private mediaCtx?: Context
   /** The scoped context `ctx.background` arrived on. See `mediaCtx`. */
   private bgCtx?: Context
+  /** The scoped context `ctx.device` arrived on. See `mediaCtx`. */
+  private deviceCtx?: Context
+  /** The scoped context `ctx.codec` arrived on. See `mediaCtx`. */
+  private codecCtx?: Context
   /** Held while playing, so the machine does not sleep mid-track (MD-6). */
   private wakeLock?: Disposable
   /** An acquire in flight. The status can change before it lands. */
@@ -167,8 +171,21 @@ export class Player extends Service implements PlayerService {
   private fading?: { handle: AudioSourceHandle; timer: ReturnType<typeof setTimeout> }
   private disposed = false
 
+  /**
+   * The plugin's own context, captured at construction.
+   *
+   * ⚠️ Inside a Service method reached through the service proxy (`ctx.player`),
+   * Cordis shadows `this.ctx` to be the *caller's* context. If `this.ctx` were
+   * used at call time for audio or db calls, capability checks (such as
+   * `assertGranted(..., "audio")`) would run against the caller's budget (e.g.
+   * UI packages which are granted no capabilities) and throw. Internal player
+   * operations must run under `this.ownCtx`. See docs/03 §7 and plugin-sources.
+   */
+  private readonly ownCtx: Context
+
   constructor(ctx: Context, config: PlayerConfig = {}) {
     super(ctx, 'player')
+    this.ownCtx = ctx
     this.config = {
       ...DEFAULTS,
       deviceId: config.deviceId ?? 'this-device',
@@ -177,15 +194,22 @@ export class Player extends Service implements PlayerService {
   }
 
   async [Service.init]() {
-    this.store = new PlayerStore(this.ctx.db, this.config.deviceId)
+    this.store = new PlayerStore(this.ownCtx.db, this.config.deviceId)
     await this.restore()
+    this.ownCtx.logger.info(
+      'player: initialized (currentItem: %s, status: %s, queueSize: %d)',
+      this.transport.currentItemId ?? 'none',
+      this.transport.status,
+      this.model.items.length,
+    )
 
     this.ticker = setInterval(() => void this.refresh(), this.config.tickMs)
 
     // The whole interruption policy, in one place, over ctx.audio's events —
     // every platform's rules differ, the policy does not (docs/05 §5).
-    const offInterruption = this.ctx.audio.onInterruption((event) => {
+    const offInterruption = this.ownCtx.audio.onInterruption((event) => {
       if (event.type === 'began') {
+        this.ownCtx.logger.info('player: audio interruption began, pausing')
         if (isPlayingLike(this.transport.status)) {
           this.pause()
           this.pausedByInterruption = true
@@ -195,16 +219,18 @@ export class Player extends Service implements PlayerService {
       // Resume only if we paused for this, and only if the user has not
       // intervened since.
       if (event.shouldResume && this.pausedByInterruption) {
+        this.ownCtx.logger.info('player: audio interruption ended, resuming')
         this.pausedByInterruption = false
         void this.play()
       }
     })
 
-    const offRoute = this.ctx.audio.onRouteChange((event) => {
+    const offRoute = this.ownCtx.audio.onRouteChange((event) => {
       // Headphones out, Bluetooth gone: pause immediately, and never resume
       // on our own. This one is not configurable — it is the audio behaviour
       // users never forgive.
       if (event.reason === 'device-removed') {
+        this.ownCtx.logger.info('player: audio route changed (device-removed), pausing')
         this.pause()
         this.pausedByInterruption = false
       }
@@ -212,11 +238,12 @@ export class Player extends Service implements PlayerService {
 
     // Optional platform services. The player works without them, which is what
     // makes it testable and what keeps a missing OS surface from being fatal.
-    this.ctx.inject(['mediaSession'], (scoped) => {
+    this.ownCtx.inject(['mediaSession'], (scoped) => {
       this.mediaCtx = scoped
       scoped.mediaSession.setSupportedCommands(['play', 'pause', 'next', 'previous', 'seek'])
       this.publishNowPlaying()
       const off = scoped.mediaSession.onCommand((command) => {
+        this.ownCtx.logger.debug('player: mediaSession command: %s', command.type)
         switch (command.type) {
           case 'play':
             void this.play()
@@ -273,7 +300,7 @@ export class Player extends Service implements PlayerService {
     const next = () => void this.next()
     const previous = () => void this.previous()
 
-    this.ctx.inject(['ui'], (scoped) =>
+    this.ownCtx.inject(['ui'], (scoped) =>
       scoped.effect(function* () {
         yield scoped.ui.contribute({
           kind: 'route',
@@ -281,7 +308,7 @@ export class Player extends Service implements PlayerService {
           path: '/now-playing',
           title: 'Now playing',
           icon: 'play',
-          placement: ['tab-bar'],
+          placement: ['tab-bar', 'sidebar'],
           order: 10,
         })
         yield scoped.ui.contribute({
@@ -318,7 +345,7 @@ export class Player extends Service implements PlayerService {
       }, 'player-ui-contributions'),
     )
 
-    this.ctx.inject(['background'], (scoped) => {
+    this.ownCtx.inject(['background'], (scoped) => {
       this.bgCtx = scoped
       // Checkpoint before the host suspends: on mobile there may be no later.
       const off = scoped.background.onWillSuspend(() => this.persist(true))
@@ -332,7 +359,27 @@ export class Player extends Service implements PlayerService {
       }
     })
 
+    this.ownCtx.inject(['device'], (scoped) => {
+      this.deviceCtx = scoped
+      return () => {
+        this.deviceCtx = undefined
+      }
+    })
+
+    this.ownCtx.inject(['codec'], (scoped) => {
+      this.codecCtx = scoped
+      return () => {
+        this.codecCtx = undefined
+      }
+    })
+
+    const logger = this.ownCtx.logger
     return async () => {
+      try {
+        logger?.info('player: disposing')
+      } catch {
+        // teardown logging best-effort
+      }
       this.disposed = true
       if (this.ticker) clearInterval(this.ticker)
       offInterruption()
@@ -360,7 +407,7 @@ export class Player extends Service implements PlayerService {
     const wasPlaying = isPlayingLike(this.transport.status)
     this.transport = { ...this.transport, ...patch }
     if (isPlayingLike(this.transport.status) !== wasPlaying) this.syncWakeLock()
-    this.ctx.emit('player/state-changed', this.transport)
+    this.ownCtx.emit('player/state-changed', this.transport)
   }
 
   /* ── the wake lock ─────────────────────────────────────────────────── */
@@ -412,12 +459,17 @@ export class Player extends Service implements PlayerService {
   }
 
   private emitQueueChanged(): void {
-    this.ctx.emit('queue/changed', this.model.items)
+    this.ownCtx.emit('queue/changed', this.model.items)
   }
 
   /* ── transport ─────────────────────────────────────────────────────── */
 
   async play(): Promise<void> {
+    this.ownCtx.logger.info(
+      'player: play requested (status: %s, currentItemId: %s)',
+      this.transport.status,
+      this.transport.currentItemId ?? 'none',
+    )
     this.pausedByInterruption = false
     this.playIntent = true
     if (this.transport.status === 'playing') return
@@ -437,6 +489,12 @@ export class Player extends Service implements PlayerService {
   }
 
   pause(): void {
+    this.ownCtx.logger.info(
+      'player: pause requested (status: %s, currentItemId: %s, positionMs: %d)',
+      this.transport.status,
+      this.transport.currentItemId ?? 'none',
+      this.transport.positionMs,
+    )
     this.pausedByInterruption = false
     // Recorded before the early return: a pause during `loading` must still be
     // honoured when the in-flight load lands.
@@ -456,11 +514,13 @@ export class Player extends Service implements PlayerService {
   }
 
   togglePlay(): void {
+    this.ownCtx.logger.info('player: togglePlay requested (current status: %s)', this.transport.status)
     if (isPlayingLike(this.transport.status)) this.pause()
     else void this.play()
   }
 
   stop(): void {
+    this.ownCtx.logger.info('player: stop requested')
     this.pausedByInterruption = false
     this.playIntent = false
     void this.finishPlay({ completed: false, skipped: false })
@@ -474,6 +534,7 @@ export class Player extends Service implements PlayerService {
       trackUrn: undefined,
       positionMs: 0,
       durationMs: 0,
+      nowPlaying: undefined,
     })
     this.mediaCtx?.mediaSession.clear()
     void this.persist(true)
@@ -481,6 +542,7 @@ export class Player extends Service implements PlayerService {
 
   async seek(positionMs: number): Promise<void> {
     const target = Math.max(0, positionMs)
+    this.ownCtx.logger.info('player: seek requested to %dms', target)
     if (!this.source) {
       this.set({ positionMs: target })
       return
@@ -498,6 +560,11 @@ export class Player extends Service implements PlayerService {
   }
 
   async next(): Promise<void> {
+    this.ownCtx.logger.info(
+      'player: next requested (current: %s, repeat: %s)',
+      this.transport.trackUrn ?? 'none',
+      this.transport.repeat,
+    )
     const entry = this.model.next(this.transport.currentItemId, this.transport.repeat)
     await this.finishPlay({ completed: false, skipped: true })
     if (!entry) {
@@ -508,6 +575,11 @@ export class Player extends Service implements PlayerService {
   }
 
   async previous(): Promise<void> {
+    this.ownCtx.logger.info(
+      'player: previous requested (current: %s, positionMs: %d)',
+      this.transport.trackUrn ?? 'none',
+      this.transport.positionMs,
+    )
     // Past the threshold, "previous" means "start this one again" — which is
     // what every other player does, and what users reach for.
     if (this.source && this.transport.positionMs > this.config.previousThresholdMs) {
@@ -525,23 +597,27 @@ export class Player extends Service implements PlayerService {
 
   setVolume(v: number): void {
     const volume = Math.max(0, Math.min(1, v))
-    this.ctx.audio.setVolume(volume)
+    this.ownCtx.logger.debug('player: setVolume to %d', volume)
+    this.ownCtx.audio.setVolume(volume)
     this.set({ volume })
     void this.persist()
   }
 
   setMuted(m: boolean): void {
-    this.ctx.audio.setMuted(m)
+    this.ownCtx.logger.debug('player: setMuted to %s', m)
+    this.ownCtx.audio.setMuted(m)
     this.set({ muted: m })
     void this.persist()
   }
 
   setRepeat(mode: RepeatMode): void {
+    this.ownCtx.logger.info('player: setRepeat to %s', mode)
     this.set({ repeat: mode })
     void this.persist(true)
   }
 
   setShuffle(on: boolean): void {
+    this.ownCtx.logger.info('player: setShuffle to %s', on)
     this.model.setShuffle(on)
     this.set({ shuffle: on })
     this.emitQueueChanged()
@@ -551,6 +627,7 @@ export class Player extends Service implements PlayerService {
   /* ── queue ─────────────────────────────────────────────────────────── */
 
   async playNow(urns: string[], opts: PlayNowOptions = {}): Promise<void> {
+    this.ownCtx.logger.info('player: playNow with %d track(s), first: %s', urns.length, urns[0] ?? 'none')
     const accepted = this.beforeEnqueue(urns)
     if (accepted.length === 0) return
 
@@ -569,6 +646,7 @@ export class Player extends Service implements PlayerService {
   enqueueNext(urns: string[]): void {
     const items = this.beforeEnqueue(urns).map((urn) => this.newItem(urn, 'user'))
     if (items.length === 0) return
+    this.ownCtx.logger.info('player: enqueueNext with %d track(s)', items.length)
     const added = this.model.insertAfter(this.transport.currentItemId, items)
     void this.store.insertQueue(added)
     this.cancelPrefetch()
@@ -578,12 +656,14 @@ export class Player extends Service implements PlayerService {
   enqueueLast(urns: string[]): void {
     const items = this.beforeEnqueue(urns).map((urn) => this.newItem(urn, 'user'))
     if (items.length === 0) return
+    this.ownCtx.logger.info('player: enqueueLast with %d track(s)', items.length)
     const added = this.model.append(items)
     void this.store.insertQueue(added)
     this.emitQueueChanged()
   }
 
   removeItems(ids: string[]): void {
+    this.ownCtx.logger.info('player: removeItems with %d item(s)', ids.length)
     const removed = this.model.remove(ids)
     if (removed.length === 0) return
     void this.store.removeQueue(removed)
@@ -596,6 +676,7 @@ export class Player extends Service implements PlayerService {
   }
 
   moveItem(id: string, toIndex: number): void {
+    this.ownCtx.logger.info('player: moveItem %s to index %d', id, toIndex)
     const moved = this.model.move(id, toIndex)
     if (!moved) return
     // One row, because the position is a fractional index (docs/07 §4.6).
@@ -605,11 +686,12 @@ export class Player extends Service implements PlayerService {
   }
 
   clearQueue(): void {
+    this.ownCtx.logger.info('player: clearQueue')
     this.model.clear()
     void this.store.replaceQueue([])
     this.cancelPrefetch()
     this.detachSource()
-    this.set({ status: 'idle', currentItemId: undefined, trackUrn: undefined, positionMs: 0, durationMs: 0 })
+    this.set({ status: 'idle', currentItemId: undefined, trackUrn: undefined, positionMs: 0, durationMs: 0, nowPlaying: undefined })
     this.emitQueueChanged()
   }
 
@@ -631,7 +713,7 @@ export class Player extends Service implements PlayerService {
     // silently ignored by Cordis, so the signature takes no arguments and the
     // kernel pins that behaviour (docs/07 §5).
     const accepted = [...urns]
-    this.ctx.waterfall('player/before-enqueue', accepted, () => {})
+    this.ownCtx.waterfall('player/before-enqueue', accepted, () => {})
     return accepted
   }
 
@@ -655,6 +737,13 @@ export class Player extends Service implements PlayerService {
     entry: QueueEntry,
     opts: { positionMs?: number; autoplay: boolean },
   ): Promise<void> {
+    this.ownCtx.logger.info(
+      'player: starting track %s (itemId: %s, autoplay: %s, positionMs: %d)',
+      entry.item.trackUrn,
+      entry.item.id,
+      opts.autoplay,
+      opts.positionMs ?? 0,
+    )
     const previousUrn = this.transport.trackUrn
     await this.finishPlay({ completed: false, skipped: true })
     this.detachSource()
@@ -668,12 +757,14 @@ export class Player extends Service implements PlayerService {
       bufferedMs: 0,
       error: undefined,
     })
-    this.ctx.emit('player/track-changed', entry.item.trackUrn, previousUrn)
+    this.ownCtx.emit('player/track-changed', entry.item.trackUrn, previousUrn)
+    this.publishNowPlaying()
 
     // A prefetched buffer for exactly this item is the gapless path: no
     // resolve, no decode, no I/O between the two tracks.
     const ready = this.takePrefetched(entry.item.id)
     if (ready) {
+      this.ownCtx.logger.info('player: using prefetched source for %s', entry.item.trackUrn)
       this.attach(ready, entry, opts)
       return
     }
@@ -698,8 +789,14 @@ export class Player extends Service implements PlayerService {
     entry: QueueEntry,
     opts: { positionMs?: number; autoplay: boolean },
   ): void {
+    this.ownCtx.logger.info(
+      'player: attached source for %s (durationMs: %d, willPlay: %s)',
+      entry.item.trackUrn,
+      source.durationMs,
+      opts.autoplay && this.playIntent,
+    )
     this.source = source
-    source.node.connect(this.ctx.audio.chainInput)
+    source.node.connect(this.ownCtx.audio.chainInput)
     this.sourceEnded = source.onEnded(() => void this.onEnded())
     this.sourceStalled = source.onStalled((stalled) => this.onStalled(stalled))
 
@@ -721,7 +818,7 @@ export class Player extends Service implements PlayerService {
   }
 
   private async load(handle: StreamHandle): Promise<AudioSourceHandle> {
-    return this.ctx.audio.load(handle.target, {
+    return this.ownCtx.audio.load(handle.target, {
       strategy: this.strategyFor(handle),
       ...(handle.headers ? { headers: handle.headers } : {}),
       onBuffered: (seconds) => this.set({ bufferedMs: Math.round(seconds * 1000) }),
@@ -754,12 +851,12 @@ export class Player extends Service implements PlayerService {
   private async resolveStream(urn: string): Promise<StreamHandle> {
     const prefs = await this.streamPrefs()
     const terminal = async (): Promise<StreamHandle> => {
-      const provider = this.ctx.sources.forUrn(urn)
+      const provider = this.ownCtx.sources.forUrn(urn)
       if (!provider) throw new NotFoundError(`no provider for ${urn}`)
       const { id } = parseUrnId(urn)
       return provider.resolveStream(id, prefs)
     }
-    return this.ctx.waterfall('player/before-resolve', urn, prefs, terminal)
+    return this.ownCtx.waterfall('player/before-resolve', urn, prefs, terminal)
   }
 
   private async streamPrefs(): Promise<StreamPrefs> {
@@ -768,7 +865,7 @@ export class Player extends Service implements PlayerService {
 
     // Both are optional in M1; their absence degrades the request, never the
     // playback.
-    const device = (this.ctx as { device?: { network(): Promise<{ metered: boolean }> } }).device
+    const device = this.deviceCtx?.device
     if (device) {
       try {
         saveData = (await device.network()).metered
@@ -776,7 +873,7 @@ export class Player extends Service implements PlayerService {
         saveData = false
       }
     }
-    const codec = (this.ctx as { codec?: { supportedFormats(): string[] } }).codec
+    const codec = this.codecCtx?.codec
     if (codec) {
       try {
         acceptFormats = codec.supportedFormats()
@@ -808,7 +905,7 @@ export class Player extends Service implements PlayerService {
         this.activePlay.lastPositionMs = positionMs
       }
       this.set({ positionMs, durationMs })
-      this.ctx.emit('player/position', positionMs, durationMs)
+      this.ownCtx.emit('player/position', positionMs, durationMs)
       this.publishPosition(positionMs)
       await this.maybePrefetch(positionMs, durationMs)
       await this.maybeCrossfade(positionMs, durationMs)
@@ -831,6 +928,7 @@ export class Player extends Service implements PlayerService {
    * say — is not a stall in any sense the transport cares about.
    */
   private onStalled(stalled: boolean): void {
+    this.ownCtx.logger.warn('player: playback %s', stalled ? 'stalled' : 'recovered from stall')
     if (stalled) {
       if (this.transport.status !== 'playing') return
       this.set({ status: 'stalled' })
@@ -876,7 +974,7 @@ export class Player extends Service implements PlayerService {
       // A track too large to buffer is simply not prefetched: it will stream
       // when its turn comes, and gapless was never available for it anyway.
       if (this.strategyFor(handle) !== 'buffer') return
-      const source = await this.ctx.audio.load(handle.target, {
+      const source = await this.ownCtx.audio.load(handle.target, {
         strategy: 'buffer',
         ...(handle.headers ? { headers: handle.headers } : {}),
         signal: abort.signal,
@@ -886,6 +984,7 @@ export class Player extends Service implements PlayerService {
         return
       }
       this.prefetched = { itemId: next.item.id, handle: source }
+      this.ownCtx.logger.debug('player: prefetched %s', next.item.trackUrn)
     } catch {
       // A prefetch that fails is not an error the user should see: the track
       // is loaded again, normally, when it is actually its turn.
@@ -906,14 +1005,15 @@ export class Player extends Service implements PlayerService {
     if (!incoming) return
 
     this.crossfading = true
+    this.ownCtx.logger.info('player: crossfading to %s (%dms)', next.item.trackUrn, this.config.crossfadeMs)
     const outgoing = this.source
     const seconds = this.config.crossfadeMs / 1000
 
     // Equal-power in spirit: the outgoing node fades out while the incoming
     // one fades in over the same window, so the sum stays roughly constant.
-    ramp(outgoing?.node, 1, 0, seconds, this.ctx.audio.context.currentTime)
-    incoming.node.connect(this.ctx.audio.chainInput)
-    ramp(incoming.node, 0, 1, seconds, this.ctx.audio.context.currentTime)
+    ramp(outgoing?.node, 1, 0, seconds, this.ownCtx.audio.context.currentTime)
+    incoming.node.connect(this.ownCtx.audio.chainInput)
+    ramp(incoming.node, 0, 1, seconds, this.ownCtx.audio.context.currentTime)
 
     await this.finishPlay({ completed: true, skipped: false })
 
@@ -940,7 +1040,7 @@ export class Player extends Service implements PlayerService {
       bufferedMs: 0,
       error: undefined,
     })
-    this.ctx.emit('player/track-changed', next.item.trackUrn, previousUrn)
+    this.ownCtx.emit('player/track-changed', next.item.trackUrn, previousUrn)
 
     this.attach(incoming, next, { autoplay: true })
     this.crossfading = false
@@ -979,6 +1079,7 @@ export class Player extends Service implements PlayerService {
 
   private async onEnded(): Promise<void> {
     if (this.disposed) return
+    this.ownCtx.logger.info('player: track ended %s', this.transport.trackUrn ?? 'unknown')
     await this.finishPlay({ completed: true, skipped: false })
 
     const next = this.model.next(this.transport.currentItemId, this.transport.repeat)
@@ -1030,11 +1131,11 @@ export class Player extends Service implements PlayerService {
     // History and the derived stats land in one transaction, so "most played"
     // can be a single indexed read without ever disagreeing with the record.
     await this.store.recordPlay(record).catch((error: unknown) => {
-      this.ctx.logger.warn(`player: could not record play: ${String(error)}`)
+      this.ownCtx.logger.warn(`player: could not record play: ${String(error)}`)
     })
     // Scrobblers, stats and anything else run in parallel; one failing does
     // not block the others (docs/07 §5).
-    await this.ctx.parallel('player/track-completed', record).catch(() => undefined)
+    await this.ownCtx.parallel('player/track-completed', record).catch(() => undefined)
   }
 
   /* ── errors ────────────────────────────────────────────────────────── */
@@ -1045,12 +1146,18 @@ export class Player extends Service implements PlayerService {
         ? error
         : new ProviderError(error instanceof Error ? error.message : String(error))
 
-    this.ctx.emit('player/error', sourceError, entry.item.trackUrn)
+    this.ownCtx.logger.error(
+      'player: error playing %s: %s (code: %s)',
+      entry.item.trackUrn,
+      sourceError.message,
+      sourceError.code,
+    )
+    this.ownCtx.emit('player/error', sourceError, entry.item.trackUrn)
 
     switch (sourceError.code) {
       case 'auth':
         // Stop and let the source plugin re-authenticate. The queue survives.
-        await this.ctx.serial('source/auth-expired', instanceOf(entry.item.trackUrn))
+        await this.ownCtx.serial('source/auth-expired', instanceOf(entry.item.trackUrn))
         this.fail(sourceError, false)
         return
 
@@ -1098,6 +1205,7 @@ export class Player extends Service implements PlayerService {
   }
 
   private fail(error: SourceError, retryable: boolean): void {
+    this.ownCtx.logger.error('player: playback failed: %s (retryable: %s)', error.message, retryable)
     this.detachSource()
     this.set({
       status: 'error',
@@ -1106,6 +1214,11 @@ export class Player extends Service implements PlayerService {
   }
 
   private async skip(entry: QueueEntry): Promise<void> {
+    this.ownCtx.logger.warn(
+      'player: skipping track %s (streak: %d)',
+      entry.item.trackUrn,
+      this.skipStreak + 1,
+    )
     // Under repeat-all the queue never runs out, so a queue in which every
     // track fails would skip forever — an event storm, a write per track, and
     // a UI stuck on "skipping" until the battery goes. Give up after a run of
@@ -1132,39 +1245,46 @@ export class Player extends Service implements PlayerService {
   /* ── media session ─────────────────────────────────────────────────── */
 
   private publishNowPlaying(): void {
-    const session = this.mediaCtx?.mediaSession
-    if (!session) return
-
     const urn = this.transport.trackUrn
+    const session = this.mediaCtx?.mediaSession
     if (!urn) {
-      session.clear()
+      if (this.transport.nowPlaying) {
+        this.set({ nowPlaying: undefined })
+      }
+      session?.clear()
       return
     }
-    // Published immediately without artwork; the artwork cache updates it
-    // again when the image lands rather than delaying the whole update.
+
     void this.store
       .nowPlaying(urn)
       .then((meta) => {
-        session.update({
-          title: meta?.title ?? urn,
-          ...(meta?.artist ? { artist: meta.artist } : {}),
-          ...(meta?.album ? { album: meta.album } : {}),
-          ...(meta?.artworkUri ? { artworkUri: meta.artworkUri } : {}),
-          durationMs: this.transport.durationMs,
-          positionMs: this.transport.positionMs,
-        })
+        if (this.transport.trackUrn === urn && meta) {
+          this.set({ nowPlaying: meta })
+        }
+        if (session) {
+          session.update({
+            title: meta?.title ?? urn,
+            ...(meta?.artist ? { artist: meta.artist } : {}),
+            ...(meta?.album ? { album: meta.album } : {}),
+            ...(meta?.artworkUri ? { artworkUri: meta.artworkUri } : {}),
+            durationMs: this.transport.durationMs,
+            positionMs: this.transport.positionMs,
+          })
+        }
       })
       .catch(() => undefined)
 
-    // `stalled` keeps reporting `playing`, so the lock screen does not
-    // flicker on a buffer underrun (docs/05 §2).
-    session.setPlaybackState(
-      this.transport.status === 'playing' || this.transport.status === 'stalled'
-        ? 'playing'
-        : this.transport.status === 'paused'
-          ? 'paused'
-          : 'stopped',
-    )
+    if (session) {
+      // `stalled` keeps reporting `playing`, so the lock screen does not
+      // flicker on a buffer underrun (docs/05 §2).
+      session.setPlaybackState(
+        this.transport.status === 'playing' || this.transport.status === 'stalled'
+          ? 'playing'
+          : this.transport.status === 'paused'
+            ? 'paused'
+            : 'stopped',
+      )
+    }
   }
 
   private publishPosition(positionMs: number): void {
@@ -1192,7 +1312,7 @@ export class Player extends Service implements PlayerService {
         muted: this.transport.muted,
       })
       .catch((error: unknown) => {
-        this.ctx.logger.warn(`player: could not save playback state: ${String(error)}`)
+        this.ownCtx.logger.warn(`player: could not save playback state: ${String(error)}`)
       })
   }
 
@@ -1214,8 +1334,8 @@ export class Player extends Service implements PlayerService {
         volume: state.volume,
         muted: state.muted,
       }
-      this.ctx.audio.setVolume(state.volume)
-      this.ctx.audio.setMuted(state.muted)
+      this.ownCtx.audio.setVolume(state.volume)
+      this.ownCtx.audio.setMuted(state.muted)
     }
 
     const current = state?.currentItemId ? this.model.entry(state.currentItemId) : undefined
@@ -1229,6 +1349,12 @@ export class Player extends Service implements PlayerService {
       }
     }
     if (entries.length > 0) this.emitQueueChanged()
+    this.ownCtx.logger.info(
+      'player: restored state (entries: %d, currentItem: %s, positionMs: %d)',
+      entries.length,
+      current?.item.trackUrn ?? 'none',
+      state?.positionMs ?? 0,
+    )
   }
 
   /* ── teardown ──────────────────────────────────────────────────────── */
@@ -1289,6 +1415,7 @@ export const name = 'plugin-player'
  * `ctx.player` is usable.
  */
 export async function apply(ctx: Context, config: PlayerConfig = {}) {
+  ctx.logger.info('plugin-player: loaded')
   const fiber = await ctx.plugin(Player, config)
   return () => void fiber.dispose()
 }

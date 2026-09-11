@@ -7,7 +7,7 @@
  * actually means (docs/07 §4.7).
  */
 
-import type { DbService, PlayRecord, QueueItem, RepeatMode, SqlValue } from '@BBeBee/protocol'
+import type { ArtworkRef, DbService, NowPlayingMeta, PlayRecord, QueueItem, RepeatMode, SqlValue } from '@BBeBee/protocol'
 import type { QueueEntry } from './queue.js'
 
 export interface PersistedState {
@@ -20,12 +20,7 @@ export interface PersistedState {
   muted: boolean
 }
 
-export interface NowPlayingMeta {
-  title: string
-  artist?: string
-  album?: string
-  artworkUri?: string
-}
+export type { NowPlayingMeta }
 
 interface QueueRow {
   id: string
@@ -213,12 +208,20 @@ export class PlayerStore {
     const row = await this.db.get<{
       title: string
       album: string | null
+      artwork_id: string | null
       artwork_uri: string | null
+      source_url: string | null
+      blurhash: string | null
+      dominant_color: string | null
       artist: string | null
     }>(
       `SELECT t.title,
               al.title AS album,
+              aw.id AS artwork_id,
               aw.local_uri AS artwork_uri,
+              aw.source_url,
+              aw.blurhash,
+              aw.dominant_color,
               (SELECT a.name FROM track_artists ta JOIN artists a ON a.urn = ta.artist_urn
                 WHERE ta.track_urn = t.urn ORDER BY ta.ordinal ASC LIMIT 1) AS artist
          FROM tracks t
@@ -228,6 +231,14 @@ export class PlayerStore {
       [urn],
     )
     if (!row) return undefined
+    const artwork: ArtworkRef | undefined = row.artwork_id
+      ? {
+          id: row.artwork_id,
+          sourceUrl: row.source_url ?? undefined,
+          blurhash: row.blurhash ?? undefined,
+          dominantColor: row.dominant_color ?? undefined,
+        }
+      : undefined
     return {
       title: row.title,
       ...(row.artist ? { artist: row.artist } : {}),
@@ -235,6 +246,7 @@ export class PlayerStore {
       // Must be a local Uri on mobile, so a remote-only artwork is omitted
       // rather than handed over to fail silently (docs/04 §7).
       ...(row.artwork_uri ? { artworkUri: row.artwork_uri } : {}),
+      ...(artwork ? { artwork } : {}),
     }
   }
 }

@@ -74,6 +74,14 @@ function useTabs(ctx: Context): Tab[] {
 function Shell({ ctx }: { ctx: Context }) {
   const tabs = useTabs(ctx)
   const [activeId, setActiveId] = useState<string | undefined>()
+
+  useEffect(() => {
+    const off = ctx.on('ui/navigate', (routeId: string) => {
+      setActiveId(routeId)
+    })
+    return () => void off()
+  }, [ctx])
+
   const active = tabs.find((t) => t.id === activeId) ?? tabs[0]
   const ViewComponent = active
     ? (ctx.ui.viewFor(active.id) as ComponentType<{ ctx: Context }> | undefined)

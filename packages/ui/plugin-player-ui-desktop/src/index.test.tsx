@@ -16,10 +16,9 @@ import { createElement as h } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { render } from '@testing-library/react'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
-import { Context } from 'cordis'
-import { Service } from 'cordis'
+import { Context, Service } from 'cordis'
 import type { QueueItem, TransportState } from '@BBeBee/protocol'
-import { NowPlayingBar, QueueScreen } from './index.js'
+import { NowPlayingBar, NowPlayingScreen, QueueScreen } from './index.js'
 
 const IDLE: TransportState = {
   status: 'idle',
@@ -121,6 +120,44 @@ describe('NowPlayingBar', () => {
   it('shows a placeholder duration rather than 0:00 for an unknown one', async () => {
     const { ctx } = await harness({ status: 'playing', durationMs: 0 })
     expect(html(h(NowPlayingBar, { ctx }))).toContain('--:--')
+  })
+
+  it('shows current track title and artist', async () => {
+    const { ctx } = await harness({
+      status: 'playing',
+      trackUrn: 'BBeBee:local:track:1',
+      nowPlaying: {
+        title: 'Bohemian Rhapsody',
+        artist: 'Queen',
+        album: 'A Night at the Opera',
+      },
+    })
+    const out = html(h(NowPlayingBar, { ctx }))
+    expect(out).toContain('Bohemian Rhapsody')
+    expect(out).toContain('Queen')
+  })
+})
+
+describe('NowPlayingScreen', () => {
+  it('displays track title, artist, and album', async () => {
+    const { ctx } = await harness({
+      status: 'playing',
+      trackUrn: 'BBeBee:local:track:1',
+      durationMs: 354_000,
+      positionMs: 60_000,
+      nowPlaying: {
+        title: 'Hotel California',
+        artist: 'Eagles',
+        album: 'Hotel California',
+      },
+    })
+    const out = html(h(NowPlayingScreen, { ctx }))
+    expect(out).toContain('Hotel California')
+    expect(out).toContain('Eagles')
+    expect(out).toContain('aria-label="Now playing"')
+    expect(out).toContain('aria-label="Pause"')
+    expect(out).toContain('1:00')
+    expect(out).toContain('5:54')
   })
 })
 

@@ -48,7 +48,7 @@ async function mount(register: (ui: UiStub) => void) {
   document.body.append(container)
   const root = createRoot(container)
   await act(async () => root.render(h(Shell, { ctx: shellCtx })))
-  return { container, root }
+  return { container, root, ctx: shellCtx }
 }
 
 const route = (id: string, title: string) =>
@@ -88,5 +88,18 @@ describe('the desktop shell', () => {
       ui.routes = [route('viewless', 'Viewless')]
     })
     expect(container.textContent).toContain('has no desktop view')
+  })
+
+  it('switches views when ui/navigate is emitted', async () => {
+    const { container, ctx } = await mount((ui) => {
+      ui.routes = [route('first', 'First'), route('second', 'Second')]
+      ui.views.set('first', () => h('p', null, 'first view'))
+      ui.views.set('second', () => h('p', null, 'second view'))
+    })
+    expect(container.textContent).toContain('first view')
+    await act(async () => {
+      ctx.emit('ui/navigate', 'second')
+    })
+    expect(container.textContent).toContain('second view')
   })
 })

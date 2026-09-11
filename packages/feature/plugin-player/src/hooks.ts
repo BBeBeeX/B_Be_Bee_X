@@ -12,8 +12,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { Context } from 'cordis'
-import type {} from '@BBeBee/protocol'
-import type { QueueItem, TransportState } from '@BBeBee/protocol'
+import type { NowPlayingMeta, QueueItem, TransportState } from '@BBeBee/protocol'
 import { shallowArrayEqual, useServiceState } from '@BBeBee/ui-core'
 
 /** The transport, re-read whenever it changes. */
@@ -23,6 +22,12 @@ export function useTransport(ctx: Context): TransportState {
     ['player/state-changed', 'player/track-changed'],
     () => ctx.player.state,
   )
+}
+
+/** The currently playing track's metadata (artwork, title, artist, album). */
+export function useNowPlaying(ctx: Context): NowPlayingMeta | undefined {
+  const state = useTransport(ctx)
+  return state.nowPlaying
 }
 
 /**

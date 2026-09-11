@@ -14,7 +14,7 @@ import { createElement as h, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Album, CatalogQuery, ImportReport, PlayerService, Track, TraceEvent } from '@BBeBee/protocol'
+import type { Album, CatalogQuery, ImportReport, PlayerService, Track, TraceEvent, UiService } from '@BBeBee/protocol'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
   useAlbum,
@@ -209,7 +209,10 @@ function TrackList({
         showAlbum: true,
         // Playing one track queues just that track; queueing the whole list
         // is a decision for the album screen, where "the rest" has a meaning.
-        onPress: () => void serviceOf<PlayerService>(ctx, 'player')?.playNow([track.urn]),
+        onPress: () => {
+          void serviceOf<PlayerService>(ctx, 'player')?.playNow([track.urn])
+          serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
+        },
         onToggleLoved: () => onToggleLoved(track.urn, !track.loved),
       }),
   })
@@ -310,7 +313,10 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           children: detail.artists?.map((a) => a.name).join(', ') ?? '',
         }),
         h(Button, {
-          onPress: () => void serviceOf<PlayerService>(ctx, 'player')?.playNow(detail.tracks.map((t) => t.urn)),
+          onPress: () => {
+            void serviceOf<PlayerService>(ctx, 'player')?.playNow(detail.tracks.map((t) => t.urn))
+            serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
+          },
           children: 'Play album',
           // Disabled rather than absent: an album with no playable tracks is
           // a real state, and hiding the control hides the reason.
@@ -330,11 +336,13 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           showArtwork: false,
           // Playing from an album plays the album from that point, which is
           // what "play this track" means in an album context.
-          onPress: () =>
+          onPress: () => {
             void serviceOf<PlayerService>(ctx, 'player')?.playNow(
               detail.tracks.map((t) => t.urn),
               { startIndex: index },
-            ),
+            )
+            serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
+          },
         }),
     }),
   )

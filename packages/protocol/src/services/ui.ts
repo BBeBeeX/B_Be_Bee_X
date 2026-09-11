@@ -99,6 +99,8 @@ export interface UiService {
    */
   registerView(id: string, component: unknown): Disposable
 
+  navigate(id: string, params?: Record<string, unknown>): void
+
   readonly routes: readonly RouteContribution[]
   slotsFor(slot: SlotId): readonly SlotContribution[]
   readonly commands: readonly CommandContribution[]

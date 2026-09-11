@@ -9,7 +9,7 @@
  * desktop belongs in `plugin-player/hooks` (docs/08 1).
  */
 
-import { createElement as h } from 'react'
+import { createElement as h, useEffect } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
@@ -45,6 +45,10 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
   const duration = useDuration(ctx)
   const can = useTransportAvailability(ctx)
 
+  useEffect(() => {
+    ctx.logger?.info('NowPlayingScreen (mobile): displayed track %s (status: %s)', state.trackUrn ?? 'none', state.status)
+  }, [ctx, state.trackUrn, state.status])
+
   return h(
     native.View as never,
     {
@@ -60,8 +64,22 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
     },
     // Artwork first and large: on a phone this screen is mostly the artwork,
     // which is the one thing a bottom bar cannot do.
-    h(Artwork, { size: 280, radius: tokens.radius.lg }),
-    h(Text, { variant: 'xl', numberOfLines: 1, children: state.trackUrn ?? 'Nothing playing' }),
+    h(Artwork, { artwork: state.nowPlaying?.artwork, size: 280, radius: tokens.radius.lg }),
+    h(
+      native.View as never,
+      { style: { alignItems: 'center', gap: tokens.space[1], maxWidth: '90%' } },
+      h(Text, {
+        variant: 'xl',
+        numberOfLines: 1,
+        children: state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'Nothing playing'),
+      }),
+      state.nowPlaying?.artist
+        ? h(Text, { variant: 'md', tone: 'muted', numberOfLines: 1, children: state.nowPlaying.artist })
+        : null,
+      state.nowPlaying?.album
+        ? h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1, children: state.nowPlaying.album })
+        : null,
+    ),
     state.status === 'stalled'
       ? h(Text, { variant: 'sm', tone: 'muted', children: 'Buffering…' })
       : null,
@@ -73,7 +91,10 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
         max: duration ?? 0,
         disabled: !can.canSeek,
         accessibilityLabel: 'Seek',
-        onCommit: (value: number) => void ctx.player.seek(value),
+        onCommit: (value: number) => {
+          ctx.logger?.info('NowPlayingScreen (mobile): seek committed to %dms', value)
+          void ctx.player.seek(value)
+        },
       }),
       h(
         native.View as never,
@@ -89,7 +110,10 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
         icon: '⏮',
         accessibilityLabel: 'Previous track',
         disabled: !can.canPrevious,
-        onPress: () => void ctx.player.previous(),
+        onPress: () => {
+          ctx.logger?.info('NowPlayingScreen (mobile): previous track clicked')
+          void ctx.player.previous()
+        },
       }),
       h(IconButton, {
         // One control with two states, exactly as on desktop.
@@ -98,13 +122,19 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
         variant: 'primary',
         size: tokens.size.iconLarge,
         disabled: !can.canPlay && !can.canPause,
-        onPress: () => ctx.player.togglePlay(),
+        onPress: () => {
+          ctx.logger?.info('NowPlayingScreen (mobile): %s clicked', can.canPause ? 'pause' : 'play')
+          ctx.player.togglePlay()
+        },
       }),
       h(IconButton, {
         icon: '⏭',
         accessibilityLabel: 'Next track',
         disabled: !can.canNext,
-        onPress: () => void ctx.player.next(),
+        onPress: () => {
+          ctx.logger?.info('NowPlayingScreen (mobile): next track clicked')
+          void ctx.player.next()
+        },
       }),
     ),
   )
@@ -135,7 +165,10 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
         // Same narrowing as desktop: there is no "jump to this queue item" on
         // PlayerService yet, and an affordance that quietly does something
         // else is worse than one that does less.
-        onPress: () => void ctx.player.playNow([item.trackUrn]),
+        onPress: () => {
+          ctx.logger?.info('QueueScreen (mobile): item clicked %s', item.trackUrn)
+          void ctx.player.playNow([item.trackUrn])
+        },
       }),
   })
 }
@@ -174,6 +207,7 @@ function bound<P extends { ctx: Context }>(
 export const inject = ['ui', 'player']
 
 export async function apply(ctx: Context) {
+  ctx.logger?.info('plugin-player-ui-mobile loaded')
   return ctx.effect(function* () {
     yield ctx.ui.registerView(PLAYER_VIEWS.nowPlaying, bound(ctx, NowPlayingScreen))
     yield ctx.ui.registerView(PLAYER_VIEWS.queue, bound(ctx, QueueScreen))

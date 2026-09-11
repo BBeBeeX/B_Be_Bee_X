@@ -17,6 +17,8 @@ export interface QueueSourceContext {
   label?: string
 }
 
+import type { ArtworkRef } from './catalog.js'
+
 export interface QueueItem {
   id: string
   trackUrn: string
@@ -24,6 +26,14 @@ export interface QueueItem {
   sourceContext?: QueueSourceContext
   addedBy: 'user' | 'autoplay' | 'radio'
   addedAt?: number
+}
+
+export interface NowPlayingMeta {
+  title: string
+  artist?: string
+  album?: string
+  artwork?: ArtworkRef
+  artworkUri?: string
 }
 
 export interface TransportState {
@@ -38,6 +48,7 @@ export interface TransportState {
   repeat: RepeatMode
   shuffle: boolean
   error?: { code: string; message: string; retryable: boolean }
+  nowPlaying?: NowPlayingMeta
 }
 
 /** One completed (or abandoned) listen. Appended to `play_history`. */

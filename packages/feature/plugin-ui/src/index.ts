@@ -79,6 +79,10 @@ export class Ui extends Service implements UiService {
     }
   }
 
+  navigate(id: string, params?: Record<string, unknown>): void {
+    this.ctx.emit('ui/navigate', id, params)
+  }
+
   private of<K extends Contribution['kind'], T extends Contribution>(kind: K): T[] {
     const matches: [number, T][] = []
     for (const [key, c] of this.contributions) {

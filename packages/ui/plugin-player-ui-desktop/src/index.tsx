@@ -10,7 +10,7 @@
  * accepts writing the view twice.
  */
 
-import { createElement as h } from 'react'
+import { createElement as h, useEffect } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
@@ -25,6 +25,7 @@ import {
   useTransportAvailability,
 } from '@BBeBee/plugin-player/hooks'
 import {
+  Artwork,
   EmptyState,
   IconButton,
   List,
@@ -43,6 +44,10 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
   const duration = useDuration(ctx)
   const can = useTransportAvailability(ctx)
 
+  useEffect(() => {
+    ctx.logger?.debug('NowPlayingBar (desktop): track is %s, status is %s', state.trackUrn ?? 'none', state.status)
+  }, [ctx, state.trackUrn, state.status])
+
   return h(
     'div',
     {
@@ -59,12 +64,57 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
     },
     h(
       'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: tokens.space[3],
+          width: 240,
+          minWidth: 180,
+          overflow: 'hidden',
+        },
+      },
+      h(Artwork, {
+        artwork: state.nowPlaying?.artwork,
+        size: tokens.size.artworkThumb,
+        radius: tokens.radius.sm,
+      }),
+      h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+            overflow: 'hidden',
+          },
+        },
+        h(Text, {
+          variant: 'sm',
+          numberOfLines: 1,
+          children: state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'Nothing playing'),
+        }),
+        state.nowPlaying?.artist
+          ? h(Text, {
+              variant: 'xs',
+              tone: 'muted',
+              numberOfLines: 1,
+              children: state.nowPlaying.artist,
+            })
+          : null,
+      ),
+    ),
+    h(
+      'div',
       { style: { display: 'flex', alignItems: 'center', gap: tokens.space[2] } },
       h(IconButton, {
         icon: '⏮',
         accessibilityLabel: 'Previous track',
         disabled: !can.canPrevious,
-        onPress: () => void ctx.player.previous(),
+        onPress: () => {
+          ctx.logger?.info('NowPlayingBar (desktop): previous track clicked')
+          void ctx.player.previous()
+        },
       }),
       h(IconButton, {
         // One control, two states: a play button that is sometimes a pause
@@ -73,13 +123,19 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
         accessibilityLabel: can.canPause ? 'Pause' : 'Play',
         variant: 'primary',
         disabled: !can.canPlay && !can.canPause,
-        onPress: () => ctx.player.togglePlay(),
+        onPress: () => {
+          ctx.logger?.info('NowPlayingBar (desktop): %s clicked', can.canPause ? 'pause' : 'play')
+          ctx.player.togglePlay()
+        },
       }),
       h(IconButton, {
         icon: '⏭',
         accessibilityLabel: 'Next track',
         disabled: !can.canNext,
-        onPress: () => void ctx.player.next(),
+        onPress: () => {
+          ctx.logger?.info('NowPlayingBar (desktop): next track clicked')
+          void ctx.player.next()
+        },
       }),
     ),
     h(
@@ -96,7 +152,10 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
         max: duration ?? 0,
         disabled: !can.canSeek,
         accessibilityLabel: 'Seek',
-        onCommit: (value: number) => void ctx.player.seek(value),
+        onCommit: (value: number) => {
+          ctx.logger?.info('NowPlayingBar (desktop): seek committed to %dms', value)
+          void ctx.player.seek(value)
+        },
       }),
       h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(duration) }),
     ),
@@ -106,13 +165,19 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
       h(IconButton, {
         icon: state.muted ? '🔇' : '🔊',
         accessibilityLabel: state.muted ? 'Unmute' : 'Mute',
-        onPress: () => ctx.player.setMuted(!state.muted),
+        onPress: () => {
+          ctx.logger?.info('NowPlayingBar (desktop): %s clicked', state.muted ? 'unmute' : 'mute')
+          ctx.player.setMuted(!state.muted)
+        },
       }),
       h(Slider, {
         value: Math.round(state.volume * 100),
         max: 100,
         accessibilityLabel: 'Volume',
-        onCommit: (value: number) => ctx.player.setVolume(value / 100),
+        onCommit: (value: number) => {
+          ctx.logger?.debug('NowPlayingBar (desktop): volume committed to %d%', Math.round(value))
+          ctx.player.setVolume(value / 100)
+        },
       }),
     ),
   )
@@ -146,9 +211,145 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
         // plays its track rather than pretending to reposition the queue —
         // an affordance that silently does the wrong thing is worse than a
         // narrower one that does the right thing.
-        onPress: () => void ctx.player.playNow([item.trackUrn]),
+        onPress: () => {
+          ctx.logger?.info('QueueScreen (desktop): item clicked %s', item.trackUrn)
+          void ctx.player.playNow([item.trackUrn])
+        },
       }),
   })
+}
+
+/** The full-pane player view on desktop. */
+export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
+  const state = useTransport(ctx)
+  const position = usePosition(ctx)
+  const duration = useDuration(ctx)
+  const can = useTransportAvailability(ctx)
+
+  useEffect(() => {
+    ctx.logger?.info('NowPlayingScreen (desktop): displayed track %s (status: %s)', state.trackUrn ?? 'none', state.status)
+  }, [ctx, state.trackUrn, state.status])
+
+  return h(
+    'div',
+    {
+      role: 'region',
+      'aria-label': 'Now playing',
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100%',
+        padding: `${tokens.space[6]}px ${tokens.space[4]}px`,
+        gap: tokens.space[5],
+        background: p().bg.base,
+      },
+    },
+    h(Artwork, {
+      artwork: state.nowPlaying?.artwork,
+      size: 280,
+      radius: tokens.radius.lg,
+    }),
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: tokens.space[1],
+          maxWidth: 480,
+          textAlign: 'center',
+        },
+      },
+      h(Text, {
+        variant: 'xl',
+        numberOfLines: 1,
+        children: state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'Nothing playing'),
+      }),
+      state.nowPlaying?.artist
+        ? h(Text, {
+            variant: 'md',
+            tone: 'muted',
+            numberOfLines: 1,
+            children: state.nowPlaying.artist,
+          })
+        : null,
+      state.nowPlaying?.album
+        ? h(Text, {
+            variant: 'sm',
+            tone: 'muted',
+            numberOfLines: 1,
+            children: state.nowPlaying.album,
+          })
+        : null,
+    ),
+    state.status === 'stalled'
+      ? h(Text, { variant: 'sm', tone: 'muted', children: 'Buffering…' })
+      : null,
+    h(
+      'div',
+      {
+        style: {
+          width: '100%',
+          maxWidth: 480,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: tokens.space[1],
+        },
+      },
+      h(Slider, {
+        value: duration ? Math.min(position, duration) : position,
+        max: duration ?? 0,
+        disabled: !can.canSeek,
+        accessibilityLabel: 'Seek',
+        onCommit: (value: number) => {
+          ctx.logger?.info('NowPlayingScreen (desktop): seek committed to %dms', value)
+          void ctx.player.seek(value)
+        },
+      }),
+      h(
+        'div',
+        { style: { display: 'flex', justifyContent: 'space-between' } },
+        h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(position) }),
+        h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(duration) }),
+      ),
+    ),
+    h(
+      'div',
+      { style: { display: 'flex', alignItems: 'center', gap: tokens.space[4] } },
+      h(IconButton, {
+        icon: '⏮',
+        accessibilityLabel: 'Previous track',
+        disabled: !can.canPrevious,
+        onPress: () => {
+          ctx.logger?.info('NowPlayingScreen (desktop): previous track clicked')
+          void ctx.player.previous()
+        },
+      }),
+      h(IconButton, {
+        icon: can.canPause ? '⏸' : '▶',
+        accessibilityLabel: can.canPause ? 'Pause' : 'Play',
+        variant: 'primary',
+        size: tokens.size.iconLarge,
+        disabled: !can.canPlay && !can.canPause,
+        onPress: () => {
+          ctx.logger?.info('NowPlayingScreen (desktop): %s clicked', can.canPause ? 'pause' : 'play')
+          ctx.player.togglePlay()
+        },
+      }),
+      h(IconButton, {
+        icon: '⏭',
+        accessibilityLabel: 'Next track',
+        disabled: !can.canNext,
+        onPress: () => {
+          ctx.logger?.info('NowPlayingScreen (desktop): next track clicked')
+          void ctx.player.next()
+        },
+      }),
+    ),
+  )
 }
 
 export const name = 'plugin-player-ui-desktop'
@@ -188,8 +389,10 @@ export async function apply(ctx: Context) {
   // Bind components to the ids the headless package contributed. A view
   // registered for an id nobody contributed is dead; a contribution with no
   // view renders a placeholder — both are normal, neither is an error.
+  ctx.logger?.info('plugin-player-ui-desktop loaded')
   return ctx.effect(function* () {
-    yield ctx.ui.registerView(PLAYER_VIEWS.nowPlaying, bound(ctx, NowPlayingBar))
+    yield ctx.ui.registerView(PLAYER_VIEWS.nowPlaying, bound(ctx, NowPlayingScreen))
+    yield ctx.ui.registerView(PLAYER_VIEWS.nowPlayingBar, bound(ctx, NowPlayingBar))
     yield ctx.ui.registerView(PLAYER_VIEWS.queue, bound(ctx, QueueScreen))
   }, 'player-ui-desktop')
 }

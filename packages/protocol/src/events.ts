@@ -132,6 +132,10 @@ declare module 'cordis' {
     /* ── dsp ────────────────────────────────────────── emit ── */
     'dsp/chain-changed'(chain: readonly ChainEntry[]): void
 
+    /* ── ui ─────────────────────────────────────────── emit ── */
+    'ui/changed'(): void
+    'ui/navigate'(routeId: string, params?: Record<string, unknown>): void
+
     /* ── plugins ────────────────────────────────────── emit ── */
     'plugin/loaded'(id: string): void
     'plugin/failed'(id: string, error: Error): void
@@ -174,6 +178,8 @@ export const DISPATCH_MODES = {
   'scan/finished': 'emit',
   'dsp/build-chain': 'waterfall',
   'dsp/chain-changed': 'emit',
+  'ui/changed': 'emit',
+  'ui/navigate': 'emit',
   'plugin/loaded': 'emit',
   'plugin/failed': 'emit',
   'plugin/unloaded': 'emit',
