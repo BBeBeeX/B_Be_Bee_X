@@ -308,7 +308,7 @@ export class Player extends Service implements PlayerService {
           path: '/now-playing',
           title: 'Now playing',
           icon: 'play',
-          placement: ['tab-bar', 'sidebar'],
+          placement: ['tab-bar'],
           order: 10,
         })
         yield scoped.ui.contribute({
