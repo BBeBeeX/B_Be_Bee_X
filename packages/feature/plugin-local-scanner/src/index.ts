@@ -759,7 +759,8 @@ export class Scanner extends Service implements ScannerService {
 }
 
 function extensionOf(uri: string): string | undefined {
-  const name = uri.split('/').pop() ?? ''
+  const normalized = uri.replace(/\\/g, '/')
+  const name = normalized.split('/').pop() ?? ''
   const dot = name.lastIndexOf('.')
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : undefined
 }

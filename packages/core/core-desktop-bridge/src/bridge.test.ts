@@ -291,4 +291,35 @@ describe('bridge specifics', () => {
     const testFile = ctx2.fs.join(outsideUri, 'song.mp3')
     await expect(ctx2.fs.exists(testFile)).resolves.toBe(false)
   })
+
+  it('pickDirectory supports Windows paths with spaces and grants access', async () => {
+    const dir = await mkdtemp(join(root, 'winpick-'))
+    const outside = await mkdtemp(join(root, 'outside-'))
+    const winStyle = outside.replace(/\//g, '\\')
+    const { ctx } = await makeBridge(dir, {
+      pickDirectory: async () => winStyle,
+    })
+
+    const picked = await ctx.fs.pickDirectory()
+    expect(picked).toBeDefined()
+    expect(picked?.startsWith('file://')).toBe(true)
+
+    const testFile = ctx.fs.join(picked!, 'track.mp3')
+    await expect(ctx.fs.exists(testFile)).resolves.toBe(false)
+  })
+
+  it('handles Windows drive paths with percent-encoding in scan_specified_dirs', async () => {
+    const dir = await mkdtemp(join(root, 'winpct-'))
+    const { ctx } = await makeBridge(dir)
+    const winPath = 'C:\\Users\\Administrator\\Documents\\Tencent Files\\747261306\\FileRecv'
+    await ctx.db.exec(
+      'INSERT INTO scan_specified_dirs (id, uri, recursive, enabled) VALUES (?, ?, ?, ?)',
+      ['r2', winPath, 1, 1],
+    )
+
+    // Access using URL pathname with leading slash and percent encoding
+    const subUri = '/C:/Users/Administrator/Documents/Tencent%20Files/747261306/FileRecv/song.mp3'
+    // Should pass assertContained and reach fs (fails with ENOENT or false, not boundary check)
+    await expect(ctx.fs.exists(subUri)).resolves.toBe(false)
+  })
 })

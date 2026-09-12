@@ -46,13 +46,44 @@ export class FsNode extends Service implements FsService {
   /* ── Uri <-> path ───────────────────────────────────────────────────── */
 
   private toPath(uri: Uri): string {
-    if (uri.startsWith('file://')) return fileURLToPath(uri)
-    // Tolerate a bare path so tests and CLI callers are not forced to encode.
-    if (uri.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(uri)) return uri
+    if (uri.startsWith('file://')) {
+      const p = fileURLToPath(uri)
+      // When running on non-Windows/WSL or if fileURLToPath produced a path with
+      // a leading slash before a Windows drive letter (e.g. /C:/...), strip the leading slash.
+      if (/^\/[a-zA-Z]:[\\/]/.test(p)) {
+        return decodeURIComponent(p.slice(1))
+      }
+      return p
+    }
+    // Handle URL pathname with leading slash before Windows drive letter: /C:/... or /C:\...
+    const winMatch = uri.match(/^\/([a-zA-Z]:[\\/].*)/)
+    if (winMatch && winMatch[1]) {
+      return decodeURIComponent(winMatch[1])
+    }
+    // Tolerate a bare Windows path (C:\... or C:/...)
+    if (/^[a-zA-Z]:[\\/]/.test(uri)) {
+      return uri.includes('%') ? decodeURIComponent(uri) : uri
+    }
+    // Tolerate a bare Unix path
+    if (uri.startsWith('/')) {
+      return uri.includes('%') ? decodeURIComponent(uri) : uri
+    }
     throw new TypeError(`not a file uri: ${uri}`)
   }
 
   private toUri(path: string): Uri {
+    if (process.platform === 'win32') {
+      const clean = path.replace(/^\/([a-zA-Z]:)/, '$1')
+      const decoded = clean.includes('%') ? decodeURI(clean) : clean
+      return pathToFileURL(decoded).href.replace(/\/$/, '')
+    }
+    // Cross-platform support for Windows paths on non-Windows hosts:
+    if (/^\/?[a-zA-Z]:[\\/]/.test(path)) {
+      const clean = path.replace(/\\/g, '/').replace(/^\//, '')
+      const decoded = clean.includes('%') ? decodeURI(clean) : clean
+      const drive = decoded[0]!.toUpperCase() + decoded.slice(1)
+      return ('file:///' + encodeURI(drive)).replace(/\/$/, '')
+    }
     return pathToFileURL(path).href.replace(/\/$/, '')
   }
 

@@ -324,7 +324,8 @@ export async function forgetFile(
 }
 
 function fileNameOf(uri: string): string {
-  const last = uri.split('/').pop() ?? uri
+  const normalized = uri.replace(/\\/g, '/')
+  const last = normalized.split('/').pop() ?? normalized
   return decodeURIComponent(last.replace(/\.[^.]+$/, ''))
 }
 

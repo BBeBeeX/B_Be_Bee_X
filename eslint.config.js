@@ -411,8 +411,8 @@ export default tseslint.config(
   },
 
   {
-    // docs/02 §1 — the shells are Layer 5. They reach Layer 2 through service
-    // keys like every other Layer 5 package; the composition root beside them
+    // docs/02 §1 — the shells are Layer 4. They reach Layer 2 through service
+    // keys like every other Layer 4 package; the composition root beside them
     // is the one exception, and it is listed once, above.
     //
     // Platform SDKs are deliberately NOT banned here: a shell owns genuinely

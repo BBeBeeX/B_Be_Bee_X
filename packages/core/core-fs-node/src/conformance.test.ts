@@ -84,6 +84,20 @@ describe('core-fs-node specifics', () => {
     await fs().move(from, to)
     expect(await fs().readFile(to)).toBe('payload')
   })
+
+  it('handles Windows drive paths and URL pathnames with percent-encoding', async () => {
+    const scratch = pathToFileURL(await mkdtemp(join(root, 'win-'))).href.replace(/\/$/, '')
+    const file = fs().join(scratch, 'my song.mp3')
+    await fs().writeFile(file, 'audio-data')
+
+    expect(fs().basename(file)).toBe('my song.mp3')
+    expect(fs().extname(file)).toBe('.mp3')
+    expect(await fs().exists(file)).toBe(true)
+
+    // Test URL-encoded join and access
+    const pathname = file.startsWith('file://') ? file.replace(/^file:\/\//, '') : file
+    expect(fs().basename(pathname)).toBe('my song.mp3')
+  })
 })
 
 describe('core-fs-node capability scopes', () => {

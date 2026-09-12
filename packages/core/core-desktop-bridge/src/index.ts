@@ -157,11 +157,13 @@ export class FsBridge extends Service implements FsService {
   // `join`/`basename`/`extname` are pure string work and synchronous in the
   // contract, so they are computed here rather than round-tripped.
   join(base: Uri, ...segments: string[]): Uri {
-    const tail = segments.filter(Boolean).join('/')
-    return tail ? `${base.replace(/\/$/, '')}/${tail}` : base
+    const normalizedBase = base.replace(/\\/g, '/')
+    const tail = segments.filter(Boolean).map((s) => s.replace(/\\/g, '/')).join('/')
+    return tail ? `${normalizedBase.replace(/\/$/, '')}/${tail}` : normalizedBase
   }
   basename(uri: Uri): string {
-    return decodeURIComponent(uri.split('/').pop() ?? '')
+    const normalized = uri.replace(/\\/g, '/')
+    return decodeURIComponent(normalized.split('/').pop() ?? '')
   }
   extname(uri: Uri): string {
     const base = this.basename(uri)

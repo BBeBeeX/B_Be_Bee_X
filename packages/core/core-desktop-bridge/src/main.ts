@@ -237,12 +237,28 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     system: () => system,
   }
 
+  function toFileUri(pathOrUri: string): string {
+    if (pathOrUri.startsWith('file://')) return pathOrUri.replace(/\/$/, '')
+    if (process.platform === 'win32') {
+      const clean = pathOrUri.replace(/^\/([a-zA-Z]:)/, '$1')
+      const decoded = clean.includes('%') ? decodeURI(clean) : clean
+      return pathToFileURL(decoded).href.replace(/\/$/, '')
+    }
+    if (/^\/?[a-zA-Z]:[\\/]/.test(pathOrUri)) {
+      const clean = pathOrUri.replace(/\\/g, '/').replace(/^\//, '')
+      const decoded = clean.includes('%') ? decodeURI(clean) : clean
+      const drive = decoded[0]!.toUpperCase() + decoded.slice(1)
+      return ('file:///' + encodeURI(drive)).replace(/\/$/, '')
+    }
+    return pathToFileURL(pathOrUri).href.replace(/\/$/, '')
+  }
+
   const extraRoots = new Set<string>()
 
   try {
     const rows = await ctx.db.query<{ uri: string }>('SELECT uri FROM scan_specified_dirs')
     for (const row of rows) {
-      if (row.uri) extraRoots.add(row.uri)
+      if (row.uri) extraRoots.add(toFileUri(row.uri))
     }
   } catch {
     /* Table may not exist yet in test harnesses without migrations */
@@ -295,9 +311,7 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
       if (options.pickDirectory) {
         const picked = await options.pickDirectory(event?.sender)
         if (!picked) return undefined
-        const uri = picked.startsWith('file://')
-          ? picked.replace(/\/$/, '')
-          : pathToFileURL(picked).href.replace(/\/$/, '')
+        const uri = toFileUri(picked)
         extraRoots.add(uri)
         return uri
       }
@@ -310,10 +324,11 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
       assertSqlAllowed(callArgs[0], 'the bridge')
       if (/scan_specified_dir/i.test(callArgs[0]) && Array.isArray(callArgs[1])) {
         for (const arg of callArgs[1]) {
-          if (typeof arg === 'string' && (arg.startsWith('file://') || arg.startsWith('/'))) {
-            const uri = arg.startsWith('file://')
-              ? arg.replace(/\/$/, '')
-              : pathToFileURL(arg).href.replace(/\/$/, '')
+          if (
+            typeof arg === 'string' &&
+            (arg.startsWith('file://') || arg.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(arg))
+          ) {
+            const uri = toFileUri(arg)
             extraRoots.add(uri)
           }
         }
@@ -344,7 +359,7 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     void event
     const result = await fn.apply(target, callArgs)
     if (service === 'fs' && method === 'pickDirectory' && typeof result === 'string') {
-      extraRoots.add(result.replace(/\/$/, ''))
+      extraRoots.add(toFileUri(result))
     }
     return result
   })

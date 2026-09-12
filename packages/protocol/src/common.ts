@@ -54,9 +54,36 @@ export interface Paged<T> {
  * check reads as "this file is in your own directory" for a sibling directory
  * that is emphatically not, so this helper is the only correct way to ask.
  */
+function normalizeUriForComparison(u: string): string {
+  let s = u.replace(/\\/g, '/')
+  // Strip leading slash before Windows drive letter: /C:/... -> C:/...
+  if (/^\/[a-zA-Z]:\//.test(s)) {
+    s = s.slice(1)
+  }
+  // If Windows drive path C:/..., format as file:///C:/...
+  if (/^[a-zA-Z]:\//.test(s)) {
+    s = `file:///${s}`
+  }
+  // Drive letter uppercase in file:///C:/
+  s = s.replace(/^file:\/\/\/([a-zA-Z]):/, (_, l: string) => `file:///${l.toUpperCase()}:`)
+  try {
+    s = decodeURI(s)
+  } catch {
+    // leave as is if malformed
+  }
+  return s.endsWith('/') ? s.slice(0, -1) : s
+}
+
 export function uriContains(base: Uri, uri: Uri): boolean {
-  const root = base.endsWith('/') ? base.slice(0, -1) : base
-  return uri === root || uri.startsWith(`${root}/`)
+  const root = normalizeUriForComparison(base)
+  const target = normalizeUriForComparison(uri)
+  // On Windows paths (file:///[A-Z]:/), comparison is case-insensitive because Windows filesystem is case-insensitive
+  if (/^file:\/\/\/[a-zA-Z]:/.test(root)) {
+    const rootLower = root.toLowerCase()
+    const targetLower = target.toLowerCase()
+    return targetLower === rootLower || targetLower.startsWith(`${rootLower}/`)
+  }
+  return target === root || target.startsWith(`${root}/`)
 }
 
 /**
