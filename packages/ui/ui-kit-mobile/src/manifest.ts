@@ -36,7 +36,7 @@ export const COMPONENT_PROPS: KitPropMap = {
     'error', 'autoCorrect', 'testID', 'accessibilityLabel',
   ],
   Text: ['children', 'variant', 'tone', 'numberOfLines', 'testID', 'accessibilityLabel'],
-  Artwork: ['artwork', 'size', 'radius', 'testID', 'accessibilityLabel'],
+  Artwork: ['artwork', 'size', 'radius', 'seed', 'testID', 'accessibilityLabel'],
 }
 
 /** Component names this kit exports. The parity gate compares the two lists. */

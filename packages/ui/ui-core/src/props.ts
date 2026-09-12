@@ -149,4 +149,5 @@ export interface ArtworkProps extends CommonProps {
   artwork?: ArtworkRef
   size: number
   radius?: number
+  seed?: string
 }

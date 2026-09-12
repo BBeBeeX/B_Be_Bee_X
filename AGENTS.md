@@ -488,7 +488,8 @@ the **headless** package so both shells share them. `select` must be referential
 
 Rendering rules: no `useEffect` for domain work (call a service method); optimistic updates live
 in the service so both shells behave identically on rollback; lists virtualise (`FlashList` on
-mobile, `@tanstack/react-virtual` on desktop); artwork renders `blurhash` first.
+mobile, `@tanstack/react-virtual` on desktop); artwork renders `blurhash` first, and artwork with
+no cover at all renders an identicon generated from the entity URN.
 
 Tokens are **data, not components** (`@BBeBee/ui-tokens`, which also holds the WCAG AA contrast
 gate). Component parity between the two kits is a contract: both export the same component names
@@ -519,7 +520,7 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
   - Seek scrubbers and volume sliders use a subtle grey track that fills with green (`#1DB954`) and reveals a circular thumb on hover/drag.
 - **Artwork & atmospheric theming**:
   - Square artwork for tracks and albums; circular avatars for artists.
-  - Artwork renders `blurhash` first, with fallback to `artworks.dominant_color` to prevent grey flashes or layout shifts.
+  - Artwork renders `blurhash` first, with fallback to `artworks.dominant_color` to prevent grey flashes or layout shifts. With no cover at all, `Artwork` generates a GitHub-identicon-style square from the entity URN (`identicon()` in `ui-core`; a `seed` prop on both kits); real data always outranks generated — image > `dominant_color` > identicon > plain colour.
   - Playlist and album detail hero banners extract `artworks.dominant_color` to generate a dynamic atmospheric vertical gradient fading into the `#121212` base canvas.
 - **Layout paradigm**:
   - Desktop: 3-pane layout — sunken `#000000` sidebar/rail, rounded `#121212` content card with dynamic hero header gradient, and full-width persistent sunken `#000000` / `#181818` bottom transport bar.

@@ -202,7 +202,11 @@ export function LibraryScreen({
                       padding: tokens.space[2],
                     },
                   },
-                  h(Artwork, { artwork: album.artwork, size: tokens.size.artworkThumb }),
+                  h(Artwork, {
+                    artwork: album.artwork,
+                    seed: album.urn,
+                    size: tokens.size.artworkThumb,
+                  }),
                   h(
                     native.View as never,
                     { style: { flex: 1, minWidth: 0 } },
@@ -238,7 +242,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
     h(
       native.View as never,
       { style: { alignItems: 'center', gap: tokens.space[2], padding: tokens.space[4] } },
-      h(Artwork, { artwork: detail.artwork, size: 200, radius: tokens.radius.md }),
+      h(Artwork, { artwork: detail.artwork, seed: detail.urn, size: 200, radius: tokens.radius.md }),
       h(Text, { variant: 'xl', numberOfLines: 2, children: detail.title }),
       h(Text, {
         tone: 'muted',

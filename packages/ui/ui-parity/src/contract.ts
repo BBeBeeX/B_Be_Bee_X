@@ -197,6 +197,10 @@ export const COMPONENT_CONTRACT: ComponentSpec[] = [
       { name: 'artwork' },
       { name: 'size', required: true },
       { name: 'radius' },
+      {
+        name: 'seed',
+        note: 'The entity URN. With no image, a deterministic identicon is generated from it.',
+      },
       ...UNIVERSAL,
     ],
   },

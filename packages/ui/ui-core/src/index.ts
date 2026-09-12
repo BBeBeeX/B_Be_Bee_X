@@ -17,6 +17,7 @@ import { createServiceStore, type StoreOptions } from './store.js'
 
 export * from './props.js'
 export * from './store.js'
+export * from './identicon.js'
 
 /**
  * Read a service off the context, or `undefined` where it is not loaded.

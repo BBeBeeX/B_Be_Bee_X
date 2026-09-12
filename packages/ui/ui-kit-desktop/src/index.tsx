@@ -18,6 +18,7 @@ import { createElement as h, useCallback, useEffect, useRef, useState } from 're
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { CSSProperties, ReactElement, ReactNode } from 'react'
 import { palettes, tokens, type Scheme } from '@BBeBee/ui-tokens'
+import { identicon } from '@BBeBee/ui-core'
 import type {
   ArtworkProps,
   ButtonProps,
@@ -297,6 +298,14 @@ export function Artwork(props: ArtworkProps) {
   const { size, radius = tokens.radius.sm } = props
   const rawUri = props.artwork?.sourceUrl
   const uri = rawUri?.startsWith('file://') ? rawUri.replace(/^file:\/\//, 'bbebee-file://') : rawUri
+  const dominant = props.artwork?.dominantColor
+  // No image and no colour from a real cover, but an identity (the caller's
+  // seed, else the artwork row's own id) → a generated identicon, so an
+  // artwork-less library is still a grid of distinct, stable squares rather
+  // than one anonymous grey. Derived data never outranks real data: a
+  // `dominantColor` extracted from an actual cover wins; with neither, the
+  // plain colour square stands.
+  const pattern = uri || dominant ? undefined : identicon(props.seed || props.artwork?.id)
   // The blurhash is the *background*, so it shows while the image loads and
   // there is no grey flash and no layout shift on scroll (docs/08 4).
   return h(
@@ -309,7 +318,7 @@ export function Artwork(props: ArtworkProps) {
         borderRadius: radius,
         overflow: 'hidden',
         flexShrink: 0,
-        background: props.artwork?.dominantColor ?? c().bg.overlay,
+        background: pattern?.background ?? dominant ?? c().bg.overlay,
       },
     },
     uri
@@ -319,7 +328,34 @@ export function Artwork(props: ArtworkProps) {
           loading: 'lazy',
           style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
         })
-      : null,
+      : pattern
+        ? h(
+            'svg',
+            {
+              viewBox: '0 0 5 5',
+              width: '100%',
+              height: '100%',
+              'aria-hidden': true,
+              // The cells are axis-aligned and share edges; anti-aliasing the
+              // seams would show hairlines where the squares meet.
+              shapeRendering: 'crispEdges',
+            },
+            pattern.cells.flatMap((on, i) =>
+              on
+                ? [
+                    h('rect', {
+                      key: i,
+                      x: i % 5,
+                      y: Math.floor(i / 5),
+                      width: 1,
+                      height: 1,
+                      fill: pattern.foreground,
+                    }),
+                  ]
+                : [],
+            ),
+          )
+        : null,
   )
 }
 
@@ -363,7 +399,11 @@ export function TrackRow(props: TrackRowProps) {
       },
     },
     showArtwork
-      ? h(Artwork, { artwork: props.track.artwork, size: tokens.size.artworkThumb })
+      ? h(Artwork, {
+          artwork: props.track.artwork,
+          seed: props.track.urn,
+          size: tokens.size.artworkThumb,
+        })
       : null,
     h(
       'div',

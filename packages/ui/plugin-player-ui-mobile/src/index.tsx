@@ -60,7 +60,12 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
     },
     // Artwork first and large: on a phone this screen is mostly the artwork,
     // which is the one thing a bottom bar cannot do.
-    h(Artwork, { artwork: state.nowPlaying?.artwork, size: 280, radius: tokens.radius.lg }),
+    h(Artwork, {
+      artwork: state.nowPlaying?.artwork,
+      seed: state.trackUrn,
+      size: 280,
+      radius: tokens.radius.lg,
+    }),
     h(
       native.View as never,
       { style: { alignItems: 'center', gap: tokens.space[1], maxWidth: '90%' } },

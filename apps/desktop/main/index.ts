@@ -372,7 +372,7 @@ protocol.registerSchemesAsPrivileged([
 
 void app.whenReady().then(async () => {
   protocol.handle('bbebee-file', (request) => {
-    const fileUrl = request.url.replace(/^bbebee-file:\/\//, 'file://')
+    const fileUrl = request.url.replace(/^bbebee-file:\/\//, 'file:///')
     return net.fetch(fileUrl)
   })
 

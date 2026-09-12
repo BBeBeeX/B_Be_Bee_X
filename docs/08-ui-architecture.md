@@ -267,6 +267,15 @@ which events invalidate which state — are written once. Only the JSX is writte
   `requestAnimationFrame` and re-syncs on each event.
 - **Artwork renders `blurhash` first**, then the image
   ([07 §4.2](./07-data-model.md#42-artwork)). No layout shift, no grey flash on scroll.
+- **Artwork with no image falls back to a generated identicon.** When there is no cover to load —
+  a local file without embedded art gets no `artworks` row at all — `Artwork` renders a
+  GitHub-identicon-style square derived from the entity's URN: a FNV-1a hash of the seed drives a
+  vertically mirrored 5×5 cell grid and a hue, painted as a dark tint behind a vivid pattern. The
+  pattern is computed once in `ui-core` (`identicon()`), so both kits hash the same URN to the
+  same square; only the elements differ (SVG on desktop, `View`s on mobile — no `react-native-svg`
+  native module). Derived data never outranks real data: an image beats an identicon, and a
+  `dominant_color` extracted from a real cover beats both. No identity (`seed` absent, no
+  `artwork.id`) means no pattern — the plain colour square stands.
 
 ---
 
@@ -443,6 +452,9 @@ The scale relies on **"weight follows size"**:
   Artists use circular avatars (`radius.pill`).
 - **Zero-layout-shift loading**: Artwork containers display `blurhash` strings instantly as
   backgrounds while the full resolution image loads lazily, with fallback to `artworks.dominant_color`.
+  Cover art that does not exist at all is generated instead: a deterministic identicon derived from
+  the entity's URN (see the rendering rules above), so an artwork-less library still reads as a
+  grid of distinct, stable squares.
 - **Dynamic ambient hero banner**: Header sections of playlist and album views extract
   `artworks.dominant_color` from cover artwork, generating a rich vertical gradient that radiates
   from the top banner and smoothly bleeds down into the `#121212` base canvas.

@@ -72,6 +72,7 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
       },
       h(Artwork, {
         artwork: state.nowPlaying?.artwork,
+        seed: state.trackUrn,
         size: tokens.size.artworkThumb,
         radius: tokens.radius.sm,
       }),
@@ -219,6 +220,7 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
     },
     h(Artwork, {
       artwork: state.nowPlaying?.artwork,
+      seed: state.trackUrn,
       size: 280,
       radius: tokens.radius.lg,
     }),

@@ -262,7 +262,7 @@ function AlbumGrid({
             color: p().text.primary,
           },
         },
-        h(Artwork, { artwork: album.artwork, size: tokens.size.artworkThumb }),
+        h(Artwork, { artwork: album.artwork, seed: album.urn, size: tokens.size.artworkThumb }),
         h(
           'span',
           { style: { textAlign: 'left', minWidth: 0 } },
@@ -303,7 +303,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           alignItems: 'flex-end',
         },
       },
-      h(Artwork, { artwork: detail.artwork, size: 160, radius: tokens.radius.md }),
+      h(Artwork, { artwork: detail.artwork, seed: detail.urn, size: 160, radius: tokens.radius.md }),
       h(
         'div',
         null,

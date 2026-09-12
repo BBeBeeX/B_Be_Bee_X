@@ -17,6 +17,7 @@
 import { createElement as h, useCallback, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import { palettes, tokens, type Scheme } from '@BBeBee/ui-tokens'
+import { identicon } from '@BBeBee/ui-core'
 import type {
   ArtworkProps,
   ButtonProps,
@@ -308,6 +309,15 @@ export function Text(props: TextProps): ReactElement {
 export function Artwork(props: ArtworkProps): ReactElement {
   const { size, radius = tokens.radius.sm } = props
   const uri = props.artwork?.sourceUrl
+  const dominant = props.artwork?.dominantColor
+  // No image and no colour from a real cover, but an identity (the caller's
+  // seed, else the artwork row's own id) → a generated identicon, so an
+  // artwork-less library is still a grid of distinct, stable squares rather
+  // than one anonymous grey. Derived data never outranks real data: a
+  // `dominantColor` extracted from an actual cover wins; with neither, the
+  // plain colour square stands. The pattern comes from `ui-core`, so the same
+  // album hashes to the same square on both platforms.
+  const pattern = uri || dominant ? undefined : identicon(props.seed || props.artwork?.id)
   // The dominant colour is the background, so it shows while the image loads:
   // no grey flash and no layout shift on scroll (docs/08 4).
   return h(
@@ -319,7 +329,7 @@ export function Artwork(props: ArtworkProps): ReactElement {
         height: size,
         borderRadius: radius,
         overflow: 'hidden',
-        backgroundColor: props.artwork?.dominantColor ?? c().bg.overlay,
+        backgroundColor: pattern?.background ?? dominant ?? c().bg.overlay,
       },
     },
     uri
@@ -328,7 +338,30 @@ export function Artwork(props: ArtworkProps): ReactElement {
           style: { width: '100%', height: '100%' },
           resizeMode: 'cover',
         })
-      : null,
+      : pattern
+        ? // Five rows of five `View`s rather than `react-native-svg`: the SVG
+          // package is a native module, and the grid is the one thing plain
+          // views do exactly as well.
+          h(
+            native.View as never,
+            { style: { flex: 1, flexDirection: 'column' } },
+            [0, 1, 2, 3, 4].map((row) =>
+              h(
+                native.View as never,
+                { key: row, style: { flex: 1, flexDirection: 'row' } },
+                pattern.cells.slice(row * 5, row * 5 + 5).map((on, column) =>
+                  h(native.View as never, {
+                    key: column,
+                    style: {
+                      flex: 1,
+                      backgroundColor: on ? pattern.foreground : 'transparent',
+                    },
+                  }),
+                ),
+              ),
+            ),
+          )
+        : null,
   )
 }
 
@@ -356,7 +389,11 @@ export function TrackRow(props: TrackRowProps): ReactElement {
       },
     },
     showArtwork
-      ? h(Artwork, { artwork: props.track.artwork, size: tokens.size.artworkThumb })
+      ? h(Artwork, {
+          artwork: props.track.artwork,
+          seed: props.track.urn,
+          size: tokens.size.artworkThumb,
+        })
       : null,
     h(
       native.View as never,

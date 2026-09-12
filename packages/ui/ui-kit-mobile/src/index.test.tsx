@@ -228,6 +228,48 @@ describe('Artwork and EmptyState', () => {
     expect(find(h(Artwork, { size: 48 }), 'RNImage')).toBeUndefined()
   })
 
+  it('generates an identicon from the seed when there is no artwork at all', () => {
+    const nodes = tree(h(Artwork, { size: 48, seed: 'BBeBee:local:track:9f2c8a1e' }))
+    expect((nodes[0]!.props as { style: { backgroundColor: string } }).style.backgroundColor).toBe(
+      'hsl(65, 30%, 14%)',
+    )
+    // Five rows of five cells; the painted ones carry the foreground colour.
+    const painted = nodes.filter(
+      (n) =>
+        n.type === 'RNView' &&
+        (n.props as { style?: { backgroundColor?: string } }).style?.backgroundColor ===
+          'hsl(65, 68%, 58%)',
+    )
+    expect(painted).toHaveLength(16)
+  })
+
+  it('renders the same square for the same seed, a different one otherwise', () => {
+    const urn = 'BBeBee:local:track:9f2c8a1e'
+    const json = (seed: string) =>
+      JSON.stringify(tree(h(Artwork, { size: 48, seed })))
+    expect(json(urn)).toBe(json(urn))
+    expect(json(urn)).not.toBe(json('BBeBee:local:track:other'))
+  })
+
+  it('keeps the plain colour square when there is no identity at all', () => {
+    const node = tree(h(Artwork, { size: 48 }))[0]!
+    expect((node.props as { style: { backgroundColor: string } }).style.backgroundColor).toBe(
+      '#282828',
+    )
+  })
+
+  it('prefers a real image over the identicon', () => {
+    const nodes = tree(
+      h(Artwork, {
+        size: 48,
+        seed: 'BBeBee:local:track:9f2c8a1e',
+        artwork: { id: 'a', sourceUrl: 'https://x/a.jpg' },
+      }),
+    )
+    expect(nodes.some((n) => n.type === 'RNImage')).toBe(true)
+    expect(nodes.some((n) => (n.props as { style?: { backgroundColor?: string } }).style?.backgroundColor?.startsWith('hsl('))).toBe(false)
+  })
+
   it('gives an empty screen something to say', () => {
     const nodes = tree(h(EmptyState, { title: 'No tracks yet', description: 'Add a folder' }))
     expect(JSON.stringify(nodes.map((n) => n.props))).toContain('No tracks yet')

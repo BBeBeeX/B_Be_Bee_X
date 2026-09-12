@@ -255,6 +255,52 @@ describe('Artwork', () => {
     )
     expect(out).toContain('src="bbebee-file:///cache/artworks/1.jpg"')
   })
+
+  it('generates an identicon from the seed when there is no artwork at all', () => {
+    const out = html(h(Artwork, { size: 48, seed: 'BBeBee:local:track:9f2c8a1e' }))
+    expect(out).toContain('<svg')
+    expect(out).toContain('<rect')
+    expect(out).toContain('hsl(65, 68%, 58%)')
+  })
+
+  it('renders the same square for the same seed, a different one otherwise', () => {
+    const urn = 'BBeBee:local:track:9f2c8a1e'
+    expect(html(h(Artwork, { size: 48, seed: urn }))).toBe(html(h(Artwork, { size: 48, seed: urn })))
+    expect(html(h(Artwork, { size: 48, seed: urn }))).not.toBe(
+      html(h(Artwork, { size: 48, seed: 'BBeBee:local:track:other' })),
+    )
+  })
+
+  it('falls back to the artwork id when no seed is given', () => {
+    const out = html(h(Artwork, { size: 48, artwork: { id: 'BBeBee:local:album:x' } }))
+    expect(out).toContain('<svg')
+  })
+
+  it('keeps the plain colour square when there is no identity at all', () => {
+    const out = html(h(Artwork, { size: 48 }))
+    expect(out).not.toContain('<svg')
+    expect(out).toContain('#282828')
+  })
+
+  it('prefers a real image over the identicon', () => {
+    const out = html(
+      h(Artwork, {
+        size: 48,
+        seed: 'BBeBee:local:track:9f2c8a1e',
+        artwork: { id: 'a', sourceUrl: 'https://x/a.jpg' },
+      }),
+    )
+    expect(out).toContain('<img')
+    expect(out).not.toContain('<svg')
+  })
+
+  it('a colour from a real cover outranks the generated one', () => {
+    const out = html(
+      h(Artwork, { size: 48, seed: 'BBeBee:local:track:9f2c8a1e', artwork: { id: 'a', dominantColor: '#3a5f7d' } }),
+    )
+    expect(out).toContain('#3a5f7d')
+    expect(out).not.toContain('<svg')
+  })
 })
 
 describe('Text', () => {
