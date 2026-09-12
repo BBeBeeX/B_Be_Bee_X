@@ -379,6 +379,7 @@ export class Sources extends Service implements SourcesService {
     }
 
     this.registry.set(sourceId, provider)
+    this.ctx.logger.info(`sources: registered source "${sourceId}" (${provider.displayName})`)
     // Wrapped: the map is already updated, so a listener that throws must not
     // unwind past `register` and leave the caller believing it failed — the
     // disposer it never received is what unregisters the provider.
@@ -388,6 +389,7 @@ export class Sources extends Service implements SourcesService {
       // Identity-checked so a late disposer cannot unregister its replacement.
       if (this.registry.get(sourceId) !== provider) return
       this.registry.delete(sourceId)
+      this.ctx.logger.info(`sources: unregistered source "${sourceId}"`)
       this.safeEmit(() => this.ctx.emit('source/unregistered', sourceId))
     }
   }
@@ -423,6 +425,7 @@ export class Sources extends Service implements SourcesService {
     query: SearchQuery,
     opts: { sourceIds?: string[]; timeoutMs?: number } = {},
   ): Promise<AggregatedSearch> {
+    this.ctx.logger.info(`sources: searching all sources for "${query.text}"`)
     const timeoutMs = opts.timeoutMs ?? this.config.searchTimeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS
     const wanted = opts.sourceIds && new Set(opts.sourceIds)
 
@@ -485,6 +488,7 @@ export class Sources extends Service implements SourcesService {
    * playable the next time the app starts.
    */
   async browse(sourceId: string, nodeId?: string, page?: PageRequest): Promise<BrowseResult> {
+    this.ctx.logger.info(`sources: browsing source ${sourceId} (nodeId=${nodeId ?? 'root'})`)
     const provider = this.registry.get(sourceId)
     if (!provider) {
       throw new ProviderError(`no source ${sourceId} is registered`, sourceId)
@@ -644,6 +648,7 @@ export class Sources extends Service implements SourcesService {
         ...(opts.originUri ? { originUri: opts.originUri } : {}),
       })
       await store.put(record)
+      this.ctx.logger.info(`sources: imported new source "${record.id}" (${record.sourceUrl})`)
       report.added.push(record)
       return
     }
@@ -679,6 +684,7 @@ export class Sources extends Service implements SourcesService {
         : {}),
     })
     await store.put(record)
+    this.ctx.logger.info(`sources: updated source "${record.id}" (${record.sourceUrl})`)
     report.updated.push({ record, changedFields: changed })
   }
 
@@ -711,12 +717,14 @@ export class Sources extends Service implements SourcesService {
   }
 
   async setEnabled(id: string, on: boolean): Promise<void> {
+    this.ctx.logger.info(`sources: set source "${id}" enabled=${on}`)
     await this.store.setEnabled(id, on, Date.now())
     await this.refresh()
     this.safeEmit(() => this.ctx.emit('source/changed', id, ['enabled']))
   }
 
   async remove(id: string, opts: { forgetCatalogue?: boolean } = {}): Promise<void> {
+    this.ctx.logger.info(`sources: removing source "${id}" (forgetCatalogue=${opts.forgetCatalogue ?? false})`)
     await this.store.remove(id, opts)
     await this.refresh()
     this.safeEmit(() => this.ctx.emit('source/removed', id, opts.forgetCatalogue === true))
@@ -734,6 +742,7 @@ export class Sources extends Service implements SourcesService {
     ids?: string[],
     opts: { signal?: AbortSignal; timeoutMs?: number } = {},
   ): Promise<CheckReport[]> {
+    this.ctx.logger.info(`sources: checking health for ${ids ? `${ids.length} specified source(s)` : 'all sources'}`)
     const wanted = ids && new Set(ids)
     const targets = this.providers.filter((p) => !wanted || wanted.has(p.sourceId))
     const timeoutMs = opts.timeoutMs ?? DEFAULT_CHECK_TIMEOUT_MS
@@ -1049,6 +1058,7 @@ export const name = 'plugin-sources'
  * `ctx.sources` is usable.
  */
 export async function apply(ctx: Context, config: SourcesConfig = {}) {
+  ctx.logger.info('plugin-sources: loaded')
   const fiber = await ctx.plugin(Sources, config)
   return () => void fiber.dispose()
 }

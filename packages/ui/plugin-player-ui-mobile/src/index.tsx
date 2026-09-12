@@ -9,7 +9,7 @@
  * desktop belongs in `plugin-player/hooks` (docs/08 1).
  */
 
-import { createElement as h, useEffect } from 'react'
+import { createElement as h } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
@@ -44,10 +44,6 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
   const position = usePosition(ctx)
   const duration = useDuration(ctx)
   const can = useTransportAvailability(ctx)
-
-  useEffect(() => {
-    ctx.logger?.info('NowPlayingScreen (mobile): displayed track %s (status: %s)', state.trackUrn ?? 'none', state.status)
-  }, [ctx, state.trackUrn, state.status])
 
   return h(
     native.View as never,
@@ -91,10 +87,7 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
         max: duration ?? 0,
         disabled: !can.canSeek,
         accessibilityLabel: 'Seek',
-        onCommit: (value: number) => {
-          ctx.logger?.info('NowPlayingScreen (mobile): seek committed to %dms', value)
-          void ctx.player.seek(value)
-        },
+        onCommit: (value: number) => void ctx.player.seek(value),
       }),
       h(
         native.View as never,
@@ -110,10 +103,7 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
         icon: '⏮',
         accessibilityLabel: 'Previous track',
         disabled: !can.canPrevious,
-        onPress: () => {
-          ctx.logger?.info('NowPlayingScreen (mobile): previous track clicked')
-          void ctx.player.previous()
-        },
+        onPress: () => void ctx.player.previous(),
       }),
       h(IconButton, {
         // One control with two states, exactly as on desktop.
@@ -122,19 +112,13 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
         variant: 'primary',
         size: tokens.size.iconLarge,
         disabled: !can.canPlay && !can.canPause,
-        onPress: () => {
-          ctx.logger?.info('NowPlayingScreen (mobile): %s clicked', can.canPause ? 'pause' : 'play')
-          ctx.player.togglePlay()
-        },
+        onPress: () => ctx.player.togglePlay(),
       }),
       h(IconButton, {
         icon: '⏭',
         accessibilityLabel: 'Next track',
         disabled: !can.canNext,
-        onPress: () => {
-          ctx.logger?.info('NowPlayingScreen (mobile): next track clicked')
-          void ctx.player.next()
-        },
+        onPress: () => void ctx.player.next(),
       }),
     ),
   )
@@ -165,10 +149,7 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
         // Same narrowing as desktop: there is no "jump to this queue item" on
         // PlayerService yet, and an affordance that quietly does something
         // else is worse than one that does less.
-        onPress: () => {
-          ctx.logger?.info('QueueScreen (mobile): item clicked %s', item.trackUrn)
-          void ctx.player.playNow([item.trackUrn])
-        },
+        onPress: () => void ctx.player.playNow([item.trackUrn]),
       }),
   })
 }
@@ -207,7 +188,6 @@ function bound<P extends { ctx: Context }>(
 export const inject = ['ui', 'player']
 
 export async function apply(ctx: Context) {
-  ctx.logger?.info('plugin-player-ui-mobile loaded')
   return ctx.effect(function* () {
     yield ctx.ui.registerView(PLAYER_VIEWS.nowPlaying, bound(ctx, NowPlayingScreen))
     yield ctx.ui.registerView(PLAYER_VIEWS.queue, bound(ctx, QueueScreen))

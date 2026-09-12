@@ -233,6 +233,7 @@ export class SourceRuntime {
   }
 
   private reload(id: string): void {
+    this.ctx.logger.info(`source-runtime: reloading source "${id}"`)
     const record = this.ctx.sources.source(id)
     if (!record || !record.enabled) {
       this.stop(id)
@@ -312,6 +313,7 @@ export class SourceRuntime {
     })
 
     const off = sourceCtx.sources.register(this.reporting(source.provider()))
+    this.ctx.logger.info(`source-runtime: started source "${record.id}" (${record.name})`)
     this.live.set(record.id, {
       record,
       source,
@@ -513,6 +515,7 @@ export class SourceRuntime {
     const current = this.live.get(id)
     if (!current) return
     this.live.delete(id)
+    this.ctx.logger.info(`source-runtime: stopped source "${id}"`)
     // An edited or restarted source starts clean: the user may have just
     // fixed the rule, and the next failure is news again.
     this.forgetFailures(id)
@@ -579,6 +582,7 @@ export const inject = ['http', 'db', 'sources']
  * `conventions.test.ts` fails the build on the other shape.
  */
 export async function apply(ctx: Context, config: SourceRuntimeConfig = {}) {
+  ctx.logger.info('plugin-source-runtime: loaded')
   const runtime = new SourceRuntime(ctx, config)
 
   /*

@@ -31,16 +31,10 @@ export function ScanSpecifiedDirsScreen({ ctx }: { ctx: Context }): ReactElement
   const addFolder = async () => {
     // The picker is what carries a durable permission grant on Android; a
     // typed path would not, so there is deliberately no text field here.
-    try {
-      const uri = await ctx.fs.pickDirectory()
-      if (uri) {
-        const dir = await ctx.scanner.addSpecifiedDir(uri)
-        void ctx.scanner.scan({ specifiedDirId: dir.id }).catch((err) => {
-          ctx.logger?.error('failed to scan newly added specified dir %s: %s', dir.id, err)
-        })
-      }
-    } catch (err) {
-      ctx.logger?.error('failed to add folder: %s', err)
+    const uri = await ctx.fs.pickDirectory()
+    if (uri) {
+      const dir = await ctx.scanner.addSpecifiedDir(uri)
+      void ctx.scanner.scan({ specifiedDirId: dir.id })
     }
   }
 

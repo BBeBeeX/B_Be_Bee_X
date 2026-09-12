@@ -141,6 +141,7 @@ export class Scanner extends Service implements ScannerService {
 
     await this.ensureSourceRow()
     this.specifiedDirList = await this.loadSpecifiedDirs()
+    this.ownCtx.logger.info('scanner: initialised with %d specified dir(s)', this.specifiedDirList.length)
     await this.startWatching()
 
     return () => {
@@ -185,6 +186,7 @@ export class Scanner extends Service implements ScannerService {
       [dir.id, dir.uri, dir.recursive ? 1 : 0],
     )
     this.specifiedDirList = await this.loadSpecifiedDirs()
+    this.ownCtx.logger.info('scanner: added specified dir %s (%s)', dir.id, dir.uri)
     await this.startWatching()
     this.ownCtx.emit('scan/specified-dirs-changed', this.specifiedDirList)
     return dir
@@ -211,6 +213,7 @@ export class Scanner extends Service implements ScannerService {
     // `scan_entries` cascades from the specified dir row.
     await this.ownCtx.db.exec('DELETE FROM scan_specified_dirs WHERE id = ?', [id])
     this.specifiedDirList = await this.loadSpecifiedDirs()
+    this.ownCtx.logger.info('scanner: removed specified dir %s (forgetTracks=%s)', id, opts.forgetTracks ?? false)
     await this.startWatching()
     this.ownCtx.emit('scan/specified-dirs-changed', this.specifiedDirList)
   }
@@ -218,6 +221,7 @@ export class Scanner extends Service implements ScannerService {
   async setEnabled(id: string, on: boolean): Promise<void> {
     await this.ownCtx.db.exec('UPDATE scan_specified_dirs SET enabled = ? WHERE id = ?', [on ? 1 : 0, id])
     this.specifiedDirList = await this.loadSpecifiedDirs()
+    this.ownCtx.logger.info('scanner: set specified dir %s enabled=%s', id, on)
     await this.startWatching()
     this.ownCtx.emit('scan/specified-dirs-changed', this.specifiedDirList)
   }
@@ -225,6 +229,7 @@ export class Scanner extends Service implements ScannerService {
   /* ── the walk ──────────────────────────────────────────────────────── */
 
   cancel(): void {
+    this.ownCtx.logger.info('scanner: scan cancelled')
     this.abort?.abort()
   }
 
@@ -254,6 +259,11 @@ export class Scanner extends Service implements ScannerService {
     const dirs = this.specifiedDirList.filter(
       (r) => r.enabled && (opts.specifiedDirId === undefined || r.id === opts.specifiedDirId),
     )
+    this.ownCtx.logger.info(
+      'scanner: starting scan on %d specified dir(s) (full=%s)',
+      dirs.length,
+      opts.full ?? false,
+    )
 
     const abort = new AbortController()
     this.abort = abort
@@ -276,6 +286,14 @@ export class Scanner extends Service implements ScannerService {
     }
 
     if (abort.signal.aborted) summary.cancelled = true
+    this.ownCtx.logger.info(
+      'scanner: scan completed (added=%d, updated=%d, removed=%d, errors=%d, cancelled=%s)',
+      summary.added,
+      summary.updated,
+      summary.removed,
+      summary.errors,
+      !!summary.cancelled,
+    )
     return summary
   }
 
@@ -284,6 +302,7 @@ export class Scanner extends Service implements ScannerService {
     summary: ScanSummary,
     opts: { full: boolean; signal: AbortSignal },
   ): Promise<void> {
+    this.ownCtx.logger.info('scanner: scanning specified dir %s (%s)', dir.id, dir.uri)
     this.ownCtx.emit('scan/started', dir.id)
     this.current = { specifiedDirId: dir.id, done: 0 }
 
@@ -294,6 +313,12 @@ export class Scanner extends Service implements ScannerService {
       files = walked.files
       truncated = walked.truncated
     } catch (error) {
+      this.ownCtx.logger.error(
+        'scanner: failed to walk specified dir %s (%s): %s',
+        dir.id,
+        dir.uri,
+        String(error),
+      )
       await this.ownCtx.db.exec('UPDATE scan_specified_dirs SET last_error = ? WHERE id = ?', [
         String(error),
         dir.id,
@@ -409,6 +434,7 @@ export class Scanner extends Service implements ScannerService {
           : undefined
         prepared.push({ file, metadata, ...(artwork ? { artwork } : {}) })
       } catch (error) {
+        this.ownCtx.logger.warn('scanner: could not read metadata for %s: %s', file.uri, String(error))
         prepared.push({ file, error: error instanceof Error ? error.message : String(error) })
       }
     }

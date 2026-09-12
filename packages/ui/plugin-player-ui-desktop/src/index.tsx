@@ -10,7 +10,7 @@
  * accepts writing the view twice.
  */
 
-import { createElement as h, useEffect } from 'react'
+import { createElement as h } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
@@ -43,10 +43,6 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
   const position = usePosition(ctx)
   const duration = useDuration(ctx)
   const can = useTransportAvailability(ctx)
-
-  useEffect(() => {
-    ctx.logger?.debug('NowPlayingBar (desktop): track is %s, status is %s', state.trackUrn ?? 'none', state.status)
-  }, [ctx, state.trackUrn, state.status])
 
   return h(
     'div',
@@ -111,10 +107,7 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
         icon: '⏮',
         accessibilityLabel: 'Previous track',
         disabled: !can.canPrevious,
-        onPress: () => {
-          ctx.logger?.info('NowPlayingBar (desktop): previous track clicked')
-          void ctx.player.previous()
-        },
+        onPress: () => void ctx.player.previous(),
       }),
       h(IconButton, {
         // One control, two states: a play button that is sometimes a pause
@@ -123,19 +116,13 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
         accessibilityLabel: can.canPause ? 'Pause' : 'Play',
         variant: 'primary',
         disabled: !can.canPlay && !can.canPause,
-        onPress: () => {
-          ctx.logger?.info('NowPlayingBar (desktop): %s clicked', can.canPause ? 'pause' : 'play')
-          ctx.player.togglePlay()
-        },
+        onPress: () => ctx.player.togglePlay(),
       }),
       h(IconButton, {
         icon: '⏭',
         accessibilityLabel: 'Next track',
         disabled: !can.canNext,
-        onPress: () => {
-          ctx.logger?.info('NowPlayingBar (desktop): next track clicked')
-          void ctx.player.next()
-        },
+        onPress: () => void ctx.player.next(),
       }),
     ),
     h(
@@ -152,10 +139,7 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
         max: duration ?? 0,
         disabled: !can.canSeek,
         accessibilityLabel: 'Seek',
-        onCommit: (value: number) => {
-          ctx.logger?.info('NowPlayingBar (desktop): seek committed to %dms', value)
-          void ctx.player.seek(value)
-        },
+        onCommit: (value: number) => void ctx.player.seek(value),
       }),
       h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(duration) }),
     ),
@@ -165,19 +149,13 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
       h(IconButton, {
         icon: state.muted ? '🔇' : '🔊',
         accessibilityLabel: state.muted ? 'Unmute' : 'Mute',
-        onPress: () => {
-          ctx.logger?.info('NowPlayingBar (desktop): %s clicked', state.muted ? 'unmute' : 'mute')
-          ctx.player.setMuted(!state.muted)
-        },
+        onPress: () => ctx.player.setMuted(!state.muted),
       }),
       h(Slider, {
         value: Math.round(state.volume * 100),
         max: 100,
         accessibilityLabel: 'Volume',
-        onCommit: (value: number) => {
-          ctx.logger?.debug('NowPlayingBar (desktop): volume committed to %d%', Math.round(value))
-          ctx.player.setVolume(value / 100)
-        },
+        onCommit: (value: number) => ctx.player.setVolume(value / 100),
       }),
     ),
   )
@@ -211,10 +189,7 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
         // plays its track rather than pretending to reposition the queue —
         // an affordance that silently does the wrong thing is worse than a
         // narrower one that does the right thing.
-        onPress: () => {
-          ctx.logger?.info('QueueScreen (desktop): item clicked %s', item.trackUrn)
-          void ctx.player.playNow([item.trackUrn])
-        },
+        onPress: () => void ctx.player.playNow([item.trackUrn]),
       }),
   })
 }
@@ -225,10 +200,6 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
   const position = usePosition(ctx)
   const duration = useDuration(ctx)
   const can = useTransportAvailability(ctx)
-
-  useEffect(() => {
-    ctx.logger?.info('NowPlayingScreen (desktop): displayed track %s (status: %s)', state.trackUrn ?? 'none', state.status)
-  }, [ctx, state.trackUrn, state.status])
 
   return h(
     'div',
@@ -304,10 +275,7 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
         max: duration ?? 0,
         disabled: !can.canSeek,
         accessibilityLabel: 'Seek',
-        onCommit: (value: number) => {
-          ctx.logger?.info('NowPlayingScreen (desktop): seek committed to %dms', value)
-          void ctx.player.seek(value)
-        },
+        onCommit: (value: number) => void ctx.player.seek(value),
       }),
       h(
         'div',
@@ -323,10 +291,7 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
         icon: '⏮',
         accessibilityLabel: 'Previous track',
         disabled: !can.canPrevious,
-        onPress: () => {
-          ctx.logger?.info('NowPlayingScreen (desktop): previous track clicked')
-          void ctx.player.previous()
-        },
+        onPress: () => void ctx.player.previous(),
       }),
       h(IconButton, {
         icon: can.canPause ? '⏸' : '▶',
@@ -334,19 +299,13 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
         variant: 'primary',
         size: tokens.size.iconLarge,
         disabled: !can.canPlay && !can.canPause,
-        onPress: () => {
-          ctx.logger?.info('NowPlayingScreen (desktop): %s clicked', can.canPause ? 'pause' : 'play')
-          ctx.player.togglePlay()
-        },
+        onPress: () => ctx.player.togglePlay(),
       }),
       h(IconButton, {
         icon: '⏭',
         accessibilityLabel: 'Next track',
         disabled: !can.canNext,
-        onPress: () => {
-          ctx.logger?.info('NowPlayingScreen (desktop): next track clicked')
-          void ctx.player.next()
-        },
+        onPress: () => void ctx.player.next(),
       }),
     ),
   )
@@ -389,7 +348,6 @@ export async function apply(ctx: Context) {
   // Bind components to the ids the headless package contributed. A view
   // registered for an id nobody contributed is dead; a contribution with no
   // view renders a placeholder — both are normal, neither is an error.
-  ctx.logger?.info('plugin-player-ui-desktop loaded')
   return ctx.effect(function* () {
     yield ctx.ui.registerView(PLAYER_VIEWS.nowPlaying, bound(ctx, NowPlayingScreen))
     yield ctx.ui.registerView(PLAYER_VIEWS.nowPlayingBar, bound(ctx, NowPlayingBar))

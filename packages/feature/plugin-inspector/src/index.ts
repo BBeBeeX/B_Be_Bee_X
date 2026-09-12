@@ -162,6 +162,11 @@ export class Inspector extends Service {
       }
     }
 
+    this.ctx.logger.debug(
+      'inspector: snapshot taken (%d fibers, %d stalled)',
+      all.length,
+      stalled.length,
+    )
     return { root: build(rootFiber, 0), counts, stalled }
   }
 
@@ -240,6 +245,7 @@ export const name = 'plugin-inspector'
  * Awaiting propagates readiness to whoever loaded us.
  */
 export async function apply(ctx: Context) {
+  ctx.logger.info('plugin-inspector: loaded')
   const fiber = await ctx.plugin(Inspector)
   return () => void fiber.dispose()
 }

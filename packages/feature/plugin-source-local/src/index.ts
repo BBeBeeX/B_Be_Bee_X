@@ -205,6 +205,8 @@ export class SourceLocal extends Service {
       throw new NotFoundError(`file missing for ${trackUrn}`, this.sourceId)
     }
 
+    this.ctx.logger.info(`source-local: resolved stream for ${id} -> ${binding.uri}`)
+
     return {
       kind: 'local',
       target: await this.ctx.fs.toPlayableUri(binding.uri),
@@ -235,6 +237,7 @@ export class SourceLocal extends Service {
    * than two tokeniser configurations that drift apart.
    */
   async search(query: SearchQuery, page?: PageRequest): Promise<SearchResult> {
+    this.ctx.logger.debug(`source-local: search query "${query.text}"`)
     return this.ctx.sources.searchLocal(query.text, {
       sourceIds: [this.sourceId],
       ...(page?.limit ? { limit: page.limit } : {}),
@@ -249,6 +252,7 @@ export class SourceLocal extends Service {
    * browses as empty rather than as tracks that cannot play.
    */
   async browse(nodeId?: string, _page?: PageRequest): Promise<Paged<BrowseEntry>> {
+    this.ctx.logger.debug(`source-local: browsing nodeId=${nodeId ?? 'root'}`)
     const specifiedDirs = this.scannerCtx?.scanner.specifiedDirs.filter((r) => r.enabled) ?? []
 
     if (!nodeId) {

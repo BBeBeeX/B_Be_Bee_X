@@ -23,25 +23,10 @@ export function ScanSpecifiedDirsScreen({ ctx }: { ctx: Context }): ReactElement
   const addFolder = async () => {
     // The picker is what carries a durable permission grant on Android; a
     // typed path would not, so there is deliberately no text field here.
-    ctx.logger?.info('Add folder button clicked, opening native directory picker...')
-    try {
-      const uri = await ctx.fs.pickDirectory()
-      if (uri) {
-        ctx.logger?.info('Directory selected: %s, adding to scan specified dirs', uri)
-        const dir = await ctx.scanner.addSpecifiedDir(uri)
-        ctx.logger?.info('Scan specified dir added: %s (%s), starting scan', dir.id, dir.uri)
-        void ctx.scanner.scan({ specifiedDirId: dir.id }).catch((err) => {
-          const errObj = err as { name?: string; message?: string; stack?: string }
-          const details = err instanceof Error ? (err.stack ?? `${err.name}: ${err.message}`) : (typeof err === 'object' && err !== null ? (errObj.stack ?? `${errObj.name ?? 'Error'}: ${errObj.message ?? JSON.stringify(err)}`) : String(err))
-          ctx.logger?.error('failed to scan newly added specified dir %s: %s', dir.id, details)
-        })
-      } else {
-        ctx.logger?.info('Directory picker cancelled by user')
-      }
-    } catch (err) {
-      const errObj = err as { name?: string; message?: string; stack?: string }
-      const details = err instanceof Error ? (err.stack ?? `${err.name}: ${err.message}`) : (typeof err === 'object' && err !== null ? (errObj.stack ?? `${errObj.name ?? 'Error'}: ${errObj.message ?? JSON.stringify(err)}`) : String(err))
-      ctx.logger?.error('failed to add folder: %s', details)
+    const uri = await ctx.fs.pickDirectory()
+    if (uri) {
+      const dir = await ctx.scanner.addSpecifiedDir(uri)
+      void ctx.scanner.scan({ specifiedDirId: dir.id })
     }
   }
 
@@ -58,20 +43,14 @@ export function ScanSpecifiedDirsScreen({ ctx }: { ctx: Context }): ReactElement
         // Disabled while running rather than hidden: a control that vanishes
         // mid-scan makes the screen look like it lost the button.
         disabled: scan.running,
-        onPress: () => {
-          ctx.logger?.info('Scan now button clicked, starting library walk')
-          void ctx.scanner.scan()
-        },
+        onPress: () => void ctx.scanner.scan(),
         accessibilityLabel: 'Scan now',
         children: scan.running ? 'Scanning…' : 'Scan now',
       }),
       scan.running
         ? h(Button, {
             variant: 'ghost',
-            onPress: () => {
-              ctx.logger?.info('Cancel scan button clicked')
-              ctx.scanner.cancel()
-            },
+            onPress: () => ctx.scanner.cancel(),
             children: 'Cancel',
           })
         : null,
@@ -127,19 +106,13 @@ export function ScanSpecifiedDirsScreen({ ctx }: { ctx: Context }): ReactElement
           h(Button, {
             variant: 'ghost',
             disabled: scan.running || !dir.enabled,
-            onPress: () => {
-              ctx.logger?.info('Scanning specific dir: %s (%s)', dir.id, dir.uri)
-              void ctx.scanner.scan({ specifiedDirId: dir.id })
-            },
+            onPress: () => void ctx.scanner.scan({ specifiedDirId: dir.id }),
             accessibilityLabel: `Scan ${dir.uri}`,
             children: 'Scan',
           }),
           h(Button, {
             variant: 'ghost',
-            onPress: () => {
-              ctx.logger?.info('%s specified dir: %s (%s)', dir.enabled ? 'Disabling' : 'Enabling', dir.id, dir.uri)
-              void ctx.scanner.setEnabled(dir.id, !dir.enabled)
-            },
+            onPress: () => void ctx.scanner.setEnabled(dir.id, !dir.enabled),
             accessibilityLabel: dir.enabled ? `Disable ${dir.uri}` : `Enable ${dir.uri}`,
             children: dir.enabled ? 'Disable' : 'Enable',
           }),
@@ -148,10 +121,7 @@ export function ScanSpecifiedDirsScreen({ ctx }: { ctx: Context }): ReactElement
             // Removing a specified dir keeps its tracks by default: losing a library
             // to a mis-clicked button is far worse than a stale row.
             accessibilityLabel: `Remove ${dir.uri}`,
-            onPress: () => {
-              ctx.logger?.info('Removing specified dir: %s (%s)', dir.id, dir.uri)
-              void ctx.scanner.removeSpecifiedDir(dir.id)
-            },
+            onPress: () => void ctx.scanner.removeSpecifiedDir(dir.id),
           }),
         ),
     }),
@@ -198,7 +168,6 @@ function bound<P extends { ctx: Context }>(
 export const inject = ['ui', 'scanner', 'fs']
 
 export async function apply(ctx: Context) {
-  ctx.logger?.info('plugin-local-scanner-ui-desktop registered view for %s', SCANNER_VIEWS.settings)
   return ctx.effect(function* () {
     yield ctx.ui.registerView(SCANNER_VIEWS.settings, bound(ctx, ScanSpecifiedDirsScreen))
   }, 'scanner-ui-desktop')

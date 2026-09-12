@@ -53,6 +53,7 @@ export class Ui extends Service implements UiService {
   contribute(contribution: Contribution): Disposable {
     const key = this.seq++
     this.contributions.set(key, contribution)
+    this.ctx.logger.debug(`ui: contribute ${contribution.id} (${contribution.kind})`)
     this.ctx.emit('ui/changed')
     return () => {
       if (this.contributions.delete(key)) this.ctx.emit('ui/changed')
@@ -73,6 +74,7 @@ export class Ui extends Service implements UiService {
       return () => {}
     }
     this.views.set(id, component)
+    this.ctx.logger.debug(`ui: register view "${id}"`)
     this.ctx.emit('ui/changed')
     return () => {
       if (this.views.delete(id)) this.ctx.emit('ui/changed')
@@ -80,6 +82,7 @@ export class Ui extends Service implements UiService {
   }
 
   navigate(id: string, params?: Record<string, unknown>): void {
+    this.ctx.logger.info(`ui: navigate to "${id}"`)
     this.ctx.emit('ui/navigate', id, params)
   }
 
@@ -112,6 +115,7 @@ export class Ui extends Service implements UiService {
   }
 
   async runCommand(id: string, args?: unknown): Promise<void> {
+    this.ctx.logger.info(`ui: run command "${id}"`)
     const command = this.commands.find((c) => c.id === id)
     if (!command) throw new Error(`ui: no such command "${id}"`)
     await command.run(args)
@@ -156,6 +160,7 @@ export const name = 'plugin-ui'
  * Awaiting propagates readiness to whoever loaded us.
  */
 export async function apply(ctx: Context) {
+  ctx.logger.info('plugin-ui: loaded')
   const fiber = await ctx.plugin(Ui)
   return () => void fiber.dispose()
 }
