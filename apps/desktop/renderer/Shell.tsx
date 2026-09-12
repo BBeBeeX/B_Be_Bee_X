@@ -16,7 +16,7 @@ import {
 } from 'react'
 import type { Context } from 'cordis'
 import type { RouteContribution, SettingsContribution } from '@BBeBee/protocol'
-import { TopBar } from './TopBar.js'
+import { TopBar, WindowControls, type ElectronCSSProperties } from './TopBar.js'
 
 /** What the sidebar can navigate to: a route, or a settings page. */
 interface Entry {
@@ -141,7 +141,7 @@ export function Shell({ ctx }: { ctx: Context }) {
           position: 'fixed',
           inset: 0,
           zIndex: 100,
-          background: '#0E0E14',
+          background: '#000000',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
@@ -149,6 +149,31 @@ export function Shell({ ctx }: { ctx: Context }) {
           width: '100vw',
         },
       },
+      // Fullscreen top bar for dragging and window controls
+      h(
+        'div',
+        {
+          'data-testid': 'fullscreen-top-bar',
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            height: 48,
+            minHeight: 48,
+            paddingLeft: 12,
+            paddingRight: 0,
+            background: 'transparent',
+            WebkitAppRegion: 'drag',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 150,
+            userSelect: 'none',
+          } as ElectronCSSProperties,
+        },
+        h(WindowControls, null),
+      ),
       h(
         'div',
         {
@@ -258,7 +283,7 @@ export function Shell({ ctx }: { ctx: Context }) {
           style: {
             borderRight: '1px solid #1E1E28',
             padding: 12,
-            background: '#0E0E14',
+            background: '#000000',
             minHeight: 0,
             overflowY: 'auto',
           },

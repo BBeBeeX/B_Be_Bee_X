@@ -45,10 +45,12 @@ export interface NowPlayingBarProps {
 /** The persistent transport bar. Desktop's answer to "now playing". */
 export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): ReactElement {
   const [coverHovered, setCoverHovered] = useState(false)
+  const [seekingPosition, setSeekingPosition] = useState<number | undefined>(undefined)
   const state = useTransport(ctx)
   const position = usePosition(ctx)
   const duration = useDuration(ctx)
   const can = useTransportAvailability(ctx)
+  const displayPosition = seekingPosition ?? position
 
   const handleOpenNowPlaying = () => {
     onOpenNowPlaying?.()
@@ -232,15 +234,19 @@ export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): Re
           h(Text, {
             variant: 'xs',
             tone: 'muted',
-            children: formatDuration(position),
+            children: formatDuration(displayPosition),
           }),
         ),
         h(Slider, {
-          value: duration ? Math.min(position, duration) : position,
+          value: duration ? Math.min(displayPosition, duration) : displayPosition,
           max: duration ?? 0,
           disabled: !can.canSeek,
           accessibilityLabel: 'Seek',
-          onCommit: (value: number) => void ctx.player.seek(value),
+          onChange: (value: number) => setSeekingPosition(value),
+          onCommit: (value: number) => {
+            setSeekingPosition(undefined)
+            void ctx.player.seek(value)
+          },
         }),
         h(
           'span',
@@ -320,10 +326,12 @@ export interface NowPlayingScreenProps {
 
 /** The full-pane player view on desktop. */
 export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): ReactElement {
+  const [seekingPosition, setSeekingPosition] = useState<number | undefined>(undefined)
   const state = useTransport(ctx)
   const position = usePosition(ctx)
   const duration = useDuration(ctx)
   const can = useTransportAvailability(ctx)
+  const displayPosition = seekingPosition ?? position
 
   return h(
     'div',
@@ -365,6 +373,7 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
           cursor: 'pointer',
           transition: `background-color ${tokens.duration.fast}ms, transform ${tokens.duration.fast}ms`,
           zIndex: 10,
+          WebkitAppRegion: 'no-drag' as unknown as undefined,
         },
         onMouseEnter: (e: { currentTarget: HTMLElement }) => {
           e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.16)'
@@ -446,16 +455,20 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
         },
       },
       h(Slider, {
-        value: duration ? Math.min(position, duration) : position,
+        value: duration ? Math.min(displayPosition, duration) : displayPosition,
         max: duration ?? 0,
         disabled: !can.canSeek,
         accessibilityLabel: 'Seek',
-        onCommit: (value: number) => void ctx.player.seek(value),
+        onChange: (value: number) => setSeekingPosition(value),
+        onCommit: (value: number) => {
+          setSeekingPosition(undefined)
+          void ctx.player.seek(value)
+        },
       }),
       h(
         'div',
         { style: { display: 'flex', justifyContent: 'space-between' } },
-        h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(position) }),
+        h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(displayPosition) }),
         h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(duration) }),
       ),
     ),

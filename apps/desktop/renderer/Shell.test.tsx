@@ -128,6 +128,22 @@ describe('the desktop shell', () => {
 
     expect(container.textContent).toContain('now playing fullscreen view')
     expect(container.querySelector('[data-testid="fullscreen-now-playing"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="fullscreen-top-bar"]')).not.toBeNull()
+    expect(
+      container.querySelector(
+        '[data-testid="fullscreen-top-bar"] button[aria-label="Minimize window"]',
+      ),
+    ).not.toBeNull()
+    expect(
+      container.querySelector(
+        '[data-testid="fullscreen-top-bar"] button[aria-label="Maximize window"]',
+      ),
+    ).not.toBeNull()
+    expect(
+      container.querySelector(
+        '[data-testid="fullscreen-top-bar"] button[aria-label="Close window"]',
+      ),
+    ).not.toBeNull()
     expect(container.querySelector('[data-testid="hover-bottom-bar-container"]')).not.toBeNull()
 
     // Click close button

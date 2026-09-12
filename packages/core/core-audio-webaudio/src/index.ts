@@ -199,6 +199,7 @@ class StreamedHandle implements AudioSourceHandle {
 
   private readonly endedListeners = new Set<() => void>()
   private readonly onEndedNative = () => {
+    this.pendingSeekSeconds = undefined
     for (const listener of this.endedListeners) listener()
   }
 
@@ -206,6 +207,11 @@ class StreamedHandle implements AudioSourceHandle {
   private stalled = false
   private readonly onStallNative = () => this.setStalled(true)
   private readonly onRecoverNative = () => this.setStalled(false)
+  private readonly onSeekedNative = () => {
+    this.pendingSeekSeconds = undefined
+  }
+
+  private pendingSeekSeconds?: number
 
   constructor(
     private readonly element: MediaElementLike,
@@ -213,6 +219,7 @@ class StreamedHandle implements AudioSourceHandle {
   ) {
     this.node = node
     element.addEventListener('ended', this.onEndedNative)
+    element.addEventListener('seeked', this.onSeekedNative)
     for (const type of STALL_EVENTS) element.addEventListener(type, this.onStallNative)
     for (const type of RECOVER_EVENTS) element.addEventListener(type, this.onRecoverNative)
   }
@@ -237,11 +244,18 @@ class StreamedHandle implements AudioSourceHandle {
   }
 
   get positionMs(): number {
+    if (this.pendingSeekSeconds !== undefined) {
+      return Math.round(this.pendingSeekSeconds * 1000)
+    }
     return Math.round(this.element.currentTime * 1000)
   }
 
   play(atMs?: number): void {
-    if (atMs !== undefined) this.element.currentTime = atMs / 1000
+    if (atMs !== undefined) {
+      const seconds = Math.max(0, atMs / 1000)
+      this.pendingSeekSeconds = seconds
+      this.element.currentTime = seconds
+    }
     void this.element.play()
   }
 
@@ -250,6 +264,7 @@ class StreamedHandle implements AudioSourceHandle {
   }
 
   stop(): void {
+    this.pendingSeekSeconds = undefined
     this.element.pause()
     this.element.currentTime = 0
   }
@@ -265,7 +280,9 @@ class StreamedHandle implements AudioSourceHandle {
   }
 
   dispose(): void {
+    this.pendingSeekSeconds = undefined
     this.element.removeEventListener('ended', this.onEndedNative)
+    this.element.removeEventListener('seeked', this.onSeekedNative)
     for (const type of STALL_EVENTS) this.element.removeEventListener(type, this.onStallNative)
     for (const type of RECOVER_EVENTS) this.element.removeEventListener(type, this.onRecoverNative)
     this.endedListeners.clear()

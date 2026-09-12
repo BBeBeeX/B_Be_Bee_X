@@ -469,8 +469,10 @@ export function Slider(props: SliderProps) {
     },
     // Release, not every frame: seeking per frame is what makes a scrubber
     // unusable, and it is the difference `onCommit` exists to express.
-    onPointerUp: () => commit(value),
-    onKeyUp: () => commit(value),
+    onPointerUp: (event: { currentTarget: { value: string } }) =>
+      commit(Number(event.currentTarget.value)),
+    onKeyUp: (event: { currentTarget: { value: string } }) =>
+      commit(Number(event.currentTarget.value)),
     onBlur: () => setDragging(undefined),
     /*
      * White until you touch it, then green.

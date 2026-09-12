@@ -554,8 +554,9 @@ export class Player extends Service implements PlayerService {
       this.source.play(target)
       this.source.pause()
     }
-    this.set({ positionMs: this.source.positionMs })
-    if (this.activePlay) this.activePlay.lastPositionMs = this.source.positionMs
+    this.set({ positionMs: target })
+    this.ownCtx.emit('player/position', target, this.transport.durationMs)
+    if (this.activePlay) this.activePlay.lastPositionMs = target
     this.publishNowPlaying()
   }
 

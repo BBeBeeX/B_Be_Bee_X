@@ -13,21 +13,15 @@
 import { createElement as h, useEffect, useState, type CSSProperties, type ReactElement } from 'react'
 import type { Context } from 'cordis'
 
-interface ElectronCSSProperties extends CSSProperties {
+export interface ElectronCSSProperties extends CSSProperties {
   WebkitAppRegion?: 'drag' | 'no-drag'
 }
 
-export interface TopBarProps {
-  ctx: Context
-  onHome?: () => void
-  onSearch?: (query: string) => void
-  onOpenSettings?: () => void
+export interface WindowControlsProps {
+  style?: CSSProperties
 }
 
-export function TopBar({ ctx: _ctx, onHome, onSearch, onOpenSettings }: TopBarProps): ReactElement {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchFocused, setSearchFocused] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
+export function WindowControls({ style }: WindowControlsProps = {}): ReactElement {
   const [isMaximized, setIsMaximized] = useState(false)
 
   useEffect(() => {
@@ -50,6 +44,186 @@ export function TopBar({ ctx: _ctx, onHome, onSearch, onOpenSettings }: TopBarPr
   const handleClose = () => {
     void window.BBeBee?.window?.close?.()
   }
+
+  return h(
+    'div',
+    {
+      role: 'group',
+      'aria-label': 'Window controls',
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        height: 48,
+        WebkitAppRegion: 'no-drag',
+        ...style,
+      } as ElectronCSSProperties,
+    },
+    // Minimize Button (−)
+    h(
+      'button',
+      {
+        type: 'button',
+        'aria-label': 'Minimize window',
+        title: 'Minimize',
+        onClick: handleMinimize,
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 46,
+          height: 48,
+          border: 'none',
+          background: 'transparent',
+          color: '#A0A0AE',
+          cursor: 'pointer',
+          transition: 'background-color 0.1s ease, color 0.1s ease',
+        },
+        onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+          e.currentTarget.style.color = '#F5F5F7'
+        },
+        onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = 'transparent'
+          e.currentTarget.style.color = '#A0A0AE'
+        },
+      },
+      h(
+        'svg',
+        { width: 10, height: 10, viewBox: '0 0 10 10', 'aria-hidden': true },
+        h('line', {
+          x1: '1',
+          y1: '5',
+          x2: '9',
+          y2: '5',
+          stroke: 'currentColor',
+          strokeWidth: 1.2,
+        }),
+      ),
+    ),
+    // Maximize / Restore Button (□ / ❐)
+    h(
+      'button',
+      {
+        type: 'button',
+        'aria-label': isMaximized ? 'Restore window' : 'Maximize window',
+        title: isMaximized ? 'Restore' : 'Maximize',
+        onClick: handleMaximize,
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 46,
+          height: 48,
+          border: 'none',
+          background: 'transparent',
+          color: '#A0A0AE',
+          cursor: 'pointer',
+          transition: 'background-color 0.1s ease, color 0.1s ease',
+        },
+        onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+          e.currentTarget.style.color = '#F5F5F7'
+        },
+        onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = 'transparent'
+          e.currentTarget.style.color = '#A0A0AE'
+        },
+      },
+      isMaximized
+        ? h(
+            'svg',
+            { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'none', 'aria-hidden': true },
+            h('rect', {
+              x: '2.5',
+              y: '2.5',
+              width: '6',
+              height: '6',
+              stroke: 'currentColor',
+              strokeWidth: 1.1,
+            }),
+            h('path', {
+              d: 'M1.5 3.5V8.5H6.5',
+              stroke: 'currentColor',
+              strokeWidth: 1.1,
+            }),
+          )
+        : h(
+            'svg',
+            { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'none', 'aria-hidden': true },
+            h('rect', {
+              x: '1.5',
+              y: '1.5',
+              width: '7',
+              height: '7',
+              stroke: 'currentColor',
+              strokeWidth: 1.2,
+            }),
+          ),
+    ),
+    // Close Button (✕)
+    h(
+      'button',
+      {
+        type: 'button',
+        'aria-label': 'Close window',
+        title: 'Close',
+        onClick: handleClose,
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 46,
+          height: 48,
+          border: 'none',
+          background: 'transparent',
+          color: '#A0A0AE',
+          cursor: 'pointer',
+          transition: 'background-color 0.1s ease, color 0.1s ease',
+        },
+        onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = '#E81123'
+          e.currentTarget.style.color = '#FFFFFF'
+        },
+        onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = 'transparent'
+          e.currentTarget.style.color = '#A0A0AE'
+        },
+      },
+      h(
+        'svg',
+        { width: 10, height: 10, viewBox: '0 0 10 10', 'aria-hidden': true },
+        h('line', {
+          x1: '1.5',
+          y1: '1.5',
+          x2: '8.5',
+          y2: '8.5',
+          stroke: 'currentColor',
+          strokeWidth: 1.2,
+        }),
+        h('line', {
+          x1: '8.5',
+          y1: '1.5',
+          x2: '1.5',
+          y2: '8.5',
+          stroke: 'currentColor',
+          strokeWidth: 1.2,
+        }),
+      ),
+    ),
+  )
+}
+
+export interface TopBarProps {
+  ctx: Context
+  onHome?: () => void
+  onSearch?: (query: string) => void
+  onOpenSettings?: () => void
+}
+
+export function TopBar({ ctx: _ctx, onHome, onSearch, onOpenSettings }: TopBarProps): ReactElement {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const handleBack = () => {
     if (typeof window !== 'undefined' && window.history) {
@@ -81,8 +255,8 @@ export function TopBar({ ctx: _ctx, onHome, onSearch, onOpenSettings }: TopBarPr
         maxHeight: 48,
         paddingLeft: 12,
         paddingRight: 0,
-        background: '#0E0E14',
-        borderBottom: '1px solid #1E1E28',
+        background: '#000000',
+        borderBottom: 'none',
         userSelect: 'none',
         WebkitAppRegion: 'drag',
         position: 'relative',
@@ -530,170 +704,7 @@ export function TopBar({ ctx: _ctx, onHome, onSearch, onOpenSettings }: TopBarPr
         ),
       ),
       // Contiguous Window Controls Group
-      h(
-        'div',
-        {
-          role: 'group',
-          'aria-label': 'Window controls',
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            height: 48,
-          },
-        },
-        // Minimize Button (−)
-        h(
-          'button',
-          {
-            type: 'button',
-            'aria-label': 'Minimize window',
-            title: 'Minimize',
-            onClick: handleMinimize,
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 46,
-              height: 48,
-              border: 'none',
-              background: 'transparent',
-              color: '#A0A0AE',
-              cursor: 'pointer',
-              transition: 'background-color 0.1s ease, color 0.1s ease',
-            },
-            onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-              e.currentTarget.style.color = '#F5F5F7'
-            },
-            onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.backgroundColor = 'transparent'
-              e.currentTarget.style.color = '#A0A0AE'
-            },
-          },
-          h(
-            'svg',
-            { width: 10, height: 10, viewBox: '0 0 10 10', 'aria-hidden': true },
-            h('line', {
-              x1: '1',
-              y1: '5',
-              x2: '9',
-              y2: '5',
-              stroke: 'currentColor',
-              strokeWidth: 1.2,
-            }),
-          ),
-        ),
-        // Maximize / Restore Button (□ / ❐)
-        h(
-          'button',
-          {
-            type: 'button',
-            'aria-label': isMaximized ? 'Restore window' : 'Maximize window',
-            title: isMaximized ? 'Restore' : 'Maximize',
-            onClick: handleMaximize,
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 46,
-              height: 48,
-              border: 'none',
-              background: 'transparent',
-              color: '#A0A0AE',
-              cursor: 'pointer',
-              transition: 'background-color 0.1s ease, color 0.1s ease',
-            },
-            onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-              e.currentTarget.style.color = '#F5F5F7'
-            },
-            onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.backgroundColor = 'transparent'
-              e.currentTarget.style.color = '#A0A0AE'
-            },
-          },
-          isMaximized
-            ? h(
-                'svg',
-                { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'none', 'aria-hidden': true },
-                h('rect', {
-                  x: '2.5',
-                  y: '2.5',
-                  width: '6',
-                  height: '6',
-                  stroke: 'currentColor',
-                  strokeWidth: 1.1,
-                }),
-                h('path', {
-                  d: 'M1.5 3.5V8.5H6.5',
-                  stroke: 'currentColor',
-                  strokeWidth: 1.1,
-                }),
-              )
-            : h(
-                'svg',
-                { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'none', 'aria-hidden': true },
-                h('rect', {
-                  x: '1.5',
-                  y: '1.5',
-                  width: '7',
-                  height: '7',
-                  stroke: 'currentColor',
-                  strokeWidth: 1.2,
-                }),
-              ),
-        ),
-        // Close Button (✕)
-        h(
-          'button',
-          {
-            type: 'button',
-            'aria-label': 'Close window',
-            title: 'Close',
-            onClick: handleClose,
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 46,
-              height: 48,
-              border: 'none',
-              background: 'transparent',
-              color: '#A0A0AE',
-              cursor: 'pointer',
-              transition: 'background-color 0.1s ease, color 0.1s ease',
-            },
-            onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.backgroundColor = '#E81123'
-              e.currentTarget.style.color = '#FFFFFF'
-            },
-            onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.backgroundColor = 'transparent'
-              e.currentTarget.style.color = '#A0A0AE'
-            },
-          },
-          h(
-            'svg',
-            { width: 10, height: 10, viewBox: '0 0 10 10', 'aria-hidden': true },
-            h('line', {
-              x1: '1.5',
-              y1: '1.5',
-              x2: '8.5',
-              y2: '8.5',
-              stroke: 'currentColor',
-              strokeWidth: 1.2,
-            }),
-            h('line', {
-              x1: '8.5',
-              y1: '1.5',
-              x2: '1.5',
-              y2: '8.5',
-              stroke: 'currentColor',
-              strokeWidth: 1.2,
-            }),
-          ),
-        ),
-      ),
+      h(WindowControls, null),
     ),
   )
 }

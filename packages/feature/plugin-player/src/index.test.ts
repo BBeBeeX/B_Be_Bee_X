@@ -286,11 +286,16 @@ describe('transport', () => {
   })
 
   it('seeks', async () => {
-    const { player, audio } = await harness()
+    const { player, audio, ctx } = await harness()
+    let positionEmitted: number | undefined
+    ctx.on('player/position', (pos) => {
+      positionEmitted = pos
+    })
     await player.playNow([urn('a')])
     await player.seek(90_000)
     expect(player.state.positionMs).toBe(90_000)
     expect(audio.playing?.positionMs).toBe(90_000)
+    expect(positionEmitted).toBe(90_000)
   })
 
   it('advances to the next track and stops at the end of the queue', async () => {
