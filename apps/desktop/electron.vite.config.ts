@@ -35,8 +35,6 @@ export default defineConfig({
     root: 'renderer',
     plugins: [react()],
     build: { rollupOptions: { input: 'renderer/index.html' } },
-    optimizeDeps: {
-      exclude: ['music-metadata'],
-    },
+
   },
 })
