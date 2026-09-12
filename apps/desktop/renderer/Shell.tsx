@@ -150,7 +150,10 @@ export function Shell({ ctx }: { ctx: Context }) {
       },
       h(
         'div',
-        { style: { flex: 1, position: 'relative', overflow: 'auto', minHeight: 0 } },
+        {
+          className: 'no-scrollbar',
+          style: { flex: 1, position: 'relative', overflow: 'auto', minHeight: 0 },
+        },
         NowPlayingView
           ? h(
               ViewBoundary,

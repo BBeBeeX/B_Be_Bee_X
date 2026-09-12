@@ -336,6 +336,7 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
+        boxSizing: 'border-box',
         minHeight: '100%',
         padding: `${tokens.space[6]}px ${tokens.space[4]}px`,
         gap: tokens.space[5],

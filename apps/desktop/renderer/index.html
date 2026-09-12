@@ -15,6 +15,9 @@
     <style>
       :root { color-scheme: dark; }
       body { margin: 0; background: #0B0B0F; color: #F5F5F7; font-family: system-ui, sans-serif; }
+      /* Immersive panes scroll when they must, but never show a scrollbar. */
+      .no-scrollbar { scrollbar-width: none; }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
   </head>
   <body>
