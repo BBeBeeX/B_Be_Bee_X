@@ -16,6 +16,7 @@ import {
 } from 'react'
 import type { Context } from 'cordis'
 import type { RouteContribution, SettingsContribution } from '@BBeBee/protocol'
+import { TopBar } from './TopBar.js'
 
 /** What the sidebar can navigate to: a route, or a settings page. */
 interface Entry {
@@ -220,110 +221,135 @@ export function Shell({ ctx }: { ctx: Context }) {
     'div',
     {
       style: {
-        display: 'grid',
-        gridTemplateColumns: '220px 1fr',
-        gridTemplateRows: BottomBar ? '1fr auto' : '1fr',
+        display: 'flex',
+        flexDirection: 'column',
         height: '100vh',
         overflow: 'hidden',
       },
     },
+    h(TopBar, {
+      ctx,
+      onHome: () => {
+        setIsFullscreenNowPlaying(false)
+        setActiveId(defaultEntry?.id)
+      },
+      onOpenSettings: () => {
+        const settingsEntry = entries.find((e) => e.group === 'settings')
+        if (settingsEntry) {
+          setIsFullscreenNowPlaying(false)
+          setActiveId(settingsEntry.id)
+        }
+      },
+    }),
     h(
-      'nav',
+      'div',
       {
         style: {
-          borderRight: '1px solid #1E1E28',
-          padding: 12,
-          background: '#0E0E14',
+          display: 'grid',
+          gridTemplateColumns: '220px 1fr',
+          flex: 1,
           minHeight: 0,
-          overflowY: 'auto',
+          overflow: 'hidden',
         },
       },
       h(
-        'div',
-        { style: { fontSize: 12, color: '#5A5A68', padding: '8px 10px', letterSpacing: 1 } },
-        'BBeBee',
-      ),
-      ...entries.map((entry, index) =>
+        'nav',
+        {
+          style: {
+            borderRight: '1px solid #1E1E28',
+            padding: 12,
+            background: '#0E0E14',
+            minHeight: 0,
+            overflowY: 'auto',
+          },
+        },
         h(
           'div',
-          { key: entry.id },
-          // One heading, above the first settings page. Without the divide the
-          // sidebar reads as one flat list and "Music folders" looks like a
-          // library section rather than a setting.
-          entry.group === 'settings' && entries[index - 1]?.group !== 'settings'
-            ? h(
-                'div',
-                {
-                  style: {
-                    fontSize: 11,
-                    color: '#5A5A68',
-                    padding: '14px 10px 4px',
-                    letterSpacing: 1,
-                    textTransform: 'uppercase',
-                  },
-                },
-                'Settings',
-              )
-            : null,
+          { style: { fontSize: 12, color: '#5A5A68', padding: '8px 10px', letterSpacing: 1 } },
+          'BBeBee',
+        ),
+        ...entries.map((entry, index) =>
           h(
-            'button',
-            {
-              onClick: () => {
-                if (entry.id === 'player.now-playing') {
-                  setIsFullscreenNowPlaying(true)
-                } else {
-                  setActiveId(entry.id)
-                }
+            'div',
+            { key: entry.id },
+            // One heading, above the first settings page. Without the divide the
+            // sidebar reads as one flat list and "Music folders" looks like a
+            // library section rather than a setting.
+            entry.group === 'settings' && entries[index - 1]?.group !== 'settings'
+              ? h(
+                  'div',
+                  {
+                    style: {
+                      fontSize: 11,
+                      color: '#5A5A68',
+                      padding: '14px 10px 4px',
+                      letterSpacing: 1,
+                      textTransform: 'uppercase',
+                    },
+                  },
+                  'Settings',
+                )
+              : null,
+            h(
+              'button',
+              {
+                onClick: () => {
+                  if (entry.id === 'player.now-playing') {
+                    setIsFullscreenNowPlaying(true)
+                  } else {
+                    setActiveId(entry.id)
+                  }
+                },
+                style: {
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '8px 10px',
+                  marginBottom: 2,
+                  borderRadius: 6,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: active?.id === entry.id ? '#2A2340' : 'transparent',
+                  color: active?.id === entry.id ? '#F5F5F7' : '#A0A0AE',
+                  font: 'inherit',
+                },
               },
-              style: {
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: '8px 10px',
-                marginBottom: 2,
-                borderRadius: 6,
-                border: 'none',
-                cursor: 'pointer',
-                background: active?.id === entry.id ? '#2A2340' : 'transparent',
-                color: active?.id === entry.id ? '#F5F5F7' : '#A0A0AE',
-                font: 'inherit',
-              },
-            },
-            entry.title,
+              entry.title,
+            ),
           ),
         ),
       ),
-    ),
-    h(
-      'main',
-      { style: { overflow: 'auto', minHeight: 0 } },
-      View
-        ? h(
-            ViewBoundary,
-            {
-              // Remounts on navigation, which is what clears a failed view once
-              // the user goes somewhere else and comes back.
-              key: active?.id,
-              title: active?.title ?? 'This view',
-              onError: (error) =>
-                ctx.logger.error(`ui: view "${active?.id}" threw: ${error.stack ?? error.message}`),
-            },
-            h(View, { ctx }),
-          )
-        : h(
-            'div',
-            { style: { padding: 24, color: '#A0A0AE' } },
-            active
-              ? // A contribution with no view on this target is a normal
-                // state, not an error — the direct cost of ADR-2 (docs/08 §3).
-                `"${active.title}" has no desktop view.`
-              : 'No plugin has contributed a route.',
-          ),
+      h(
+        'main',
+        { style: { overflow: 'auto', minHeight: 0 } },
+        View
+          ? h(
+              ViewBoundary,
+              {
+                // Remounts on navigation, which is what clears a failed view once
+                // the user goes somewhere else and comes back.
+                key: active?.id,
+                title: active?.title ?? 'This view',
+                onError: (error) =>
+                  ctx.logger.error(`ui: view "${active?.id}" threw: ${error.stack ?? error.message}`),
+              },
+              h(View, { ctx }),
+            )
+          : h(
+              'div',
+              { style: { padding: 24, color: '#A0A0AE' } },
+              active
+                ? // A contribution with no view on this target is a normal
+                  // state, not an error — the direct cost of ADR-2 (docs/08 §3).
+                  `"${active.title}" has no desktop view.`
+                : 'No plugin has contributed a route.',
+            ),
+      ),
     ),
     BottomBar
       ? h(
           'footer',
-          { style: { gridColumn: '1 / -1' } },
+          null,
           h(BottomBar, {
             ctx,
             onOpenNowPlaying: () => setIsFullscreenNowPlaying(true),

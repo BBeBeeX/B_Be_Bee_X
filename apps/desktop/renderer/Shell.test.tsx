@@ -10,7 +10,7 @@
  * visible only in devtools.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { act, createElement as h } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Context, Service } from 'cordis'
@@ -142,5 +142,68 @@ describe('the desktop shell', () => {
     // Closed, returns to queue view
     expect(container.querySelector('[data-testid="fullscreen-now-playing"]')).toBeNull()
     expect(container.textContent).toContain('queue view')
+  })
+
+  it('renders in-app Spotify-style top bar with controls', async () => {
+    const minimizeMock = vi.fn()
+    const maximizeMock = vi.fn().mockResolvedValue(true)
+    const closeMock = vi.fn()
+
+    ;(window as any).BBeBee = {
+      window: {
+        minimize: minimizeMock,
+        maximize: maximizeMock,
+        close: closeMock,
+        isMaximized: vi.fn().mockResolvedValue(false),
+      },
+    }
+
+    const { container } = await mount((ui) => {
+      ui.routes = [route('home', 'Home')]
+      ui.views.set('home', () => h('p', null, 'home page'))
+    })
+
+    const header = container.querySelector('header[aria-label="Application Header"]')
+    expect(header).not.toBeNull()
+
+    // Left controls: More, Back, Forward
+    const moreBtn = container.querySelector('button[aria-label="More options"]') as HTMLButtonElement
+    const backBtn = container.querySelector('button[aria-label="Go back"]') as HTMLButtonElement
+    const forwardBtn = container.querySelector('button[aria-label="Go forward"]') as HTMLButtonElement
+    expect(moreBtn).not.toBeNull()
+    expect(backBtn).not.toBeNull()
+    expect(forwardBtn).not.toBeNull()
+
+    // Center controls: Home, Search
+    const homeBtn = container.querySelector('button[aria-label="Home"]') as HTMLButtonElement
+    const searchInput = container.querySelector('input[aria-label="Search"]') as HTMLInputElement
+    expect(homeBtn).not.toBeNull()
+    expect(searchInput).not.toBeNull()
+
+    // Right controls: Profile, Minimize, Maximize, Close
+    const profileBtn = container.querySelector('button[aria-label="User profile"]') as HTMLButtonElement
+    const minBtn = container.querySelector('button[aria-label="Minimize window"]') as HTMLButtonElement
+    const maxBtn = container.querySelector('button[aria-label="Maximize window"]') as HTMLButtonElement
+    const closeBtn = container.querySelector('button[aria-label="Close window"]') as HTMLButtonElement
+    expect(profileBtn).not.toBeNull()
+    expect(minBtn).not.toBeNull()
+    expect(maxBtn).not.toBeNull()
+    expect(closeBtn).not.toBeNull()
+
+    // Test window controls click
+    await act(async () => {
+      minBtn.click()
+      maxBtn.click()
+      closeBtn.click()
+    })
+    expect(minimizeMock).toHaveBeenCalledTimes(1)
+    expect(maximizeMock).toHaveBeenCalledTimes(1)
+    expect(closeMock).toHaveBeenCalledTimes(1)
+
+    // Test more options dropdown
+    await act(async () => {
+      moreBtn.click()
+    })
+    expect(container.textContent).toContain('Settings')
   })
 })

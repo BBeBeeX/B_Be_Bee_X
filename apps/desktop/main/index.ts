@@ -79,7 +79,9 @@ function createWindow(): BrowserWindow {
     minWidth: 720,
     minHeight: 480,
     backgroundColor: '#0B0B0F',
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    frame: false,
+    titleBarStyle: 'hidden',
+    autoHideMenuBar: true,
     webPreferences: {
       // The security posture from docs/02 §2. None of these are negotiable:
       // the renderer hosts third-party plugin code (docs/03 §6.2).
@@ -250,6 +252,32 @@ function registerHandlers(): void {
       : await dialog.showOpenDialog({ properties: ['openDirectory'] })
     return result.canceled ? undefined : result.filePaths[0]
   })
+
+  ipcMain.handle('window:minimize', (event) => {
+    const target = BrowserWindow.fromWebContents(event.sender)
+    target?.minimize()
+  })
+
+  ipcMain.handle('window:maximize', (event) => {
+    const target = BrowserWindow.fromWebContents(event.sender)
+    if (target) {
+      if (target.isMaximized()) {
+        target.unmaximize()
+      } else {
+        target.maximize()
+      }
+    }
+  })
+
+  ipcMain.handle('window:close', (event) => {
+    const target = BrowserWindow.fromWebContents(event.sender)
+    target?.close()
+  })
+
+  ipcMain.handle('window:isMaximized', (event) => {
+    const target = BrowserWindow.fromWebContents(event.sender)
+    return target?.isMaximized() ?? false
+  })
 }
 
 /** Media keys, as the protocol names them. */
@@ -370,6 +398,8 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 void app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null)
+
   protocol.handle('bbebee-file', (request) => {
     const fileUrl = request.url.replace(/^bbebee-file:\/\//, 'file:///')
     return net.fetch(fileUrl)
