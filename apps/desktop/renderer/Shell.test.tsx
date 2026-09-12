@@ -102,4 +102,45 @@ describe('the desktop shell', () => {
     })
     expect(container.textContent).toContain('second view')
   })
+
+  it('opens and closes fullscreen now playing page', async () => {
+    const { container, ctx } = await mount((ui) => {
+      ui.routes = [route('queue', 'Queue'), route('player.now-playing', 'Now playing')]
+      ui.views.set('queue', () => h('p', null, 'queue view'))
+      ui.views.set('player.now-playing', ({ onClose }: { onClose?: () => void }) =>
+        h(
+          'div',
+          null,
+          h('p', null, 'now playing fullscreen view'),
+          h('button', { 'aria-label': 'Close now playing', onClick: onClose }, 'Close'),
+        ),
+      )
+      ui.views.set('player.now-playing-bar', () => h('div', null, 'bottom bar'))
+    })
+
+    expect(container.textContent).toContain('queue view')
+    expect(container.querySelector('[data-testid="fullscreen-now-playing"]')).toBeNull()
+
+    // Navigate to now-playing
+    await act(async () => {
+      ctx.emit('ui/navigate', 'player.now-playing')
+    })
+
+    expect(container.textContent).toContain('now playing fullscreen view')
+    expect(container.querySelector('[data-testid="fullscreen-now-playing"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="hover-bottom-bar-container"]')).not.toBeNull()
+
+    // Click close button
+    const closeBtn = container.querySelector(
+      'button[aria-label="Close now playing"]',
+    ) as HTMLButtonElement
+    expect(closeBtn).not.toBeNull()
+    await act(async () => {
+      closeBtn.click()
+    })
+
+    // Closed, returns to queue view
+    expect(container.querySelector('[data-testid="fullscreen-now-playing"]')).toBeNull()
+    expect(container.textContent).toContain('queue view')
+  })
 })

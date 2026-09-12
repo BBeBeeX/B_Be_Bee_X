@@ -10,7 +10,7 @@
  * accepts writing the view twice.
  */
 
-import { createElement as h } from 'react'
+import { createElement as h, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
@@ -37,12 +37,23 @@ import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
 
+export interface NowPlayingBarProps {
+  ctx: Context
+  onOpenNowPlaying?: () => void
+}
+
 /** The persistent transport bar. Desktop's answer to "now playing". */
-export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
+export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): ReactElement {
+  const [coverHovered, setCoverHovered] = useState(false)
   const state = useTransport(ctx)
   const position = usePosition(ctx)
   const duration = useDuration(ctx)
   const can = useTransportAvailability(ctx)
+
+  const handleOpenNowPlaying = () => {
+    onOpenNowPlaying?.()
+    ctx.ui?.navigate?.(PLAYER_VIEWS.nowPlaying)
+  }
 
   return h(
     'div',
@@ -70,12 +81,72 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
           overflow: 'hidden',
         },
       },
-      h(Artwork, {
-        artwork: state.nowPlaying?.artwork,
-        seed: state.trackUrn,
-        size: tokens.size.artworkThumb,
-        radius: tokens.radius.sm,
-      }),
+      h(
+        'div',
+        {
+          role: 'button',
+          tabIndex: 0,
+          'aria-label': 'Open now playing',
+          onClick: handleOpenNowPlaying,
+          onKeyDown: (e: { key: string; preventDefault: () => void }) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              handleOpenNowPlaying()
+            }
+          },
+          onMouseEnter: () => setCoverHovered(true),
+          onMouseLeave: () => setCoverHovered(false),
+          style: {
+            position: 'relative',
+            width: tokens.size.artworkThumb,
+            height: tokens.size.artworkThumb,
+            borderRadius: tokens.radius.sm,
+            overflow: 'hidden',
+            cursor: 'pointer',
+            flexShrink: 0,
+          },
+        },
+        h(Artwork, {
+          artwork: state.nowPlaying?.artwork,
+          seed: state.trackUrn,
+          size: tokens.size.artworkThumb,
+          radius: tokens.radius.sm,
+        }),
+        h(
+          'div',
+          {
+            style: {
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(0, 0, 0, 0.5)',
+              opacity: coverHovered ? 1 : 0,
+              transition: `opacity ${tokens.duration.fast}ms ease`,
+              pointerEvents: 'none',
+            },
+          },
+          h(
+            'svg',
+            {
+              width: 18,
+              height: 18,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: '#FFFFFF',
+              strokeWidth: 2,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round',
+              'aria-hidden': true,
+            },
+            h('polyline', { points: '15 3 21 3 21 9' }),
+            h('polyline', { points: '9 21 3 21 3 15' }),
+            h('line', { x1: '21', y1: '3', x2: '14', y2: '10' }),
+            h('line', { x1: '3', y1: '21', x2: '10', y2: '14' }),
+          ),
+        ),
+      ),
       h(
         'div',
         {
@@ -103,50 +174,97 @@ export function NowPlayingBar({ ctx }: { ctx: Context }): ReactElement {
     ),
     h(
       'div',
-      { style: { display: 'flex', alignItems: 'center', gap: tokens.space[2] } },
-      h(IconButton, {
-        icon: '⏮',
-        accessibilityLabel: 'Previous track',
-        disabled: !can.canPrevious,
-        onPress: () => void ctx.player.previous(),
-      }),
-      h(IconButton, {
-        // One control, two states: a play button that is sometimes a pause
-        // button is what every player has, and two controls would be wrong.
-        icon: can.canPause ? '⏸' : '▶',
-        accessibilityLabel: can.canPause ? 'Pause' : 'Play',
-        variant: 'primary',
-        disabled: !can.canPlay && !can.canPause,
-        onPress: () => ctx.player.togglePlay(),
-      }),
-      h(IconButton, {
-        icon: '⏭',
-        accessibilityLabel: 'Next track',
-        disabled: !can.canNext,
-        onPress: () => void ctx.player.next(),
-      }),
+      {
+        style: {
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: tokens.space[1],
+        },
+      },
+      h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: tokens.space[2] } },
+        h(IconButton, {
+          icon: '⏮',
+          accessibilityLabel: 'Previous track',
+          disabled: !can.canPrevious,
+          onPress: () => void ctx.player.previous(),
+        }),
+        h(IconButton, {
+          // One control, two states: a play button that is sometimes a pause
+          // button is what every player has, and two controls would be wrong.
+          icon: can.canPause ? '⏸' : '▶',
+          accessibilityLabel: can.canPause ? 'Pause' : 'Play',
+          variant: 'primary',
+          disabled: !can.canPlay && !can.canPause,
+          onPress: () => ctx.player.togglePlay(),
+        }),
+        h(IconButton, {
+          icon: '⏭',
+          accessibilityLabel: 'Next track',
+          disabled: !can.canNext,
+          onPress: () => void ctx.player.next(),
+        }),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            width: '100%',
+            maxWidth: 560,
+            display: 'flex',
+            alignItems: 'center',
+            gap: tokens.space[2],
+          },
+        },
+        // `stalled` is not `paused`: the UI says buffering and the lock screen
+        // keeps reporting playing, so neither flickers on an underrun.
+        state.status === 'stalled'
+          ? h(Text, { variant: 'xs', tone: 'muted', children: 'Buffering…' })
+          : null,
+        h(
+          'span',
+          { style: { minWidth: 36, textAlign: 'right', display: 'inline-block' } },
+          h(Text, {
+            variant: 'xs',
+            tone: 'muted',
+            children: formatDuration(position),
+          }),
+        ),
+        h(Slider, {
+          value: duration ? Math.min(position, duration) : position,
+          max: duration ?? 0,
+          disabled: !can.canSeek,
+          accessibilityLabel: 'Seek',
+          onCommit: (value: number) => void ctx.player.seek(value),
+        }),
+        h(
+          'span',
+          { style: { minWidth: 36, display: 'inline-block' } },
+          h(Text, {
+            variant: 'xs',
+            tone: 'muted',
+            children: formatDuration(duration),
+          }),
+        ),
+      ),
     ),
     h(
       'div',
-      { style: { flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: tokens.space[3] } },
-      // `stalled` is not `paused`: the UI says buffering and the lock screen
-      // keeps reporting playing, so neither flickers on an underrun.
-      state.status === 'stalled'
-        ? h(Text, { variant: 'sm', tone: 'muted', children: 'Buffering…' })
-        : null,
-      h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(position) }),
-      h(Slider, {
-        value: duration ? Math.min(position, duration) : position,
-        max: duration ?? 0,
-        disabled: !can.canSeek,
-        accessibilityLabel: 'Seek',
-        onCommit: (value: number) => void ctx.player.seek(value),
-      }),
-      h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(duration) }),
-    ),
-    h(
-      'div',
-      { style: { display: 'flex', alignItems: 'center', gap: tokens.space[2] } },
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: tokens.space[2],
+          width: 240,
+          minWidth: 180,
+        },
+      },
       h(IconButton, {
         icon: state.muted ? '🔇' : '🔊',
         accessibilityLabel: state.muted ? 'Unmute' : 'Mute',
@@ -195,8 +313,13 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
   })
 }
 
+export interface NowPlayingScreenProps {
+  ctx: Context
+  onClose?: () => void
+}
+
 /** The full-pane player view on desktop. */
-export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
+export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): ReactElement {
   const state = useTransport(ctx)
   const position = usePosition(ctx)
   const duration = useDuration(ctx)
@@ -208,6 +331,7 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
       role: 'region',
       'aria-label': 'Now playing',
       style: {
+        position: 'relative',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -218,6 +342,54 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
         background: p().bg.base,
       },
     },
+    h(
+      'button',
+      {
+        type: 'button',
+        'aria-label': 'Close now playing',
+        onClick: onClose,
+        style: {
+          position: 'absolute',
+          top: tokens.space[5],
+          left: tokens.space[5],
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 40,
+          height: 40,
+          borderRadius: tokens.radius.pill,
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          background: 'rgba(255, 255, 255, 0.08)',
+          color: p().text.primary,
+          cursor: 'pointer',
+          transition: `background-color ${tokens.duration.fast}ms, transform ${tokens.duration.fast}ms`,
+          zIndex: 10,
+        },
+        onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.16)'
+          e.currentTarget.style.transform = 'scale(1.06)'
+        },
+        onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'
+          e.currentTarget.style.transform = 'scale(1)'
+        },
+      },
+      h(
+        'svg',
+        {
+          width: 22,
+          height: 22,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 2.2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          'aria-hidden': true,
+        },
+        h('polyline', { points: '6 9 12 15 18 9' }),
+      ),
+    ),
     h(Artwork, {
       artwork: state.nowPlaying?.artwork,
       seed: state.trackUrn,

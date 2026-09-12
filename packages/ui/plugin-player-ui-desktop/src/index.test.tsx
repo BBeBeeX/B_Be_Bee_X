@@ -136,6 +136,12 @@ describe('NowPlayingBar', () => {
     expect(out).toContain('Bohemian Rhapsody')
     expect(out).toContain('Queen')
   })
+
+  it('provides an open now playing button on the cover', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    const out = html(h(NowPlayingBar, { ctx }))
+    expect(out).toContain('aria-label="Open now playing"')
+  })
 })
 
 describe('NowPlayingScreen', () => {
@@ -158,6 +164,12 @@ describe('NowPlayingScreen', () => {
     expect(out).toContain('aria-label="Pause"')
     expect(out).toContain('1:00')
     expect(out).toContain('5:54')
+  })
+
+  it('provides a close button in the top-left corner', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    const out = html(h(NowPlayingScreen, { ctx }))
+    expect(out).toContain('aria-label="Close now playing"')
   })
 })
 

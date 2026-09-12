@@ -103,21 +103,115 @@ class ViewBoundary extends Component<
 export function Shell({ ctx }: { ctx: Context }) {
   const { entries } = useEntries(ctx)
   const [activeId, setActiveId] = useState<string | undefined>()
+  const [isFullscreenNowPlaying, setIsFullscreenNowPlaying] = useState(false)
+  const [isBottomBarHovered, setIsBottomBarHovered] = useState(false)
 
   useEffect(() => {
     const off = ctx.on('ui/navigate', (routeId: string) => {
-      setActiveId(routeId)
+      if (routeId === 'player.now-playing') {
+        setIsFullscreenNowPlaying(true)
+      } else {
+        setIsFullscreenNowPlaying(false)
+        setActiveId(routeId)
+      }
     })
     return () => void off()
   }, [ctx])
 
-  const active = entries.find((e) => e.id === activeId) ?? entries[0]
+  const defaultEntry = entries.find((e) => e.id !== 'player.now-playing') ?? entries[0]
+  const active = entries.find((e) => e.id === activeId) ?? defaultEntry
   const View = active
     ? (ctx.ui.viewFor(active.id) as ComponentType<{ ctx: Context }> | undefined)
     : undefined
   const BottomBar = ctx.ui.viewFor('player.now-playing-bar') as
-    | ComponentType<{ ctx: Context }>
+    | ComponentType<{ ctx: Context; onOpenNowPlaying?: () => void }>
     | undefined
+
+  if (isFullscreenNowPlaying) {
+    const NowPlayingView = ctx.ui.viewFor('player.now-playing') as
+      | ComponentType<{ ctx: Context; onClose?: () => void }>
+      | undefined
+
+    return h(
+      'div',
+      {
+        'data-testid': 'fullscreen-now-playing',
+        style: {
+          position: 'fixed',
+          inset: 0,
+          zIndex: 100,
+          background: '#0E0E14',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100vh',
+          width: '100vw',
+        },
+      },
+      h(
+        'div',
+        { style: { flex: 1, position: 'relative', overflow: 'auto', minHeight: 0 } },
+        NowPlayingView
+          ? h(
+              ViewBoundary,
+              {
+                title: 'Now playing',
+                onError: (error) =>
+                  ctx.logger.error(`ui: now playing threw: ${error.stack ?? error.message}`),
+              },
+              h(NowPlayingView, {
+                ctx,
+                onClose: () => setIsFullscreenNowPlaying(false),
+              }),
+            )
+          : h(
+              'div',
+              { style: { padding: 24, color: '#A0A0AE' } },
+              '"Now playing" has no desktop view.',
+            ),
+      ),
+      BottomBar
+        ? h(
+            'div',
+            {
+              'data-testid': 'hover-bottom-bar-container',
+              style: {
+                position: 'fixed',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                zIndex: 200,
+              },
+              onMouseEnter: () => setIsBottomBarHovered(true),
+              onMouseLeave: () => setIsBottomBarHovered(false),
+            },
+            h('div', {
+              style: {
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: 48,
+                pointerEvents: isBottomBarHovered ? 'none' : 'auto',
+              },
+            }),
+            h(
+              'footer',
+              {
+                style: {
+                  transform: isBottomBarHovered ? 'translateY(0)' : 'translateY(100%)',
+                  opacity: isBottomBarHovered ? 1 : 0,
+                  transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease',
+                  boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.6)',
+                  pointerEvents: isBottomBarHovered ? 'auto' : 'none',
+                },
+              },
+              h(BottomBar, { ctx }),
+            ),
+          )
+        : null,
+    )
+  }
 
   return h(
     'div',
@@ -171,7 +265,13 @@ export function Shell({ ctx }: { ctx: Context }) {
           h(
             'button',
             {
-              onClick: () => setActiveId(entry.id),
+              onClick: () => {
+                if (entry.id === 'player.now-playing') {
+                  setIsFullscreenNowPlaying(true)
+                } else {
+                  setActiveId(entry.id)
+                }
+              },
               style: {
                 display: 'block',
                 width: '100%',
@@ -221,7 +321,10 @@ export function Shell({ ctx }: { ctx: Context }) {
       ? h(
           'footer',
           { style: { gridColumn: '1 / -1' } },
-          h(BottomBar, { ctx }),
+          h(BottomBar, {
+            ctx,
+            onOpenNowPlaying: () => setIsFullscreenNowPlaying(true),
+          }),
         )
       : null,
   )
