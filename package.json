@@ -9,6 +9,7 @@
   },
   "scripts": {
     "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "check:changed": "node --experimental-strip-types packages/tooling/tooling-check-changed/src/cli.ts",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

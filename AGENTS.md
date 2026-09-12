@@ -57,13 +57,16 @@ Read `01` and `02` first — they establish the vocabulary everything else uses.
 ```bash
 pnpm install                 # pnpm 11+, Node 22.12+
 pnpm check                   # typecheck + lint + test — the whole gate
+pnpm check:changed           # typecheck + lint + test on diff only
 ```
 
 `pnpm check` is the gate. If it passes, the build passes. Run it before declaring work done.
+`pnpm check:changed` checks only packages and files affected by the current diff for rapid feedback.
 
 | Command | Does |
 |---|---|
 | `pnpm check` | `typecheck` + `lint` + `test`. The one command before a PR |
+| `pnpm check:changed` | `typecheck` + `lint` + `test` on packages and files in the current diff |
 | `pnpm test` | Vitest once over every package |
 | `pnpm test:watch` | Vitest in watch mode |
 | `pnpm typecheck` | `tsc --noEmit` in every package and both apps (`pnpm -r typecheck`) |

@@ -778,6 +778,7 @@ this section is required reading until something goes wrong.
 | Command | What it does |
 |---|---|
 | `pnpm check` | `typecheck` + `lint` + `test`. The one command before a PR |
+| `pnpm check:changed` | `typecheck` + `lint` + `test` on packages and files in the current diff |
 | `pnpm test` | Vitest once over every package |
 | `pnpm test:watch` | Vitest in watch mode — what to leave running while working |
 | `pnpm typecheck` | `tsc --noEmit` in every package **and** both apps |
