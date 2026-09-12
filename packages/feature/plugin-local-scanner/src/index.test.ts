@@ -549,6 +549,85 @@ describe('specified dirs', () => {
     expect(h.scanner.specifiedDirs[0]!.enabled).toBe(false)
   })
 
+  it('a disabled specified dir leaves the library, and re-enabling brings it back', async () => {
+    const h = await harness()
+    await h.write('keep/a.mp3')
+    await h.write('drop/b.mp3')
+    // Two specified dirs over two subfolders; the root itself is never added,
+    // so each track is attributable to the dir that must hide it.
+    await h.scanner.addSpecifiedDir(pathToFileURL(join(h.dir, 'keep')).href)
+    const drop = await h.scanner.addSpecifiedDir(pathToFileURL(join(h.dir, 'drop')).href)
+    await h.scanner.scan()
+    expect(await h.db.query('SELECT urn FROM tracks WHERE available = 1')).toHaveLength(2)
+
+    const flips: string[][] = []
+    h.ctx.on('library/changed', (_kind, urns) => flips.push(urns))
+    await h.scanner.setEnabled(drop.id, false)
+
+    // The rows survive untouched — `available` is the only thing that moved —
+    // which is what makes re-enabling a no-scan operation.
+    const visibility = await h.db.query<{ title: string; available: number }>(
+      'SELECT title, available FROM tracks ORDER BY title',
+    )
+    expect(visibility).toEqual([
+      { title: 'a', available: 1 },
+      { title: 'b', available: 0 },
+    ])
+    expect(await h.db.query('SELECT uri FROM scan_entries')).toHaveLength(2)
+
+    const hidden = (await h.db.query<{ urn: string }>("SELECT urn FROM tracks WHERE title = 'b'"))[0]!
+      .urn
+    expect(flips).toEqual([[hidden]])
+
+    // A toggle that changes nothing must not send the library re-rendering.
+    await h.scanner.setEnabled(drop.id, false)
+    expect(flips).toEqual([[hidden]])
+
+    await h.scanner.setEnabled(drop.id, true)
+    expect(
+      (await h.db.query<{ available: number }>("SELECT available FROM tracks WHERE title = 'b'"))[0]!
+        .available,
+    ).toBe(1)
+    expect(flips).toEqual([[hidden], [hidden]])
+  })
+
+  it('a scan of the surviving dir re-points a shared file and restores it', async () => {
+    // Two dirs over overlapping trees: the same file is covered by both, but
+    // its scan_entries row names one owner. Disabling the owner hides the
+    // file; the dir still covering it re-points the entry on its next walk —
+    // unchanged files included — and the reconcile that follows brings the
+    // track back without re-reading its tags.
+    const h = await harness()
+    await h.write('shared/a.mp3')
+    const outer = await h.scanner.addSpecifiedDir(h.uri)
+    const inner = await h.scanner.addSpecifiedDir(pathToFileURL(join(h.dir, 'shared')).href)
+    await h.scanner.scan()
+    expect(await h.db.query('SELECT urn FROM tracks WHERE available = 1')).toHaveLength(1)
+
+    const owner = (
+      await h.db.query<{ specified_dir_id: string; track_urn: string }>(
+        'SELECT specified_dir_id, track_urn FROM scan_entries',
+      )
+    )[0]!
+    const survivor = owner.specified_dir_id === outer.id ? inner : outer
+    await h.scanner.setEnabled(owner.specified_dir_id, false)
+    expect(
+      (await h.db.query<{ available: number }>('SELECT available FROM tracks WHERE urn = ?', [
+        owner.track_urn,
+      ]))[0]!.available,
+    ).toBe(0)
+
+    const reads = h.codec.metadataReads.length
+    await h.scanner.scan()
+    expect(
+      (await h.db.query<{ available: number }>('SELECT available FROM tracks WHERE urn = ?', [
+        owner.track_urn,
+      ]))[0]!.available,
+    ).toBe(1)
+    expect(h.codec.metadataReads.length).toBe(reads)
+    expect(survivor.enabled).toBe(true)
+  })
+
   it('removing a specified dir can take its tracks with it', async () => {
     const h = await harness()
     await h.write('a.mp3')

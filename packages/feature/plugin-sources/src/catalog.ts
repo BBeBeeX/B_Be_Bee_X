@@ -116,6 +116,28 @@ const ARTWORK_COLUMNS = `
   aw.id AS artwork_id, aw.blurhash, aw.dominant_color, aw.source_url AS artwork_source_url,
   aw.local_uri AS artwork_local_uri`
 
+/*
+ * Visibility in listings.
+ *
+ * `tracks.available` is the provider's word that a track belongs in the
+ * library right now — today the only thing that withdraws it is the scanner
+ * disabling a specified dir (docs/06 §12). Withdrawn tracks keep their rows —
+ * queue restores and playlists read by URN, and keep working — but leave
+ * every listing: the library pages, search, and their album's track list.
+ *
+ * An album or artist hides only when every track under it is withdrawn; an
+ * album with no tracks at all shows as it always has, so a partially filled
+ * catalogue does not go blank.
+ */
+const AVAILABLE_TRACKS_ONLY = ' AND t.available = 1'
+const ALBUMS_WITH_AVAILABLE_TRACKS =
+  ' AND (EXISTS (SELECT 1 FROM tracks t WHERE t.album_urn = al.urn AND t.available = 1)' +
+  ' OR NOT EXISTS (SELECT 1 FROM tracks t WHERE t.album_urn = al.urn))'
+const ARTISTS_WITH_AVAILABLE_TRACKS =
+  ' AND (EXISTS (SELECT 1 FROM tracks t JOIN track_artists ta ON ta.track_urn = t.urn' +
+  ' WHERE ta.artist_urn = ar.urn AND t.available = 1)' +
+  ' OR NOT EXISTS (SELECT 1 FROM track_artists ta WHERE ta.artist_urn = ar.urn))'
+
 /**
  * How each sort maps to SQL.
  *
@@ -192,6 +214,7 @@ export class Catalog {
     const direction = query.desc ? 'DESC' : 'ASC'
     const filter = sourceFilter('t', query.sourceIds)
     const lovedFilter = query.onlyLoved ? ' AND COALESCE(st.loved, 0) = 1' : ''
+    const availableFilter = AVAILABLE_TRACKS_ONLY
 
     const rows = await this.db.query<TrackRow>(
       `SELECT t.urn, t.title, t.sort_title, t.album_urn, al.title AS album_title,
@@ -205,7 +228,7 @@ export class Catalog {
          LEFT JOIN track_stats st ON st.urn = t.urn
          LEFT JOIN track_artists ta ON ta.track_urn = t.urn AND ta.ordinal = 0
          LEFT JOIN artists primary_artist ON primary_artist.urn = ta.artist_urn
-        WHERE 1 = 1${filter.sql}${lovedFilter}
+        WHERE 1 = 1${filter.sql}${lovedFilter}${availableFilter}
         ORDER BY ${order} ${direction}, t.urn ASC
         LIMIT ? OFFSET ?`,
       [...filter.params, limit + 1, offset],
@@ -224,13 +247,14 @@ export class Catalog {
     const lovedFilter = query.onlyLoved
       ? ' AND EXISTS (SELECT 1 FROM tracks t JOIN track_stats st ON st.urn = t.urn WHERE t.album_urn = al.urn AND st.loved = 1)'
       : ''
+    const availableFilter = ALBUMS_WITH_AVAILABLE_TRACKS
 
     const rows = await this.db.query<AlbumRow>(
       `SELECT al.urn, al.title, al.sort_title, al.album_type, al.release_date, al.year,
               al.track_count, al.disc_count, al.is_various, ${ARTWORK_COLUMNS}
          FROM albums al
          LEFT JOIN artworks aw ON aw.id = al.artwork_id
-        WHERE 1 = 1${filter.sql}${lovedFilter}
+        WHERE 1 = 1${filter.sql}${lovedFilter}${availableFilter}
         ORDER BY ${order} ${direction}, al.urn ASC
         LIMIT ? OFFSET ?`,
       [...filter.params, limit + 1, offset],
@@ -250,7 +274,7 @@ export class Catalog {
       `SELECT ar.urn, ar.name, ar.sort_name, ar.bio, ${ARTWORK_COLUMNS}
          FROM artists ar
          LEFT JOIN artworks aw ON aw.id = ar.artwork_id
-        WHERE 1 = 1${filter.sql}
+        WHERE 1 = 1${filter.sql}${ARTISTS_WITH_AVAILABLE_TRACKS}
         ORDER BY COALESCE(ar.sort_name, ar.name) ${direction}, ar.urn ASC
         LIMIT ? OFFSET ?`,
       [...filter.params, limit + 1, offset],
@@ -282,7 +306,7 @@ export class Catalog {
          LEFT JOIN albums al ON al.urn = t.album_urn
          LEFT JOIN artworks aw ON aw.id = COALESCE(t.artwork_id, al.artwork_id)
          LEFT JOIN track_stats st ON st.urn = t.urn
-        WHERE t.album_urn = ?
+        WHERE t.album_urn = ?${AVAILABLE_TRACKS_ONLY}
         ORDER BY COALESCE(t.disc_no, 1) ASC, COALESCE(t.track_no, 0) ASC, t.urn ASC`,
       [urn],
     )
@@ -306,7 +330,7 @@ export class Catalog {
          FROM albums al
          JOIN album_artists aa ON aa.album_urn = al.urn
          LEFT JOIN artworks aw ON aw.id = al.artwork_id
-        WHERE aa.artist_urn = ?
+        WHERE aa.artist_urn = ?${ALBUMS_WITH_AVAILABLE_TRACKS}
         ORDER BY al.year DESC, COALESCE(al.sort_title, al.title) ASC`,
       [urn],
     )
@@ -363,7 +387,7 @@ export class Catalog {
          LEFT JOIN albums al ON al.urn = t.album_urn
          LEFT JOIN artworks aw ON aw.id = COALESCE(t.artwork_id, al.artwork_id)
          LEFT JOIN track_stats st ON st.urn = t.urn
-        WHERE tracks_fts MATCH ?${filter.sql}
+        WHERE tracks_fts MATCH ?${filter.sql}${AVAILABLE_TRACKS_ONLY}
         ORDER BY rank
         LIMIT ?`,
       [query, ...filter.params, limit],

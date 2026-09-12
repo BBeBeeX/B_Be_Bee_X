@@ -902,7 +902,7 @@ export class SourceFormatError extends Error {
 | `AuthError` | Stop. Emit `source/auth-expired` | In-place re-login prompt on that source |
 | `RateLimitError` | Wait `retryAfterMs`, retry once, then skip | Silent unless it repeats |
 | `UnavailableError` | **Try `track_links` for the same recording elsewhere** ([§11](#11-cross-source-identity-and-failover)); skip if none | "Unavailable on <source>", with the alternative offered if one exists |
-| `NotFoundError` | Skip. Mark `tracks.available = 0` | Track greyed out in lists |
+| `NotFoundError` | Skip. Mark `tracks.available = 0` | Track leaves library listings (rows kept, so URN-keyed reads still work) |
 | `NetworkError` | Exponential backoff, 3 attempts, then pause | "Offline" banner; queue preserved |
 | `ProviderError` | Skip, log with the backend's raw payload | Generic error with a "copy details" action |
 | `RuleError` | Skip. Increment the source's failure counter | **"<source> needs updating"**, with a one-tap route into the debug view ([§10](#10-diagnosing-a-broken-source)) |
@@ -1198,6 +1198,13 @@ extracts artwork, and writes catalogue rows.
   suspend mid-scan costs one batch.
 - **Honest about failures.** A file that fails to decode gets `scan_entries.status = 'error'` with
   the reason, surfaced in a "could not import" list rather than silently vanishing.
+- **Disabling a folder hides its music, not its rows.** `setEnabled(dir, false)` recomputes
+  `tracks.available` from the rule *a track is available when some enabled dir's last scan
+  produced it*: the disabled folder's tracks leave every library listing — tracks, albums,
+  artists, search — and re-enabling restores them without a rescan. Rows are never deleted, so
+  queue restores and playlists (which read by URN, not through listings) keep working. A file
+  covered by two specified dirs belongs to the one that last scanned it; the other's next walk
+  re-points the entry and the reconcile that follows ends the scan restores visibility.
 - **Watching where possible.** `ctx.fs.watch` on desktop; interval polling on mobile, where the
   API does not exist ([04 §1](./04-core-services.md#1-ctxfs--virtual-filesystem)).
 

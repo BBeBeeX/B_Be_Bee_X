@@ -713,4 +713,13 @@ export const CORE_MIGRATIONS: Migration[] = [
       `DROP TABLE providers`,
     ],
   },
+  {
+    version: 4,
+    // Library visibility for locally-scanned tracks recomputes from
+    // `scan_entries` by track (docs/06 §12): disabling a specified dir hides
+    // the tracks its scans produced, so both the toggle and the end-of-scan
+    // reconcile correlate on `track_urn` — once per track, not a walk of the
+    // whole bookkeeping table per track.
+    up: [`CREATE INDEX idx_scan_entries_track ON scan_entries(track_urn)`],
+  },
 ]

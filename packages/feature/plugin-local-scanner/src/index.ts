@@ -69,6 +69,8 @@ interface PreparedFile {
   artworkUri?: Uri
   error?: string
   unchanged?: boolean
+  /** The row this file already had, when it is unchanged. */
+  previous?: EntryRow
 }
 
 interface EntryRow {
@@ -77,7 +79,24 @@ interface EntryRow {
   mtime: number
   status: string
   track_urn: string | null
+  specified_dir_id: string
+  error: string | null
 }
+
+/**
+ * Visibility for locally-scanned tracks, as SQL: a track is available when
+ * some **enabled** dir's last successful scan produced it.
+ *
+ * Ownership lives in `scan_entries` — one row per file, pointing at the dir
+ * that last saw it — so disabling a dir hides exactly the tracks its entries
+ * produced, and re-enabling restores them without a rescan. Rows are never
+ * touched: queue restores and playlists read by URN and keep working.
+ */
+const AVAILABILITY_CASE = `CASE WHEN EXISTS (
+  SELECT 1 FROM scan_entries se
+    JOIN scan_specified_dirs sd ON sd.id = se.specified_dir_id
+   WHERE se.track_urn = tracks.urn AND se.status = 'ok' AND sd.enabled = 1
+) THEN 1 ELSE 0 END`
 
 /**
  * How deep a scan will go.
@@ -220,11 +239,74 @@ export class Scanner extends Service implements ScannerService {
   }
 
   async setEnabled(id: string, on: boolean): Promise<void> {
-    await this.ownCtx.db.exec('UPDATE scan_specified_dirs SET enabled = ? WHERE id = ?', [on ? 1 : 0, id])
+    const before = await this.visibilityOf(id)
+    await this.ownCtx.db.transaction(async (tx) => {
+      await tx.exec('UPDATE scan_specified_dirs SET enabled = ? WHERE id = ?', [on ? 1 : 0, id])
+      await tx.exec(
+        `UPDATE tracks SET available = ${AVAILABILITY_CASE}
+         WHERE urn IN (
+           SELECT track_urn FROM scan_entries
+            WHERE specified_dir_id = ? AND track_urn IS NOT NULL
+         )`,
+        [id],
+      )
+    })
+    const after = await this.visibilityOf(id)
+    const changed = [...before]
+      .filter(([urn, available]) => after.get(urn) !== available)
+      .map(([urn]) => urn)
     this.specifiedDirList = await this.loadSpecifiedDirs()
-    this.ownCtx.logger.info('scanner: set specified dir %s enabled=%s', id, on)
+    this.ownCtx.logger.info(
+      'scanner: set specified dir %s enabled=%s (%d track(s) changed visibility)',
+      id,
+      on,
+      changed.length,
+    )
     await this.startWatching()
+    // Only the flips, so a no-op toggle does not send the library re-rendering.
+    if (changed.length > 0) this.ownCtx.emit('library/changed', 'track', changed)
     this.ownCtx.emit('scan/specified-dirs-changed', this.specifiedDirList)
+  }
+
+  /** The tracks a specified dir's scans produced, with their current availability. */
+  private async visibilityOf(id: string): Promise<Map<string, number>> {
+    const rows = await this.ownCtx.db.query<{ urn: string; available: number }>(
+      `SELECT DISTINCT se.track_urn AS urn, t.available AS available
+         FROM scan_entries se JOIN tracks t ON t.urn = se.track_urn
+        WHERE se.specified_dir_id = ? AND se.track_urn IS NOT NULL`,
+      [id],
+    )
+    return new Map(rows.map((r) => [r.urn, r.available]))
+  }
+
+  /**
+   * Availability is recomputed after every walk.
+   *
+   * A walk can move a file's entry to a different dir — overlapping specified
+   * dirs share files, and an entry follows the dir that last saw it — and
+   * ownership is what visibility follows, so the flip lands here rather than
+   * waiting for the next toggle to reveal it.
+   */
+  private async reconcileAvailability(): Promise<void> {
+    const before = await this.allVisibility()
+    await this.ownCtx.db.exec(
+      `UPDATE tracks SET available = ${AVAILABILITY_CASE}
+       WHERE urn IN (SELECT track_urn FROM scan_entries WHERE track_urn IS NOT NULL)`,
+    )
+    const after = await this.allVisibility()
+    const flips = [...before]
+      .filter(([urn, available]) => after.get(urn) !== available)
+      .map(([urn]) => urn)
+    if (flips.length > 0) this.ownCtx.emit('library/changed', 'track', flips)
+  }
+
+  private async allVisibility(): Promise<Map<string, number>> {
+    const rows = await this.ownCtx.db.query<{ urn: string; available: number }>(
+      `SELECT se.track_urn AS urn, t.available AS available
+         FROM scan_entries se JOIN tracks t ON t.urn = se.track_urn
+        WHERE se.track_urn IS NOT NULL`,
+    )
+    return new Map(rows.map((r) => [r.urn, r.available]))
   }
 
   /* ── the walk ──────────────────────────────────────────────────────── */
@@ -279,6 +361,7 @@ export class Scanner extends Service implements ScannerService {
       }
       if (!abort.signal.aborted) {
         await this.syncLibraryItems()
+        await this.reconcileAvailability()
       }
     } finally {
       signal?.removeEventListener('abort', onExternalAbort)
@@ -345,17 +428,36 @@ export class Scanner extends Service implements ScannerService {
 
     const known = new Map<string, EntryRow>()
     for (const row of await this.ownCtx.db.query<EntryRow>(
-      'SELECT uri, size, mtime, status, track_urn FROM scan_entries WHERE specified_dir_id = ?',
+      'SELECT uri, size, mtime, status, track_urn, specified_dir_id, error FROM scan_entries WHERE specified_dir_id = ?',
       [dir.id],
     )) {
       known.set(row.uri, row)
+    }
+    // The incremental key is per *file*, not per dir: two specified dirs that
+    // cover the same tree must agree a file is unchanged, and its entry must
+    // be able to move between them without re-reading its tags. Reconciliation
+    // below stays scoped to `known` — this dir's own view of what is gone.
+    const knownAnywhere = new Map<string, EntryRow>()
+    for (const row of await this.ownCtx.db.query<EntryRow>(
+      'SELECT uri, size, mtime, status, track_urn, specified_dir_id, error FROM scan_entries',
+    )) {
+      knownAnywhere.set(row.uri, row)
     }
 
     const seen = new Set<string>()
     for (let i = 0; i < files.length; i += this.config.batchSize) {
       if (opts.signal.aborted) break
       const batch = files.slice(i, i + this.config.batchSize)
-      const changed = await this.importBatch(dir, batch, known, seen, summary, opts.full, folderCovers)
+      const changed = await this.importBatch(
+        dir,
+        batch,
+        known,
+        knownAnywhere,
+        seen,
+        summary,
+        opts.full,
+        folderCovers,
+      )
 
       this.current = { specifiedDirId: dir.id, done: Math.min(i + batch.length, files.length), total: files.length }
       this.ownCtx.emit('scan/progress', dir.id, this.current.done, files.length)
@@ -410,6 +512,7 @@ export class Scanner extends Service implements ScannerService {
     dir: ScanSpecifiedDir,
     batch: FileStat[],
     known: Map<string, EntryRow>,
+    knownAnywhere: Map<string, EntryRow>,
     seen: Set<string>,
     summary: ScanSummary,
     full: boolean,
@@ -424,11 +527,11 @@ export class Scanner extends Service implements ScannerService {
 
     for (const file of batch) {
       seen.add(file.uri)
-      const previous = known.get(file.uri)
+      const previous = knownAnywhere.get(file.uri)
       // The incremental key. An unchanged file costs one `stat` — which the
       // walk already did — and nothing else.
       if (!full && previous && previous.size === file.size && previous.mtime === file.mtime) {
-        prepared.push({ file, unchanged: true })
+        prepared.push({ file, unchanged: true, previous })
         continue
       }
       try {
@@ -461,7 +564,24 @@ export class Scanner extends Service implements ScannerService {
 
     await this.ownCtx.db.transaction(async (tx) => {
       for (const item of prepared) {
-        if (item.unchanged) continue
+        if (item.unchanged) {
+          // An unchanged file costs a stat — and, when two specified dirs
+          // cover the same tree, an ownership move: the entry follows the dir
+          // that last saw the file, which is what visibility follows. Without
+          // this, a file owned by a disabled dir would stay hidden even while
+          // an enabled dir still covers it.
+          if (item.previous && item.previous.specified_dir_id !== dir.id) {
+            await this.writeEntry(
+              tx,
+              dir.id,
+              item.file,
+              item.previous.status,
+              item.previous.track_urn,
+              item.previous.error,
+            )
+          }
+          continue
+        }
 
         if (item.error || !item.metadata) {
           summary.errors++

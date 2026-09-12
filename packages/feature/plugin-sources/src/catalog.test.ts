@@ -309,6 +309,50 @@ describe('the FTS index', () => {
   })
 })
 
+describe('withdrawn tracks', () => {
+  it('leave listings, search and album pages until their availability returns', async () => {
+    const { ctx, sources, db } = await fixture()
+    ctx.emit('library/changed', 'track', [
+      `BBeBee:${SOURCE}:track:joga`,
+      `BBeBee:${SOURCE}:track:hunter`,
+      `BBeBee:${SOURCE}:track:xtal`,
+    ])
+    await tick()
+    const withdraw = (id: string) =>
+      db.exec('UPDATE tracks SET available = 0 WHERE urn = ?', [`BBeBee:${SOURCE}:track:${id}`])
+
+    // Hunter shares Homogenic with Jóga; Xtal is Aphex Twin's only track and
+    // has no album at all.
+    await withdraw('hunter')
+    await withdraw('xtal')
+
+    expect((await sources.listTracks()).items.map((t) => t.urn)).toEqual([
+      `BBeBee:${SOURCE}:track:joga`,
+    ])
+    // An album hides only when its last track does; an artist likewise.
+    expect((await sources.listAlbums()).items.map((a) => a.urn)).toEqual([
+      `BBeBee:${SOURCE}:album:homogenic`,
+    ])
+    expect((await sources.listArtists()).items.map((a) => a.urn)).toEqual([
+      `BBeBee:${SOURCE}:artist:bjork`,
+    ])
+
+    const album = await sources.getAlbum(`BBeBee:${SOURCE}:album:homogenic`)
+    expect(album!.tracks.map((t) => t.urn)).toEqual([`BBeBee:${SOURCE}:track:joga`])
+
+    expect((await sources.searchLocal('xtal')).tracks?.items ?? []).toHaveLength(0)
+    expect((await sources.searchLocal('joga')).tracks?.items).toHaveLength(1)
+
+    // The row was never touched — flipping availability back is the whole restore.
+    await db.exec('UPDATE tracks SET available = 1 WHERE urn = ?', [
+      `BBeBee:${SOURCE}:track:hunter`,
+    ])
+    expect((await sources.listTracks()).items.map((t) => t.urn)).toContain(
+      `BBeBee:${SOURCE}:track:hunter`,
+    )
+  })
+})
+
 describe('ftsQuery', () => {
   it('makes each word a quoted prefix term', () => {
     expect(ftsQuery('bjork ho')).toBe('"bjork"* AND "ho"*')

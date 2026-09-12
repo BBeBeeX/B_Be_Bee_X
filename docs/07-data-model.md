@@ -309,7 +309,8 @@ CREATE TABLE tracks (
   replay_gain_track  REAL,
   replay_gain_album  REAL,
   peak_track         REAL,
-  available          INTEGER NOT NULL DEFAULT 1,   -- cleared on NotFoundError
+  available          INTEGER NOT NULL DEFAULT 1,   -- 0 = withdrawn by its provider
+                                                 -- (remote: NotFoundError; local: scan dir disabled)
   qualities_json     TEXT,                          -- StreamQuality[]
   artwork_id         TEXT REFERENCES artworks(id),
   fetched_at         INTEGER NOT NULL,
@@ -464,6 +465,7 @@ CREATE TABLE scan_entries (
   scanned_at       INTEGER NOT NULL
 );
 CREATE INDEX idx_scan_entries_specified_dir ON scan_entries(specified_dir_id, status);
+CREATE INDEX idx_scan_entries_track ON scan_entries(track_urn);
 ```
 
 `(size, mtime)` is the incremental-scan key: unchanged files cost one `stat` and nothing more
