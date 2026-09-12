@@ -248,6 +248,13 @@ describe('Artwork', () => {
     const out = html(h(Artwork, { size: 48, artwork: { id: 'a', sourceUrl: 'https://x/a.jpg' } }))
     expect(out).toContain('alt=""')
   })
+
+  it('rewrites file:// URLs to bbebee-file:// for privileged local loading', () => {
+    const out = html(
+      h(Artwork, { size: 48, artwork: { id: 'a', sourceUrl: 'file:///cache/artworks/1.jpg' } }),
+    )
+    expect(out).toContain('src="bbebee-file:///cache/artworks/1.jpg"')
+  })
 })
 
 describe('Text', () => {

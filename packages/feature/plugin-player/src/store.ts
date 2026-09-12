@@ -226,7 +226,7 @@ export class PlayerStore {
                 WHERE ta.track_urn = t.urn ORDER BY ta.ordinal ASC LIMIT 1) AS artist
          FROM tracks t
          LEFT JOIN albums al ON al.urn = t.album_urn
-         LEFT JOIN artworks aw ON aw.id = t.artwork_id
+         LEFT JOIN artworks aw ON aw.id = COALESCE(t.artwork_id, al.artwork_id)
         WHERE t.urn = ?`,
       [urn],
     )
@@ -234,7 +234,7 @@ export class PlayerStore {
     const artwork: ArtworkRef | undefined = row.artwork_id
       ? {
           id: row.artwork_id,
-          sourceUrl: row.source_url ?? undefined,
+          sourceUrl: row.source_url ?? row.artwork_uri ?? undefined,
           blurhash: row.blurhash ?? undefined,
           dominantColor: row.dominant_color ?? undefined,
         }

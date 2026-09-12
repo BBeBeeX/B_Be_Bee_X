@@ -173,6 +173,47 @@ describe('scanning', () => {
     )
     expect(libraryAlbums).toHaveLength(1)
     expect(libraryAlbums[0]!.source_id).toBe('local')
+
+    const artworkRow = await h.db.get<{ id: string; local_uri: string | null; bytes: number }>(
+      'SELECT id, local_uri, bytes FROM artworks',
+    )
+    expect(artworkRow).toBeDefined()
+    expect(artworkRow?.local_uri).toBeDefined()
+    expect(await h.ctx.fs.exists(artworkRow!.local_uri!)).toBe(true)
+    expect(await h.ctx.fs.readBytes(artworkRow!.local_uri!)).toEqual(new Uint8Array([1, 2, 3, 4]))
+  })
+
+  it('imports folder cover when audio has no embedded artwork', async () => {
+    const h = await harness()
+    const song = await h.write('track.mp3')
+    const coverBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x11, 0x22])
+    const coverUri = h.ctx.fs.join(h.uri, 'cover.jpg')
+    await h.ctx.fs.writeFile(coverUri, coverBytes)
+
+    h.codec.tags.set(song, {
+      title: 'No Art Song',
+      album: 'Folder Album',
+      artist: 'Folder Artist',
+      hasArtwork: false,
+    })
+
+    await h.scanner.addSpecifiedDir(h.uri)
+    const summary = await h.scanner.scan()
+    expect(summary.added).toBe(1)
+
+    const artworkRow = await h.db.get<{ id: string; local_uri: string | null; bytes: number }>(
+      'SELECT id, local_uri, bytes FROM artworks',
+    )
+    expect(artworkRow).toBeDefined()
+    expect(artworkRow?.local_uri).toBeDefined()
+    expect(await h.ctx.fs.exists(artworkRow!.local_uri!)).toBe(true)
+    expect(await h.ctx.fs.readBytes(artworkRow!.local_uri!)).toEqual(coverBytes)
+
+    const track = await h.db.get<{ artwork_id: string }>('SELECT artwork_id FROM tracks WHERE title = ?', ['No Art Song'])
+    expect(track?.artwork_id).toBe(artworkRow!.id)
+
+    const album = await h.db.get<{ artwork_id: string }>('SELECT artwork_id FROM albums WHERE title = ?', ['Folder Album'])
+    expect(album?.artwork_id).toBe(artworkRow!.id)
   })
 
   it('rescans an unchanged library with stat calls and nothing else', async () => {

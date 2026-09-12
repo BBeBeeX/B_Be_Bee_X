@@ -19,6 +19,7 @@ import {
   net,
   powerMonitor,
   powerSaveBlocker,
+  protocol,
   safeStorage,
   shell,
   Tray,
@@ -349,7 +350,32 @@ function systemHost(host: () => Host | undefined) {
   }
 }
 
+/**
+ * Privileged custom scheme for local media/artwork assets.
+ *
+ * Chromium sandboxes the renderer with contextIsolation and strict CSP,
+ * disallowing direct `file://` fetch/rendering. `bbebee-file://` serves
+ * local files through Electron's net.fetch in the main process.
+ */
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'bbebee-file',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+])
+
 void app.whenReady().then(async () => {
+  protocol.handle('bbebee-file', (request) => {
+    const fileUrl = request.url.replace(/^bbebee-file:\/\//, 'file://')
+    return net.fetch(fileUrl)
+  })
+
   registerHandlers()
 
   // A holder rather than a bare binding: `systemHost` needs to reach the host

@@ -52,5 +52,16 @@ describe('the renderer CSP', () => {
     expect(media).toContain('data:')
     expect(media).toContain('http:')
     expect(media).toContain('https:')
+    expect(media).toContain('bbebee-file:')
+  })
+
+  it('allows local and remote artwork images', () => {
+    const img = policy.get('img-src') ?? []
+    expect(img).toContain("'self'")
+    expect(img).toContain('data:')
+    expect(img).toContain('blob:')
+    expect(img).toContain('bbebee-file:')
+    expect(img).toContain('https:')
   })
 })
+

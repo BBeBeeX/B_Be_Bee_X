@@ -405,10 +405,19 @@ export class SourceLocal extends Service {
       duration_ms: number | null
       year: number | null
       available: number
+      artwork_id: string | null
+      artwork_source_url: string | null
+      artwork_local_uri: string | null
+      blurhash: string | null
+      dominant_color: string | null
     }>(
       `SELECT t.urn, t.title, t.album_urn, al.title AS album_title, t.track_no, t.disc_no,
-              t.duration_ms, t.year, t.available
-         FROM tracks t LEFT JOIN albums al ON al.urn = t.album_urn
+              t.duration_ms, t.year, t.available,
+              aw.id AS artwork_id, aw.source_url AS artwork_source_url, aw.local_uri AS artwork_local_uri,
+              aw.blurhash, aw.dominant_color
+         FROM tracks t
+         LEFT JOIN albums al ON al.urn = t.album_urn
+         LEFT JOIN artworks aw ON aw.id = COALESCE(t.artwork_id, al.artwork_id)
         WHERE t.urn IN (${holes})`,
       mine,
     )
@@ -435,6 +444,15 @@ export class SourceLocal extends Service {
     }
 
     for (const row of rows) {
+      const artwork = row.artwork_id
+        ? {
+            id: row.artwork_id,
+            sourceUrl: row.artwork_source_url ?? row.artwork_local_uri ?? undefined,
+            ...(row.blurhash ? { blurhash: row.blurhash } : {}),
+            ...(row.dominant_color ? { dominantColor: row.dominant_color } : {}),
+          }
+        : undefined
+
       out.set(row.urn, {
         urn: row.urn,
         title: row.title,
@@ -446,6 +464,7 @@ export class SourceLocal extends Service {
         ...(row.duration_ms !== null ? { durationMs: row.duration_ms } : {}),
         ...(row.year !== null ? { year: row.year } : {}),
         available: row.available === 1,
+        ...(artwork ? { artwork } : {}),
       })
     }
     return out

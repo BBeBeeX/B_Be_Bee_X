@@ -295,7 +295,8 @@ export function Text(props: TextProps) {
 
 export function Artwork(props: ArtworkProps) {
   const { size, radius = tokens.radius.sm } = props
-  const uri = props.artwork?.sourceUrl
+  const rawUri = props.artwork?.sourceUrl
+  const uri = rawUri?.startsWith('file://') ? rawUri.replace(/^file:\/\//, 'bbebee-file://') : rawUri
   // The blurhash is the *background*, so it shows while the image loads and
   // there is no grey flash and no layout shift on scroll (docs/08 4).
   return h(

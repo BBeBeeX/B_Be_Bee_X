@@ -30,7 +30,7 @@ import type {
   Uri,
 } from '@BBeBee/protocol'
 import { forgetFile, importTrack } from './import.js'
-import { stableId } from './ids.js'
+import { artworkId, stableId } from './ids.js'
 import { SCANNER_VIEWS } from './views.js'
 
 export interface ScannerConfig {
@@ -66,6 +66,7 @@ interface PreparedFile {
   file: FileStat
   metadata?: AudioMetadata
   artwork?: Uint8Array
+  artworkUri?: Uri
   error?: string
   unchanged?: boolean
 }
@@ -99,7 +100,7 @@ const MAX_SCAN_DEPTH = 24
 const MAX_SCAN_DIRS = 20_000
 
 export class Scanner extends Service implements ScannerService {
-  static inject = ['fs', 'db', 'codec']
+  static inject = ['fs', 'db', 'codec', 'paths']
 
   private readonly config: Required<ScannerConfig>
 
@@ -307,10 +308,12 @@ export class Scanner extends Service implements ScannerService {
     this.current = { specifiedDirId: dir.id, done: 0 }
 
     let files: FileStat[]
+    let folderCovers: Map<string, FileStat>
     let truncated: boolean
     try {
       const walked = await this.walk(dir.uri, dir.recursive, opts.signal)
       files = walked.files
+      folderCovers = walked.folderCovers
       truncated = walked.truncated
     } catch (error) {
       this.ownCtx.logger.error(
@@ -352,7 +355,7 @@ export class Scanner extends Service implements ScannerService {
     for (let i = 0; i < files.length; i += this.config.batchSize) {
       if (opts.signal.aborted) break
       const batch = files.slice(i, i + this.config.batchSize)
-      const changed = await this.importBatch(dir, batch, known, seen, summary, opts.full)
+      const changed = await this.importBatch(dir, batch, known, seen, summary, opts.full, folderCovers)
 
       this.current = { specifiedDirId: dir.id, done: Math.min(i + batch.length, files.length), total: files.length }
       this.ownCtx.emit('scan/progress', dir.id, this.current.done, files.length)
@@ -410,6 +413,7 @@ export class Scanner extends Service implements ScannerService {
     seen: Set<string>,
     summary: ScanSummary,
     full: boolean,
+    folderCovers?: Map<string, FileStat>,
   ): Promise<string[]> {
     const changed: string[] = []
     const now = Date.now()
@@ -429,10 +433,26 @@ export class Scanner extends Service implements ScannerService {
       }
       try {
         const metadata = await this.ownCtx.codec.readMetadata(file.uri)
-        const artwork = metadata.hasArtwork
+        let artwork = metadata.hasArtwork
           ? await this.ownCtx.codec.readArtwork(file.uri).catch(() => undefined)
           : undefined
-        prepared.push({ file, metadata, ...(artwork ? { artwork } : {}) })
+        if (!artwork && folderCovers) {
+          const parentDir = parentDirectoryOf(file.uri)
+          const folderCover = folderCovers.get(parentDir)
+          if (folderCover) {
+            artwork = await this.ownCtx.fs.readBytes(folderCover.uri).catch(() => undefined)
+          }
+        }
+        let artworkUri: Uri | undefined
+        if (artwork && artwork.length > 0) {
+          artworkUri = await this.saveArtwork(artwork)
+        }
+        prepared.push({
+          file,
+          metadata,
+          ...(artwork ? { artwork } : {}),
+          ...(artworkUri ? { artworkUri } : {}),
+        })
       } catch (error) {
         this.ownCtx.logger.warn('scanner: could not read metadata for %s: %s', file.uri, String(error))
         prepared.push({ file, error: error instanceof Error ? error.message : String(error) })
@@ -457,6 +477,7 @@ export class Scanner extends Service implements ScannerService {
             mtime: item.file.mtime,
             metadata: item.metadata,
             ...(item.artwork ? { artwork: item.artwork } : {}),
+            ...(item.artworkUri ? { artworkUri: item.artworkUri } : {}),
             format: extensionOf(item.file.uri),
           },
         )
@@ -468,6 +489,18 @@ export class Scanner extends Service implements ScannerService {
     })
 
     return changed
+  }
+
+  private async saveArtwork(bytes: Uint8Array): Promise<Uri> {
+    const id = artworkId(bytes)
+    const ext = extensionForImage(bytes)
+    const cacheDir = this.ownCtx.fs.join(this.ownCtx.paths.cache, 'artworks')
+    await this.ownCtx.fs.mkdir(cacheDir, { recursive: true }).catch(() => undefined)
+    const targetUri = this.ownCtx.fs.join(cacheDir, `${id}.${ext}`)
+    if (!(await this.ownCtx.fs.exists(targetUri).catch(() => false))) {
+      await this.ownCtx.fs.writeFile(targetUri, bytes).catch(() => undefined)
+    }
+    return targetUri
   }
 
   private async writeEntry(
@@ -554,8 +587,9 @@ export class Scanner extends Service implements ScannerService {
     uri: Uri,
     recursive: boolean,
     signal: AbortSignal,
-  ): Promise<{ files: FileStat[]; truncated: boolean }> {
+  ): Promise<{ files: FileStat[]; folderCovers: Map<string, FileStat>; truncated: boolean }> {
     const found = new Map<Uri, FileStat>()
+    const folderCovers = new Map<string, { stat: FileStat; score: number }>()
     const visited = new Set<Uri>([uri])
     let queue: Uri[] = [uri]
     let depth = 0
@@ -565,7 +599,11 @@ export class Scanner extends Service implements ScannerService {
     while (queue.length > 0 && depth <= MAX_SCAN_DEPTH && listed < MAX_SCAN_DIRS) {
       const next: Uri[] = []
       for (const dir of queue) {
-        if (signal.aborted) return { files: [...found.values()], truncated: true }
+        if (signal.aborted) {
+          const covers = new Map<string, FileStat>()
+          for (const [k, v] of folderCovers) covers.set(k, v.stat)
+          return { files: [...found.values()], folderCovers: covers, truncated: true }
+        }
         if (++listed > MAX_SCAN_DIRS) break
         let listing: FileStat[]
         try {
@@ -588,12 +626,25 @@ export class Scanner extends Service implements ScannerService {
             next.push(entry.uri)
             continue
           }
-          if (this.isAudio(entry.uri)) found.set(entry.uri, entry)
+          if (this.isAudio(entry.uri)) {
+            found.set(entry.uri, entry)
+          } else {
+            const score = folderCoverScore(entry.uri)
+            if (score >= 0) {
+              const existing = folderCovers.get(dir)
+              if (!existing || score < existing.score) {
+                folderCovers.set(dir, { stat: entry, score })
+              }
+            }
+          }
         }
       }
       queue = next
       depth++
     }
+
+    const covers = new Map<string, FileStat>()
+    for (const [k, v] of folderCovers) covers.set(k, v.stat)
 
     const truncated = queue.length > 0 || listed >= MAX_SCAN_DIRS || unreadable > 0
     if (unreadable > 0) {
@@ -616,7 +667,7 @@ export class Scanner extends Service implements ScannerService {
           'anything, because it did not see everything.',
       )
     }
-    return { files: [...found.values()], truncated }
+    return { files: [...found.values()], folderCovers: covers, truncated }
   }
 
   private isAudio(uri: Uri): boolean {
@@ -763,6 +814,54 @@ function extensionOf(uri: string): string | undefined {
   const name = normalized.split('/').pop() ?? ''
   const dot = name.lastIndexOf('.')
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : undefined
+}
+
+const COVER_BASE_NAMES = ['cover', 'folder', 'front', 'album']
+const COVER_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp']
+
+function folderCoverScore(uri: Uri): number {
+  const ext = extensionOf(uri)
+  if (!ext || !COVER_EXTENSIONS.includes(ext)) return -1
+  const normalized = uri.replace(/\\/g, '/')
+  const fileName = normalized.split('/').pop() ?? ''
+  const dot = fileName.lastIndexOf('.')
+  const baseName = (dot > 0 ? fileName.slice(0, dot) : fileName).toLowerCase()
+  const idx = COVER_BASE_NAMES.indexOf(baseName)
+  return idx === -1 ? -1 : idx
+}
+
+function parentDirectoryOf(uri: string): string {
+  const normalized = uri.replace(/\\/g, '/')
+  const idx = normalized.lastIndexOf('/')
+  return idx > 0 ? normalized.slice(0, idx) : normalized
+}
+
+function extensionForImage(bytes: Uint8Array): string {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpg'
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  ) {
+    return 'png'
+  }
+  if (bytes.length >= 4 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'gif'
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return 'webp'
+  }
+  return 'jpg'
 }
 
 export const name = 'plugin-local-scanner'

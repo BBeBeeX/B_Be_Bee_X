@@ -16,6 +16,8 @@
   "capabilities": [
     "fs:read:media",
     "fs:read:all",
+    "fs:read:cache",
+    "fs:write:cache",
     "db:read:core",
     "db:write:core",
     "background"

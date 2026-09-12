@@ -66,7 +66,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-local-scanner": {
     plugin: pluginLocalScanner,
-    manifest: {"id":"@BBeBee/plugin-local-scanner","version":"0.0.0","displayName":"Local Scanner","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["fs:read:media","fs:read:all","db:read:core","db:write:core","background"],"contributes":{"services":["scanner"]}},
+    manifest: {"id":"@BBeBee/plugin-local-scanner","version":"0.0.0","displayName":"Local Scanner","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["fs:read:media","fs:read:all","fs:read:cache","fs:write:cache","db:read:core","db:write:core","background"],"contributes":{"services":["scanner"]}},
     builtin: true,
   },
   "@BBeBee/plugin-local-scanner-ui-mobile": {

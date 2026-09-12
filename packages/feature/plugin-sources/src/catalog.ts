@@ -54,6 +54,7 @@ interface TrackRow {
   blurhash: string | null
   dominant_color: string | null
   artwork_source_url: string | null
+  artwork_local_uri: string | null
   loved?: number | null
 }
 
@@ -71,6 +72,7 @@ interface AlbumRow {
   blurhash: string | null
   dominant_color: string | null
   artwork_source_url: string | null
+  artwork_local_uri: string | null
 }
 
 interface ArtistRow {
@@ -82,6 +84,7 @@ interface ArtistRow {
   blurhash: string | null
   dominant_color: string | null
   artwork_source_url: string | null
+  artwork_local_uri: string | null
 }
 
 interface CreditRow {
@@ -97,11 +100,12 @@ function artworkOf(row: {
   blurhash: string | null
   dominant_color: string | null
   artwork_source_url: string | null
+  artwork_local_uri?: string | null
 }): ArtworkRef | undefined {
   if (!row.artwork_id) return undefined
   return {
     id: row.artwork_id,
-    sourceUrl: row.artwork_source_url ?? undefined,
+    sourceUrl: row.artwork_source_url ?? row.artwork_local_uri ?? undefined,
     blurhash: row.blurhash ?? undefined,
     dominantColor: row.dominant_color ?? undefined,
   }
@@ -109,7 +113,8 @@ function artworkOf(row: {
 
 /** `artworks` columns every entity query needs, joined the same way each time. */
 const ARTWORK_COLUMNS = `
-  aw.id AS artwork_id, aw.blurhash, aw.dominant_color, aw.source_url AS artwork_source_url`
+  aw.id AS artwork_id, aw.blurhash, aw.dominant_color, aw.source_url AS artwork_source_url,
+  aw.local_uri AS artwork_local_uri`
 
 /**
  * How each sort maps to SQL.
@@ -196,7 +201,7 @@ export class Catalog {
               ${ARTWORK_COLUMNS}
          FROM tracks t
          LEFT JOIN albums al ON al.urn = t.album_urn
-         LEFT JOIN artworks aw ON aw.id = t.artwork_id
+         LEFT JOIN artworks aw ON aw.id = COALESCE(t.artwork_id, al.artwork_id)
          LEFT JOIN track_stats st ON st.urn = t.urn
          LEFT JOIN track_artists ta ON ta.track_urn = t.urn AND ta.ordinal = 0
          LEFT JOIN artists primary_artist ON primary_artist.urn = ta.artist_urn
@@ -275,7 +280,7 @@ export class Catalog {
               ${ARTWORK_COLUMNS}
          FROM tracks t
          LEFT JOIN albums al ON al.urn = t.album_urn
-         LEFT JOIN artworks aw ON aw.id = t.artwork_id
+         LEFT JOIN artworks aw ON aw.id = COALESCE(t.artwork_id, al.artwork_id)
          LEFT JOIN track_stats st ON st.urn = t.urn
         WHERE t.album_urn = ?
         ORDER BY COALESCE(t.disc_no, 1) ASC, COALESCE(t.track_no, 0) ASC, t.urn ASC`,
@@ -356,7 +361,7 @@ export class Catalog {
          JOIN tracks_fts_map m ON m.rowid = f.rowid
          JOIN tracks t ON t.urn = m.urn
          LEFT JOIN albums al ON al.urn = t.album_urn
-         LEFT JOIN artworks aw ON aw.id = t.artwork_id
+         LEFT JOIN artworks aw ON aw.id = COALESCE(t.artwork_id, al.artwork_id)
          LEFT JOIN track_stats st ON st.urn = t.urn
         WHERE tracks_fts MATCH ?${filter.sql}
         ORDER BY rank

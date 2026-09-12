@@ -130,6 +130,32 @@ describe('catalogue reads', () => {
     expect(joga.artwork?.dominantColor).toBe('#3a5f7d')
   })
 
+  it('falls back to local_uri when source_url is absent, and inherits album artwork', async () => {
+    const { sources, db } = await fixture()
+    const now = Date.now()
+    await db.exec(
+      `INSERT INTO artworks (id, local_uri, fetched_at) VALUES (?, ?, ?)`,
+      ['art_local', 'file:///cache/cover.jpg', now],
+    )
+    await db.exec(
+      `INSERT INTO albums (urn, source_id, remote_id, title, sort_title, artwork_id, fetched_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [`BBeBee:${SOURCE}:album:local_album`, SOURCE, 'local_album', 'Local Album', 'Local Album', 'art_local', now],
+    )
+    // Track has no artwork_id of its own, so it should inherit from album
+    await db.exec(
+      `INSERT INTO tracks (urn, source_id, remote_id, title, sort_title, album_urn, available, fetched_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+      [`BBeBee:${SOURCE}:track:local_track`, SOURCE, 'local_track', 'Local Track', 'Local Track', `BBeBee:${SOURCE}:album:local_album`, now],
+    )
+
+    const page = await sources.listTracks({ sourceIds: [SOURCE] })
+    const track = page.items.find((t) => t.title === 'Local Track')!
+    expect(track).toBeDefined()
+    expect(track.artwork?.id).toBe('art_local')
+    expect(track.artwork?.sourceUrl).toBe('file:///cache/cover.jpg')
+  })
+
   it('sorts in SQL, in both directions', async () => {
     const { sources } = await fixture()
     expect((await sources.listTracks({ sort: 'duration' })).items.map((t) => t.title)).toEqual([
