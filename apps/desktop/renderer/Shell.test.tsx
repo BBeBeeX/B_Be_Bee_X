@@ -222,4 +222,145 @@ describe('the desktop shell', () => {
     })
     expect(container.textContent).toContain('Settings')
   })
+
+  it('applies rounded card layout with dark grey background and gaps', async () => {
+    const { container } = await mount((ui) => {
+      ui.routes = [route('home', 'Home')]
+      ui.views.set('home', () => h('p', null, 'home page'))
+      ui.views.set('player.now-playing-bar', () => h('div', null, 'player bar'))
+    })
+
+    const nav = container.querySelector('nav') as HTMLElement
+    const main = container.querySelector('main') as HTMLElement
+    const footer = container.querySelector('footer') as HTMLElement
+    expect(nav).not.toBeNull()
+    expect(main).not.toBeNull()
+    expect(footer).not.toBeNull()
+
+    // Left and right panels: #121212 background, 8px border radius
+    expect(nav.style.backgroundColor).toBe('rgb(18, 18, 18)')
+    expect(nav.style.borderRadius).toBe('8px')
+    expect(main.style.backgroundColor).toBe('rgb(18, 18, 18)')
+    expect(main.style.borderRadius).toBe('8px')
+
+    // Bottom bar: #000000 background
+    expect(footer.style.backgroundColor).toBe('rgb(0, 0, 0)')
+
+    // Workspace container: 8px gap and 8px padding
+    const workspace = nav.parentElement as HTMLElement
+    expect(workspace).not.toBeNull()
+    expect(workspace.style.gap).toBe('8px')
+    expect(workspace.style.padding).toBe('8px')
+  })
+
+  it('navigates right pane to album view while keeping sidebar intact', async () => {
+    const { container } = await mount((ui) => {
+      ui.routes = [route('sources.library', 'Library')]
+      ui.views.set('sources.library', ({ onOpenAlbum }: { onOpenAlbum?: (urn: string) => void }) =>
+        h(
+          'div',
+          null,
+          h('p', null, 'library list'),
+          h(
+            'button',
+            {
+              'aria-label': 'Test Album',
+              onClick: () => onOpenAlbum?.('BBeBee:local:album:test-42'),
+            },
+            'Open Album',
+          ),
+        ),
+      )
+      ui.views.set('sources.album', ({ urn }: { urn?: string }) =>
+        h('div', { 'data-testid': 'album-screen' }, `Album Detail: ${urn}`),
+      )
+    })
+
+    expect(container.textContent).toContain('library list')
+    const nav = container.querySelector('nav')
+    expect(nav).not.toBeNull()
+    expect(nav?.textContent).toContain('Library')
+
+    // Click album to navigate
+    const albumBtn = container.querySelector('button[aria-label="Test Album"]') as HTMLButtonElement
+    expect(albumBtn).not.toBeNull()
+    await act(async () => {
+      albumBtn.click()
+    })
+
+    // Right pane is now album screen with correct URN
+    expect(container.textContent).toContain('Album Detail: BBeBee:local:album:test-42')
+    // Sidebar is still mounted and intact
+    expect(container.querySelector('nav')).toBe(nav)
+    expect(nav?.textContent).toContain('Library')
+  })
+
+  it('controls right-side route history via TopBar Back, Forward, and Home buttons', async () => {
+    const { container, ctx } = await mount((ui) => {
+      ui.routes = [
+        route('home', 'Home'),
+        route('page-a', 'Page A'),
+        route('page-b', 'Page B'),
+      ]
+      ui.views.set('home', () => h('p', null, 'Home Screen'))
+      ui.views.set('page-a', () => h('p', null, 'Page A Content'))
+      ui.views.set('page-b', () => h('p', null, 'Page B Content'))
+    })
+
+    const backBtn = container.querySelector('button[aria-label="Go back"]') as HTMLButtonElement
+    const forwardBtn = container.querySelector('button[aria-label="Go forward"]') as HTMLButtonElement
+    const homeBtn = container.querySelector('button[aria-label="Home"]') as HTMLButtonElement
+
+    // Initial state: on Home, cannot go back or forward
+    expect(container.textContent).toContain('Home Screen')
+    expect(backBtn.disabled).toBe(true)
+    expect(forwardBtn.disabled).toBe(true)
+
+    // Navigate to Page A
+    await act(async () => {
+      ctx.emit('ui/navigate', 'page-a')
+    })
+    expect(container.textContent).toContain('Page A Content')
+    expect(backBtn.disabled).toBe(false)
+    expect(forwardBtn.disabled).toBe(true)
+
+    // Navigate to Page B
+    await act(async () => {
+      ctx.emit('ui/navigate', 'page-b')
+    })
+    expect(container.textContent).toContain('Page B Content')
+    expect(backBtn.disabled).toBe(false)
+    expect(forwardBtn.disabled).toBe(true)
+
+    // Click Back: returns to Page A
+    await act(async () => {
+      backBtn.click()
+    })
+    expect(container.textContent).toContain('Page A Content')
+    expect(backBtn.disabled).toBe(false)
+    expect(forwardBtn.disabled).toBe(false)
+
+    // Click Back again: returns to Home
+    await act(async () => {
+      backBtn.click()
+    })
+    expect(container.textContent).toContain('Home Screen')
+    expect(backBtn.disabled).toBe(true)
+    expect(forwardBtn.disabled).toBe(false)
+
+    // Click Forward: returns to Page A
+    await act(async () => {
+      forwardBtn.click()
+    })
+    expect(container.textContent).toContain('Page A Content')
+    expect(backBtn.disabled).toBe(false)
+    expect(forwardBtn.disabled).toBe(false)
+
+    // Click Home: navigates back to Home
+    await act(async () => {
+      homeBtn.click()
+    })
+    expect(container.textContent).toContain('Home Screen')
+    expect(backBtn.disabled).toBe(false)
+  })
 })

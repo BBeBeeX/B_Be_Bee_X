@@ -67,8 +67,8 @@ export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): Re
         alignItems: 'center',
         gap: tokens.space[4],
         padding: `${tokens.space[2]}px ${tokens.space[4]}px`,
-        borderTop: `1px solid ${p().border.subtle}`,
-        background: p().bg.raised,
+        borderTop: 'none',
+        background: '#000000',
       },
     },
     h(

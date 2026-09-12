@@ -218,21 +218,38 @@ export interface TopBarProps {
   onHome?: () => void
   onSearch?: (query: string) => void
   onOpenSettings?: () => void
+  canGoBack?: boolean
+  canGoForward?: boolean
+  onBack?: () => void
+  onForward?: () => void
 }
 
-export function TopBar({ ctx: _ctx, onHome, onSearch, onOpenSettings }: TopBarProps): ReactElement {
+export function TopBar({
+  ctx: _ctx,
+  onHome,
+  onSearch,
+  onOpenSettings,
+  canGoBack = false,
+  canGoForward = false,
+  onBack,
+  onForward,
+}: TopBarProps): ReactElement {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   const handleBack = () => {
-    if (typeof window !== 'undefined' && window.history) {
+    if (onBack) {
+      onBack()
+    } else if (typeof window !== 'undefined' && window.history) {
       window.history.back()
     }
   }
 
   const handleForward = () => {
-    if (typeof window !== 'undefined' && window.history) {
+    if (onForward) {
+      onForward()
+    } else if (typeof window !== 'undefined' && window.history) {
       window.history.forward()
     }
   }
@@ -410,6 +427,7 @@ export function TopBar({ ctx: _ctx, onHome, onSearch, onOpenSettings }: TopBarPr
           type: 'button',
           'aria-label': 'Go back',
           title: 'Back',
+          disabled: !canGoBack,
           onClick: handleBack,
           style: {
             display: 'flex',
@@ -420,17 +438,21 @@ export function TopBar({ ctx: _ctx, onHome, onSearch, onOpenSettings }: TopBarPr
             borderRadius: '50%',
             border: 'none',
             background: 'transparent',
-            color: '#A0A0AE',
-            cursor: 'pointer',
+            color: canGoBack ? '#A0A0AE' : '#454550',
+            cursor: canGoBack ? 'pointer' : 'default',
             transition: 'background-color 0.15s ease, color 0.15s ease',
           },
           onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'
-            e.currentTarget.style.color = '#F5F5F7'
+            if (canGoBack) {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'
+              e.currentTarget.style.color = '#F5F5F7'
+            }
           },
           onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-            e.currentTarget.style.backgroundColor = 'transparent'
-            e.currentTarget.style.color = '#A0A0AE'
+            if (canGoBack) {
+              e.currentTarget.style.backgroundColor = 'transparent'
+              e.currentTarget.style.color = '#A0A0AE'
+            }
           },
         },
         h(
@@ -456,6 +478,7 @@ export function TopBar({ ctx: _ctx, onHome, onSearch, onOpenSettings }: TopBarPr
           type: 'button',
           'aria-label': 'Go forward',
           title: 'Forward',
+          disabled: !canGoForward,
           onClick: handleForward,
           style: {
             display: 'flex',
@@ -466,17 +489,21 @@ export function TopBar({ ctx: _ctx, onHome, onSearch, onOpenSettings }: TopBarPr
             borderRadius: '50%',
             border: 'none',
             background: 'transparent',
-            color: '#A0A0AE',
-            cursor: 'pointer',
+            color: canGoForward ? '#A0A0AE' : '#454550',
+            cursor: canGoForward ? 'pointer' : 'default',
             transition: 'background-color 0.15s ease, color 0.15s ease',
           },
           onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'
-            e.currentTarget.style.color = '#F5F5F7'
+            if (canGoForward) {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'
+              e.currentTarget.style.color = '#F5F5F7'
+            }
           },
           onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-            e.currentTarget.style.backgroundColor = 'transparent'
-            e.currentTarget.style.color = '#A0A0AE'
+            if (canGoForward) {
+              e.currentTarget.style.backgroundColor = 'transparent'
+              e.currentTarget.style.color = '#A0A0AE'
+            }
           },
         },
         h(

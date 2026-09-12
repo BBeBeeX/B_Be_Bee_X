@@ -93,6 +93,11 @@ export function LibraryScreen({
   const albums = useAlbums(ctx, query)
   const active = tab === 'tracks' ? tracks : albums
 
+  const handleOpenAlbum = (urn: string) => {
+    onOpenAlbum?.(urn)
+    serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.album, { urn })
+  }
+
   return h(
     'div',
     { style: { display: 'flex', flexDirection: 'column', height: '100%' } },
@@ -158,7 +163,7 @@ export function LibraryScreen({
           : h(AlbumGrid, {
               albums: albums.items,
               scope,
-              onOpenAlbum,
+              onOpenAlbum: handleOpenAlbum,
               onEndReached: albums.loadMore,
             }),
   )

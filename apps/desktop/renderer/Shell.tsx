@@ -9,6 +9,7 @@
 import {
   Component,
   createElement as h,
+  useCallback,
   useEffect,
   useState,
   type ComponentType,
@@ -101,28 +102,103 @@ class ViewBoundary extends Component<
   }
 }
 
+interface HistoryItem {
+  id: string
+  params?: Record<string, unknown>
+}
+
 export function Shell({ ctx }: { ctx: Context }) {
   const { entries } = useEntries(ctx)
-  const [activeId, setActiveId] = useState<string | undefined>()
+  const defaultEntry = entries.find((e) => e.id !== 'player.now-playing') ?? entries[0]
   const [isFullscreenNowPlaying, setIsFullscreenNowPlaying] = useState(false)
   const [isBottomBarHovered, setIsBottomBarHovered] = useState(false)
 
+  const [navState, setNavState] = useState<{ history: HistoryItem[]; index: number }>({
+    history: [],
+    index: 0,
+  })
+
+  const navigateTo = useCallback(
+    (id: string, params?: Record<string, unknown>) => {
+      setIsFullscreenNowPlaying(false)
+      setNavState((prev) => {
+        const base =
+          prev.history.length === 0 && defaultEntry ? [{ id: defaultEntry.id }] : prev.history
+        const current = base[prev.index]
+        if (
+          current &&
+          current.id === id &&
+          JSON.stringify(current.params) === JSON.stringify(params)
+        ) {
+          return prev
+        }
+        const nextHistory = base.slice(0, prev.index + 1)
+        nextHistory.push({ id, params })
+        return {
+          history: nextHistory,
+          index: nextHistory.length - 1,
+        }
+      })
+    },
+    [defaultEntry],
+  )
+
+  const canGoBack = navState.index > 0
+  const canGoForward = navState.index < navState.history.length - 1
+
+  const handleBack = useCallback(() => {
+    setIsFullscreenNowPlaying(false)
+    setNavState((prev) => {
+      if (prev.index > 0) {
+        return { ...prev, index: prev.index - 1 }
+      }
+      return prev
+    })
+  }, [])
+
+  const handleForward = useCallback(() => {
+    setIsFullscreenNowPlaying(false)
+    setNavState((prev) => {
+      if (prev.index < prev.history.length - 1) {
+        return { ...prev, index: prev.index + 1 }
+      }
+      return prev
+    })
+  }, [])
+
+  const handleHome = useCallback(() => {
+    if (defaultEntry) {
+      navigateTo(defaultEntry.id)
+    }
+  }, [defaultEntry, navigateTo])
+
   useEffect(() => {
-    const off = ctx.on('ui/navigate', (routeId: string) => {
+    const off = ctx.on('ui/navigate', (routeId: string, params?: Record<string, unknown>) => {
       if (routeId === 'player.now-playing') {
         setIsFullscreenNowPlaying(true)
       } else {
-        setIsFullscreenNowPlaying(false)
-        setActiveId(routeId)
+        navigateTo(routeId, params)
       }
     })
     return () => void off()
-  }, [ctx])
+  }, [ctx, navigateTo])
 
-  const defaultEntry = entries.find((e) => e.id !== 'player.now-playing') ?? entries[0]
-  const active = entries.find((e) => e.id === activeId) ?? defaultEntry
-  const View = active
-    ? (ctx.ui.viewFor(active.id) as ComponentType<{ ctx: Context }> | undefined)
+  const currentItem: HistoryItem | undefined =
+    navState.history[navState.index] ?? (defaultEntry ? { id: defaultEntry.id } : undefined)
+  const currentId = currentItem?.id
+  const currentParams = currentItem?.params
+
+  const active =
+    entries.find((e) => e.id === currentId) ??
+    (currentId ? { id: currentId, title: currentId, group: 'main' as const } : defaultEntry)
+  const View = currentId
+    ? (ctx.ui.viewFor(currentId) as
+        | ComponentType<{
+            ctx: Context
+            onOpenAlbum?: (urn: string) => void
+            [key: string]: unknown
+          }>
+        | undefined)
     : undefined
   const BottomBar = ctx.ui.viewFor('player.now-playing-bar') as
     | ComponentType<{ ctx: Context; onOpenNowPlaying?: () => void }>
@@ -249,19 +325,26 @@ export function Shell({ ctx }: { ctx: Context }) {
         flexDirection: 'column',
         height: '100vh',
         overflow: 'hidden',
+        background: '#000000',
       },
     },
     h(TopBar, {
       ctx,
-      onHome: () => {
-        setIsFullscreenNowPlaying(false)
-        setActiveId(defaultEntry?.id)
+      canGoBack,
+      canGoForward,
+      onBack: handleBack,
+      onForward: handleForward,
+      onHome: handleHome,
+      onSearch: (query: string) => {
+        const libraryEntry = entries.find((e) => e.id === 'sources.library') ?? defaultEntry
+        if (libraryEntry) {
+          navigateTo(libraryEntry.id, { query })
+        }
       },
       onOpenSettings: () => {
         const settingsEntry = entries.find((e) => e.group === 'settings')
         if (settingsEntry) {
-          setIsFullscreenNowPlaying(false)
-          setActiveId(settingsEntry.id)
+          navigateTo(settingsEntry.id)
         }
       },
     }),
@@ -270,7 +353,9 @@ export function Shell({ ctx }: { ctx: Context }) {
       {
         style: {
           display: 'grid',
-          gridTemplateColumns: '220px 1fr',
+          gridTemplateColumns: '240px 1fr',
+          gap: 8,
+          padding: 8,
           flex: 1,
           minHeight: 0,
           overflow: 'hidden',
@@ -280,9 +365,9 @@ export function Shell({ ctx }: { ctx: Context }) {
         'nav',
         {
           style: {
-            borderRight: '1px solid #1E1E28',
+            borderRadius: 8,
             padding: 12,
-            background: '#000000',
+            background: '#121212',
             minHeight: 0,
             overflowY: 'auto',
           },
@@ -292,8 +377,11 @@ export function Shell({ ctx }: { ctx: Context }) {
           { style: { fontSize: 12, color: '#5A5A68', padding: '8px 10px', letterSpacing: 1 } },
           'BBeBee',
         ),
-        ...entries.map((entry, index) =>
-          h(
+        ...entries.map((entry, index) => {
+          const isActive =
+            currentId === entry.id ||
+            (currentId === 'sources.album' && entry.id === 'sources.library')
+          return h(
             'div',
             { key: entry.id },
             // One heading, above the first settings page. Without the divide the
@@ -321,7 +409,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                   if (entry.id === 'player.now-playing') {
                     setIsFullscreenNowPlaying(true)
                   } else {
-                    setActiveId(entry.id)
+                    navigateTo(entry.id)
                   }
                 },
                 style: {
@@ -333,31 +421,44 @@ export function Shell({ ctx }: { ctx: Context }) {
                   borderRadius: 6,
                   border: 'none',
                   cursor: 'pointer',
-                  background: active?.id === entry.id ? '#2A2340' : 'transparent',
-                  color: active?.id === entry.id ? '#F5F5F7' : '#A0A0AE',
+                  background: isActive ? '#2A2340' : 'transparent',
+                  color: isActive ? '#F5F5F7' : '#A0A0AE',
                   font: 'inherit',
                 },
               },
               entry.title,
             ),
-          ),
-        ),
+          )
+        }),
       ),
       h(
         'main',
-        { style: { overflow: 'auto', minHeight: 0 } },
+        {
+          style: {
+            borderRadius: 8,
+            background: '#121212',
+            overflow: 'auto',
+            minHeight: 0,
+          },
+        },
         View
           ? h(
               ViewBoundary,
               {
                 // Remounts on navigation, which is what clears a failed view once
                 // the user goes somewhere else and comes back.
-                key: active?.id,
-                title: active?.title ?? 'This view',
+                key: currentId + (currentParams ? `:${JSON.stringify(currentParams)}` : ''),
+                title: active?.title ?? currentId ?? 'This view',
                 onError: (error) =>
-                  ctx.logger.error(`ui: view "${active?.id}" threw: ${error.stack ?? error.message}`),
+                  ctx.logger.error(
+                    `ui: view "${currentId}" threw: ${error.stack ?? error.message}`,
+                  ),
               },
-              h(View, { ctx }),
+              h(View, {
+                ctx,
+                ...currentParams,
+                onOpenAlbum: (urn: string) => navigateTo('sources.album', { urn }),
+              }),
             )
           : h(
               'div',
@@ -373,7 +474,7 @@ export function Shell({ ctx }: { ctx: Context }) {
     BottomBar
       ? h(
           'footer',
-          null,
+          { style: { background: '#000000' } },
           h(BottomBar, {
             ctx,
             onOpenNowPlaying: () => setIsFullscreenNowPlaying(true),
