@@ -29,8 +29,8 @@ import type {
   ScannerService,
   Uri,
 } from '@BBeBee/protocol'
+import { artworkId, stableId } from '@BBeBee/toolkit'
 import { forgetFile, importTrack } from './import.js'
-import { artworkId, stableId } from './ids.js'
 import { SCANNER_VIEWS } from './views.js'
 
 export interface ScannerConfig {
@@ -878,5 +878,5 @@ export async function apply(ctx: Context, config: ScannerConfig = {}) {
 }
 
 export default { name, apply }
-export { importTrack, forgetFile, splitArtists, sortKey } from './import.js'
-export { trackId, albumId, artistId, artworkId } from './ids.js'
+export { importTrack, forgetFile, sortKey } from './import.js'
+export { splitArtists, trackId, albumId, artistId, artworkId } from '@BBeBee/toolkit'

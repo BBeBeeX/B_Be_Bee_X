@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@BBeBee/protocol": "workspace:*",
+    "@BBeBee/toolkit": "workspace:*",
     "@BBeBee/ui-kit-mobile": "workspace:*",
     "@BBeBee/ui-core": "workspace:*",
     "@BBeBee/ui-tokens": "workspace:*",

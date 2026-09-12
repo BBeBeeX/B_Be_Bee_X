@@ -161,6 +161,10 @@ B_Be_Bee/
 │   │   │                                       evaluate.ts the engine and its coercion,
 │   │   │                                       jsonpath.ts · template.ts the two dialects,
 │   │   │                                       regex-guard.ts the ReDoS bound
+│   │   ├── toolkit/                ✅        pure helpers that outgrew one plugin: stable ids
+│   │   │                                       (stableId, artworkId), splitArtists,
+│   │   │                                       formatDuration, permute. Same charter as
+│   │   │                                       source-rules — no Cordis, no I/O, no deps
 │   │   ├── plugin-source-runtime/  ✅        binds source-rules to ctx.http · ctx.js (06 §4)
 │   │   ├── plugin-sources/         ✅        the ctx.sources registry + catalogue (06 §4.1)
 │   │   ├── plugin-source-local/    ✅        the one provider that is not a string (06 §12)
@@ -259,7 +263,7 @@ still says what kind of thing it is, and the two agree by construction — a `co
 | `protocol/` | 0 | `protocol` — the contracts. One package, no runtime |
 | `kernel/` | 1 | `kernel` — one package |
 | `core/` | 2 | `core-<service>-<platform>` — one platform implementation of a core service |
-| `feature/` | 3 | `plugin-<feature>` headless, `plugin-effect-<id>` for a DSP effect, and `source-rules`, which is pure logic beneath the source runtime rather than a plugin |
+| `feature/` | 3 | `plugin-<feature>` headless, `plugin-effect-<id>` for a DSP effect, and `source-rules` · `toolkit`, pure-logic libraries beneath the plugins rather than plugins themselves |
 | `ui/` | 4 | `plugin-<feature>-ui-<target>` for views, `ui-*` for the infrastructure both kits share |
 | `tooling/` | — | `tooling-*`. Outside the layer model, because nothing here ships |
 
@@ -268,6 +272,11 @@ source document ([06](./06-music-sources.md)), not a package. The only two packa
 in the name are `plugin-source-runtime`, which interprets documents, and `plugin-source-local`,
 which has no HTTP to describe ([06 §12](./06-music-sources.md#12-what-is-not-a-string-local-files)).
 The example documents this repository ships live in `fixtures/sources/`, not in `packages/`.
+
+`toolkit` shares `source-rules`' shape — **no manifest, so no lifecycle**: it is pure,
+dependency-free logic imported directly by whichever plugin needs it, coupling nothing. A package
+without a `BBeBee.plugin.json` is a library, and a library never names a `ctx.*` service; the
+moment code needs one, it belongs in a `plugin-<feature>` package instead.
 
 ---
 

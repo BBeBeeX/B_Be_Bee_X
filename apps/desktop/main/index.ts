@@ -361,7 +361,6 @@ protocol.registerSchemesAsPrivileged([
   {
     scheme: 'bbebee-file',
     privileges: {
-      standard: true,
       secure: true,
       supportFetchAPI: true,
       corsEnabled: true,

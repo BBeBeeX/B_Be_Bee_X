@@ -1421,6 +1421,7 @@ export async function apply(ctx: Context, config: PlayerConfig = {}) {
 }
 
 export default { name, apply }
-export { QueueModel, permute } from './queue.js'
+export { QueueModel } from './queue.js'
+export { permute } from '@BBeBee/toolkit'
 export { PlayerStore } from './store.js'
 export { PLAYER_COMMANDS, PLAYER_ROUTES, PLAYER_VIEWS } from './views.js'

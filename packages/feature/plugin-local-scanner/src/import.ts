@@ -10,7 +10,7 @@
 
 import { sortKey } from '@BBeBee/protocol'
 import type { AudioMetadata, DbService, SqlValue, Uri } from '@BBeBee/protocol'
-import { albumId, artistId, artworkId, trackId } from './ids.js'
+import { albumId, artistId, artworkId, splitArtists, trackId } from '@BBeBee/toolkit'
 
 export interface ImportContext {
   sourceId: string
@@ -46,24 +46,6 @@ const urn = (source: string, kind: string, id: string) => `BBeBee:${source}:${ki
  * "Beatles, The" end up in two places in one list.
  */
 export { sortKey }
-
-/**
- * Split a tag that names several artists, which most taggers write inline.
- *
- * The separators fall into two shapes: punctuation, which needs no
- * surrounding space, and words, which do — `\bfeat\.?\b` does not match
- * "feat. " because the boundary after `.` is not a word boundary, and the
- * leftover "." then rides along on the next name.
- */
-export function splitArtists(value: string | undefined): string[] {
-  if (!value) return []
-  return value
-    // `/` only counts as a separator with whitespace around it: AC/DC is one
-    // band, "Simon / Garfunkel" is two.
-    .split(/\s*[;,]\s*|\s+\/\s+|\s+(?:feat\.?|ft\.?|with)\s+/i)
-    .map((part) => part.trim())
-    .filter(Boolean)
-}
 
 export async function importTrack(
   ctx: ImportContext,

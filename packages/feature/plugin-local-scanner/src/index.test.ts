@@ -18,8 +18,8 @@ import { DbNode } from '@BBeBee/core-db-node'
 import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
 import type { AudioMetadata, DbService, Uri } from '@BBeBee/protocol'
 import plugin, { type Scanner } from './index.js'
-import { splitArtists, sortKey } from './import.js'
-import { artworkId } from './ids.js'
+import { sortKey } from './import.js'
+import { artworkId, splitArtists } from '@BBeBee/toolkit'
 
 /** Counts what the scanner asks of the codec — the exit criterion is a count. */
 interface FakeCodec {

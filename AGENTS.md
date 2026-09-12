@@ -186,8 +186,9 @@ packages/core/core-*        one implementation per target per service key
                             ctx.store; core-js-quickjs-node is ctx.js on desktop — mobile has
                             no sandbox yet)
 packages/logs/plugin-log-*  the three transports: buffer, console, file
-packages/feature/plugin-*   headless features; source-rules (pure logic, no Cordis, no I/O);
-                            plugin-ui claims ctx.ui; plugin-inspector claims ctx.inspector
+packages/feature/plugin-*   headless features; source-rules and toolkit (pure-logic libraries,
+                            no Cordis, no I/O, no manifest); plugin-ui claims ctx.ui;
+                            plugin-inspector claims ctx.inspector
 packages/ui/                ui-tokens, ui-core, ui-parity, ui-kit-{mobile,desktop},
                             plugin-*-ui-{mobile,desktop} — including plugin-inspector-ui-desktop
                             and the plugin-sources / plugin-local-scanner UI pairs
@@ -210,7 +211,7 @@ other; they are registered by their plugins, not by a `core-*` package.
 | `kernel/` | 1 | `kernel` |
 | `core/` | 2 | `core-<service>-<platform>` |
 | `logs/` | 3 | `plugin-log-<sink>` |
-| `feature/` | 4 | `plugin-<feature>`, `plugin-effect-<id>`, and `source-rules` |
+| `feature/` | 4 | `plugin-<feature>`, `plugin-effect-<id>`, and the pure-logic libraries `source-rules`, `toolkit` (no manifest) |
 | `ui/` | 5 | `plugin-<feature>-ui-<target>`, `ui-*` |
 | `tooling/` | — | `tooling-*` |
 
@@ -221,6 +222,16 @@ interpreter) and `plugin-source-local` (files on disk, which have no HTTP to des
 ---
 
 ## 5. Writing a plugin
+
+### Check the toolkit first
+
+Before writing a helper — an id derivation, a normaliser, a duration format, a shuffle — check
+whether `@BBeBee/toolkit` already has it, and import it instead of growing a second copy inside a
+plugin. Duplicated helpers drift: two `formatDuration`s mean two spellings of the same two-hour
+track, on two platforms. This applies to **modifying** existing code under `packages/feature/` as
+much as to new plugins — when a change needs a pure function, `toolkit` is the first place to
+look, and the right place to put it when it is genuinely new (pure, no Cordis, no I/O, no
+`ctx.*`; the charter is `packages/feature/toolkit/README.md`).
 
 ### Shape
 
@@ -317,6 +328,9 @@ no `experimentalDecorators`, Babel `@babel/plugin-proposal-decorators` `{ versio
 
 ### Checklist
 
+- [ ] Existing helpers imported from `@BBeBee/toolkit` where it has them, and any new
+      domain-free helper added *to* toolkit rather than into the plugin — no second `stableId`,
+      no second `formatDuration` (§5 "Check the toolkit first").
 - [ ] `name` set, matching the package name's suffix.
 - [ ] `inject` lists exactly what is needed.
 - [ ] No platform SDK imported. No `core-*` package imported — a Layer 2 dependency is spelled

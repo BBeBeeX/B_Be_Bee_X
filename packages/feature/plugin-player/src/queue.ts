@@ -16,33 +16,12 @@
 
 import { between, sequence } from '@BBeBee/protocol'
 import type { QueueItem, RepeatMode } from '@BBeBee/protocol'
+import { permute } from '@BBeBee/toolkit'
 
 export interface QueueEntry {
   item: QueueItem
   /** Fractional index. The list is always sorted by this. */
   position: string
-}
-
-/** Deterministic PRNG: same seed, same permutation, on every device. */
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
-
-/** Fisher–Yates over a copy, driven by the seeded PRNG. */
-export function permute<T>(values: readonly T[], seed: number): T[] {
-  const out = [...values]
-  const random = mulberry32(seed)
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1))
-    ;[out[i], out[j]] = [out[j]!, out[i]!]
-  }
-  return out
 }
 
 export class QueueModel {

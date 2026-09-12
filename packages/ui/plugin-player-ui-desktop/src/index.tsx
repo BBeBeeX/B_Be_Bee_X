@@ -15,9 +15,9 @@ import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import type { QueueItem, Track } from '@BBeBee/protocol'
+import { formatDuration } from '@BBeBee/toolkit'
 import { PLAYER_VIEWS } from '@BBeBee/plugin-player/views'
 import {
-  formatDuration,
   usePosition,
   useDuration,
   useQueue,
