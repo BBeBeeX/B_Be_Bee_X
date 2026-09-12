@@ -765,6 +765,26 @@ downloaded stream costs the user their place. Defaults — artwork 512 MB deskto
 HTTP 64 MB, stream cache 1 GB / 256 MB — all user-adjustable. A sweep runs on boot and hourly, and
 `cache_entries` rows whose file is gone are pruned in the same pass.
 
+### 4.12 Legacy: providers
+
+```sql
+CREATE TABLE providers (
+  instance_id       TEXT PRIMARY KEY,
+  plugin_id         TEXT NOT NULL,
+  display_name      TEXT NOT NULL,
+  enabled           INTEGER NOT NULL DEFAULT 1,
+  capabilities_json TEXT,
+  sort_order        INTEGER NOT NULL DEFAULT 0,
+  created_at        INTEGER NOT NULL,
+  last_seen_at      INTEGER
+);
+```
+
+The pre-document provider registry from before sources became strings (06 §1). Migration v3 added
+`sources`/`source_vars` and carried any existing `providers` rows across as **written disabled**;
+`plugin-source-runtime` still touches the table only to keep that transition honest. New code
+reads `sources` — nothing else should.
+
 ---
 
 ## 5. The event map
@@ -907,6 +927,10 @@ Rules:
   claiming it is refused with `NamespaceCollisionError` rather than silently sharing tables.
 - A plugin may only write its own tables, and may only `defineSchema` for
   `plugin:<its own instance id>` — otherwise it could claim `core` and own the catalogue.
+  **No first-party plugin currently ships its own schema** — the scanner, the player and the
+  sources UI all read and write *core* tables under `db:read:core`/`db:write:core`. The
+  `{{ns}}` machinery below is implemented in the kernel and tested, but exercised by no bundled
+  plugin yet.
   Reading core tables requires `db:read:core`, and changing their rows requires `db:write:core` —
   a separate grant, not one implied by the first ([03 §7](./03-plugin-system.md#capability-grammar)).
   Each `up` entry is **one statement**: a driver runs the first and discards the rest in silence,

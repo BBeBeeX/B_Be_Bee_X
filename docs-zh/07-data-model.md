@@ -87,7 +87,7 @@ erDiagram
     queue_items }o--|| tracks : "references"
     playback_state ||--o| queue_items : "points at"
 
-    scan_roots ||--o{ scan_entries : "yields"
+    scan_specified_dirs ||--o{ scan_entries : "yields"
     scan_entries }o--o| tracks : "produces"
 
     artworks ||--o{ tracks : "illustrates"
@@ -384,7 +384,7 @@ CREATE UNIQUE INDEX idx_bindings_uri ON media_bindings(uri);
 之所以需要 `verified_at`，是因为文件会消失：SD 卡被拔出、同步工具删除了文件夹、iOS 清掉了某个文件。文件已丢失的绑定会被直接删除，而不是留到播放那一刻才失败。
 
 ```sql
-CREATE TABLE scan_roots (
+CREATE TABLE scan_specified_dirs (
   id            TEXT PRIMARY KEY,
   uri           TEXT NOT NULL UNIQUE,
   recursive     INTEGER NOT NULL DEFAULT 1,
@@ -396,16 +396,16 @@ CREATE TABLE scan_roots (
 );
 
 CREATE TABLE scan_entries (
-  uri        TEXT PRIMARY KEY,
-  root_id    TEXT NOT NULL REFERENCES scan_roots(id) ON DELETE CASCADE,
-  size       INTEGER NOT NULL,
-  mtime      INTEGER NOT NULL,
-  track_urn  TEXT REFERENCES tracks(urn) ON DELETE SET NULL,
-  status     TEXT NOT NULL,                  -- ok|error|skipped|pending
-  error      TEXT,
-  scanned_at INTEGER NOT NULL
+  uri              TEXT PRIMARY KEY,
+  specified_dir_id TEXT NOT NULL REFERENCES scan_specified_dirs(id) ON DELETE CASCADE,
+  size             INTEGER NOT NULL,
+  mtime            INTEGER NOT NULL,
+  track_urn        TEXT REFERENCES tracks(urn) ON DELETE SET NULL,
+  status           TEXT NOT NULL,                  -- ok|error|skipped|pending
+  error            TEXT,
+  scanned_at       INTEGER NOT NULL
 );
-CREATE INDEX idx_scan_entries_root ON scan_entries(root_id, status);
+CREATE INDEX idx_scan_entries_specified_dir ON scan_entries(specified_dir_id, status);
 ```
 
 `(size, mtime)` 这一对就是增量扫描的判据：文件没变就只花一次 `stat`，再无其他开销（[06 §12](./06-music-sources.md#本地扫描器)）。
@@ -545,7 +545,7 @@ CREATE TABLE track_stats (
 );
 ```
 
-`play_history` 是只追加的事实来源；`track_stats` 是派生缓存，与历史插入在同一事务中更新。两者都保留意味着"最常播放"只需一次带索引的读取，而原始记录仍可用于重新计算 —— `scrobble_state` 还为离线 scrobble 提供了一个持久的发件箱（outbox），即使提交中途进程被杀也能存活。
+`play_history` 是只追加的事实来源；`track_stats` 是派生缓存，与历史插入在同一事务中更新。`loved`（0/1）记录曲目是否被标记为用户喜爱，通过 `ctx.sources.setLoved(urn, loved)` 切换，并通过 `CatalogQuery.onlyLoved` 查询，用以驱动默认的"收藏"曲库。两者都保留意味着"最常播放"只需一次带索引的读取，而原始记录仍可用于重新计算 —— `scrobble_state` 还为离线 scrobble 提供了一个持久的发件箱（outbox），即使提交中途进程被杀也能存活。
 
 ### 4.8 下载
 
@@ -686,6 +686,23 @@ CREATE INDEX idx_cache_evict ON cache_entries(class, last_access_at);
 
 淘汰是**类内 LRU**，每一类有各自的配额，因为不同类的价值差别极大：淘汰一张封面图意味着一次重新抓取和一次可见的闪烁；淘汰一段下载了一半的流，用户就会丢失播放位置。默认值 —— 封面图桌面端 512 MB / 移动端 128 MB、HTTP 64 MB、流缓存 1 GB / 256 MB —— 全部可由用户调整。清理扫描在启动时和每小时各运行一次，文件已丢失的 `cache_entries` 行在同一轮清理中被剪除。
 
+### 4.12 遗留：providers
+
+```sql
+CREATE TABLE providers (
+  instance_id       TEXT PRIMARY KEY,
+  plugin_id         TEXT NOT NULL,
+  display_name      TEXT NOT NULL,
+  enabled           INTEGER NOT NULL DEFAULT 1,
+  capabilities_json TEXT,
+  sort_order        INTEGER NOT NULL DEFAULT 0,
+  created_at        INTEGER NOT NULL,
+  last_seen_at      INTEGER
+);
+```
+
+音源尚未变为字符串之前（06 §1）的文档前时代的 provider 注册表。迁移 v3 新增了 `sources`/`source_vars`，并把已有的 `providers` 行迁移过来时**写为禁用状态**；`plugin-source-runtime` 仍会触碰这张表，只为让那次过渡保持诚实。新代码读 `sources` —— 除此之外不应有任何东西去读它。
+
 ---
 
 ## 5. 事件表
@@ -818,7 +835,10 @@ await ctx.db.defineSchema('plugin:@BBeBee/plugin-scrobble', [
   命名空间，第二个命名空间来认领同一前缀时会以 `NamespaceCollisionError` 拒绝，
   而不是悄悄共享表。
 - 插件只能写自己的表，并且只能为 `plugin:<自己的 instance id>` 调用 `defineSchema` ——
-  否则它就能认领 `core`、霸占目录。读取核心表需要 `db:read:core`，改写核心表的行需要
+  否则它就能认领 `core`、霸占目录。**目前没有任何第一方插件自带自己的 schema** —— 扫描器、
+  播放器和音源 UI 都在 `db:read:core`/`db:write:core` 之下读写*核心*表。下述 `{{ns}}`
+  机制已在内核中实现并测试过，但尚无任何随包插件真正使用它。
+  读取核心表需要 `db:read:core`，改写核心表的行需要
   `db:write:core` —— 这是另一项独立授权，不会随前者附带
   （[03 §7](./03-plugin-system.md#能力语法)）。每条 `up` 都是**单条语句**：驱动会执行第一条
   并默默丢弃其余的，因此多语句字符串会在任何东西执行之前就被拒绝，而不是执行到一半、

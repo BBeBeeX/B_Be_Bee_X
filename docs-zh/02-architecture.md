@@ -12,19 +12,27 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Layer 4: UI & Business Function Layer                           │
+│ Layer 5: UI & Business Function Layer                           │
 │  (Pages, Interactions, Business Orchestration)                  │
 │  apps/* · plugin-*-ui-mobile · plugin-*-ui-desktop · ui-*       │
-│  ✅ Depends on: Protocol, Kernel, Core Plugins, Feature Plugins │
-│  ❌ Forbidden: Direct calls to system APIs / Kernel             │
+│  ✅ Depends on: Protocol, Kernel, Core Plugins, Logs, Features  │
+│  ❌ Forbidden: Direct calls to system APIs / Kernel / console   │
 └─────────────────────────────────────────────────────────────────┘
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ Layer 3: Feature Plugins Layer                                  │
+│ Layer 4: Feature Plugins Layer                                  │
 │  (Business Feature Modules)                                     │
 │  plugin-player · plugin-sources · plugin-download · …           │
+│  ✅ Depends on: Protocol, Kernel, Core Plugins, Logs            │
+│  ❌ Forbidden: Direct calls to system APIs / Kernel / console   │
+└─────────────────────────────────────────────────────────────────┘
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Layer 3: Logs Layer                                             │
+│  (Log Transports — where a line ends up, and nothing else)      │
+│  plugin-log-buffer · plugin-log-console · plugin-log-file       │
 │  ✅ Depends on: Protocol, Kernel, Core Plugins                  │
-│  ❌ Forbidden: Direct calls to system APIs / Kernel             │
+│  ⚠️ The ONLY layer permitted to write to the console            │
 └─────────────────────────────────────────────────────────────────┘
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -58,9 +66,10 @@
 
 | 层 | 包 | 负责什么 | 可依赖 | 绝不 |
 |---|---|---|---|---|
-| **4 —— UI 与业务功能** | `apps/mobile`、`apps/desktop/renderer`、`plugin-*-ui-mobile`、`plugin-*-ui-desktop`、`ui-kit-*`、`ui-core`、`ui-parity`、`ui-tokens` | 页面、导航、手势与键盘，以及把一条用户意图转换成一系列功能调用的编排 | Layer 0–3 | 平台 SDK；内核的引导表面；SQL；HTTP；业务状态（[§6](#6-状态归属)） |
-| **3 —— 功能插件** | 无 UI 的 `plugin-*`（`plugin-player`、`plugin-dsp`、`plugin-sources`、`plugin-source-runtime`、`plugin-download`、`plugin-library`、`plugin-lyrics`、`plugin-cache`、`plugin-local-scanner`、`plugin-log-*`），外加位于其下、作为纯逻辑的 `source-rules` | 每个包承担一项业务能力，无 UI：状态、持久化、网络、事件 | Layer 0–2 | 平台 SDK；内核的引导表面；其他功能插件的内部 |
-| **2 —— 核心插件** | `packages/core-*` | 每个服务键对应一项平台能力，每个键背后在每个目标上都恰有一份实现 | Layer 0–1 —— **直接** | 领域知识。核心插件不得知道"曲目"是什么 |
+| **5 —— UI 与业务功能** | `apps/mobile`、`apps/desktop/renderer`、`plugin-*-ui-mobile`、`plugin-*-ui-desktop`、`ui-kit-*`、`ui-core`、`ui-parity`、`ui-tokens` | 页面、导航、手势与键盘，以及把一条用户意图转换成一系列功能调用的编排 | Layer 0–4 | 平台 SDK；内核的引导表面；SQL；HTTP；`console.*`；业务状态（[§6](#6-状态归属)） |
+| **4 —— 功能插件** | 无 UI 的 `plugin-*`（`plugin-player`、`plugin-dsp`、`plugin-sources`、`plugin-source-runtime`、`plugin-download`、`plugin-library`、`plugin-lyrics`、`plugin-cache`、`plugin-local-scanner`），外加位于其下、作为纯逻辑的 `source-rules` | 每个包承担一项业务能力，无 UI：状态、持久化、网络、事件 | Layer 0–3 | 平台 SDK；内核的引导表面；`console.*`；其他功能插件的内部 |
+| **3 —— 日志传输** | `packages/logs/*` —— `plugin-log-buffer`、`plugin-log-console`、`plugin-log-file` | 一行日志最终落在哪里，仅此而已。每个传输都订阅 `ctx.logger`；由外壳决定运行哪一个（[04 §16](./04-core-services.md)） | Layer 0–2 | 领域知识；平台 SDK。一个知道"曲目"为何物的传输就是一个功能插件 |
+| **2 —— 核心插件** | `packages/core/*` | 每个服务键对应一项平台能力，每个键背后在每个目标上都恰有一份实现 | Layer 0–1 —— **直接** | 领域知识。核心插件不得知道"曲目"是什么 |
 | **1 —— 内核** | `@BBeBee/kernel` | Cordis `Context`、DI、fiber 与 effect、事件总线、配置加载、插件解析、能力门、核心迁移 | Layer 0（以及 Cordis） | 导入任何 `core-*` 或 `plugin-*`。内核不知道存在哪些插件 |
 | **0 —— 协议** | `@BBeBee/protocol` | 服务接口、实体类型、类型化事件表、常量，以及把实现钉在契约上的契约测试套件 | 什么都不依赖 | 发出运行时值；导入任何裸说明符（[09 §3](./09-project-structure.md#3-依赖规则)） |
 
@@ -71,20 +80,23 @@ Layer 0 是承重的那一层。它是一个不含任何代码、呈 `.d.ts` 形
 这正是方框图无法画出的那个区别；弄错它，就是在看似遵守架构的同时破坏架构的最常见方式。
 
 - **Layer 2 通过导入来依赖 Layer 1。** `core-db-node` 从 `@BBeBee/kernel` 导入 `MigrationRunner` 与 `scopeContext` 并调用它们。这是有意为之：核心插件是适配层，所以正是它们既与内核对话、也与操作系统对话。
-- **Layer 3 与 Layer 4 不经导入就依赖 Layer 2。** 功能插件写下 `inject: ['fs', 'http']` —— 点名的是*在 Layer 0 声明的服务键* —— 而内核把它们绑定到外壳注册的任何一个 Layer 2 包上（[§3](#3-启动顺序)）。整个仓库中不存在任何从 `plugin-*` 指向 `core-*` 的编译期导入，`package.json` 文件就是证据：没有任何功能插件把核心插件列为依赖。
+- **Layer 3、4 与 5 不经导入就依赖 Layer 2。** 功能插件写下 `inject: ['fs', 'http']` —— 点名的是*在 Layer 0 声明的服务键* —— 而内核把它们绑定到外壳注册的任何一个 Layer 2 包上（[§3](#3-启动顺序)）。整个仓库中不存在任何从 `plugin-*` 指向 `core-*` 的编译期导入，`package.json` 文件就是证据：没有任何功能插件把核心插件列为依赖。
 
-所以图中从 Layer 3 指向 Layer 2 的那条箭头是一条**运行时**箭头。它的编译期对应物指向的却是 Layer 0，而这一倒置正是整个设计：
+所以图中从 Layer 4 指向 Layer 2 的那条箭头是一条**运行时**箭头。它的编译期对应物指向的却是 Layer 0，而这一倒置正是整个设计：
 
 ```mermaid
 flowchart TD
-    subgraph L4["Layer 4 — UI & business function"]
+    subgraph L5["Layer 5 — UI & business function"]
         S["apps/* shells"]
         V["plugin-*-ui-* · ui-kit-* · ui-core"]
     end
-    subgraph L3["Layer 3 — feature plugins"]
+    subgraph L4["Layer 4 — feature plugins"]
         F1["player · queue · dsp"]
         F2["source runtime · sources · library · scanner"]
-        F3["download · lyrics · cache · logging"]
+        F3["download · lyrics · cache"]
+    end
+    subgraph L3["Layer 3 — log transports"]
+        G["plugin-log-buffer · plugin-log-console · plugin-log-file"]
     end
     subgraph L2["Layer 2 — core plugins (one implementation per target)"]
         C1["core-fs-node / core-fs-expo"]
@@ -100,8 +112,12 @@ flowchart TD
     end
     SYS["Platform SDKs · OS<br/>expo-* · node:* · electron"]
 
-    L4 -.->|"service keys, at runtime"| L3
+    L5 -.->|"service keys, at runtime"| L4
+    L5 -.->|"ctx.logger, at runtime"| L3
+    L4 -.->|"service keys, at runtime"| L2
+    L4 -.->|"ctx.logger, at runtime"| L3
     L3 -.->|"service keys, at runtime"| L2
+    L5 --> L0
     L4 --> L0
     L3 --> L0
     L2 --> L0
@@ -116,7 +132,7 @@ flowchart TD
 
 两条规则，都靠机械方式执行，都按目录限定作用范围（[09 §3](./09-project-structure.md#3-依赖规则)），因为代码评审无法可靠地兜住它们：
 
-> **1. `packages/core-*` 之外的任何包都不得导入平台 SDK。**
+> **1. `packages/core/*` 之外的任何包都不得导入平台 SDK。**
 
 无论是 `expo-file-system`、`node:fs`、`electron`，还是 `react-native` 的原生模块，都不行。
 
@@ -126,8 +142,10 @@ flowchart TD
 
 | 暴露面 | 导出内容 | 谁可以导入 |
 |---|---|---|
-| **插件表面** —— 被*类型化* | `Context`、`Service`、`Inject`、`Plugin`、`Fiber`、`Effect`、`FiberState`、`fiberStateName`、`isActive`、`isSettled` | Layer 2、3 与 4。这些是 [09 §5.1](./09-project-structure.md#51-cordis-rc-问题) 中钉死来源的 Cordis 再导出：插件从内核而非从 `cordis` 导入它们，这样上游的一次变更就由一个适配模块吸收 |
-| **引导表面** —— *驱动*内核 | `createApp`、`resolveConfig`、`loadPlugins`、`scopeContext`、`capabilityConfigOf`、`assert*`、`CORE_MIGRATIONS`、`MigrationRunner`、`AppConfig` | 仅 Layer 2 与组合根 |
+| **插件面（plugin surface）** —— 被*类型化* | 恰好是被钉死的 Cordis 再导出：`Context`、`Service`、`Inject`、`Plugin`、`Fiber`、`Effect`、`EffectMeta`、`InjectSpec`、`FiberState`、`FiberStateName`、`FiberStateValue`、`fiberStateName`、`isActive`、`isSettled` | Layer 2、3 与 4。[09 §5.1](./09-project-structure.md#51-cordis-rc-问题) 要求插件从内核而非从 `cordis` 获取 Cordis，这样上游的一次变更就由一个适配模块吸收 |
+| **引导表面** —— *驱动*内核 | 内核导出的其余一切：`createApp`、配置加载器、插件加载器、能力门、SQL 守卫、迁移运行器 | 仅 Layer 2 与组合根 |
+
+这条规则被写成**插件面的允许列表**，而不是引导表面的禁止列表。引导表面又长又在增长；插件面很短，而且与上游 Cordis 的形状钉在一起。因此，一个新增的内核导出，在有人明确表态之前，对 Layer 3、4 与 5 都是封闭的——这正是失败时更安全的方向。而如果那份列表的两份副本发生漂移，`kernel/src/layers.test.ts` 会让构建失败（[09 §3](./09-project-structure.md#3-依赖规则)）。
 
 功能插件不构造 context、不解析插件、不读配置存储，也不咨询能力门。它是*被交给*一个 context，然后在其中工作。说得这么精确很重要，因为"一切都是 Cordis 插件"听起来仿佛每一层都同等地依赖内核；而分层规则关心的是谁可以**驱动**内核，而不是谁可以被它**类型化**。
 
@@ -137,11 +155,11 @@ flowchart TD
 
 - **UI 包导入视图库。** `plugin-*-ui-mobile` 与 `ui-kit-mobile` 导入 `react-native`；桌面端的对应包导入 `react-dom`。ADR-2 已经接受按目标平台划分的视图层。它们仍然不得触碰平台*能力* —— 移动端视图可以渲染 `<FlatList>`，但不可以调用 `FileSystem.readAsStringAsync`。
 - **宿主外壳拥有平台窗口装饰。** `apps/*` 按定义就是平台特定的：深链注册、安全区内边距、窗口控制（[08 §7](./08-ui-architecture.md#7-外壳的职责)）。其余一切都应属于插件。
-- **组合根驱动内核。** `apps/mobile/src/boot.ts`、`apps/desktop/renderer/boot.ts`，以及各自旁边的 `plugins.ts` 白名单，是仅有的几个调用 `createApp`、并以导入方式点名 Layer 2 包的文件 —— [§3 的引导表](#引导插件集)就是它们内容的原样照录。这是接线，不是业务功能：组合根不含任何编排、任何领域类型、任何视图代码，而 `apps/*` 的其余部分与其他任何 Layer 4 包一样遵守 Layer 4 规则。
+- **组合根驱动内核。** `apps/mobile/src/boot.ts`、`apps/desktop/renderer/boot.ts`，以及各自旁边的 `plugins.ts` 白名单，是仅有的几个调用 `createApp`、并以导入方式点名 Layer 2 包的文件 —— [§3 的引导表](#引导插件集)就是它们内容的原样照录。这是接线，不是业务功能：组合根不含任何编排、任何领域类型、任何视图代码，而 `apps/*` 的其余部分与其他任何 Layer 5 包一样遵守 Layer 5 规则。这条例外是封闭的，而不是可以无限延伸的：lint 配置按路径点名了那四个文件，而只要出现第五个 `createApp` 调用点，`kernel/src/layers.test.ts` 就会失败——第二个引导就是一个第二个内核。
 
 ### 关键设计原则
 
-五层只是手段。以下是它们的目的，而且每一条都点名了让它成真、而非停留于愿望的机制。
+六层只是手段。以下是它们的目的，而且每一条都点名了让它成真、而非停留于愿望的机制。
 
 **依赖倒置原则（DIP）。** 高层模块不依赖低层模块；二者都依赖抽象。在这里，抽象就是 Layer 0，而倒置在构建图里清晰可见：`plugin-player` 依赖 `@BBeBee/protocol`，`core-db-expo` 也依赖 `@BBeBee/protocol`，谁也不依赖谁。更换 SQLite 实现，只是改 `boot.ts` 里的一行。
 
@@ -155,7 +173,7 @@ flowchart TD
 
 | 测试对象 | Layer 0 处的替身 | 位置 |
 |---|---|---|
-| 功能插件 | 内存中的 `FsService` / `HttpService` / `DbService` | `packages/tooling-fixtures`（[09 §6](./09-project-structure.md#6-测试策略)） |
+| 功能插件 | 内存中的 `FsService` / `HttpService` / `DbService` | `packages/tooling/tooling-fixtures`（[09 §6](./09-project-structure.md#6-测试策略)） |
 | 核心插件 | 无替身 —— 它被钉在共享契约上 | `protocol/src/conformance` 中的契约测试套件（[04 §18](./04-core-services.md)） |
 | UI 包 | hooks 从测试构建的 context 上读取伪造的服务 | [08 §4](./08-ui-architecture.md#4-把服务绑定到-react) |
 | 规则语言 | 无可 mock 之物：`source-rules` 是纯的，没有 Cordis，也没有 I/O | [06 §3](./06-music-sources.md#3-规则语言) |
@@ -230,13 +248,15 @@ flowchart LR
 
 ### 桌面端的进程与安全姿态
 
-渲染进程采用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`。preload 只暴露一个冻结的 `window.BBeBee` 对象，其方法都带有能力（capability）标记；内核按插件逐一包装它们（[03 §7](./03-plugin-system.md#7-能力模型)）。应用源（origin）使用严格的 CSP，且**不做**任何放宽——不存在用于加载外来代码的 scheme，因为没有任何东西加载外来代码。
+渲染进程采用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`。preload 只暴露一个冻结的 `window.BBeBee` 对象，其方法都带有能力（capability）标记；内核按插件逐一包装它们（[03 §7](./03-plugin-system.md#7-能力模型)）。应用源（origin）使用严格的 CSP——不存在用于加载外来代码的 scheme，因为没有任何东西加载外来代码。
+
+在这条底线之上，唯一的例外令牌是 `'wasm-unsafe-eval'`，它是为 `ctx.js` 而存在的。Chromium 把 `WebAssembly.instantiate` 卡在 `script-src` 上，因此没有它 QuickJS 就无法编译，渲染进程会在核心服务清单处中止。它只授予 WebAssembly 的编译权，**此外什么都不给**：`eval` 与 `new Function` 依旧被拒绝——这正是选用这个狭窄令牌、而不选同样能让 WASM 跑起来的 `'unsafe-eval'` 的原因。这笔交易是：为一个内部没有任何宿主对象图的 realm 换来一个编译器（[04 §19](./04-core-services.md)），而这正是整个音源模型所依赖的方向。
 
 ---
 
 ## 3. 启动顺序
 
-两个平台的启动流程完全一致，差别仅在于注册哪些核心插件、运行哪个加载器。启动就是 [§1](#1-分层模型) 的那摞层横过来放：各层按顺序就绪 —— 先是内核，然后是 Layer 2、Layer 3，最后是 Layer 4 外壳 —— 因为每一层都在等下面那层提供的某个服务键。
+两个平台的启动流程完全一致，差别仅在于注册哪些核心插件、运行哪个加载器。启动就是 [§1](#1-分层模型) 的那摞层横过来放：各层按顺序就绪 —— 先是内核，然后是 Layer 2、Layer 3、Layer 4，最后是 Layer 5 外壳 —— 因为每一层都在等下面那层提供的某个服务键。
 
 ```mermaid
 sequenceDiagram
@@ -319,9 +339,9 @@ sequenceDiagram
 
 ## 5. 组合：功能之间如何触达彼此
 
-[§1](#1-分层模型) 管的是*纵向*依赖 —— 谁可以向下够到谁。本节谈的是它留白的*横向*问题，完全发生在 Layer 3 内部。
+[§1](#1-分层模型) 管的是*纵向*依赖 —— 谁可以向下够到谁。本节谈的是它留白的*横向*问题，完全发生在 Layer 4 内部。
 
-服务回答的是"这个能力由谁提供"。它们不回答"一个功能如何在不认识对方的前提下改变另一个功能的行为"。这正是 Cordis 的**瀑布（waterfall）**分发机制的用武之地，在本设计中它被当作一等架构机制来使用 —— 也正是它让两个 Layer 3 的包无需互相导入；这种导入分层模型本不禁止，但经验表明它终将腐化。
+服务回答的是"这个能力由谁提供"。它们不回答"一个功能如何在不认识对方的前提下改变另一个功能的行为"。这正是 Cordis 的**瀑布（waterfall）**分发机制的用武之地，在本设计中它被当作一等架构机制来使用 —— 也正是它让两个 Layer 4 的包无需互相导入；这种导入分层模型本不禁止，但经验表明它终将腐化。
 
 瀑布（waterfall）钩子就是中间件：每个监听器收到参数和一个 `next` 续延，可以变换输入、短路，或对结果做后处理。
 

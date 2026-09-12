@@ -376,12 +376,16 @@ the content type of the document being evaluated.
 
 | Form | Engine | Applies to |
 |---|---|---|
-| `@css:h3 a@text` · a bare CSS selector | CSS selection with an `@attr` / `@text` / `@html` tail | HTML, XML |
+| `@css:h3 a@text` · a bare CSS selector | CSS selection with an `@attr` / `@text` / `@html` tail. **Parses but not yet implemented** — evaluating one raises `RuleEngineUnavailableError` | HTML, XML |
 | `@json:$.a.b[0]` · a rule starting `$.` | JSONPath | JSON |
-| `@xpath://div[@id="t"]/text()` · a rule starting `//` | XPath | HTML, XML |
+| `@xpath://div[@id="t"]/text()` · a rule starting `//` | XPath. **Parses but not yet implemented** — evaluating one raises `RuleEngineUnavailableError` | HTML, XML |
 | `:(\d+)kbps` | Regular expression; capture group 1, or group 0 if there is none | Any text |
-| `@js:` … · `<js>` … `</js>` | Sandboxed JavaScript ([§8](#8-trust-what-an-imported-source-can-and-cannot-do)) | Any |
+| `@js:` … · `<js>` … `</js>` | Sandboxed JavaScript ([§8](#8-trust-what-an-imported-source-can-and-cannot-do)) — only when a `ctx.js` implementation is loaded | Any |
 | `=` … | Literal template — the rest is text with `{{ }}` interpolation, never a selector | Any |
+
+The engines that actually evaluate today are **template, JSONPath, regex and literal** (plus
+`@js:` where a sandbox exists). `@css:` and `@xpath:` are recognised by the parser so documents
+using them import cleanly, but no rule block of those kinds runs yet.
 
 Inference exists so that the common case is short. It is also the one place the language can
 surprise you, so the rule is written down rather than left to taste: **a rule is a selector unless

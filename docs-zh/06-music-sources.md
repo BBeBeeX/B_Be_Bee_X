@@ -321,12 +321,14 @@ export interface LyricRule { lyric: string; format?: string; offsetMs?: string }
 
 | 形式 | 引擎 | 适用于 |
 |---|---|---|
-| `@css:h3 a@text` · 一个裸 CSS 选择器 | CSS 选择，带 `@attr` / `@text` / `@html` 尾巴 | HTML、XML |
+| `@css:h3 a@text` · 一个裸 CSS 选择器 | CSS 选择，带 `@attr` / `@text` / `@html` 尾巴。**能解析但尚未实现** —— 对它求值会抛出 `RuleEngineUnavailableError` | HTML、XML |
 | `@json:$.a.b[0]` · 以 `$.` 开头的规则 | JSONPath | JSON |
-| `@xpath://div[@id="t"]/text()` · 以 `//` 开头的规则 | XPath | HTML、XML |
+| `@xpath://div[@id="t"]/text()` · 以 `//` 开头的规则 | XPath。**能解析但尚未实现** —— 对它求值会抛出 `RuleEngineUnavailableError` | HTML、XML |
 | `:(\d+)kbps` | 正则表达式；捕获组 1，若没有则为组 0 | 任意文本 |
-| `@js:` … · `<js>` … `</js>` | 沙箱化 JavaScript（[§8](#8-信任导入的源能做什么不能做什么)） | 任意 |
+| `@js:` … · `<js>` … `</js>` | 沙箱化 JavaScript（[§8](#8-信任导入的源能做什么不能做什么)）—— 仅当加载了某个 `ctx.js` 实现时 | 任意 |
 | `=` … | 字面模板 —— 其余部分是带 `{{ }}` 插值的文本，绝不是选择器 | 任意 |
+
+如今真正会求值的引擎是**模板、JSONPath、正则与字面量**（外加存在沙箱时的 `@js:`）。`@css:` 与 `@xpath:` 会被解析器识别，因此使用它们的文档能干净地导入，但这两类规则块还没有任何一块真正运行过。
 
 推断的存在是为了让常见情形写得短。它也是这门语言唯一可能让你吃惊的地方，所以这条规则被明文写下，而不是留给各人口味：**规则是选择器，除非它以 `=` 开头。** 一个不带 `=` 的常量 `"audio/mpeg"` 是一个针对不存在元素类型的 CSS 选择器，解释器会明确告诉你这一点，而不是悄悄把字符串原样返回。
 
@@ -943,7 +945,7 @@ flowchart LR
 
 ### 本地扫描器
 
-`plugin-local-scanner` 之所以独立于 `plugin-source-local`，是因为扫描与提供服务是两件事。它通过 `ctx.fs.list` 遍历 `scan_roots`，对每个 `(size, mtime)` 与已记录的 `scan_entries` 行不一致的文件调用 `ctx.codec.readMetadata`，提取封面，并写入曲库行。
+`plugin-local-scanner` 之所以独立于 `plugin-source-local`，是因为扫描与提供服务是两件事。它通过 `ctx.fs.list` 遍历 `scan_specified_dirs`，对每个 `(size, mtime)` 与已记录的 `scan_entries` 行不一致的文件调用 `ctx.codec.readMetadata`，提取封面，并写入曲库行。
 
 - **增量式。** 未变化的文件仅靠 stat 比对即被跳过；对一个毫无变化的十万文件曲库做一次重扫，代价只是一堆 stat 调用，别无其他。
 - **可中断。** 以批次运行并使用 `AbortSignal`，每批结束做检查点存档，因此扫描中途一次挂起的代价是一批。

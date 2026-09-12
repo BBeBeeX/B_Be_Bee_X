@@ -72,8 +72,11 @@ pnpm check                   # typecheck + lint + test — the whole gate
 | `pnpm gen:plugins` | Regenerate `apps/*/generated/plugins.ts`. **Run after adding/removing a plugin** |
 | `pnpm new:plugin` | Scaffold a plugin (see §6) |
 | `pnpm dev:desktop` / `pnpm build:desktop` | Electron dev with HMR / production bundles |
+| `pnpm dev:desktop:debug` | Desktop dev with debug mode enabled |
 | `pnpm dev:mobile` / `pnpm dev:android` | Expo dev client (**not** Expo Go) |
-| `pnpm clean` | Remove `dist/`, `out/`, `*.tsbuildinfo` |
+| `pnpm dev:mobile:debug` / `pnpm dev:android:debug` | Same, with debug mode (`EXPO_PUBLIC_DEBUG=1`) |
+| `pnpm test:ui` | Vitest with the browser UI |
+| `pnpm clean` / `pnpm clean:all` | Remove `dist/`, `out/`, `*.tsbuildinfo` (and with `clean:all`, `node_modules`) |
 
 Run a single package's tests by path: `pnpm test packages/core/core-fs-node`.
 
@@ -179,14 +182,25 @@ packages/protocol/          @BBeBee/protocol: services/, entities/, events.ts, c
 packages/kernel/            @BBeBee/kernel:  bootstrap/, config/, loader/, capability-gate/,
                                              migrations/, plus workspace-scanning tests
 packages/core/core-*        one implementation per target per service key
+                            (core-desktop-bridge backs desktop IPC/shell; core-store-fs backs
+                            ctx.store; core-js-quickjs-node is ctx.js on desktop — mobile has
+                            no sandbox yet)
 packages/logs/plugin-log-*  the three transports: buffer, console, file
-packages/feature/plugin-*   headless features; plus source-rules (pure logic, no Cordis, no I/O)
+packages/feature/plugin-*   headless features; source-rules (pure logic, no Cordis, no I/O);
+                            plugin-ui claims ctx.ui; plugin-inspector claims ctx.inspector
 packages/ui/                ui-tokens, ui-core, ui-parity, ui-kit-{mobile,desktop},
-                            plugin-*-ui-{mobile,desktop}
+                            plugin-*-ui-{mobile,desktop} — including plugin-inspector-ui-desktop
+                            and the plugin-sources / plugin-local-scanner UI pairs
 packages/tooling/           tooling-gen-plugins, tooling-create-plugin, tooling-fixtures
 fixtures/sources/           example source documents; the golden corpus
 test/stubs/                 the three native modules Node cannot load, aliased by vitest.config.ts
 ```
+
+Beyond the core services in §6, several **feature plugins claim service keys** of their own:
+`ctx.player` (plugin-player), `ctx.sources` (plugin-sources), `ctx.scanner`
+(plugin-local-scanner), `ctx.ui` (plugin-ui), `ctx.inspector` (plugin-inspector), and
+`ctx.logBuffer` (plugin-log-buffer). Those keys are declared in `@BBeBee/protocol` like any
+other; they are registered by their plugins, not by a `core-*` package.
 
 ### Naming
 
@@ -527,7 +541,9 @@ per enabled row, each in its own fiber inside its own `ctx.isolate('http')` scop
 - The rule language: prefixes pick the engine (`@css:`, `@json:`, `@xpath:`, `@js:`, `=` literal;
   bare rules are inferred). **A rule is a selector unless it starts with `=`** — the URL template
   fields `searchUrl`/`exploreUrl` are the only exception. `{{ }}` is a **path, not an
-  expression**; only `{{@js:…}}` reaches the sandbox.
+  expression**; only `{{@js:…}}` reaches the sandbox. The engines that evaluate today are
+  template, JSONPath, regex and literal (plus `@js:` where a sandbox exists); `@css:`/`@xpath:`
+  parse but raise `RuleEngineUnavailableError` (docs/06 §3.1).
 - Combinators: `||` first non-empty, `&&` concatenate, `%%` interleave, `##pat##repl##` replace.
 - `packages/feature/source-rules` is **pure logic** — no Cordis, no platform, no I/O. ESLint bans
   `cordis` and `@BBeBee/kernel` there specifically. Every fetch belongs to the runtime.
@@ -551,7 +567,7 @@ confirm. Documents this repo ships live in `fixtures/sources/`.
 | **Unit** | Pure logic: URN parsing, fractional indexing, the transport state machine against a mock `AudioService` |
 | **Conformance** | Every `core-*` implementation against the shared suite in `packages/protocol/src/conformance/`. **The most important layer** |
 | **Integration** | A real Cordis context, real feature plugins, fake core services: load order, waterfall composition, unload completeness |
-| **Source corpus** | Every document in `fixtures/sources/` replayed against recorded HTTP fixtures |
+| **Source corpus** | Every document in `fixtures/sources/` replayed in vitest, responses recorded inline in the runtime tests |
 | **Device smoke** | Manual, per release: lock screen, Bluetooth, headphone unplug, incoming call, background survival |
 
 Two tests encode the architecture's central claims: the **leak test** (`snapshotContext` before
@@ -623,24 +639,35 @@ Test conventions in this repo:
 
 ## 13. Where the project stands
 
-**M0 is done and M1 is largely built**: `core-audio-webaudio` with its conformance suite, both
-`core-codec-*`, both `core-http-*` against a real byte-serving socket, `ctx.device`,
-`ctx.background` and `ctx.mediaSession` on both targets, the scanner, the catalogue, the player
-(gapless, crossfade, prefetch, the interruption table), both UI kits with the parity check, and
-five screens on both shells. Both shells load the **generated** registry.
+**M0 and M1 are built; M2 (sources as strings) is built except where named below.**
+
+- M1: `core-audio-webaudio` with its conformance suite, both `core-codec-*`, both `core-http-*`
+  against a real byte-serving socket, `ctx.device`, `ctx.background` and `ctx.mediaSession` on
+  both targets, the scanner, the catalogue, the player (gapless, crossfade, prefetch, the
+  interruption table), both UI kits with the parity check, and five screens on both shells.
+  Both shells load the **generated** registry.
+- M2: `source-rules` (full rule engine with its own tests), `core-js-quickjs-node`, the runtime
+  with search/explore/album/lyrics/login (`DocumentAuth`, single-flight re-auth), `ctx.secrets`
+  on both targets with persistent per-source cookie jars, the import/review flow, the rule tracer
+  and editor UI (`plugin-sources-ui-*`), and the corpus suite over `fixtures/sources/`
+  (`direct-url.json`, `subsonic.json`, `podcast-json-feed.json`).
+- Also built: the three log transports (`plugin-log-{buffer,console,file}`), `plugin-ui`
+  (`ctx.ui`), `plugin-inspector` (`ctx.inspector`), `core-desktop-bridge`, `core-store-fs`.
 
 Known gaps, so they are not rediscovered as bugs:
 
 - **The Stage 0 audio spike has not been run on hardware** — no iOS device, no Android device, no
   Electron. ADR-4's verdict is still a hypothesis, as is the device smoke matrix.
 - **`load({ strategy: 'stream' })` has no mobile implementation.** React Native has no
-  `HTMLMediaElement`, so a long remote track is buffered or not played. This is the one piece of
-  M1 that is architecture rather than wiring.
+  `HTMLMediaElement`, so a long remote track is buffered or not played.
 - **`core-js-quickjs-expo` does not exist** — Hermes has no WASM. `ctx.js` on mobile needs a
   native QuickJS module. Tracked as the M2 gap.
-- **M2 (sources as strings) is not built**: `source-rules`, the sandbox, search/explore/album/
-  lyrics/login in the runtime, the import/editor/tracer UI, and `ctx.secrets` with persistent
-  cookie jars are all outstanding.
+- **`@css:` and `@xpath:` rule engines are not implemented** — the parser recognises the
+  prefixes and documents using them import cleanly, but evaluating such a rule raises
+  `RuleEngineUnavailableError` (docs/06 §3.1).
+- **No first-party plugin ships its own schema** — everything bundled reads/writes core tables
+  via `db:read:core`/`db:write:core`; the `ctx.db.defineSchema` machinery is implemented and
+  tested but unused (docs/07 §6).
 - **`mediaSession`, `background`, `notify`, `shell` and `secrets:own` capabilities are
   declarative** — the grant is recorded but nothing enforces it yet.
 
@@ -649,16 +676,17 @@ Known gaps, so they are not rediscovered as bugs:
 Reality, not aspiration — check before relying on a doc statement:
 
 - **No Turborepo and no `turbo.json`.** The root scripts orchestrate with `pnpm -r`.
-- **No `pnpm source:check` / `pnpm source:record`.** They arrive with M2.
+- **No `pnpm source:check` / `pnpm source:record`.** Planned for M2 cleanup; until then the
+  corpus responses are recorded inline in `plugin-source-runtime`'s tests.
 - **No CI config in the repo.** `pnpm check` is the gate you run yourself.
 - **Layers 0 and 1 are single packages, not directories of them** — `packages/protocol/src` and
   `packages/kernel/src` sit one level shallower than `packages/<layer>/<package>/src`. The vitest
   include globs and the kernel tests' own `workspaceRoot` both have to carry both shapes; when
   they carried only the deep one, every kernel and protocol test silently stopped being collected
   and the run stayed green.
-- **Pinned versions drift from the `docs/09 §5` matrix** — `typescript` is 5.9.3 (the matrix says
-  7.0.2, with a note to pin the latest 5.x if tooling lags). Read `package.json` and
-  `pnpm-lock.yaml` as the authority on versions.
+- **Pinned versions drift from the `docs/09 §5` matrix in both directions** — `typescript` is
+  5.9.3 (the matrix used to say 7.0.2) and `vite` is ^7.3.6 (the matrix used to say 8.2.2).
+  Read `package.json` and `pnpm-lock.yaml` as the authority on versions.
 - `cordis` is pinned exactly at `4.0.0-rc.9` — **no caret, no tilde**. It is a release candidate
   whose API may change without notice. Upgrades are deliberate, manual, and their own commit.
   Plugins import Cordis types **from `@BBeBee/kernel`**, never from `cordis`, so one adapter

@@ -92,7 +92,7 @@ GET 与 HEAD、任意请求头、`Range`、`stream()`、`onProgress`、超时与
 **MD-4 —— 新增 `db:write:core`；`db:read:core` 收窄为只读。** *（已落地。）*
 `assertDb` 增加了动词检查：`db:read:core` 只允许对核心表 `SELECT`，变更需要 `db:write:core`，`db:*:core` 额外允许 `CREATE`/`DROP`/`ALTER`。动词不相互蕴含，因此一个既读又写目录的插件要同时声明两者，安装时的授权提示才能准确说出它到底在请求什么。语句按其所作所为中要求最高的一档归类，所以 `DROP` 不可能躲在 `SELECT` 身后。`plugin-sources`、`plugin-source-local`、`plugin-local-scanner` 与 `plugin-player` 都声明 `db:read:core` + `db:write:core`。
 *理由。* 过去的 `db:read:core` 会放行任何语句，`INSERT` 也包括在内。M1 是第一个有插件要写核心表的里程碑，所以这是纠正这个名字的最后廉价时机 —— 赶在 M5 的安装时提示一边说"只读"一边把写也放出去之前。
-*落点。* `packages/kernel/src/capability.ts` 里的 `classifyDbAccess` 与授权解析器；`packages/kernel/src/sql.ts` 里的共享 SQL 读取器；`db-scope` 契约套件中由 `core-db-node` 与桌面桥共同运行的用例；[03 §7](./03-plugin-system.md#能力语法) 的语法表各行。
+*落点。* `packages/kernel/src/capability-gate/capability.ts` 里的 `classifyDbAccess` 与授权解析器，以及 `packages/kernel/src/capability-gate/sql.ts` 里的共享 SQL 读取器；`db-scope` 契约套件中由 `core-db-node` 与桌面桥共同运行的用例；[03 §7](./03-plugin-system.md#能力语法) 的语法表各行。
 *顺带修复的问题* —— 其中每一个都足以单独让这些动词形同虚设：带 schema 前缀的 `main.plugin_other_secrets` 被归到名为 `main` 的表上，并被 `core` 回退放行；不含任何可见表名的语句（`DROP INDEX`、`VACUUM`、`PRAGMA foreign_keys = OFF`）完全绕过闸门，因为逐表循环*就是*闸门本身；桌面桥还维护着另一份早已漂移的禁用 SQL 列表，于是 `VACUUM INTO '/any/path'` 能绕过它的封存检查写出文件；`core-db-expo` 根本没有闸门，`db:own` 在桌面端是一个意思、在移动端什么都不是；而且两个驱动都只会静默执行多条语句字符串中的第一条，迁移可能因此记录下一个它只应用了一半的版本。
 
 **MD-5 —— 无缝衔接、预取与淡入淡出全部在 M1。**
@@ -361,9 +361,9 @@ flowchart LR
 - **删除。** 消失的文件带走自己的 `media_bindings` 行，而一条失去绑定的本地曲目被移除 —— 对实例 `local` 而言，文件*就是*曲目。
 - **监视。** `ctx.fs.canWatch` 为真时用 `ctx.fs.watch`；否则经 `ctx.background.schedule` 轮询，并把由此产生的延迟如实写进 UI，而不是假装不存在。⚠️ 若*两者*都不存在 —— 在 `core-background-electron` 落地之前的每个桌面构建上都是如此，因为桥的 `canWatch` 为 false —— 扫描器回退到自己的定时器。没有它，桌面端曾完全没有自动重扫：文件变了，曲库却无声地保持陈旧。
 
-- [x] `addRoot` 用 `ctx.fs.pickDirectory`，且 Android 的 SAF 授权在重启后仍然有效。
-      ⚠️ 选择器调用放在*视图*包里，`addRoot` 接收它返回的 `Uri`：挑选文件夹是一次 UI 动作，而一个会弹出对话框的服务没法从测试或恢复流程驱动。SAF 那一半是真机工作。
-- [x] 写入 `tracks`、`albums`、`artists`、`track_artists`、`genres`、`track_genres`、`artworks`、`media_bindings`、`scan_roots`、`scan_entries`；声明 `db:write:core`（MD-4）。
+- [x] `addSpecifiedDir` 用 `ctx.fs.pickDirectory`，且 Android 的 SAF 授权在重启后仍然有效。
+      ⚠️ 选择器调用放在*视图*包里，`addSpecifiedDir` 接收它返回的 `Uri`：挑选文件夹是一次 UI 动作，而一个会弹出对话框的服务没法从测试或恢复流程驱动。SAF 那一半是真机工作。
+- [x] 写入 `tracks`、`albums`、`artists`、`track_artists`、`genres`、`track_genres`、`artworks`、`media_bindings`、`scan_specified_dirs`、`scan_entries`；声明 `db:write:core`（MD-4）。
 - [x] 每批发出 `scan/started`、`scan/progress`、`scan/finished` 与 `library/changed`，UI 于是渐进填充，而不是等整棵树走完。
 - [x] 扫描中途取消后数据库保持一致，下一次扫描以低成本续传。
 - [x] 写入成批并走单一写入路径 —— [10](./10-roadmap.md#-sqlite-作为唯一存储) 的 SQLite 争用风险在这里被第一次实测（§7）。
@@ -439,7 +439,7 @@ M1 里最大的包，也是用户最能感知其行为的包。
 
 ### 4.12 视图包
 
-`plugin-player-ui-{mobile,desktop}`、`plugin-sources-ui-{mobile,desktop}`、`plugin-local-scanner-ui-{mobile,desktop}`。按 MD-2 每外壳五块屏：曲库（曲目与专辑）、专辑详情、队列、正在播放（移动端全屏、桌面端底栏），以及扫描根目录与 URL 音源的设置。最后一个是 M2 音源列表的种子（[08 §4](./08-ui-architecture.md#音源相关界面)）—— 一个只有添加与移除的列表，刻意没有导入审阅界面，因为目前还没有任何东西可审阅。
+`plugin-player-ui-{mobile,desktop}`、`plugin-sources-ui-{mobile,desktop}`、`plugin-local-scanner-ui-{mobile,desktop}`。按 MD-2 每外壳五块屏：曲库（曲目与专辑，带 `All`、`Local` 与 `Favorites` 的范围过滤）、专辑详情、队列、正在播放（移动端全屏、桌面端底栏），以及扫描根目录与 URL 音源的设置。最后一个是 M2 音源列表的种子（[08 §4](./08-ui-architecture.md#音源相关界面)）—— 一个只有添加与移除的列表，刻意没有导入审阅界面，因为目前还没有任何东西可审阅。
 
 让 ADR-2 保持可负担的那条规则：**如果同一个 `if` 即将在两个包里各写一遍，它就该住进无 UI 的那个。** 这些包应当只做布局、手势与事件接线，别无其他。
 
@@ -463,7 +463,7 @@ M1 里最大的包，也是用户最能感知其行为的包。
 | 路由 | 贡献的路由以动态 `expo-router` 路由接入；`placement` 决定进 tab 栏还是更多菜单 | 来自 `ctx.ui.routes` 的侧栏项，按 `order` 排序 |
 
 - [x] 重跑 `pnpm gen:plugins` 并提交其产物（[09 §4](./09-project-structure.md#4-构建流水线)）。
-- [x] 桌面 CSP 保持不变 —— M1 没有任何东西需要放宽它。
+- [x] 桌面 CSP 在其底线之上恰好多一个令牌：`'wasm-unsafe-eval'`，因为 `ctx.js` 在桌面引导清单里，而 Chromium 以 `script-src` 闸住 `WebAssembly.instantiate` —— 没有它 QuickJS 永远无法编译，`createApp` 随之中止。它**不是** `'unsafe-eval'`，因此 `eval` 与 `new Function` 仍被拒绝，"渲染进程里没有外来代码"这一点没有任何改变。`renderer/csp.test.ts` 对任何方向的漂移都会失败。
 - [x] **每个目标都能打包。** Android 与 iOS 用 `expo export`，桌面用 `electron-vite build`。便宜，而且是唯一能抓住"类型检查通过却*载入不了*"的包的检查 —— 那是另一种失败，而事实证明，真正在场的正是这一种：`core-secrets-node` 用 `node:fs` 打开自己的文件，这在 `main` 里正确、在沙箱化的渲染进程里不可能，于是桌面渲染进程根本无法打包它。它现在经 `ctx.fs` 持久化，用的是它被**构造**时的那个上下文，这让存储自己的文件不占*调用方*的能力预算 —— 当初伸手去够平台 API 的理由正在于此（`core-secrets-node` 自己的测试钉死了这一点：一个持有 `secrets:own` 而没有 `fs` 授权的调用方，必须仍然能够保存）。
 - [x] `main` 仍不含领域逻辑；每个新宿主都是机械转发（[02 §2](./02-architecture.md#桌面端)）。
 
@@ -488,6 +488,8 @@ export interface CatalogQuery {
   desc?: boolean
   /** Restrict to given sources. Absent means every source. */
   sourceIds?: string[]
+  /** Restrict to loved/favorited tracks. */
+  onlyLoved?: boolean
   page?: PageRequest
 }
 
@@ -513,6 +515,9 @@ export interface SourcesService {
   searchLocal(text: string, opts?: { limit?: number; sourceIds?: string[] }): Promise<SearchResult>
 
   counts(): Promise<CatalogCounts>
+
+  /** Mark or unmark a track as loved / favorited. */
+  setLoved(urn: string, loved: boolean): Promise<void>
 }
 ```
 
@@ -526,7 +531,7 @@ export interface SourcesService {
 // packages/protocol/src/services/scanner.ts
 import type { Uri } from '../common.js'
 
-export interface ScanRoot {
+export interface ScanSpecifiedDir {
   id: string
   uri: Uri
   recursive: boolean
@@ -537,17 +542,17 @@ export interface ScanRoot {
 
 export interface ScanSummary { added: number; updated: number; removed: number; errors: number }
 
-export interface ScanProgress { rootId: string; done: number; total?: number }
+export interface ScanProgress { specifiedDirId: string; done: number; total?: number }
 
 export interface ScannerService {
-  readonly roots: readonly ScanRoot[]
-  addRoot(uri: Uri, opts?: { recursive?: boolean }): Promise<ScanRoot>
-  /** `forgetTracks` also drops the catalogue rows this root produced. */
-  removeRoot(id: string, opts?: { forgetTracks?: boolean }): Promise<void>
+  readonly specifiedDirs: readonly ScanSpecifiedDir[]
+  addSpecifiedDir(uri: Uri, opts?: { recursive?: boolean }): Promise<ScanSpecifiedDir>
+  /** `forgetTracks` also drops the catalogue rows this specified dir produced. */
+  removeSpecifiedDir(id: string, opts?: { forgetTracks?: boolean }): Promise<void>
   setEnabled(id: string, on: boolean): Promise<void>
 
   /** `full` re-reads metadata even where (size, mtime) is unchanged. */
-  scan(opts?: { rootId?: string; full?: boolean; signal?: AbortSignal }): Promise<ScanSummary>
+  scan(opts?: { specifiedDirId?: string; full?: boolean; signal?: AbortSignal }): Promise<ScanSummary>
   cancel(): void
   readonly progress: ScanProgress | undefined
 }
@@ -635,7 +640,7 @@ M1 期间保持休眠：`download/*`、`dsp/*`、`source/auth-expired`、`source
 
 **争用在这个规模上不是问题。** 播放曲目时扫描要多花 7–13% —— 第二行是同一探针在完整 `pnpm test` 期间的结果，那才是更诚实的数字。成千次检查点落在扫描*进行之中*而不是排在它身后；没有一次写入被拒绝，播放器到最后仍在播放。测试断言的是那些结果 —— 一次抵达调用方的 `SQLITE_BUSY`、一个被饿死的检查点、一个被逼进 `error` 的播放器 —— 而不是时间，因为在共享 CI 硬件上设阈值就是制造 flake。比值打印出来是给人读的，探针的本分就在于此。
 
-- **外壳接线检查** —— `packages/kernel/src/shells.test.ts`。读每个外壳的允许清单、其生成的注册表与各清单文件，并断言每个被配置的插件都被打包、每个被配置插件*需要*的服务由引导数组或另一个被配置插件提供，以及两个外壳运行同一套功能集。
+- **外壳接线检查** —— `packages/kernel/src/bootstrap/shells.test.ts`。读每个外壳的允许清单、其生成的注册表与各清单文件，并断言每个被配置的插件都被打包、每个被配置插件*需要*的服务由引导数组或另一个被配置插件提供，以及两个外壳运行同一套功能集。
 
   ⚠️ 它存在，是因为它的缺席让一个里程碑付了账。每个 M1 包都建成且全绿，而桌面外壳里 `plugin-player` 还被注释着 —— `ctx.audio` 不在任何引导数组里 —— 移动外壳仍在跑 M0 那一套：四个核心服务加演示插件。这两种状态从包内部不可见，从包外部也几乎不可见：一条在等一个永远不会来的服务的 fiber，看上去与一条只是慢的 fiber 一模一样。同一检查的运行时那一半是每个 `boot()` 里的 `await app.ready(BOOTSTRAP_SERVICES)`，它把缺失的服务变成一条点名道姓的启动错误。
 

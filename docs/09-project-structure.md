@@ -577,21 +577,22 @@ Codegen (`packages/tooling/tooling-gen-plugins`, run as `pnpm gen:plugins`) writ
 builds without a pre-step and CI verifies the file is current rather than regenerating it — run it
 whenever a plugin package is added or removed.
 
-Turborepo orchestrates: `build` depends on `^build`, `typecheck` and `lint` run in parallel,
-`test` depends on `build` for packages with conformance suites.
+There is no Turborepo and no `turbo.json`: the root scripts orchestrate with `pnpm -r` — `build`
+runs before `test` for packages with conformance suites, and `typecheck` and `lint` are plain
+recursive runs over the workspace.
 
 ---
 
 ## 5. Version matrix
 
-Verified against the npm registry on **2026-08-30**. Reverify before the first commit; several of
-these move weekly.
+Verified against `package.json` / `pnpm-lock.yaml` on **2026-09-12** — the lockfile is the
+authority; this matrix is a map. Several of these move weekly.
 
 | Package | Version | Note |
 |---|---|---|
 | `cordis` | **4.0.0-rc.9** | ⚠️ Release candidate — see §5.1 |
 | `cosmokit` | ^1.8.1 | Cordis dependency |
-| `@standard-schema/spec` | ^1.1.0 | Plugin `Config` validation |
+| `@standard-schema/spec` | — | Planned for plugin `Config` validation; **not yet a dependency** |
 | `expo` | 57.0.18 | SDK 57 |
 | `react-native` | **0.86.3** | Pinned by Expo SDK 57; do not float to 0.87 |
 | `react` | **19.2.3** | Pinned by Expo SDK 57. The desktop renderer must match |
@@ -613,12 +614,12 @@ these move weekly.
 | `react-native-worklets` | ~0.10.1 | Reanimated 4's runtime, and `react-native-audio-api`'s optional peer |
 | `electron` | **44.0.0** | Requires Node ≥ 22.12, so `node:sqlite` is available |
 | `electron-vite` | 5.0.0 | |
-| `vite` | 8.2.2 | |
-| `typescript` | 7.0.2 | ⚠️ If any tool in this matrix lags TS 7, pin the latest 5.x instead |
-| `vitest` | 4.1.11 | |
-| `zod` | 4.5.4 | Standard Schema compliant; Valibot or ArkType work equally |
-| `pnpm` | 11.24.0 | Workspace manager |
-| `turbo` | 2.10.12 | |
+| `vite` | ^7.3.6 | Pinned by `electron-vite` 5 — the matrix previously said 8.2.2; read `pnpm-lock.yaml` as the authority |
+| `typescript` | **5.9.3** | ⚠️ If any tool in this matrix lags TS 7, stay on the latest 5.x — which is where we are |
+| `vitest` | ^4.1.11 | |
+| `zod` | — | Planned for plugin `Config` validation (Standard Schema compliant); **not yet a dependency** |
+| `pnpm` | 11.x | Workspace manager — read `packageManager` / the lockfile for the exact version |
+| `turbo` | — | **Not adopted.** The root scripts orchestrate with `pnpm -r`; there is no `turbo.json` |
 | `@shopify/flash-list` | 2.3.2 | Mobile list virtualisation |
 | `@tanstack/react-virtual` | 3.14.10 | Desktop list virtualisation |
 | `music-metadata` | 11.15.0 | Tag reading on **both** targets — it is pure JS over `ctx.fs`, so `core-codec-rn` inherits it rather than adding a native reader that would have to agree with it |
@@ -703,7 +704,7 @@ Four layers, each catching something the others cannot.
 | **Unit** | Vitest | Pure logic: URN parsing, fractional indexing, smart-playlist compilation, the transport state machine against a mock `AudioService` |
 | **Conformance** | Vitest (Node) + Detox (device) | Every `core-*` implementation against the shared suite in `@BBeBee/protocol/conformance` (04 §18). **The most important layer** |
 | **Integration** | Vitest with an in-memory context | A real Cordis context, real feature plugins, fake core services. Covers plugin load order, waterfall composition, and unload completeness |
-| **Source corpus** | Vitest, against recorded HTTP fixtures | Every example document in `fixtures/sources/` replayed end to end — search, explore, album, stream — with its responses recorded, so a rule-engine change that breaks real documents fails CI |
+| **Source corpus** | Vitest, responses recorded inline in the tests | Every example document in `fixtures/sources/` replayed end to end — search, explore, album, stream — so a rule-engine change that breaks real documents fails CI. `pnpm source:record` (to move these to fixture files) is planned, not built |
 | **Device smoke** | Manual, per release | Lock screen, Bluetooth, headphone unplug, incoming call, gapless boundary, background survival (05 §7) |
 
 Two tests that are worth writing before almost anything else, because they encode the
@@ -827,12 +828,14 @@ paste the string, review what it says it will do, confirm
 ([06 §9](./06-music-sources.md#9-importing-updating-and-sharing)). No install, no rebuild, no
 restart.
 
-Two commands exist for working on the *documents this repository ships* in `fixtures/sources/`:
+Two commands are **planned** (M2 cleanup; neither exists in root `package.json` yet) for working
+on the *documents this repository ships* in `fixtures/sources/`. Until they land, the corpus
+suite's responses are recorded inline in the tests under `packages/feature/plugin-source-runtime/src/`:
 
-| Command | What it does |
+| Command (planned) | What it will do |
 |---|---|
-| `pnpm source:check <file>` | Runs [06 §10](./06-music-sources.md#10-diagnosing-a-broken-source)'s health check against the live backend and prints the trace. Needs network and, for anything authenticated, credentials in the environment |
-| `pnpm source:record <file>` | Replays the same steps and writes the HTTP fixtures the corpus suite ([§6](#6-testing-strategy)) replays offline |
+| `pnpm source:check <file>` | Run [06 §10](./06-music-sources.md#10-diagnosing-a-broken-source)'s health check against the live backend and print the trace. Needs network and, for anything authenticated, credentials in the environment |
+| `pnpm source:record <file>` | Replay the same steps and write the HTTP fixtures the corpus suite ([§6](#6-testing-strategy)) replays offline |
 
 **After adding or removing a plugin, run `pnpm gen:plugins`.** Metro cannot resolve a runtime path,
 so both shells read a generated registry of static imports ([§4](#4-build-pipelines)). The output

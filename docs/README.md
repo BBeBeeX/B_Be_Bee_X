@@ -13,10 +13,12 @@ built-in runtime and sandboxed in its own JS realm. Adding a backend is a paste,
 ([ADR-5](./01-overview.md#adr-5--music-sources-are-imported-strings-interpreted-by-one-runtime),
 [06](./06-music-sources.md)).
 
-> **Status.** These documents describe a design, not a shipped system. The repository contains
-> no application code yet. Every version number and API fact was verified against the published
-> package at the time of writing (see [09 — Project Structure](./09-project-structure.md) for
-> the pinned matrix).
+> **Status.** M0 and M1 are built, and M2 (sources as strings) is built except where
+> [10 — Roadmap](./10-roadmap.md) names open items — notably `core-js-quickjs-expo` (mobile has
+> no QuickJS sandbox yet) and the `@css:`/`@xpath:` rule engines. See the roadmap's
+> "Where it stands" section for the precise list. Every version number and API fact was verified
+> against `pnpm-lock.yaml` at the time of writing (see
+> [09 — Project Structure](./09-project-structure.md) for the pinned matrix).
 
 ---
 
