@@ -1016,6 +1016,10 @@ export class Sources extends Service implements SourcesService {
     return this.catalog.getArtist(urn)
   }
 
+  getTracks(urns: readonly string[]): Promise<Track[]> {
+    return this.catalog.getTracks(urns)
+  }
+
   searchLocal(text: string, opts?: { limit?: number; sourceIds?: string[] }): Promise<SearchResult> {
     return this.catalog.searchLocal(text, opts)
   }

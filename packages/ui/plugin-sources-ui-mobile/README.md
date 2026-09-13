@@ -15,7 +15,7 @@ Layer 5（ui）— `plugin-sources`（headless）的移动视图包：`plugin-so
 **各屏幕**（行为与桌面一致，以下列移动端差异）：
 
 - **`LibraryScreen`** — Tracks/Albums 双 tab（`accessibilityRole: 'tablist'`）；专辑列表内联在屏内（`Pressable` + `accessibilityRole: 'button'`，无独立 `AlbumGrid`）；`List`（FlashList）+ `TrackRow`。点击播放/导航语义与桌面相同：单曲走 headless 的 `playFromList`（队列已有则跳转，否则当前 scope 的整个列表换入队列并从点击处播），专辑行交给路由。
-- **`AlbumScreen({ urn })`** — header 居中**竖排**（200px `Artwork`、标题 `numberOfLines: 2`），桌面为横排。"Play album" 禁用而非隐藏；单轨 `playFromList`（跳转优先，否则整张专辑成为队列并从点击处起播），语义与桌面逐字相同。
+- **`AlbumScreen({ urn })`** — header 居中**竖排**（200px `Artwork`、标题 `numberOfLines: 2`），桌面为横排。"Play album" 禁用而非隐藏；单轨 `playFromList`（跳转优先，否则整张专辑成为队列并从点击处起播），语义与桌面逐字相同；**播放不导航**，mini-player 自己宣布正在播放。
 - **`ImportScreen`** — 多行 `TextField` `rows: 10`（桌面 14）；placeholder 较短；报告文本 tone 恒 `'muted'`（桌面在 added/updated > 0 时用 `'accent'`）。预览、全部 issues、`summariseImport` 行为一致。
 - **`DebugScreen({ sourceId })`** — 查询框与 "Run search" **竖排堆叠**（桌面横排）；`TraceList` 用 `View` + `borderLeftWidth/Color` + `Text variant: 'sm'`（无 aria-live 等价物）；编辑器 `rows: 10`。文件注释补了一句：这屏在手机上最重要——从论坛贴的源就是在设备上坏的，而"源即字符串"模型的全部意义就是当场能修。
 

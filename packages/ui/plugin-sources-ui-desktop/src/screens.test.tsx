@@ -330,7 +330,7 @@ describe('LibraryScreen', () => {
     ).toEqual([])
   })
 
-  it('plays track and navigates to player.now-playing on click', async () => {
+  it('plays the track in its list context on click, staying on the library', async () => {
     const { admin } = await harness()
     await withTrack(admin)
 
@@ -367,9 +367,10 @@ describe('LibraryScreen', () => {
       })
 
       // A tap plays the track in the list it was tapped in: the whole library
-      // (one track here) goes with it as the queue context.
+      // (one track here) goes with it as the queue context — and the user
+      // stays where they are; playback announces itself in the bar.
       expect(calls).toContain('play:BBeBee:local:track:1|context:BBeBee:local:track:1')
-      expect(calls).toContain('nav:player.now-playing')
+      expect(calls, 'no navigation to the player').not.toContain('nav:player.now-playing')
     })
   })
 

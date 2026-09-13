@@ -247,6 +247,32 @@ describe('catalogue reads', () => {
     const { sources } = await fixture()
     expect(await sources.counts()).toEqual({ tracks: 3, albums: 1, artists: 2 })
   })
+
+  it('resolves tracks by URN, skipping unknown ones and keeping withdrawn rows', async () => {
+    // The queue screen's read: rows must come back with the credits and
+    // artwork a row renders, duplicates collapse, and a URN nothing answers
+    // for is absent rather than an error.
+    const { sources, db } = await fixture()
+
+    const found = await sources.getTracks([
+      `BBeBee:${SOURCE}:track:joga`,
+      'BBeBee:local:track:missing',
+      `BBeBee:${SOURCE}:track:xtal`,
+      `BBeBee:${SOURCE}:track:joga`,
+    ])
+    expect(found.map((t) => t.title).sort()).toEqual(['Jóga', 'Xtal'])
+    const joga = found.find((t) => t.title === 'Jóga')!
+    expect(joga.artists.map((a) => a.name)).toEqual(['Björk'])
+    expect(joga.artwork?.id).toBe('art1')
+    expect(joga.albumTitle).toBe('Homogenic')
+
+    // Withdrawn tracks keep their rows for the queue that restored them —
+    // resolvable here with `available: false`, though absent from listings.
+    await db.exec('UPDATE tracks SET available = 0 WHERE urn = ?', [`BBeBee:${SOURCE}:track:xtal`])
+    const withdrawn = await sources.getTracks([`BBeBee:${SOURCE}:track:xtal`])
+    expect(withdrawn).toHaveLength(1)
+    expect(withdrawn[0]!.available).toBe(false)
+  })
 })
 
 describe('the FTS index', () => {

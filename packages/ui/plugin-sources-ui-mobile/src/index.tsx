@@ -183,11 +183,9 @@ export function LibraryScreen({
                   showAlbum: true,
                   // A tap plays the track in the list it was tapped in: jump
                   // if the queue already holds it, otherwise that whole list
-                  // becomes the queue (docs/05 §2).
-                  onPress: () => {
-                    void playFromList(ctx, track.urn, { query })
-                    serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
-                  },
+                  // becomes the queue (docs/05 §2). Playback announces
+                  // itself in the mini-player; no navigation.
+                  onPress: () => void playFromList(ctx, track.urn, { query }),
                   onToggleLoved: () => void setLoved(track.urn, !track.loved),
                 }),
             })
@@ -299,10 +297,8 @@ export function AlbumScreen({
         children: detail.artists?.map((a) => a.name).join(', ') ?? '',
       }),
       h(Button, {
-        onPress: () => {
-          void serviceOf<PlayerService>(ctx, 'player')?.playNow(detail.tracks.map((t) => t.urn))
-          serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
-        },
+        // Playback announces itself in the mini-player; no navigation.
+        onPress: () => void serviceOf<PlayerService>(ctx, 'player')?.playNow(detail.tracks.map((t) => t.urn)),
         children: 'Play album',
         disabled: detail.tracks.length === 0,
       }),
@@ -326,7 +322,6 @@ export function AlbumScreen({
               urns: detail.tracks.map((t) => t.urn),
               context: { kind: 'album', urn: detail.urn, label: detail.title },
             })
-            serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
           },
         }),
     }),

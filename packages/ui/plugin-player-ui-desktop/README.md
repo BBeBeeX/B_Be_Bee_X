@@ -25,10 +25,7 @@ Layer 5（ui）— `plugin-player`（headless）的桌面视图包。
   - 左：⏮ / ⏯ / ⏭ 三个 `IconButton`。**⏯ 是一个控件两个状态**（`can.canPause ? '⏸' : '▶'`，label 同步切换）——"一个时而变暂停的播放键是每个播放器都有的，两个控件就错了"；可用性由 `useTransportAvailability` 决定 disabled。
   - 中：进度区。**`stalled` 不是 `paused`**：UI 显示 "Buffering…"、锁屏继续报 playing，underrun 时谁也不闪。`Slider` 只接 `onCommit`（"每一帧都 seek 的 scrubber 不可用"），`disabled: !can.canSeek`；时间标签用 `formatDuration`。
   - 右：🔇/🔊 切换 + 音量 `Slider`（0–100，`onCommit` 换算回 0–1）。
-- **`QueueScreen({ ctx })`** — up-next 列表。空队列 → `EmptyState`（🎵 "Nothing queued"）；否则 `List<QueueItem>`（`estimatedItemSize: tokens.size.row`，`keyExtractor: item.id`）+ `TrackRow`，`active: item.id === state.currentItemId`。一个诚实让步（注释明说）：
-  1. 队列里是 URN 不是 track——行组件用 `{ urn, title: urn, artists: [] }` 充数，"标题随后续里程碑的目录读取到来"。
-
-  行点击是 `playFromContext(urn)`：曲目按定义就在队列里，故语义是**跳到该项**、原队列原封不动——早先没有跳转 API 时只能 `playNow([urn])` 收窄可供性，那个让步已随 `playFromContext` 的到来撤销。
+- **`QueueScreen({ ctx })`** — up-next 列表。空队列 → `EmptyState`（🎵 "Nothing queued"）；否则 `List<QueueItem>`（`estimatedItemSize: tokens.size.row`，`keyExtractor: item.id`）+ `TrackRow`，`active: item.id === state.currentItemId`。行内容来自 headless 的 `useTracksByUrn`（一次 `getTracks` 批量解析）：**封面 + 标题 + 艺人**；目录答不出的 URN（源被移除、扫描进行中）落回显示 URN 本身而非空行。行点击是 `playFromContext(urn)`：曲目按定义就在队列里，故语义是**跳到该项**、原队列原封不动——早先没有跳转 API 时只能 `playNow([urn])` 收窄可供性，那个让步已随 `playFromContext` 的到来撤销。
 
 **`bound(ctx, Screen)`** — 闭包本插件 `apply` 时的 context（shell 的 context 只有 `ui`，hooks 读 `ctx.player` 会抛 `cannot get property "player" without inject`——"设备上抛错、测试全绿"正是此 bug 的形状，因为测试建的是 root context）。必须 `h(Screen, …)` 而非函数调用（hook 链会被拼错）。
 
@@ -36,7 +33,7 @@ Layer 5（ui）— `plugin-player`（headless）的桌面视图包。
 
 ```ts
 export const name = 'plugin-player-ui-desktop'
-export const inject = ['ui', 'player']
+export const inject = ['ui', 'player', 'sources']
 export function NowPlayingBar / QueueScreen
 export async function apply(ctx)      // generator effect：registerView × 2
 export default { name, inject, apply }

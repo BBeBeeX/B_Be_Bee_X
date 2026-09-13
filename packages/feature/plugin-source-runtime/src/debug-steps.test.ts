@@ -156,6 +156,25 @@ describe('the js debug step', () => {
     expect(value && value.kind === 'value' && value.value).toBe('1')
   }, 30_000)
 
+  it('keeps a large return value parseable — the tree depends on it', async () => {
+    /*
+     * ⚠️ The per-field redactor cap (2 KB) must not apply here. A return
+     * value truncated mid-JSON is a string the test screen can never parse,
+     * so every big output renders as text instead of a tree — which is the
+     * one thing the value event exists to prevent.
+     */
+    const ctx = await app()
+    const code = 'return { items: Array.from({ length: 60 }, (_, i) => ({ id: i, title: "track " + i, url: "https://music.example.org/stream/" + i })) }'
+    const events = await traceOf(ctx, { kind: 'js', code })
+
+    const value = events.find((e) => e.kind === 'value')
+    expect(value && value.kind === 'value').toBe(true)
+    const text = value && value.kind === 'value' ? value.value : ''
+    expect(text.length).toBeGreaterThan(2000)
+    const parsed = JSON.parse(text) as { items: { title: string }[] }
+    expect(parsed.items).toHaveLength(60)
+  }, 30_000)
+
   it('reports malformed arguments as a trace error, not a throw', async () => {
     const ctx = await app()
     const events = await traceOf(ctx, { kind: 'js', code: 'return 1', argsJson: '{ not json' })

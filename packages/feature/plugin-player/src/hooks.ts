@@ -12,8 +12,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { Context } from 'cordis'
-import type { NowPlayingMeta, QueueItem, TransportState } from '@BBeBee/protocol'
-import { shallowArrayEqual, useServiceState } from '@BBeBee/ui-core'
+import type { NowPlayingMeta, QueueItem, SourcesService, Track, TransportState } from '@BBeBee/protocol'
+import { serviceOf, shallowArrayEqual, useServiceState } from '@BBeBee/ui-core'
 
 /** The transport, re-read whenever it changes. */
 export function useTransport(ctx: Context): TransportState {
@@ -41,6 +41,65 @@ export function useQueue(ctx: Context): readonly QueueItem[] {
   return useServiceState(ctx, ['queue/changed'], () => ctx.player.queue, {
     isEqual: shallowArrayEqual,
   })
+}
+
+/**
+ * The catalogue rows behind a list of URNs — what a queue row shows instead
+ * of the URN itself.
+ *
+ * The queue holds URNs, not tracks (docs/05 §2); the display data arrives
+ * with the catalogue read this hook does for the list, one chunked
+ * `getTracks` per set of URNs. Resolutions are cached for the session, and
+ * `library/changed` — a scan landing mid-session, a source updated — drops
+ * the cache.
+ *
+ * Read through `serviceOf` rather than a property, deliberately: the
+ * catalogue is an *enhancement* here, not a requirement. A context with no
+ * sources service (or URNs it cannot answer — a removed source, a track still
+ * being scanned) resolves to nothing, and the view falls back to the URN
+ * rather than throwing or rendering an empty row.
+ */
+export function useTracksByUrn(ctx: Context, urns: readonly string[]): ReadonlyMap<string, Track> {
+  const [cache, setCache] = useState<ReadonlyMap<string, Track>>(() => new Map())
+  const cacheRef = useRef(cache)
+  cacheRef.current = cache
+  const [generation, setGeneration] = useState(0)
+
+  useEffect(() => {
+    const off = ctx.on('library/changed', () => {
+      setCache(new Map())
+      setGeneration((n) => n + 1)
+    })
+    return () => void off()
+  }, [ctx])
+
+  // Contents, not identity: `queue.map(…)` hands the hook a fresh array every
+  // render, so the read is keyed on the URNs themselves.
+  const key = [...new Set(urns)].sort().join('\n')
+
+  useEffect(() => {
+    const sources = serviceOf<SourcesService>(ctx, 'sources')
+    if (!sources || key === '') return
+    const missing = key.split('\n').filter((urn) => !cacheRef.current.has(urn))
+    if (missing.length === 0) return
+    let cancelled = false
+    sources
+      .getTracks(missing)
+      .then((tracks) => {
+        if (cancelled || tracks.length === 0) return
+        setCache((prev) => {
+          const next = new Map(prev)
+          for (const track of tracks) next.set(track.urn, track)
+          return next
+        })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [ctx, key, generation])
+
+  return cache
 }
 
 /**

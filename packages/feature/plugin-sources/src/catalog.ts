@@ -116,6 +116,20 @@ const ARTWORK_COLUMNS = `
   aw.id AS artwork_id, aw.blurhash, aw.dominant_color, aw.source_url AS artwork_source_url,
   aw.local_uri AS artwork_local_uri`
 
+/** The track projection every catalogue read shares. */
+const TRACK_COLUMNS = `
+  t.urn, t.title, t.sort_title, t.album_urn, al.title AS album_title,
+  t.track_no, t.disc_no, t.duration_ms, t.year, t.explicit, t.bpm,
+  t.replay_gain_track, t.replay_gain_album, t.peak_track, t.available,
+  COALESCE(st.loved, 0) AS loved,
+  ${ARTWORK_COLUMNS}`
+
+/** The joins behind that projection: album title, artwork, loved status. */
+const TRACK_JOINS = `
+  LEFT JOIN albums al ON al.urn = t.album_urn
+  LEFT JOIN artworks aw ON aw.id = COALESCE(t.artwork_id, al.artwork_id)
+  LEFT JOIN track_stats st ON st.urn = t.urn`
+
 /*
  * Visibility in listings.
  *
@@ -217,15 +231,9 @@ export class Catalog {
     const availableFilter = AVAILABLE_TRACKS_ONLY
 
     const rows = await this.db.query<TrackRow>(
-      `SELECT t.urn, t.title, t.sort_title, t.album_urn, al.title AS album_title,
-              t.track_no, t.disc_no, t.duration_ms, t.year, t.explicit, t.bpm,
-              t.replay_gain_track, t.replay_gain_album, t.peak_track, t.available,
-              COALESCE(st.loved, 0) AS loved,
-              ${ARTWORK_COLUMNS}
+      `SELECT ${TRACK_COLUMNS}
          FROM tracks t
-         LEFT JOIN albums al ON al.urn = t.album_urn
-         LEFT JOIN artworks aw ON aw.id = COALESCE(t.artwork_id, al.artwork_id)
-         LEFT JOIN track_stats st ON st.urn = t.urn
+${TRACK_JOINS}
          LEFT JOIN track_artists ta ON ta.track_urn = t.urn AND ta.ordinal = 0
          LEFT JOIN artists primary_artist ON primary_artist.urn = ta.artist_urn
         WHERE 1 = 1${filter.sql}${lovedFilter}${availableFilter}
@@ -297,21 +305,43 @@ export class Catalog {
 
     const [album] = await this.hydrateAlbums([row])
     const tracks = await this.db.query<TrackRow>(
-      `SELECT t.urn, t.title, t.sort_title, t.album_urn, al.title AS album_title,
-              t.track_no, t.disc_no, t.duration_ms, t.year, t.explicit, t.bpm,
-              t.replay_gain_track, t.replay_gain_album, t.peak_track, t.available,
-              COALESCE(st.loved, 0) AS loved,
-              ${ARTWORK_COLUMNS}
+      `SELECT ${TRACK_COLUMNS}
          FROM tracks t
-         LEFT JOIN albums al ON al.urn = t.album_urn
-         LEFT JOIN artworks aw ON aw.id = COALESCE(t.artwork_id, al.artwork_id)
-         LEFT JOIN track_stats st ON st.urn = t.urn
+${TRACK_JOINS}
         WHERE t.album_urn = ?${AVAILABLE_TRACKS_ONLY}
         ORDER BY COALESCE(t.disc_no, 1) ASC, COALESCE(t.track_no, 0) ASC, t.urn ASC`,
       [urn],
     )
 
     return { ...album!, tracks: await this.hydrateTracks(tracks) }
+  }
+
+  /**
+   * Tracks by URN, for views that show what the catalogue already knows —
+   * the queue screen, a playlist. Chunked `IN (...)` reads, so a 5,000-track
+   * queue is ten queries rather than five thousand round-trips.
+   *
+   * No visibility filter here, unlike the listings: a withdrawn track keeps
+   * its row and stays resolvable from a restored queue (docs/06 §12). It comes
+   * back with `available: false`, and the view greys it out rather than
+   * losing it. URNs nothing answers for are simply absent.
+   */
+  async getTracks(urns: readonly string[]): Promise<Track[]> {
+    const unique = [...new Set(urns)]
+    const out: Track[] = []
+    // A chunk's worth of host parameters stays far below SQLite's ceiling.
+    for (let at = 0; at < unique.length; at += 500) {
+      const chunk = unique.slice(at, at + 500)
+      const rows = await this.db.query<TrackRow>(
+        `SELECT ${TRACK_COLUMNS}
+           FROM tracks t
+${TRACK_JOINS}
+          WHERE t.urn IN (${chunk.map(() => '?').join(', ')})`,
+        chunk,
+      )
+      out.push(...(await this.hydrateTracks(rows)))
+    }
+    return out
   }
 
   async getArtist(urn: string): Promise<ArtistDetail | undefined> {
@@ -376,17 +406,11 @@ export class Catalog {
     const filter = sourceFilter('t', opts.sourceIds)
 
     const rows = await this.db.query<TrackRow>(
-      `SELECT t.urn, t.title, t.sort_title, t.album_urn, al.title AS album_title,
-              t.track_no, t.disc_no, t.duration_ms, t.year, t.explicit, t.bpm,
-              t.replay_gain_track, t.replay_gain_album, t.peak_track, t.available,
-              COALESCE(st.loved, 0) AS loved,
-              ${ARTWORK_COLUMNS}
+      `SELECT ${TRACK_COLUMNS}
          FROM tracks_fts f
          JOIN tracks_fts_map m ON m.rowid = f.rowid
          JOIN tracks t ON t.urn = m.urn
-         LEFT JOIN albums al ON al.urn = t.album_urn
-         LEFT JOIN artworks aw ON aw.id = COALESCE(t.artwork_id, al.artwork_id)
-         LEFT JOIN track_stats st ON st.urn = t.urn
+${TRACK_JOINS}
         WHERE tracks_fts MATCH ?${filter.sql}${AVAILABLE_TRACKS_ONLY}
         ORDER BY rank
         LIMIT ?`,

@@ -14,10 +14,10 @@
 import { describe, expect, it } from 'vitest'
 import { createElement as h } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
 import { Context, Service } from 'cordis'
-import type { QueueItem, TransportState } from '@BBeBee/protocol'
+import type { QueueItem, Track, TransportState } from '@BBeBee/protocol'
 import { NowPlayingBar, NowPlayingScreen, QueueScreen } from './index.js'
 
 const IDLE: TransportState = {
@@ -31,8 +31,12 @@ const IDLE: TransportState = {
   shuffle: false,
 }
 
-/** A `ctx.player` with just what the views read and call. */
-async function harness(state: Partial<TransportState> = {}, queue: QueueItem[] = []) {
+/** A `ctx.player` with just what the views read and call, and an optional `ctx.sources`. */
+async function harness(
+  state: Partial<TransportState> = {},
+  queue: QueueItem[] = [],
+  catalogue: Record<string, Track> = {},
+) {
   const calls: string[] = []
   const transport: TransportState = { ...IDLE, ...state }
 
@@ -57,8 +61,17 @@ async function harness(state: Partial<TransportState> = {}, queue: QueueItem[] =
       void calls.push(`jump:${urn}${contextUrns.length ? `|${contextUrns.join(',')}` : ''}`)
   }
 
+  class SourcesStub extends Service {
+    constructor(ctx: Context) {
+      super(ctx, 'sources')
+    }
+    getTracks = async (urns: readonly string[]) =>
+      urns.map((urn) => catalogue[urn]).filter((t): t is Track => t !== undefined)
+  }
+
   const ctx = new Context()
   await ctx.plugin(PlayerStub)
+  if (Object.keys(catalogue).length > 0) await ctx.plugin(SourcesStub)
   return { ctx, calls }
 }
 
@@ -198,5 +211,32 @@ describe('QueueScreen', () => {
     // A tap means "play that one" — a jump, never a re-queue of one track.
     expect(calls).toContain('jump:BBeBee:local:track:a')
     expect(calls).not.toContain('playNow:BBeBee:local:track:a')
+  })
+
+  it('shows title and artist from the catalogue rather than the URN', async () => {
+    // The rows resolve themselves through one catalogue read; a URN nothing
+    // answers for falls back to showing itself (the neighbouring test pins
+    // that path — here the answer has landed).
+    const { ctx } = await harness(
+      { currentItemId: 'a' },
+      [{ id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' }],
+      {
+        'BBeBee:local:track:a': {
+          urn: 'BBeBee:local:track:a',
+          title: 'Jóga',
+          artists: [{ urn: 'BBeBee:local:artist:bjork', name: 'Björk', role: 'main', ordinal: 0 }],
+        },
+      },
+    )
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain('Jóga')
+    expect(container.textContent).toContain('Björk')
+    expect(container.textContent, 'the raw URN is gone once resolved').not.toContain(
+      'BBeBee:local:track:a',
+    )
   })
 })

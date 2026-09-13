@@ -455,6 +455,7 @@ export interface SourcesService {
   listArtists(q?: CatalogQuery): Promise<Paged<Artist>>
   getAlbum(urn: string): Promise<AlbumDetail | undefined>
   getArtist(urn: string): Promise<ArtistDetail | undefined>
+  getTracks(urns: readonly string[]): Promise<Track[]>
 
   /**
    * FTS5 over the stored catalogue. Instant and available offline — the

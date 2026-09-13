@@ -37,6 +37,14 @@ const URL_SCHEME = /^(?:https?|wss?|ftp|file|data|blob|bbebee)$/i
 const MAX_LENGTH = 2000
 
 /**
+ * Cap on a whole value shown on the test screen — a response body, a
+ * feature's output. Generous where the per-field cap is not, because the
+ * point of a value event is to be *parsed*: truncating one at 2 KB cuts
+ * mid-JSON and the tree can never render.
+ */
+const VALUE_MAX_LENGTH = 200_000
+
+/**
  * Redact and truncate a string for a trace.
  *
  * `extra` holds values that are secret because of *where they came from*
@@ -44,6 +52,25 @@ const MAX_LENGTH = 2000
  * value — and are removed wherever they appear, including URL-encoded.
  */
 export function redactForTrace(value: string, extra: readonly string[] = []): Redacted {
+  return redact(value, extra, truncate)
+}
+
+/**
+ * Redact a whole value for a `value` trace event.
+ *
+ * The same passes as `redactForTrace` — the secrets are the same — but the
+ * cap is the value cap, not the per-field one: a response body cut at 2 KB
+ * is neither readable as a tree nor honest about where it stopped.
+ */
+export function redactValueForTrace(value: string, extra: readonly string[] = []): Redacted {
+  return redact(value, extra, truncateValue)
+}
+
+function redact(
+  value: string,
+  extra: readonly string[],
+  cap: (text: string) => string,
+): Redacted {
   let out = value
 
   // Values we know are secrets go first: they may appear anywhere, and after
@@ -62,7 +89,13 @@ export function redactForTrace(value: string, extra: readonly string[] = []): Re
   out = redactUrls(out)
   out = redactStructured(out)
 
-  return truncate(out) as Redacted
+  return cap(out) as Redacted
+}
+
+function truncateValue(value: string): string {
+  return value.length <= VALUE_MAX_LENGTH
+    ? value
+    : `${value.slice(0, VALUE_MAX_LENGTH)}\n… (truncated: ${VALUE_MAX_LENGTH} of ${value.length} chars)`
 }
 
 /** A URL with its userinfo and secret query parameters removed. */

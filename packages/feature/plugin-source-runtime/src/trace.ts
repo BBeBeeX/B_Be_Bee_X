@@ -13,7 +13,7 @@
  * Subsonic URL carries a password hash and its salt as a matter of routine.
  */
 
-import { redactForTrace, redactUrl } from '@BBeBee/protocol'
+import { redactForTrace, redactUrl, redactValueForTrace } from '@BBeBee/protocol'
 import type { HttpRequest, HttpResponse, HttpService, TraceEvent } from '@BBeBee/protocol'
 
 /**
@@ -85,7 +85,7 @@ export class TraceCollector {
       at: Date.now(),
       kind: 'value',
       label,
-      value: redactForTrace(valueTextOf(value), this.secrets),
+      value: redactValueForTrace(valueTextOf(value), this.secrets),
     })
   }
 

@@ -220,10 +220,8 @@ function TrackList({
         // A tap plays the track in the list it was tapped in: jump if the
         // queue already holds it, otherwise that whole list — the library,
         // the local one, the favourites — becomes the queue (docs/05 §2).
-        onPress: () => {
-          void playFromList(ctx, track.urn, { query })
-          serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
-        },
+        // Playback announces itself in the transport bar; no navigation.
+        onPress: () => void playFromList(ctx, track.urn, { query }),
         onToggleLoved: () => onToggleLoved(track.urn, !track.loved),
       }),
   })
@@ -324,10 +322,8 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           children: detail.artists?.map((a) => a.name).join(', ') ?? '',
         }),
         h(Button, {
-          onPress: () => {
-            void serviceOf<PlayerService>(ctx, 'player')?.playNow(detail.tracks.map((t) => t.urn))
-            serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
-          },
+          // Playback announces itself in the transport bar; no navigation.
+          onPress: () => void serviceOf<PlayerService>(ctx, 'player')?.playNow(detail.tracks.map((t) => t.urn)),
           children: 'Play album',
           // Disabled rather than absent: an album with no playable tracks is
           // a real state, and hiding the control hides the reason.
@@ -354,7 +350,6 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
               urns: detail.tracks.map((t) => t.urn),
               context: { kind: 'album', urn: detail.urn, label: detail.title },
             })
-            serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
           },
         }),
     }),
