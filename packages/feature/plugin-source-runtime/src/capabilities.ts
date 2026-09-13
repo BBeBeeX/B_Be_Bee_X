@@ -28,7 +28,7 @@ export function parseRate(rate: string | undefined): Capabilities['rateLimit'] {
   return { requests, windowMs }
 }
 
-function hasRules(block: object | undefined): boolean {
+export function hasRules(block: object | undefined): boolean {
   return !!block && Object.values(block).some((v) => typeof v === 'string' && v.trim() !== '')
 }
 

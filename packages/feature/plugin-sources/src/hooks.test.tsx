@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The hooks the import and debug screens are made of.
+ * The hooks the import and test screens are made of.
  *
  * Written once and consumed by both shells, so a bug here is a bug twice.
  * These are tested against a real `ctx.sources` rather than a mock: the
@@ -19,10 +19,8 @@ import { DbNode } from '@BBeBee/core-db-node'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import plugin from './index.js'
 import {
-  useSourceEditor,
   useSourceImport,
   useTracks,
-  type EditorState,
   type ImportState,
   type PagedState,
 } from './hooks.js'
@@ -144,131 +142,6 @@ describe('useSourceImport', () => {
     probe.rerender()
 
     expect(state).toMatchObject({ text: '', issues: [], report: undefined })
-  })
-})
-
-describe('useSourceEditor', () => {
-  it('starts from the stored document, byte for byte', async () => {
-    // The editor shows what was imported, not a re-serialisation of it: key
-    // order and spacing are the author's, and rewriting them makes every save
-    // look like a change.
-    const ctx = await harness()
-    const text = JSON.stringify(DOC, null, 2)
-    await ctx.sources.import(text)
-    await tick()
-
-    let state!: EditorState
-    harnessFor(() => (state = useSourceEditor(ctx, ctx.sources.sources[0]!.id)))
-    expect(state.text).toBe(text)
-    expect(state.dirty).toBe(false)
-  })
-
-  it('tracks dirtiness, and reverts', async () => {
-    const ctx = await harness()
-    await ctx.sources.import(JSON.stringify(DOC))
-    await tick()
-
-    let state!: EditorState
-    const probe = harnessFor(() => (state = useSourceEditor(ctx, ctx.sources.sources[0]!.id)))
-    act(() => state.setText('edited'))
-    probe.rerender()
-    expect(state.dirty).toBe(true)
-
-    act(() => state.revert())
-    probe.rerender()
-    expect(state.dirty).toBe(false)
-  })
-
-  it('saves in place, keeping the source id', async () => {
-    /*
-     * docs/06 §10: the fix is an edit, not a re-import cycle. Saving through
-     * `import` dedupes on `sourceUrl`, so the id survives — and with it every
-     * URN, cached row, cookie jar and playlist reference.
-     */
-    const ctx = await harness()
-    await ctx.sources.import(JSON.stringify(DOC))
-    await tick()
-    const id = ctx.sources.sources[0]!.id
-
-    let state!: EditorState
-    const probe = harnessFor(() => (state = useSourceEditor(ctx, id)))
-    act(() => state.setText(JSON.stringify({ ...DOC, sourceName: 'Renamed' })))
-    await act(async () => {
-      state.save()
-      await tick()
-      await tick()
-    })
-    probe.rerender()
-
-    expect(ctx.sources.sources).toHaveLength(1)
-    expect(ctx.sources.sources[0]!.id).toBe(id)
-    expect(ctx.sources.sources[0]!.name).toBe('Renamed')
-    expect(state.dirty, 'saved, so no longer dirty').toBe(false)
-  })
-
-  it('reports a broken edit without discarding it', async () => {
-    const ctx = await harness()
-    await ctx.sources.import(JSON.stringify(DOC))
-    await tick()
-
-    let state!: EditorState
-    const probe = harnessFor(() => (state = useSourceEditor(ctx, ctx.sources.sources[0]!.id)))
-    act(() => state.setText('{ not json'))
-    await act(async () => {
-      state.save()
-      await tick()
-      await tick()
-    })
-    probe.rerender()
-
-    expect(state.error).toBeTruthy()
-    expect(state.text, 'the broken edit is still there').toBe('{ not json')
-  })
-})
-
-describe('useSourceEditor, when a save does not take', () => {
-  it('stays dirty when the document is rejected', async () => {
-    /*
-     * ⚠️ A rejected entry arrives *in the report*, not as a throw. So a save
-     * that changed nothing resolved successfully, the editor cleared its dirty
-     * flag, and the user's fix was silently lost while the screen said it was
-     * saved.
-     */
-    const ctx = await harness()
-    await ctx.sources.import(JSON.stringify(DOC))
-    await tick()
-
-    let state!: EditorState
-    const probe = harnessFor(() => (state = useSourceEditor(ctx, ctx.sources.sources[0]!.id)))
-    act(() => state.setText(JSON.stringify({ sourceName: 42 })))
-    await act(async () => {
-      state.save()
-      await tick()
-      await tick()
-    })
-    probe.rerender()
-
-    expect(state.error, 'the reason is shown').toBeTruthy()
-    expect(state.dirty, 'and the edit is still unsaved').toBe(true)
-  })
-
-  it('still reports a genuine save as saved', async () => {
-    const ctx = await harness()
-    await ctx.sources.import(JSON.stringify(DOC))
-    await tick()
-
-    let state!: EditorState
-    const probe = harnessFor(() => (state = useSourceEditor(ctx, ctx.sources.sources[0]!.id)))
-    act(() => state.setText(JSON.stringify({ ...DOC, sourceName: 'Fixed' })))
-    await act(async () => {
-      state.save()
-      await tick()
-      await tick()
-    })
-    probe.rerender()
-
-    expect(state.error).toBeUndefined()
-    expect(state.dirty).toBe(false)
   })
 })
 

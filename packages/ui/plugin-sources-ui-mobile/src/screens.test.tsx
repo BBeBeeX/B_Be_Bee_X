@@ -266,7 +266,7 @@ describe('TestScreen on mobile', () => {
 
     // This build has no sandbox — the honest mobile situation today — so
     // running the script reports that inline rather than failing silently.
-    const run = container.querySelector('[data-testid="test-js-run"]') as HTMLElement
+    const run = container.querySelector('[data-testid="test-run-js"]') as HTMLElement
     expect(run, 'the run button is on screen').toBeTruthy()
     await act(async () => {
       run.click()

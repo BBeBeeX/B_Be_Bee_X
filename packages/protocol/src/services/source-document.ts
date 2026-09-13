@@ -283,11 +283,23 @@ export interface CheckReport {
   checkedAt: number
 }
 
+/**
+ * One run of one of a source's features, on the test screen.
+ *
+ * Each kind maps onto a `MediaProvider` operation, so the screen can offer a
+ * test area per feature the source actually implements — plus two that are
+ * not features of the document at all: a raw request through the source's own
+ * scoped HTTP, and arbitrary script in its sandbox.
+ */
 export type DebugStep =
   | { kind: 'search'; text: string; page?: number }
-  | { kind: 'explore'; url?: string; page?: number }
-  | { kind: 'album'; url: string }
-  | { kind: 'stream'; urn: string }
+  | { kind: 'browse'; nodeId?: string; page?: number }
+  | { kind: 'album'; id: string }
+  | { kind: 'artist'; id: string }
+  | { kind: 'playlist'; id: string; page?: number }
+  | { kind: 'lyrics'; id: string }
+  | { kind: 'library'; list: 'track' | 'album' | 'artist' | 'playlist'; page?: number }
+  | { kind: 'stream'; id: string; quality?: StreamQuality }
   /**
    * One raw request through the source's own scoped HTTP — the same
    * allowlist, cookies and rate limits a rule's request would get, with the
@@ -341,24 +353,13 @@ export type TraceEvent =
       ms: number
       bytes: number
     }
-  | {
-      at: number
-      kind: 'rule'
-      block: string
-      field: string
-      engine: string
-      rule: Redacted
-      input: Redacted
-      output: Redacted
-      ms: number
-    }
   | { at: number; kind: 'error'; message: Redacted; block?: string; field?: string }
   | { at: number; kind: 'result'; summary: Redacted }
   /** A line the document itself printed — `src.log(...)`. */
   | { at: number; kind: 'log'; message: Redacted }
   /**
    * A whole value worth reading, not previewing: an HTTP response body, a
-   * debug script's return value. Still redacted and capped — the cap is
-   * generous where a rule preview's is not.
+   * feature's full output, a debug script's return value. Still redacted and
+   * capped — the cap is generous where a rule preview's was not.
    */
   | { at: number; kind: 'value'; label: string; value: Redacted }

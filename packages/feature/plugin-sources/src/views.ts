@@ -15,19 +15,11 @@ export const SOURCES_VIEWS = {
   /** Paste a source string. */
   sourceImport: 'sources.import',
   /**
-   * One source, traced and edited in the same place.
+   * One source, exercised by hand.
    *
-   * Deliberately one view rather than two: docs/06 §10 makes the debug screen
-   * *be* the editor, because the loop that repairs a rotted source is run a
-   * step, see which rule failed, change it, run it again. Two screens make
-   * that a navigation exercise.
-   */
-  sourceDebug: 'sources.debug',
-  /**
-   * One source, exercised by hand: a raw request through its scoped HTTP, or
-   * a script run in its sandbox with custom arguments. Where `sourceDebug`
-   * answers "which rule failed", this answers "what does this backend
-   * actually say, and what does my code return".
+   * A selector picks which imported source everything below tests; each
+   * feature the source implements gets its own test area with user-chosen
+   * parameters, and the trace shows the output and every HTTP request whole.
    */
   sourceTest: 'sources.test',
 } as const
@@ -36,6 +28,5 @@ export const SOURCES_ROUTES = {
   library: 'sources.library',
   album: 'sources.album',
   sourceImport: 'sources.import',
-  sourceDebug: 'sources.debug',
   sourceTest: 'sources.test',
 } as const

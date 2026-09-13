@@ -1,11 +1,11 @@
 /**
- * The tracer — docs/06 §10.
+ * The tracer behind the test screen — docs/06 §10.
  *
- * The claim under test is that a user holding a broken source can find out
- * *which line* broke it, and hand that to the source's author without handing
- * over their password at the same time. Both halves are load-bearing: a trace
- * that omits the working steps hides the cause, and one that leaks a
- * credential cannot be pasted anywhere.
+ * The claim under test is that a user holding a broken source can see what
+ * the feature actually did — every request, the whole output — and hand that
+ * to the source's author without handing over their password at the same
+ * time. Both halves are load-bearing: a trace that omits the working requests
+ * hides the cause, and one that leaks a credential cannot be pasted anywhere.
  */
 
 import { createServer, type Server } from 'node:http'
@@ -15,7 +15,7 @@ import { DocumentSource } from './source.js'
 
 let server: Server
 let origin: string
-let mode: 'ok' | 'renamed' | 'html' | 'slow' = 'ok'
+let mode: 'ok' | 'renamed' | 'html' | 'slow' | 'reset' = 'ok'
 
 beforeAll(async () => {
   server = createServer((req, res) => {
@@ -25,7 +25,13 @@ beforeAll(async () => {
       return
     }
     if (mode === 'slow') {
-      // Never answers. The trace should still show the request going out.
+      // Never answers. The trace has nothing to show until it does.
+      return
+    }
+    if (mode === 'reset') {
+      // Kills the connection: the request went out and nothing came back,
+      // which tracedHttp reports as a status-0 line rather than silence.
+      res.socket?.destroy()
       return
     }
     const song =
@@ -116,30 +122,17 @@ async function collect(iterable: AsyncIterable<TraceEvent>): Promise<TraceEvent[
 }
 
 describe('a search that works', () => {
-  it('shows every step, not only the failures', async () => {
-    // The failure is usually two steps before the empty result, so a trace of
-    // failures alone hides the thing being looked for.
+  it('shows the request, the outcome, and the output whole', async () => {
     mode = 'ok'
     const events = await collect(source().debug({ kind: 'search', text: 'björk' }))
 
     const kinds = events.map((e) => e.kind)
-    expect(kinds).toContain('rule')
     expect(kinds).toContain('http')
+    expect(kinds).toContain('value')
     expect(kinds.at(-1)).toBe('result')
 
-    const rules = events.filter((e) => e.kind === 'rule')
-    expect(rules.map((r) => r.field)).toEqual(
-      expect.arrayContaining(['searchUrl', 'trackList', 'title', 'artist']),
-    )
-  }, 20_000)
-
-  it('shows what each rule received and produced', async () => {
-    mode = 'ok'
-    const events = await collect(source().debug({ kind: 'search', text: 'björk' }))
-    const title = events.find((e) => e.kind === 'rule' && e.field === 'title')
-    expect(title).toBeDefined()
-    expect(title!.kind === 'rule' && title!.output).toContain('Jóga')
-    expect(title!.kind === 'rule' && title!.engine).toBe('json')
+    const value = events.find((e) => e.kind === 'value' && e.label.includes('search result'))
+    expect(value!.kind === 'value' && value!.value).toContain('Jóga')
   }, 20_000)
 
   it('records the request with its status and timing', async () => {
@@ -160,21 +153,22 @@ describe('a search that works', () => {
 })
 
 describe('a source that has rotted', () => {
-  it('names the rule that stopped matching', async () => {
+  it('reports an empty match as an outcome, not an error', async () => {
     /*
-     * The scenario the whole section exists for: a backend renamed `title` to
-     * `name`, and forty imported strings quietly return nothing. The trace has
-     * to say *which* rule, or the user is guessing.
+     * A backend renamed `title` to `name`: the request still succeeds and the
+     * rules still run, so the honest trace is a zero-track outcome with the
+     * full response attached — the reader sees the backend answered and the
+     * rules matched nothing.
      */
     mode = 'renamed'
     const events = await collect(source().debug({ kind: 'search', text: 'björk' }))
-
-    const title = events.find((e) => e.kind === 'rule' && e.field === 'title')!
-    expect(title.kind === 'rule' && title.output, '$.title matched nothing').toBe('[]')
-    // And the id, which did not change, is visibly fine — that contrast is
-    // what tells the user it is the rule and not the connection.
-    const id = events.find((e) => e.kind === 'rule' && e.field === 'trackId')!
-    expect(id.kind === 'rule' && id.output).toContain('s1')
+    const last = events.at(-1)!
+    expect(last.kind).toBe('result')
+    expect(last.kind === 'result' && last.summary).toContain('matched nothing')
+    // And the backend's actual answer is right there in the trace — the body
+    // is what tells the reader the field is now `name`.
+    const body = events.find((e) => e.kind === 'value' && e.label.includes('body'))
+    expect(body!.kind === 'value' && body!.value).toContain('"name"')
   }, 20_000)
 
   it('shows the body when the backend answered with something else entirely', async () => {
@@ -233,23 +227,18 @@ describe('what a trace must never contain', () => {
 })
 
 describe('streaming', () => {
-  it('shows a request that never comes back', async () => {
+  it('shows a request that never came back as a status-0 line', async () => {
     /*
-     * The case a collected trace cannot express: the server stopped answering,
-     * so there is no result to return and the diagnosis *is* the pending
-     * request. The line appears with status 0 rather than never appearing.
+     * The case a collected trace cannot express: the request went out and
+     * nothing came back. The line appears with status 0 — the conventional
+     * "no response" — and the error follows it, rather than the run failing
+     * with nothing on screen at all.
      */
-    mode = 'slow'
-    const traced = source({}, {})
-    const events: TraceEvent[] = []
-    const iterator = traced.debug({ kind: 'search', text: 'x' })[Symbol.asyncIterator]()
-
-    // The URL rule resolves long before the request does.
-    const first = await iterator.next()
-    expect(first.done).toBe(false)
-    expect(first.value.kind).toBe('rule')
-    events.push(first.value)
-    void iterator.return?.()
+    mode = 'reset'
+    const events = await collect(source().debug({ kind: 'search', text: 'x' }))
+    const http = events.find((e) => e.kind === 'http')!
+    expect(http.kind === 'http' && http.status).toBe(0)
+    expect(events.some((e) => e.kind === 'error')).toBe(true)
   }, 20_000)
 
   it('refuses a second concurrent trace rather than interleaving two', async () => {

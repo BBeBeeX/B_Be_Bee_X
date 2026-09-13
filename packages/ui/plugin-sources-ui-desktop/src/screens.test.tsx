@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
- * The import and diagnose screens.
+ * The import and test screens.
  *
  * Rendered against a real `ctx.sources`, because what is worth pinning is the
- * *interaction*: what a paste shows before it commits, and whether a broken
- * document leaves the user something to fix. A mocked service would define
- * both of those away.
+ * *interaction*: what a paste shows before it commits, and what a source's
+ * test areas offer for a given document. A mocked service would define both
+ * of those away.
  */
 
 import { act, cleanup, render, screen } from '@testing-library/react'
@@ -16,9 +16,10 @@ import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
 import sourcesPlugin from '@BBeBee/plugin-sources'
+import type { AlbumDetail, Capabilities, MediaProvider } from '@BBeBee/protocol'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
-import { DebugScreen, ImportScreen, LibraryScreen, inject } from './index.js'
+import { ImportScreen, LibraryScreen, TestScreen, inject } from './index.js'
 
 // Testing Library auto-cleans only with vitest globals, which this repo does
 // not enable. Without this every render stacks up in one document and
@@ -67,6 +68,63 @@ const DOC = {
   sourceUrl: 'https://music.example.org',
   sourceName: 'Example',
   ruleStream: { url: '={{source.url}}/s' },
+}
+
+/**
+ * A provider with exactly the features the test asks for.
+ *
+ * The areas on the test screen follow the provider's shape — capability flags
+ * for search/browse/library, method presence for album/artist/playlist/
+ * lyrics — so a hand-built provider pins that mapping deterministically,
+ * without loading the source runtime to get one.
+ */
+function providerWith(
+  sourceId: string,
+  features: { search?: boolean; album?: boolean; lyrics?: boolean },
+): MediaProvider {
+  const capabilities: Capabilities = {
+    search: {
+      tracks: features.search ?? false,
+      albums: false,
+      artists: false,
+      playlists: false,
+      fullText: false,
+    },
+    browse: false,
+    lyrics: features.lyrics ?? false,
+    artwork: false,
+    library: { read: false, save: false, playlistWrite: false, playlistReorder: false },
+    streaming: { qualities: ['normal'], transcoding: false, seekable: true, urlExpiry: false },
+    regional: false,
+  }
+  return {
+    sourceId,
+    displayName: sourceId,
+    capabilities,
+    auth: {
+      flow: { kind: 'none' },
+      status: { state: 'authenticated' },
+      async signIn() {},
+      async signOut() {},
+      onStatusChange: () => () => {},
+    },
+    async getTrack() {
+      throw new Error('not needed')
+    },
+    async resolveStream() {
+      return { kind: 'remote', target: 'https://music.example.org/s', seekable: true } as never
+    },
+    ping: async () => true,
+    ...(features.album
+      ? {
+          getAlbum: async (): Promise<AlbumDetail> => ({
+            urn: '',
+            id: '',
+            title: '',
+          }) as never,
+        }
+      : {}),
+  }
 }
 
 function type(testID: string, value: string): void {
@@ -150,58 +208,56 @@ describe('ImportScreen', () => {
   })
 })
 
-describe('DebugScreen', () => {
-  it('offers the document for editing, exactly as stored', async () => {
-    const { ctx } = await harness()
-    const text = JSON.stringify(DOC, null, 2)
-    await ctx.sources.import(text)
-    await tick()
-
-    render(h(DebugScreen, { ctx, sourceId: ctx.sources.sources[0]!.id }))
-    expect((screen.getByTestId('source-editor') as HTMLTextAreaElement).value).toBe(text)
-  })
-
-  it('cannot save until something changed', async () => {
+describe('TestScreen', () => {
+  it('offers a test area per feature the source implements, and no more', async () => {
+    // The areas on screen follow the provider's own shape — and the list of
+    // areas *is* the list of features.
     const { ctx } = await harness()
     await ctx.sources.import(JSON.stringify(DOC))
     await tick()
+    ctx.sources.register(providerWith(ctx.sources.sources[0]!.id, { search: true, album: true }))
 
-    render(h(DebugScreen, { ctx, sourceId: ctx.sources.sources[0]!.id }))
-    expect((screen.getByTestId('source-save') as HTMLButtonElement).disabled).toBe(true)
+    render(h(TestScreen, { ctx, sourceId: ctx.sources.sources[0]!.id }))
+    await act(async () => {
+      await tick()
+    })
+
+    expect(screen.getByLabelText('Source to test')).toBeTruthy()
+    expect(screen.getByText('Search')).toBeTruthy()
+    expect(screen.getByText('Album')).toBeTruthy()
+    expect(screen.getByText('Stream')).toBeTruthy()
+    expect(screen.getByText('HTTP request — through this source\'s own client')).toBeTruthy()
+    expect(screen.getByText("Script — the document's functions are in scope")).toBeTruthy()
+    expect(screen.queryByText('Lyrics')).toBeNull()
+    expect(screen.queryByText('Artist')).toBeNull()
+    expect(screen.queryByText('Playlist')).toBeNull()
+    expect(screen.queryByText('Library list')).toBeNull()
   })
 
-  it('saves an edit in place, keeping the source id', async () => {
-    // docs/06 §10: the fix is an edit, not a re-import cycle — so every URN,
-    // cached row and playlist reference survives it.
+  it('defaults the selector to the first source and shows it', async () => {
     const { ctx } = await harness()
-    await ctx.sources.import(JSON.stringify(DOC))
+    await ctx.sources.import(JSON.stringify([DOC, { ...DOC, sourceUrl: 'https://b.example', sourceName: 'Second' }]))
     await tick()
-    const id = ctx.sources.sources[0]!.id
 
-    render(h(DebugScreen, { ctx, sourceId: id }))
+    render(h(TestScreen, { ctx }))
     await act(async () => {
-      type('source-editor', JSON.stringify({ ...DOC, sourceName: 'Renamed' }))
-      await tick()
-    })
-    await act(async () => {
-      screen.getByTestId('source-save').click()
-      await tick()
       await tick()
     })
 
-    expect(ctx.sources.sources).toHaveLength(1)
-    expect(ctx.sources.sources[0]!.id).toBe(id)
-    expect(ctx.sources.sources[0]!.name).toBe('Renamed')
+    const select = screen.getByLabelText('Source to test') as HTMLSelectElement
+    expect(select.value).toBe(ctx.sources.sources[0]!.id)
+    expect(select.options).toHaveLength(2)
   })
 
   it('says there is no trace yet rather than showing an empty list', async () => {
-    // An empty list and "not run yet" look identical, and only one of them
-    // means something is wrong.
     const { ctx } = await harness()
     await ctx.sources.import(JSON.stringify(DOC))
     await tick()
 
-    render(h(DebugScreen, { ctx, sourceId: ctx.sources.sources[0]!.id }))
+    render(h(TestScreen, { ctx, sourceId: ctx.sources.sources[0]!.id }))
+    await act(async () => {
+      await tick()
+    })
     expect(screen.getByText('No trace yet')).toBeTruthy()
   })
 })

@@ -60,14 +60,13 @@ import {
   parseRule,
   type JsEvaluator,
   type RuleSite,
-  type RuleTraceEntry,
   type TemplateScope,
 } from '@BBeBee/source-rules'
 import { evaluateRule, evaluateUrlTemplate } from '@BBeBee/source-rules'
-import { capabilitiesFor } from './capabilities.js'
+import { capabilitiesFor, hasRules } from './capabilities.js'
 import { SRC_SHIM, createSourceHost, type HostDeps } from './host.js'
 import { TraceCollector, tracedHttp } from './trace.js'
-import { fetchDocument, parseUrlObject } from './fetch.js'
+import { fetchDocument, parseUrlObject, type FetchSite } from './fetch.js'
 import { evaluateListRule, rowToTrack } from './list-rule.js'
 
 /** What the runtime needs from its context. Kept narrow so tests need no kernel. */
@@ -762,13 +761,11 @@ export class DocumentSource {
 
     // A URL template, not a selector: it builds the request rather than
     // selecting out of a response, so `=` is optional (docs/06 §2.3).
-    const rendered = await this.traced('searchUrl', 'searchUrl', doc.searchUrl, () =>
-      evaluateUrlTemplate(
-        doc.searchUrl!,
-        scope,
-        { block: 'searchUrl', field: 'searchUrl', sourceId: this.record.id },
-        this.js,
-      ),
+    const rendered = await evaluateUrlTemplate(
+      doc.searchUrl!,
+      scope,
+      { block: 'searchUrl', field: 'searchUrl', sourceId: this.record.id },
+      this.js,
     )
     const target = parseUrlObject(rendered)
     this.assertAllowed(target.url)
@@ -783,7 +780,6 @@ export class DocumentSource {
       sourceId: this.record.id,
       block: 'ruleSearch',
       ...(this.js ? { js: this.js } : {}),
-      ...(this.tracing ? { trace: (entry: RuleTraceEntry) => this.tracing?.rule(entry) } : {}),
     })
     if (incomplete > 0) {
       this.deps.log?.(
@@ -956,13 +952,11 @@ export class DocumentSource {
     exploreUrl: string,
     scope: TemplateScope,
   ): Promise<BrowseEntry[] | BrowseNode> {
-    const rendered = await this.traced('exploreUrl', 'exploreUrl', exploreUrl, () =>
-      evaluateUrlTemplate(
-        exploreUrl,
-        scope,
-        { block: 'exploreUrl', field: 'exploreUrl', sourceId: this.record.id },
-        this.js,
-      ),
+    const rendered = await evaluateUrlTemplate(
+      exploreUrl,
+      scope,
+      { block: 'exploreUrl', field: 'exploreUrl', sourceId: this.record.id },
+      this.js,
     )
 
     const sections = parseSections(rendered)
@@ -1030,20 +1024,23 @@ export class DocumentSource {
 
 
   /**
-   * Run one step with every intermediate value on show.
+   * Run one feature of this source with everything it does on show.
    *
-   * The direct equivalent of legado's source-debug screen, and the thing that
-   * makes a rotted source repairable in seconds instead of by re-import. Three
-   * properties do the work (docs/06 §10):
+   * The transport behind the test screen: each `DebugStep` kind maps onto one
+   * `MediaProvider` operation, and while it runs every HTTP request the
+   * operation makes becomes a trace line (through the `http` getter), every
+   * `src.log` line the document prints is mirrored in, and the operation's
+   * whole output is handed back as a `value` event. Three properties do the
+   * work (docs/06 §10):
    *
-   *  - **Every step appears, including the ones that worked.** The failure is
-   *    usually two steps before the empty result, and a trace of failures only
-   *    hides it.
    *  - **It streams.** A request to a server that has stopped answering shows
    *    as an `http` line with no status and nothing after it — which is the
    *    diagnosis. Collecting first would show nothing until it gave up.
    *  - **It redacts.** A trace is what gets pasted into a forum thread, and a
    *    Subsonic URL carries a password hash and its salt as a matter of course.
+   *  - **A missing feature is an answer, not a crash.** A source whose
+   *    document has no `ruleAlbum` block has no album lookup to run, and the
+   *    trace says so plainly.
    */
   debug(step: DebugStep): AsyncIterable<TraceEvent> {
     const collector = new TraceCollector(this.secrets())
@@ -1056,7 +1053,7 @@ export class DocumentSource {
 
   private async runTraced(step: DebugStep, collector: TraceCollector): Promise<void> {
     // ⚠️ One step at a time. Two concurrent traces would interleave into one
-    // stream and each would look like the other's rules had failed.
+    // stream and each would look like the other's requests had failed.
     if (this.tracing) {
       collector.error(new Error('a trace is already running for this source'))
       collector.close()
@@ -1064,10 +1061,16 @@ export class DocumentSource {
     }
     this.tracing = collector
     try {
+      const doc = this.record.doc
       switch (step.kind) {
         case 'search': {
+          if (!doc.searchUrl && !hasRules(doc.ruleSearch)) {
+            collector.error(new Error('this source does not implement search — its document has no searchUrl or ruleSearch'))
+            break
+          }
           const result = await this.search({ text: step.text }, pageOf(step.page))
           const items = result.tracks?.items ?? []
+          collector.value('search result', result)
           collector.result(
             items.length > 0
               ? `${items.length} track(s); first: ${items[0]!.title}`
@@ -1075,8 +1078,13 @@ export class DocumentSource {
           )
           break
         }
-        case 'explore': {
-          const page = await this.browse(step.url, pageOf(step.page))
+        case 'browse': {
+          if (!doc.exploreUrl && !hasRules(doc.ruleExplore)) {
+            collector.error(new Error('this source does not implement browse — its document has no exploreUrl or ruleExplore'))
+            break
+          }
+          const page = await this.browse(step.nodeId, pageOf(step.page))
+          collector.value('browse result', page)
           collector.result(
             page.items.length > 0
               ? `${page.items.length} entr(ies); first: ${page.items[0]!.title}`
@@ -1085,13 +1093,65 @@ export class DocumentSource {
           break
         }
         case 'album': {
-          const page = await this.browse(step.url)
-          collector.result(`${page.items.length} entr(ies)`)
+          if (!hasRules(doc.ruleAlbum)) {
+            collector.error(new Error('this source does not implement album lookup — its document has no ruleAlbum block'))
+            break
+          }
+          const detail = await this.getAlbum(step.id)
+          collector.value('album detail', detail)
+          collector.result(`"${detail.title}": ${detail.tracks?.length ?? 0} track(s)`)
+          break
+        }
+        case 'artist': {
+          if (!hasRules(doc.ruleArtist)) {
+            collector.error(new Error('this source does not implement artist lookup — its document has no ruleArtist block'))
+            break
+          }
+          const detail = await this.getArtist(step.id)
+          collector.value('artist detail', detail)
+          collector.result(
+            `"${detail.name}": ${detail.albums?.length ?? 0} album(s), ` +
+              `${detail.topTracks?.length ?? 0} track(s)`,
+          )
+          break
+        }
+        case 'playlist': {
+          if (!hasRules(doc.rulePlaylist)) {
+            collector.error(new Error('this source does not implement playlist lookup — its document has no rulePlaylist block'))
+            break
+          }
+          const detail = await this.getPlaylist(step.id, pageOf(step.page))
+          collector.value('playlist detail', detail)
+          collector.result(`"${detail.name}": ${detail.tracks?.length ?? 0} track(s)`)
+          break
+        }
+        case 'lyrics': {
+          if (!hasRules(doc.ruleLyric)) {
+            collector.error(new Error('this source does not implement lyrics — its document has no ruleLyric block'))
+            break
+          }
+          const lyrics = await this.getLyrics(step.id)
+          collector.value('lyrics', lyrics ?? null)
+          collector.result(lyrics ? 'lyrics found' : 'no lyrics for this track')
+          break
+        }
+        case 'library': {
+          if (!doc.ruleLibrary?.list) {
+            collector.error(new Error('this source does not implement a library list — its document has no ruleLibrary.list'))
+            break
+          }
+          const page = await this.libraryList(step.list, pageOf(step.page))
+          collector.value('library page', page)
+          collector.result(`${page.items.length} item(s)`)
           break
         }
         case 'stream': {
-          const id = step.urn.includes(':') ? (step.urn.split(':').pop() ?? step.urn) : step.urn
-          const handle = await this.resolveStream(id, DEBUG_PREFS)
+          const handle = await this.resolveStream(step.id, {
+            quality: step.quality ?? 'normal',
+            saveData: false,
+            acceptFormats: [],
+          })
+          collector.value('stream handle', handle)
           collector.result(
             handle.kind === 'remote'
               ? `resolved to ${handle.seekable ? 'a seekable' : 'a non-seekable'} stream`
@@ -1157,10 +1217,9 @@ export class DocumentSource {
         }
       }
     } catch (error) {
-      collector.error(
-        error,
-        error instanceof RuleError ? error.rule : undefined,
-      )
+      // A RuleError knows which block and field produced it — attribution
+      // that costs nothing to carry and saves a round of guessing.
+      collector.error(error, error instanceof RuleError ? error.rule : undefined)
     } finally {
       this.tracing = undefined
       collector.close()
@@ -1182,50 +1241,6 @@ export class DocumentSource {
       url: this.record.sourceUrl,
       name: this.record.name,
       ...(variable === undefined ? {} : { var: variable }),
-    }
-  }
-
-  /**
-   * Time a template field and report it, when a trace is running.
-   *
-   * `searchUrl`, `ruleStream.url` and the rest are single-atom templates
-   * evaluated through `template.ts` rather than through the atom pipeline, so
-   * the engine's own trace hook never sees them — and they are exactly the
-   * lines a user needs, because a wrong URL is the most common way a source
-   * rots.
-   */
-  private async traced<T>(
-    block: string,
-    field: string,
-    rule: string,
-    run: () => Promise<T>,
-  ): Promise<T> {
-    if (!this.tracing) return run()
-    const collector = this.tracing
-    const started = Date.now()
-    try {
-      const out = await run()
-      collector.rule({
-        block,
-        field,
-        engine: 'template',
-        rule,
-        input: '',
-        output: out,
-        ms: Date.now() - started,
-      })
-      return out
-    } catch (error) {
-      collector.rule({
-        block,
-        field,
-        engine: 'template',
-        rule,
-        input: '',
-        output: `✗ ${String(error)}`,
-        ms: Date.now() - started,
-      })
-      throw error
     }
   }
 
@@ -1462,7 +1477,6 @@ export class DocumentSource {
         site: { block: 'ruleAlbum', field: name, sourceId: this.record.id },
         vars: new Map(),
         ...(this.js ? { js: this.js } : {}),
-        ...(this.tracing ? { trace: (e: RuleTraceEntry) => this.tracing?.rule(e) } : {}),
       })
       return values[0]
     }
@@ -1478,10 +1492,7 @@ export class DocumentSource {
     if (listUrl) {
       const listTarget = parseUrlObject(listUrl)
       this.assertAllowed(listTarget.url)
-      const listFetched = await fetchDocument(this.http, listTarget, await this.headers(scope), {
-        sourceId: this.record.id,
-        block: 'ruleTrackList',
-      })
+      const listFetched = await fetchDocument(this.http, listTarget, await this.headers(scope), this.traceSite('ruleTrackList'))
       listDocument = listFetched.value
       listBase = listFetched.baseUrl
     }
@@ -1492,7 +1503,6 @@ export class DocumentSource {
       sourceId: this.record.id,
       block: 'ruleTrackList',
       ...(this.js ? { js: this.js } : {}),
-      ...(this.tracing ? { trace: (e: RuleTraceEntry) => this.tracing?.rule(e) } : {}),
     })
     if (dropped > 0 || incomplete > 0) {
       this.deps.log?.(
@@ -1566,13 +1576,11 @@ export class DocumentSource {
      * lyrics. Documents write both, and requiring a flag to say which would be
      * a field every author forgets.
      */
-    const produced = await this.traced('ruleLyric', 'lyric', rules.lyric, () =>
-      evaluateRule(
-        rules.lyric,
-        scope,
-        { block: 'ruleLyric', field: 'lyric', sourceId: this.record.id },
-        this.js,
-      ),
+    const produced = await evaluateRule(
+      rules.lyric,
+      scope,
+      { block: 'ruleLyric', field: 'lyric', sourceId: this.record.id },
+      this.js,
     ).catch(() => undefined)
     if (!produced) return undefined
 
@@ -1580,10 +1588,7 @@ export class DocumentSource {
     if (/^https?:\/\//i.test(produced.trim())) {
       const target = parseUrlObject(produced.trim())
       this.assertAllowed(target.url)
-      const fetched = await fetchDocument(this.http, target, await this.headers(scope), {
-        sourceId: this.record.id,
-        block: 'ruleLyric',
-      })
+      const fetched = await fetchDocument(this.http, target, await this.headers(scope), this.traceSite('ruleLyric'))
       content = fetched.text
     }
     if (!content.trim()) return undefined
@@ -2001,13 +2006,11 @@ export class DocumentSource {
     }
 
     const scope = await this.scopeFor(id, prefs)
-    const target = await this.traced('ruleStream', 'url', rules.url, () =>
-      evaluateRule(
-        rules.url,
-        scope,
-        { block: 'ruleStream', field: 'url', sourceId: this.record.id },
-        this.js,
-      ),
+    const target = await evaluateRule(
+      rules.url,
+      scope,
+      { block: 'ruleStream', field: 'url', sourceId: this.record.id },
+      this.js,
     )
 
     // The one artifact that leaves this package and is fetched by something
@@ -2138,15 +2141,28 @@ export class DocumentSource {
    * so it is asked, and a `false` becomes an `AuthError` the retry path
    * already understands.
    */
+  /**
+   * The site for a feature's fetch. During a test-screen run it mirrors the
+   * body into the trace — the user asked for the HTTP answer, not only the
+   * status line, and this is the one place the decoded text exists before
+   * the rule that parses it.
+   */
+  private traceSite(block: string): FetchSite {
+    return {
+      sourceId: this.record.id,
+      block,
+      ...(this.tracing
+        ? { onBody: (text: string) => this.tracing?.value(`HTTP body — ${block}`, text) }
+        : {}),
+    }
+  }
+
   private async fetchChecked(
     target: ReturnType<typeof parseUrlObject>,
     scope: TemplateScope,
     block: string,
   ): Promise<Awaited<ReturnType<typeof fetchDocument>>> {
-    const fetched = await fetchDocument(this.http, target, await this.headers(scope), {
-      sourceId: this.record.id,
-      block,
-    })
+    const fetched = await fetchDocument(this.http, target, await this.headers(scope), this.traceSite(block))
 
     const check = this.record.doc.loginCheckJs
     if (check && this.js) {
@@ -2433,14 +2449,6 @@ export interface SourceVars {
   put(key: string, value: string): Promise<void>
 }
 
-
-/**
- * Prefs for a traced stream resolution.
- *
- * Fixed rather than the user's: a trace is a diagnosis, and it should ask for
- * the same thing every time so two traces of the same source are comparable.
- */
-const DEBUG_PREFS: StreamPrefs = { quality: 'normal', saveData: false, acceptFormats: [] }
 
 /** A 1-based page number as the cursor a provider actually takes. */
 function pageOf(page: number | undefined): PageRequest | undefined {

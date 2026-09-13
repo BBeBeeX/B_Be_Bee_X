@@ -15,7 +15,6 @@
 
 import { redactForTrace, redactUrl } from '@BBeBee/protocol'
 import type { HttpRequest, HttpResponse, HttpService, TraceEvent } from '@BBeBee/protocol'
-import type { RuleTraceEntry } from '@BBeBee/source-rules'
 
 /**
  * An async queue: producers push, one consumer iterates.
@@ -52,21 +51,7 @@ export class TraceCollector {
     this.buffer.push(event)
   }
 
-  /** A rule's own line, redacted and clipped on the way in. */
-  rule(entry: RuleTraceEntry): void {
-    this.push({
-      at: Date.now(),
-      kind: 'rule',
-      block: entry.block,
-      field: entry.field,
-      engine: entry.engine,
-      rule: redactForTrace(entry.rule, this.secrets),
-      input: redactForTrace(preview(entry.input), this.secrets),
-      output: redactForTrace(preview(entry.output), this.secrets),
-      ms: entry.ms,
-    })
-  }
-
+  /** An error, redacted and attributed to where it happened when known. */
   error(error: unknown, site?: { block?: string; field?: string }): void {
     this.push({
       at: Date.now(),
@@ -180,22 +165,8 @@ export function tracedHttp(http: HttpService, collector: TraceCollector): HttpSe
   return traced as unknown as HttpService
 }
 
-/** Cap on one traced value. A trace is for reading, not for archiving. */
-const PREVIEW = 400
-
-/** Cap on a whole value — a body or return value shown on the test screen. */
+/** Cap on a whole value — a body, an output, a return value shown on the test screen. */
 const VALUE = 20_000
-
-function preview(value: unknown): string {
-  if (typeof value === 'string') return value.slice(0, PREVIEW)
-  if (value === undefined) return ''
-  if (value === null) return 'null'
-  try {
-    return JSON.stringify(value).slice(0, PREVIEW)
-  } catch {
-    return String(value).slice(0, PREVIEW)
-  }
-}
 
 /** The full text of a value, within the whole-value cap. */
 function valueTextOf(value: unknown): string {

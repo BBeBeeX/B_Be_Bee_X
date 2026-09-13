@@ -129,6 +129,7 @@ export async function fetchDocument(
   })
 
   const text = await decode(response, target.options.charset, site)
+  site.onBody?.(text)
   const contentType = response.headers['content-type'] ?? ''
   let value: unknown = text
   if (contentType.includes('json') || looksLikeJson(text)) {
@@ -153,6 +154,7 @@ export interface FetchSite {
   sourceId: string
   /** e.g. 'searchUrl'. Used to attribute a decode failure. */
   block: string
+  onBody?: (text: string) => void
 }
 
 /**

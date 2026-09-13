@@ -16,7 +16,6 @@ import {
   useAlbum,
   useAlbums,
   useSetLoved,
-  useSourceEditor,
   useSourceImport,
   useSourceTrace,
   useSources,
@@ -414,70 +413,6 @@ function summariseImport(report: ImportReport): string {
   return parts.length > 0 ? parts.join(', ') : 'nothing to import'
 }
 
-/* ── diagnosing ─────────────────────────────────────────────────────────── */
-
-/**
- * One source, traced and edited in the same place (docs/06 §10).
- *
- * On a phone this is the screen that matters most: a source pasted from a
- * forum breaks on a device, far from any editor, and the whole point of the
- * string model is that the fix is possible there.
- */
-export function DebugScreen({ ctx, sourceId }: { ctx: Context; sourceId: string }): ReactElement {
-  const native = nativePrimitives()
-  const trace = useSourceTrace(ctx, sourceId)
-  const editor = useSourceEditor(ctx, sourceId)
-  const [query, setQuery] = useState('test')
-
-  return h(
-    native.View as never,
-    { style: { flex: 1, padding: tokens.space[4], gap: tokens.space[4] } },
-    h(Text, { variant: 'lg' }, 'Diagnose'),
-    h(TextField, {
-      value: query,
-      onChange: setQuery,
-      placeholder: 'Search text',
-      accessibilityLabel: 'Search text to trace',
-      testID: 'trace-query',
-    }),
-    h(Button, {
-      onPress: () => trace.run({ kind: 'search', text: query }),
-      disabled: trace.running,
-      loading: trace.running,
-      testID: 'trace-run',
-      children: 'Run search',
-    }),
-    h(TraceList, { events: trace.events, running: trace.running }),
-    h(Text, { variant: 'md' }, 'The document'),
-    h(TextField, {
-      value: editor.text,
-      onChange: editor.setText,
-      multiline: true,
-      rows: 10,
-      accessibilityLabel: 'Source document',
-      testID: 'source-editor',
-      ...(editor.error ? { error: editor.error } : {}),
-    }),
-    h(
-      native.View as never,
-      { style: { flexDirection: 'row', gap: tokens.space[2] } },
-      h(Button, {
-        onPress: editor.save,
-        disabled: !editor.dirty || editor.saving,
-        loading: editor.saving,
-        testID: 'source-save',
-        children: 'Save and re-run',
-      }),
-      h(Button, {
-        variant: 'ghost',
-        onPress: editor.revert,
-        disabled: !editor.dirty,
-        children: 'Revert',
-      }),
-    ),
-  )
-}
-
 /** Every step, including the ones that worked. See the desktop twin. */
 function TraceList({
   events,
@@ -522,8 +457,6 @@ function traceLine(event: TraceEvent): string {
   switch (event.kind) {
     case 'http':
       return `${event.method} ${event.url} → ${event.status === 0 ? 'no response' : event.status} (${event.ms}ms)`
-    case 'rule':
-      return `${event.block}.${event.field} [${event.engine}] ${event.rule}\n  → ${event.output}`
     case 'error':
       return `✗ ${event.block ? `${event.block}.${event.field ?? ''} ` : ''}${event.message}`
     case 'result':
@@ -595,12 +528,6 @@ export function SourcesListScreen({ ctx }: { ctx: Context }): ReactElement {
                 { style: { flexDirection: 'row', gap: tokens.space[2] } },
                 h(Button, {
                   variant: 'secondary',
-                  onPress: () => serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.sourceDebug, { sourceId: source.id }),
-                  testID: `sources-list-diagnose-${source.id}`,
-                  children: 'Diagnose',
-                }),
-                h(Button, {
-                  variant: 'secondary',
                   onPress: () => serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.sourceTest, { sourceId: source.id }),
                   testID: `sources-list-test-${source.id}`,
                   children: 'Test',
@@ -612,18 +539,52 @@ export function SourcesListScreen({ ctx }: { ctx: Context }): ReactElement {
   )
 }
 
-/* ── testing by hand ───────────────────────────────────────────────────── */
+/* ── testing a source, feature by feature ──────────────────────────────── */
+
+/** A page number typed by the user, or undefined when the box is empty. */
+function pageOf(text: string): number | undefined {
+  const n = parseInt(text, 10)
+  return Number.isFinite(n) && n > 0 ? n : undefined
+}
 
 /**
- * One source, exercised by hand. See the desktop twin: one HTTP request
- * through the source's own client, or any script in its sandbox, with the
- * body and return value shown whole.
+ * One source, exercised feature by feature. See the desktop twin: the
+ * selector picks the source under test, each implemented feature gets its own
+ * test area, and every run streams HTTP lines, `src.log` lines and the whole
+ * output into one trace. The dropdown is a button plus its option list —
+ * React Native has no native select to borrow.
  */
-export function TestScreen({ ctx, sourceId }: { ctx: Context; sourceId: string }): ReactElement {
+export function TestScreen({ ctx, sourceId }: { ctx: Context; sourceId?: string }): ReactElement {
   const native = nativePrimitives()
-  const trace = useSourceTrace(ctx, sourceId)
+  const scheme = p()
+  const sources = useSources(ctx)
+  const [selectedId, setSelectedId] = useState<string | undefined>(sourceId ?? sources[0]?.id)
+  const trace = useSourceTrace(ctx, selectedId)
+  const [pickerOpen, setPickerOpen] = useState(false)
+
+  // A source imported after mount, or navigation carrying an initial id.
+  // Neither overrides a selection the user already made.
+  if (selectedId === undefined && sources.length > 0) setSelectedId(sources[0]!.id)
+
+  const selected = sources.find((s) => s.id === selectedId)
+  const provider = selectedId
+    ? ctx.sources.providers.find((p) => p.sourceId === selectedId)
+    : undefined
+
+  const [searchText, setSearchText] = useState('test')
+  const [searchPage, setSearchPage] = useState('')
+  const [browseNode, setBrowseNode] = useState('')
+  const [browsePage, setBrowsePage] = useState('')
+  const [albumId, setAlbumId] = useState('')
+  const [artistId, setArtistId] = useState('')
+  const [playlistId, setPlaylistId] = useState('')
+  const [playlistPage, setPlaylistPage] = useState('')
+  const [lyricsId, setLyricsId] = useState('')
+  const [libraryKind, setLibraryKind] = useState('playlist')
+  const [libraryPage, setLibraryPage] = useState('')
+  const [streamId, setStreamId] = useState('')
   const [method, setMethod] = useState<'GET' | 'POST'>('GET')
-  const [url, setUrl] = useState(ctx.sources.source(sourceId)?.sourceUrl ?? '')
+  const [url, setUrl] = useState('')
   const [headersJson, setHeadersJson] = useState('')
   const [body, setBody] = useState('')
   const [code, setCode] = useState('return src.time.now()')
@@ -662,96 +623,171 @@ export function TestScreen({ ctx, sourceId }: { ctx: Context; sourceId: string }
     trace.run({ kind: 'js', code, ...(argsJson.trim() ? { argsJson } : {}) })
   }
 
+  if (sources.length === 0) {
+    return h(
+      native.View as never,
+      { style: { flex: 1, padding: tokens.space[4], gap: tokens.space[4] } },
+      h(Text, { variant: 'lg' }, 'Test a source'),
+      h(EmptyState, {
+        title: 'No sources yet',
+        description: 'Import a source string first, then test it here.',
+      }),
+    )
+  }
+
+  const field = (
+    label: string,
+    value: string,
+    onChange: (next: string) => void,
+    testID: string,
+    placeholder?: string,
+  ): ReactElement =>
+    h(
+      native.View as never,
+      { key: label, style: { gap: tokens.space[1] } },
+      h(Text, { variant: 'sm', tone: 'muted' }, label),
+      h(TextField, { value, onChange, testID, ...(placeholder ? { placeholder } : {}) }),
+    )
+
+  const area = (
+    title: string,
+    testID: string,
+    fields: ReactElement[],
+    onRun: () => void,
+    disabled: boolean,
+  ): ReactElement =>
+    h(
+      native.View as never,
+      {
+        key: title,
+        style: {
+          padding: tokens.space[3],
+          borderRadius: tokens.radius.sm,
+          backgroundColor: scheme.bg.raised,
+          gap: tokens.space[2],
+        },
+      },
+      h(Text, { variant: 'md' }, title),
+      ...fields,
+      h(Button, {
+        onPress: onRun,
+        disabled: trace.running || disabled,
+        loading: trace.running,
+        testID,
+        children: 'Run',
+      }),
+    )
+
   return h(
     native.View as never,
     { style: { flex: 1, padding: tokens.space[4], gap: tokens.space[4] } },
     h(Text, { variant: 'lg' }, 'Test a source'),
-    h(
-      Text,
-      { variant: 'sm', tone: 'muted' },
-      'Requests go through this source\'s own client — the host allowlist and cookies apply exactly as they do to its rules.',
-    ),
 
-    h(Text, { variant: 'md' }, 'HTTP request'),
-    h(
-      native.View as never,
-      { style: { flexDirection: 'row', gap: tokens.space[2] } },
-      h(Button, {
-        variant: method === 'GET' ? 'secondary' : 'ghost',
-        onPress: () => setMethod('GET'),
-        testID: 'test-method-get',
-        children: 'GET',
-      }),
-      h(Button, {
-        variant: method === 'POST' ? 'secondary' : 'ghost',
-        onPress: () => setMethod('POST'),
-        testID: 'test-method-post',
-        children: 'POST',
-      }),
-    ),
-    h(TextField, {
-      value: url,
-      onChange: setUrl,
-      placeholder: 'https://…',
-      accessibilityLabel: 'Request URL',
-      testID: 'test-url',
+    h(Button, {
+      onPress: () => setPickerOpen(!pickerOpen),
+      testID: 'test-source-select',
+      children: `${selected?.name ?? 'Pick a source'} ▾`,
     }),
-    h(TextField, {
-      value: headersJson,
-      onChange: setHeadersJson,
-      multiline: true,
-      rows: 2,
-      placeholder: '{ "User-Agent": "…" } (optional)',
-      accessibilityLabel: 'Request headers as JSON',
-      testID: 'test-headers',
-    }),
-    method === 'POST'
-      ? h(TextField, {
-          value: body,
-          onChange: setBody,
-          multiline: true,
-          rows: 3,
-          placeholder: 'Request body (optional)',
-          accessibilityLabel: 'Request body',
-          testID: 'test-body',
-        })
+    pickerOpen
+      ? h(
+          native.View as never,
+          { accessibilityLabel: 'Source to test', style: { gap: tokens.space[1] } },
+          ...sources.map((s) =>
+            h(Button, {
+              key: s.id,
+              variant: s.id === selectedId ? 'secondary' : 'ghost',
+              onPress: () => {
+                setSelectedId(s.id)
+                setPickerOpen(false)
+                trace.clear()
+              },
+              testID: `test-source-option-${s.id}`,
+              children: s.name,
+            }),
+          ),
+        )
       : null,
-    h(Button, {
-      onPress: runHttp,
-      disabled: trace.running || !url.trim(),
-      loading: trace.running,
-      testID: 'test-http-run',
-      children: 'Send request',
-    }),
 
-    h(Text, { variant: 'md' }, 'Script — the document\'s functions are in scope'),
-    h(TextField, {
-      value: code,
-      onChange: setCode,
-      multiline: true,
-      rows: 6,
-      placeholder: "return getBiliArtist('9469745')",
-      accessibilityLabel: 'Script',
-      testID: 'test-code',
-    }),
-    h(TextField, {
-      value: argsJson,
-      onChange: setArgsJson,
-      multiline: true,
-      rows: 2,
-      placeholder: '{ "key": "…", "page": 1 } (becomes variables)',
-      accessibilityLabel: 'Script arguments as JSON',
-      testID: 'test-args',
-    }),
-    h(Button, {
-      onPress: runJs,
-      disabled: trace.running || !code.trim(),
-      loading: trace.running,
-      testID: 'test-js-run',
-      children: 'Run script',
-    }),
+    !provider
+      ? h(
+          Text,
+          { variant: 'sm', tone: 'muted' },
+          'This source is not active right now — enable it in the source list to exercise its features.',
+        )
+      : null,
+    provider && provider.capabilities.search.tracks
+      ? area('Search', 'test-run-search', [
+          field('Keyword', searchText, setSearchText, 'test-search-text'),
+          field('Page', searchPage, setSearchPage, 'test-search-page', '1'),
+        ], () => trace.run({ kind: 'search', text: searchText, ...(pageOf(searchPage) ? { page: pageOf(searchPage) } : {}) }), !searchText.trim())
+      : null,
+    provider && provider.capabilities.browse
+      ? area('Browse', 'test-run-browse', [
+          field('Node id (empty for the root)', browseNode, setBrowseNode, 'test-browse-node'),
+          field('Page', browsePage, setBrowsePage, 'test-browse-page', '1'),
+        ], () => trace.run({ kind: 'browse', ...(browseNode.trim() ? { nodeId: browseNode.trim() } : {}), ...(pageOf(browsePage) ? { page: pageOf(browsePage) } : {}) }), false)
+      : null,
+    provider && typeof provider.getAlbum === 'function'
+      ? area('Album', 'test-run-album', [
+          field('Album id', albumId, setAlbumId, 'test-album-id'),
+        ], () => trace.run({ kind: 'album', id: albumId.trim() }), !albumId.trim())
+      : null,
+    provider && typeof provider.getArtist === 'function'
+      ? area('Artist', 'test-run-artist', [
+          field('Artist id', artistId, setArtistId, 'test-artist-id'),
+        ], () => trace.run({ kind: 'artist', id: artistId.trim() }), !artistId.trim())
+      : null,
+    provider && typeof provider.getPlaylist === 'function'
+      ? area('Playlist', 'test-run-playlist', [
+          field('Playlist id', playlistId, setPlaylistId, 'test-playlist-id'),
+          field('Page', playlistPage, setPlaylistPage, 'test-playlist-page', '1'),
+        ], () => trace.run({ kind: 'playlist', id: playlistId.trim(), ...(pageOf(playlistPage) ? { page: pageOf(playlistPage) } : {}) }), !playlistId.trim())
+      : null,
+    provider && typeof provider.getLyrics === 'function'
+      ? area('Lyrics', 'test-run-lyrics', [
+          field('Track id', lyricsId, setLyricsId, 'test-lyrics-id'),
+        ], () => trace.run({ kind: 'lyrics', id: lyricsId.trim() }), !lyricsId.trim())
+      : null,
+    provider && provider.capabilities.library.read
+      ? area('Library list', 'test-run-library', [
+          field("Kind ('track', 'album', 'artist' or 'playlist')", libraryKind, setLibraryKind, 'test-library-kind'),
+          field('Page', libraryPage, setLibraryPage, 'test-library-page', '1'),
+        ], () => trace.run({ kind: 'library', list: (libraryKind.trim() || 'playlist') as 'playlist', ...(pageOf(libraryPage) ? { page: pageOf(libraryPage) } : {}) }), false)
+      : null,
+    provider
+      ? area('Stream', 'test-run-stream', [
+          field('Track id', streamId, setStreamId, 'test-stream-id'),
+        ], () => trace.run({ kind: 'stream', id: streamId.trim() }), !streamId.trim())
+      : null,
+
+    area('HTTP request — through this source\'s own client', 'test-run-http', [
+      h(
+        native.View as never,
+        { key: 'method', style: { flexDirection: 'row', gap: tokens.space[2] } },
+        h(Button, {
+          variant: method === 'GET' ? 'secondary' : 'ghost',
+          onPress: () => setMethod('GET'),
+          testID: 'test-method-get',
+          children: 'GET',
+        }),
+        h(Button, {
+          variant: method === 'POST' ? 'secondary' : 'ghost',
+          onPress: () => setMethod('POST'),
+          testID: 'test-method-post',
+          children: 'POST',
+        }),
+      ),
+      field('URL', url, setUrl, 'test-url', 'https://…'),
+      field('Headers (JSON, optional)', headersJson, setHeadersJson, 'test-headers', '{ "User-Agent": "…" }'),
+      ...(method === 'POST' ? [field('Body', body, setBody, 'test-body')] : []),
+    ], runHttp, !url.trim()),
+
+    area('Script — the document\'s functions are in scope', 'test-run-js', [
+      field('Code', code, setCode, 'test-code', "return getBiliArtist('9469745')"),
+      field('Arguments (JSON — its keys become variables)', argsJson, setArgsJson, 'test-args', '{ "key": "test" }'),
+    ], runJs, !code.trim()),
+
     requestError ? h(Text, { variant: 'sm', tone: 'muted' }, requestError) : null,
-
     h(TraceList, { events: trace.events, running: trace.running }),
   )
 }
@@ -795,7 +831,6 @@ export async function apply(ctx: Context) {
     yield ctx.ui.registerView(SOURCES_VIEWS.album, bound(ctx, AlbumScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceList, bound(ctx, SourcesListScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceImport, bound(ctx, ImportScreen))
-    yield ctx.ui.registerView(SOURCES_VIEWS.sourceDebug, bound(ctx, DebugScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceTest, bound(ctx, TestScreen))
   }, 'sources-ui-mobile')
 }
