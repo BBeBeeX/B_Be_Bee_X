@@ -13,7 +13,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import { TEST_ROW_HEIGHT as ROW, withListLayout as withLayout } from './testing.js'
 import { createElement as h } from 'react'
 import type { Track } from '@BBeBee/protocol'
@@ -22,6 +22,7 @@ import {
   Button,
   EmptyState,
   IconButton,
+  JsonTree,
   List,
   Sheet,
   Slider,
@@ -367,5 +368,49 @@ describe('TextField', () => {
     // DOM default; what matters is that nothing turns it *on*.
     expect(html).not.toContain('spellcheck="true"')
     expect(html).not.toContain('autocorrect="on"')
+  })
+})
+
+describe('JsonTree', () => {
+  it('renders the shape, and keeps deep levels collapsed', () => {
+    const markup = renderToStaticMarkup(
+      h(JsonTree, {
+        value: { a: { b: { c: 1 } }, list: [1, 2], ok: true, none: null },
+        accessibilityLabel: 'Response',
+      }),
+    )
+    expect(markup).toContain('Response')
+    // Two levels are open; the third is a collapsed branch showing its count.
+    expect(markup).toContain('1 keys')
+    expect(markup).not.toContain('"c"')
+    expect(markup).toContain('list')
+    expect(markup).toContain('true')
+    expect(markup).toContain('null')
+  })
+
+  it('expands a collapsed branch on click', async () => {
+    const view = render(h(JsonTree, { value: { a: { deep: 7 } }, defaultExpandedDepth: 1 }))
+    // The value is hidden behind the collapsed branch; the key is not.
+    expect(view.container.textContent).toContain('a')
+    expect(view.container.textContent).not.toContain('7')
+
+    const branches = view.container.querySelectorAll<HTMLElement>('[role="button"]')
+    await act(async () => {
+      branches[branches.length - 1]!.click()
+    })
+    expect(view.container.textContent).toContain('7')
+  })
+
+  it('clips a long string until it is clicked', async () => {
+    const view = render(h(JsonTree, { value: { url: 'x'.repeat(400) }, defaultExpandedDepth: 3 }))
+    expect(view.container.textContent).toContain('(+100)')
+
+    const clipped = Array.from(view.container.querySelectorAll('span')).find((el) =>
+      el.textContent?.includes('(+100)'),
+    ) as HTMLElement
+    await act(async () => {
+      clipped.click()
+    })
+    expect(view.container.textContent?.includes('(+100)')).toBe(false)
   })
 })

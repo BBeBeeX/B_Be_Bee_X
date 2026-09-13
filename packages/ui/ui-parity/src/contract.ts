@@ -204,6 +204,20 @@ export const COMPONENT_CONTRACT: ComponentSpec[] = [
       ...UNIVERSAL,
     ],
   },
+  {
+    name: 'JsonTree',
+    purpose:
+      'A parsed JSON value as a collapsible tree. For reading a response, not editing it — ' +
+      'unparseable text is the caller\'s problem and stays text.',
+    props: [
+      { name: 'value', required: true, note: 'The already-parsed value, not JSON text.' },
+      {
+        name: 'defaultExpandedDepth',
+        note: 'How many nesting levels start open. Default 2 — the shape without the noise.',
+      },
+      ...UNIVERSAL,
+    ],
+  },
 ]
 
 export const COMPONENT_NAMES = COMPONENT_CONTRACT.map((c) => c.name)

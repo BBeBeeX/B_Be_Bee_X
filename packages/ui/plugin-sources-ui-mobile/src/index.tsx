@@ -25,6 +25,7 @@ import {
   Artwork,
   Button,
   EmptyState,
+  JsonTree,
   List,
   Text,
   TextField,
@@ -443,10 +444,10 @@ function TraceList({
             backgroundColor: event.kind === 'value' ? scheme.bg.overlay : scheme.bg.raised,
             borderLeftWidth: 3,
             borderLeftColor: event.kind === 'error' ? scheme.state.error : scheme.border.subtle,
-            maxHeight: event.kind === 'value' ? 280 : undefined,
+            maxHeight: event.kind === 'value' ? 420 : undefined,
           },
         },
-        h(Text, { variant: 'sm' }, traceLine(event)),
+        event.kind === 'value' ? valueBlock(event) : h(Text, { variant: 'sm' }, traceLine(event)),
       ),
     ),
   )
@@ -463,21 +464,38 @@ function traceLine(event: TraceEvent): string {
       return `✓ ${event.summary}`
     case 'log':
       return `· ${event.message}`
-    case 'value':
-      return `${event.label}\n${prettyValue(event.value)}`
+    // Value events render through `valueBlock`, never as a line; this branch
+    // exists so the switch stays total if a kind is ever added.
+    default:
+      return ''
   }
 }
 
-/** Pretty-print JSON bodies for reading; leave anything else exactly as sent. */
-function prettyValue(text: string): string {
-  if (text.length >= 2 && (text.startsWith('{') || text.startsWith('['))) {
+/**
+ * A parsed JSON value as a tree — the shape readable at a glance, expandable
+ * where the reader wants to look. Unparseable text (an HTML page, a bare URL)
+ * stays exactly as it arrived.
+ */
+function valueBlock(event: Extract<TraceEvent, { kind: 'value' }>): ReactElement {
+  const native = nativePrimitives()
+  const text = event.value
+  const parseable = text.trim().startsWith('{') || text.trim().startsWith('[')
+  let parsed: unknown
+  if (parseable) {
     try {
-      return JSON.stringify(JSON.parse(text), null, 2)
+      parsed = JSON.parse(text)
     } catch {
       // Not JSON after all — the raw text is the honest answer.
     }
   }
-  return text
+  return h(
+    native.View as never,
+    null,
+    h(Text, { variant: 'sm', tone: 'muted' }, event.label),
+    parsed !== undefined
+      ? h(JsonTree, { value: parsed, accessibilityLabel: event.label })
+      : h(Text, { variant: 'sm' }, text),
+  )
 }
 
 /* ── the source list ───────────────────────────────────────────────────── */

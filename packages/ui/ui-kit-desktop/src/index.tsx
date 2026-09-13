@@ -17,7 +17,7 @@
 import { createElement as h, useCallback, useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { CSSProperties, ReactElement, ReactNode } from 'react'
-import { palettes, tokens, type Scheme } from '@BBeBee/ui-tokens'
+import { palettes, tokens, type Palette, type Scheme } from '@BBeBee/ui-tokens'
 import { identicon } from '@BBeBee/ui-core'
 import type {
   ArtworkProps,
@@ -647,6 +647,170 @@ export function EmptyState(props: EmptyStateProps) {
     h(Text, { variant: 'lg', children: props.title }),
     props.description ? h(Text, { tone: 'muted', children: props.description }) : null,
     props.action as ReactNode,
+  )
+}
+
+/** Syntax colours for the tree, all from the palette. */
+function jsonColor(value: unknown, palette: Palette): string | undefined {
+  if (typeof value === 'string') return palette.state.ok
+  if (typeof value === 'number') return palette.state.warn
+  if (typeof value === 'boolean' || value === null) return palette.text.disabled
+  return undefined
+}
+
+/** Long strings start clipped; clicking spreads them. A body can hold a URL no one needs all of. */
+const STRING_CLIP = 300
+
+function JsonString(props: { value: string; palette: Palette }): ReactElement {
+  const [spread, setSpread] = useState(false)
+  const clipped = !spread && props.value.length > STRING_CLIP
+  const shown = clipped ? props.value.slice(0, STRING_CLIP) : props.value
+  return h(
+    'span',
+    {
+      onClick: clipped ? () => setSpread(true) : undefined,
+      style: {
+        color: props.palette.state.ok,
+        cursor: clipped ? 'pointer' : undefined,
+        ...(clipped ? { textDecoration: 'underline dotted' } : {}),
+      },
+    },
+    JSON.stringify(shown) + (clipped ? `… (+${props.value.length - STRING_CLIP})` : ''),
+  )
+}
+
+function JsonBranch(props: {
+  name: string | undefined
+  value: Record<string, unknown> | readonly unknown[]
+  depth: number
+  defaultExpandedDepth: number
+  palette: Palette
+}): ReactElement {
+  const [open, setOpen] = useState(props.depth < props.defaultExpandedDepth)
+  const entries: [string, unknown][] = Array.isArray(props.value)
+    ? props.value.map((v, i) => [String(i), v])
+    : Object.entries(props.value)
+  const brace = Array.isArray(props.value) ? ['[', ']'] : ['{', '}']
+
+  return h(
+    'div',
+    { style: { paddingLeft: props.depth === 0 ? 0 : tokens.space[3] } },
+    h(
+      'div',
+      {
+        onClick: () => setOpen(!open),
+        role: 'button',
+        style: { cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: tokens.space[1] },
+      },
+      h('span', { style: { color: props.palette.text.disabled, userSelect: 'none' } }, open ? '▾' : '▸'),
+      props.name !== undefined
+        ? h('span', { style: { color: props.palette.text.secondary } }, props.name)
+        : null,
+      h('span', { style: { color: props.palette.text.primary } }, brace[0]),
+      !open
+        ? h(
+            'span',
+            { style: { color: props.palette.text.disabled } },
+            `${entries.length} ${Array.isArray(props.value) ? 'items' : 'keys'}`,
+          )
+        : null,
+      h('span', { style: { color: props.palette.text.primary } }, open ? '' : brace[1]),
+    ),
+    open
+      ? h(
+          'div',
+          { style: { borderLeft: `1px solid ${props.palette.border.subtle}`, marginLeft: tokens.space[1] } },
+          ...entries.map(([key, child]) =>
+            h(JsonEntry, {
+              key,
+              name: key,
+              value: child,
+              depth: props.depth + 1,
+              defaultExpandedDepth: props.defaultExpandedDepth,
+              palette: props.palette,
+            }),
+          ),
+        )
+      : null,
+    open
+      ? h(
+          'div',
+          { style: { color: props.palette.text.primary, paddingLeft: tokens.space[3] } },
+          brace[1],
+        )
+      : null,
+  )
+}
+
+function JsonEntry(props: {
+  name: string
+  value: unknown
+  depth: number
+  defaultExpandedDepth: number
+  palette: Palette
+}): ReactElement {
+  const value = props.value
+  const isBranch = value !== null && typeof value === 'object'
+  const color = jsonColor(value, props.palette)
+
+  if (isBranch) {
+    return h(JsonBranch, {
+      name: props.name,
+      value: value as Record<string, unknown>,
+      depth: props.depth,
+      defaultExpandedDepth: props.defaultExpandedDepth,
+      palette: props.palette,
+    })
+  }
+
+  const rendered =
+    typeof value === 'string'
+      ? h(JsonString, { value, palette: props.palette })
+      : h('span', { style: { color } }, value === undefined ? 'undefined' : String(value))
+
+  return h(
+    'div',
+    { style: { paddingLeft: tokens.space[3], display: 'flex', alignItems: 'baseline', gap: tokens.space[1] } },
+    // The root entry has no name: the tree opens with the value itself.
+    props.name !== '' ? h('span', { style: { color: props.palette.text.secondary } }, props.name) : null,
+    props.name !== '' ? h('span', null, ':') : null,
+    rendered,
+  )
+}
+
+/**
+ * A parsed JSON value as a collapsible tree.
+ *
+ * For *reading* a response — the test screen's output pane — not editing it.
+**/ 
+export function JsonTree(props: {
+  value: unknown
+  /** How many nesting levels start open. Default 2: the shape without the noise. */
+  defaultExpandedDepth?: number
+  testID?: string
+  accessibilityLabel?: string
+}): ReactElement {
+  const palette = c()
+  return h(
+    'div',
+    {
+      'data-testid': props.testID,
+      'aria-label': props.accessibilityLabel,
+      style: {
+        fontFamily: tokens.font.family.mono,
+        fontSize: tokens.font.size.sm,
+        lineHeight: 1.6,
+        overflowWrap: 'anywhere',
+        color: palette.text.primary,
+      },
+    },
+    h(JsonEntry, {
+      name: '',
+      value: props.value,
+      depth: 0,
+      defaultExpandedDepth: props.defaultExpandedDepth ?? 2,
+      palette,
+    }),
   )
 }
 

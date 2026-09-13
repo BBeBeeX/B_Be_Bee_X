@@ -29,6 +29,7 @@ import {
   Artwork,
   Button,
   EmptyState,
+  JsonTree,
   List,
   Text,
   TextField,
@@ -499,11 +500,11 @@ function TraceList({
             // exists to show, but it must not stretch the page to the height
             // of the body it is showing.
             ...(event.kind === 'value'
-              ? { maxHeight: 320, overflow: 'auto', background: scheme.bg.overlay }
+              ? { maxHeight: 480, overflow: 'auto', background: scheme.bg.overlay }
               : {}),
           },
         },
-        traceLine(event),
+        event.kind === 'value' ? valueBlock(event) : traceLine(event),
       ),
     ),
   )
@@ -522,21 +523,37 @@ function traceLine(event: TraceEvent): string {
       return `✓ ${event.summary}`
     case 'log':
       return `· ${event.message}`
-    case 'value':
-      return `${event.label}\n${prettyValue(event.value)}`
+    // Value events render through `valueBlock`, never as a line; this branch
+    // exists so the switch stays total if a kind is ever added.
+    default:
+      return ''
   }
 }
 
-/** Pretty-print JSON bodies for reading; leave anything else exactly as sent. */
-function prettyValue(text: string): string {
-  if (text.length >= 2 && (text.startsWith('{') || text.startsWith('['))) {
+/**
+ * A parsed JSON value as a tree — the shape readable at a glance, expandable
+ * where the reader wants to look. Unparseable text (an HTML page, a bare URL)
+ * stays exactly as it arrived.
+ */
+function valueBlock(event: Extract<TraceEvent, { kind: 'value' }>): ReactElement {
+  const text = event.value
+  const parseable = text.trim().startsWith('{') || text.trim().startsWith('[')
+  let parsed: unknown
+  if (parseable) {
     try {
-      return JSON.stringify(JSON.parse(text), null, 2)
+      parsed = JSON.parse(text)
     } catch {
       // Not JSON after all — the raw text is the honest answer.
     }
   }
-  return text
+  return h(
+    'div',
+    null,
+    h('div', { style: { color: p().text.secondary, marginBottom: tokens.space[1] } }, event.label),
+    parsed !== undefined
+      ? h(JsonTree, { value: parsed, accessibilityLabel: event.label })
+      : text,
+  )
 }
 
 /* ── the source list ───────────────────────────────────────────────────── */
@@ -810,13 +827,39 @@ export function TestScreen({ ctx, sourceId }: { ctx: Context; sourceId?: string 
 
   const qualities = provider?.capabilities.streaming.qualities ?? ['normal']
 
+  // Two columns: what you run on the left, what came back on the right. Each
+  // scrolls on its own, so a long output never pushes the controls away.
   return h(
     'section',
-    { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[4], padding: tokens.space[4] } },
-    h(Text, { variant: 'lg' }, 'Test a source'),
+    {
+      style: {
+        display: 'flex',
+        flexDirection: 'row',
+        gap: tokens.space[4],
+        padding: tokens.space[4],
+        height: '100%',
+        minHeight: 0,
+        alignItems: 'stretch',
+      },
+    },
+    h(
+      'div',
+      {
+        'aria-label': 'Test controls',
+        style: {
+          width: 440,
+          flexShrink: 0,
+          overflowY: 'auto',
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: tokens.space[3],
+        },
+      },
+      h(Text, { variant: 'lg' }, 'Test a source'),
     h(
       'label',
-      { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[1], maxWidth: 420 } },
+      { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[1] } },
       h(Text, { variant: 'sm', tone: 'muted' }, 'Source'),
       h(
         'select',
@@ -923,7 +966,15 @@ export function TestScreen({ ctx, sourceId }: { ctx: Context; sourceId?: string 
     ], runJs, !code.trim()),
 
     requestError ? h(Text, { variant: 'sm', tone: 'muted' }, requestError) : null,
-    h(TraceList, { events: trace.events, running: trace.running }),
+      ),
+      h(
+        'div',
+        {
+          'aria-label': 'Results',
+          style: { flex: 1, minWidth: 0, overflowY: 'auto', minHeight: 0 },
+        },
+        h(TraceList, { events: trace.events, running: trace.running }),
+      ),
   )
 }
 

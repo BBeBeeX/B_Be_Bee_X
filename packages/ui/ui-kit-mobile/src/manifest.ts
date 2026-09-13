@@ -37,6 +37,7 @@ export const COMPONENT_PROPS: KitPropMap = {
   ],
   Text: ['children', 'variant', 'tone', 'numberOfLines', 'testID', 'accessibilityLabel'],
   Artwork: ['artwork', 'size', 'radius', 'seed', 'testID', 'accessibilityLabel'],
+  JsonTree: ['value', 'defaultExpandedDepth', 'testID', 'accessibilityLabel'],
 }
 
 /** Component names this kit exports. The parity gate compares the two lists. */
