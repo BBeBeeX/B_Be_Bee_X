@@ -274,7 +274,14 @@ export class Sources extends Service implements SourcesService {
    * runs under the caller's budget. `plugin-source-runtime` holds
    * `db:read:core` and calls `writeVar`, and the write was refused with the
    * *runtime's* name on it even though the table belongs to this service.
-   * `Catalog` and `SourceStore` already capture theirs for the same reason.
+   *
+   * ⚠️ And a capture alone is not enough: a captured handle is itself a
+   * tracked value, so reading it through the caller's context re-shadows it
+   * with the caller again (`import()` once lost exactly this way — requested
+   * by the UI package, refused under the UI plugin's grants). New uses go
+   * through a plain holder — `Catalog`, `SourceStore` — which Cordis does
+   * not re-shadow; the direct uses below (`readVars`, `writeVar`, `linksFor`)
+   * survive only because their callers hold the grants themselves.
    */
   private ownDb!: DbService
   private catalog!: Catalog
@@ -576,9 +583,15 @@ export class Sources extends Service implements SourcesService {
     // report — the only record of what happened — is lost. The protocol
     // promise is "one malformed entry never rejects the rest", and half-
     // applying the rest is not that.
-    await this.ctx.db.transaction(async (tx) => {
-      const store = new SourceStore(tx)
-
+    //
+    // The transaction is issued by `SourceStore`, not here — see its note.
+    // `import()` is called from the import screen, which runs on the UI
+    // package's context (docs/08 §2); even `this.ownDb`, though captured at
+    // init, is re-shadowed with the caller's context when read through the
+    // service proxy, and the whole import would be refused with the
+    // *caller's* name on the error. Only a plain holder — the store, like
+    // `Catalog` — reaches the captured handle un-shadowed.
+    await this.store.transaction(async (store) => {
       for (const [index, entry] of entries.entries()) {
         try {
           await this.importOne(store, entry, index, { now, selected, opts, report })

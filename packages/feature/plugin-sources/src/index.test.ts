@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
+import { scopeContext } from '@BBeBee/kernel'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
@@ -230,6 +231,26 @@ describe('importing documents', () => {
     expect(report.rejected).toEqual([])
     expect(sources.sources).toHaveLength(1)
     expect(sources.source(report.added[0]!.id)).toBeDefined()
+  })
+
+  it('stores an import requested through a gated caller with no db grants', async () => {
+    // The import screen runs on the UI package's context (docs/08 §2), which
+    // holds no db capabilities. A Service method reached through that context
+    // sees `this.ctx` as the *caller's*, so the transaction used to be gated
+    // by the caller's grants — refused with the UI plugin's name on the
+    // error. The write belongs to this service, on the handle captured at
+    // init, exactly like `Catalog` and `SourceStore` before it.
+    const { ctx, sources } = await withSources()
+    const ui = scopeContext(ctx, {
+      pluginId: '@BBeBee/plugin-sources-ui-desktop',
+      requested: [],
+    })
+
+    const report = await (ui.sources as Sources).import(JSON.stringify(doc()))
+
+    expect(report.rejected).toEqual([])
+    expect(report.added).toHaveLength(1)
+    expect(sources.sources).toHaveLength(1)
   })
 
   it('round-trips byte for byte through export', async () => {

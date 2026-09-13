@@ -40,6 +40,21 @@ const COLUMNS = `id, source_url, name, source_group, source_type, doc_json, doc_
 export class SourceStore {
   constructor(private readonly db: DbService) {}
 
+  /**
+   * Run `fn` atomically against the handle this store was built with.
+   *
+   * The transaction is issued here rather than by the caller for the same
+   * reason the handle is captured at all: a `SourceStore` is a plain object,
+   * so the handle it holds is reached un-shadowed and the statements run
+   * under the service's own grants. A caller issuing `db.transaction()`
+   * through the service proxy would have every statement inside it gated by
+   * the *caller's* grants — the exact failure that made an import requested
+   * by the UI package refuse with the UI plugin's name on it.
+   */
+  async transaction<T>(fn: (store: SourceStore) => Promise<T>): Promise<T> {
+    return this.db.transaction(async (tx) => fn(new SourceStore(tx)))
+  }
+
   async all(): Promise<SourceRecord[]> {
     const rows = await this.db.query<SourceRow>(
       `SELECT ${COLUMNS} FROM sources ORDER BY sort_order, name COLLATE NOCASE`,
