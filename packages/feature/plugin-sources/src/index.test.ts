@@ -441,6 +441,12 @@ describe('importing documents', () => {
     expect(report.added[0]!.sourceUrl).toBe('https://a.test')
     expect(report.rejected).toHaveLength(1)
     expect(report.rejected[0]!.index).toBe(1)
+    // The review screen renders the issues, so the underlying failure has to
+    // be among them — "could not be stored" alone is not investigable.
+    expect(report.rejected[0]!.error.issues).toContainEqual({
+      path: '',
+      message: 'could not be stored: disk full',
+    })
     // And the in-memory list matches the database, which is what went stale.
     expect(sources.sources).toHaveLength(1)
   })

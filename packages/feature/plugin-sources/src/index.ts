@@ -585,15 +585,18 @@ export class Sources extends Service implements SourcesService {
         } catch (error) {
           // A write that fails for this entry — a value SQLite will not bind,
           // a constraint — must not take the other thirty-nine with it.
+          const cause = error instanceof Error ? error.message : String(error)
+          const name = nameOf(entry.value)
+          this.ctx.logger.warn(`sources: rejected entry ${index}${name ? ` "${name}"` : ''}: ${cause}`)
           report.rejected.push({
             index,
-            ...(nameOf(entry.value) ? { sourceName: nameOf(entry.value)! } : {}),
+            ...(name ? { sourceName: name } : {}),
             error:
               error instanceof SourceFormatError
                 ? error
                 : new SourceFormatError(
-                    error instanceof Error ? error.message : String(error),
-                    [{ path: '', message: 'could not be stored' }],
+                    cause,
+                    [{ path: '', message: `could not be stored: ${cause}` }],
                     { cause: error },
                   ),
           })
