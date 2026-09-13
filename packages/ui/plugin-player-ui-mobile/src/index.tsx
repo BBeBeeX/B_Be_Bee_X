@@ -37,8 +37,13 @@ import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
 
+export interface NowPlayingScreenProps {
+  ctx: Context
+  onClose?: () => void
+}
+
 /** The full-screen player. */
-export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
+export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): ReactElement {
   const native = nativePrimitives()
   const state = useTransport(ctx)
   const position = usePosition(ctx)
@@ -58,6 +63,24 @@ export function NowPlayingScreen({ ctx }: { ctx: Context }): ReactElement {
         backgroundColor: p().bg.base,
       },
     },
+    onClose
+      ? h(
+          native.Pressable as never,
+          {
+            accessibilityRole: 'button',
+            accessibilityLabel: 'Close player',
+            onPress: onClose,
+            style: {
+              alignSelf: 'flex-start',
+              paddingVertical: tokens.space[1],
+              paddingHorizontal: tokens.space[3],
+              borderRadius: tokens.radius.pill,
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+            },
+          },
+          h(Text, { variant: 'lg', children: '⌄' }),
+        )
+      : null,
     // Artwork first and large: on a phone this screen is mostly the artwork,
     // which is the one thing a bottom bar cannot do.
     h(Artwork, {
@@ -159,6 +182,94 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
   })
 }
 
+export interface NowPlayingBarProps {
+  ctx: Context
+  onOpenNowPlaying?: () => void
+}
+
+/** The persistent transport bar on mobile. */
+export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): ReactElement {
+  const native = nativePrimitives()
+  const state = useTransport(ctx)
+  const can = useTransportAvailability(ctx)
+
+  const handleOpen = () => {
+    onOpenNowPlaying?.()
+    ctx.ui?.navigate?.(PLAYER_VIEWS.nowPlaying)
+  }
+
+  if (!state.trackUrn && state.status === 'idle') {
+    return h(native.View as never, { style: { display: 'none' } })
+  }
+
+  return h(
+    native.Pressable as never,
+    {
+      accessibilityRole: 'button',
+      accessibilityLabel: 'Open now playing',
+      onPress: handleOpen,
+      style: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: tokens.space[3],
+        paddingVertical: tokens.space[2],
+        backgroundColor: '#181822',
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255, 255, 255, 0.08)',
+      },
+    },
+    h(
+      native.View as never,
+      {
+        style: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: tokens.space[3],
+          flex: 1,
+          minWidth: 0,
+          marginRight: tokens.space[2],
+        },
+      },
+      h(Artwork, {
+        artwork: state.nowPlaying?.artwork,
+        seed: state.trackUrn,
+        size: tokens.size.artworkThumb,
+        radius: tokens.radius.sm,
+      }),
+      h(
+        native.View as never,
+        { style: { flex: 1, minWidth: 0 } },
+        h(Text, {
+          variant: 'sm',
+          numberOfLines: 1,
+          children: state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'Nothing playing'),
+        }),
+        state.nowPlaying?.artist
+          ? h(Text, {
+              variant: 'xs',
+              tone: 'muted',
+              numberOfLines: 1,
+              children: state.nowPlaying.artist,
+            })
+          : null,
+      ),
+    ),
+    h(
+      native.View as never,
+      { style: { flexDirection: 'row', alignItems: 'center' } },
+      h(IconButton, {
+        icon: can.canPause ? '⏸' : '▶',
+        accessibilityLabel: can.canPause ? 'Pause' : 'Play',
+        variant: 'ghost',
+        size: tokens.size.icon,
+        disabled: !can.canPlay && !can.canPause,
+        onPress: () => ctx.player.togglePlay(),
+      }),
+    ),
+  )
+}
+
 export const name = 'plugin-player-ui-mobile'
 
 /**
@@ -195,6 +306,7 @@ export const inject = ['ui', 'player']
 export async function apply(ctx: Context) {
   return ctx.effect(function* () {
     yield ctx.ui.registerView(PLAYER_VIEWS.nowPlaying, bound(ctx, NowPlayingScreen))
+    yield ctx.ui.registerView(PLAYER_VIEWS.nowPlayingBar, bound(ctx, NowPlayingBar))
     yield ctx.ui.registerView(PLAYER_VIEWS.queue, bound(ctx, QueueScreen))
   }, 'player-ui-mobile')
 }

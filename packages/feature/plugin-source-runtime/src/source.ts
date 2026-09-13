@@ -27,6 +27,7 @@ import type {
   BrowseEntry,
   AlbumDetail,
   ArtistDetail,
+  ArtworkRef,
   PlaylistDetail,
   PlaylistItem,
   BrowseResult,
@@ -1624,7 +1625,7 @@ export class DocumentSource {
                       artwork:
                         typeof trackObj.artwork === 'string'
                           ? { id: trackObj.artwork, sourceUrl: trackObj.artwork }
-                          : (trackObj.artwork as Artwork),
+                          : (trackObj.artwork as ArtworkRef),
                     }
                   : {}),
                 available: true,
@@ -1657,7 +1658,7 @@ export class DocumentSource {
                 artwork:
                   typeof result.artwork === 'string'
                     ? { id: result.artwork, sourceUrl: result.artwork }
-                    : (result.artwork as Artwork),
+                    : (result.artwork as ArtworkRef),
               }
             : {}),
           albums: Array.isArray(result.albums)
@@ -1680,7 +1681,7 @@ export class DocumentSource {
                         artwork:
                           typeof albumObj.artwork === 'string'
                             ? { id: albumObj.artwork, sourceUrl: albumObj.artwork }
-                            : (albumObj.artwork as Artwork),
+                            : (albumObj.artwork as ArtworkRef),
                       }
                     : {}),
                 }
@@ -1781,23 +1782,25 @@ export class DocumentSource {
               : []),
             durationMs: (item.durationMs as number | undefined) ?? (typeof item.duration === 'number' ? item.duration * 1000 : undefined),
             artwork:
-              item.cover || item.coverWebUrl || item.pic || item.artwork
+              (item.cover || item.coverWebUrl || item.pic || item.artwork)
                 ? {
-                    id: item.cover || item.coverWebUrl || item.pic || item.artwork,
-                    sourceUrl: item.cover || item.coverWebUrl || item.pic || item.artwork,
+                    id: String(item.cover || item.coverWebUrl || item.pic || item.artwork),
+                    sourceUrl: String(item.cover || item.coverWebUrl || item.pic || item.artwork),
                   }
                 : undefined,
             available: true,
           }
         })
-        const payloads: Record<string, unknown> = result.payloads ? { ...result.payloads } : {}
+        const payloads: Record<string, unknown> = result.payloads
+          ? { ...(result.payloads as Record<string, unknown>) }
+          : {}
         if (!result.payloads) {
           for (const [idx, item] of rawItems.entries()) {
             const track = tracks[idx]
             if (track) {
               const tid = track.urn.split(':').pop()!
               payloads[track.urn] = {
-                ...item,
+                ...((item && typeof item === 'object' ? item : {}) as Record<string, unknown>),
                 id: tid,
               }
             }
@@ -1805,29 +1808,36 @@ export class DocumentSource {
         }
 
         return {
-          urn: result.urn || playlistUrn,
-          name: result.name || result.title || id,
-          ...(result.description ? { description: result.description } : {}),
+          urn: (result.urn as string | undefined) || playlistUrn,
+          name: (result.name as string | undefined) || (result.title as string | undefined) || id,
+          ...(result.description ? { description: String(result.description) } : {}),
           ...(result.artwork
             ? {
                 artwork:
                   typeof result.artwork === 'string'
                     ? { id: result.artwork, sourceUrl: result.artwork }
-                    : result.artwork,
+                    : (result.artwork as ArtworkRef),
               }
             : result.cover
-              ? { artwork: { id: result.cover, sourceUrl: result.cover } }
+              ? { artwork: { id: String(result.cover), sourceUrl: String(result.cover) } }
               : {}),
           ...(result.owner
-            ? { owner: typeof result.owner === 'string' ? result.owner : result.owner.name }
+            ? {
+                owner:
+                  typeof result.owner === 'string'
+                    ? result.owner
+                    : (result.owner && typeof result.owner === 'object'
+                        ? ((result.owner as Record<string, unknown>).name as string | undefined)
+                        : undefined),
+              }
             : {}),
           items,
           tracks,
           payloads,
-          hasMore: result.hasMore ?? false,
-          ...(result.cursor ? { cursor: result.cursor } : {}),
+          hasMore: Boolean(result.hasMore),
+          ...(result.cursor ? { cursor: String(result.cursor) } : {}),
           ...(result.trackCount !== undefined
-            ? { trackCount: result.trackCount }
+            ? { trackCount: Number(result.trackCount) }
             : { trackCount: items.length }),
         }
       }

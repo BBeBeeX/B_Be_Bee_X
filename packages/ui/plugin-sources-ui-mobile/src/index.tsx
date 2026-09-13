@@ -85,6 +85,11 @@ export function LibraryScreen({
   const albums = useAlbums(ctx, query)
   const active = tab === 'tracks' ? tracks : albums
 
+  const handleOpenAlbum = (urn: string) => {
+    onOpenAlbum?.(urn)
+    serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.album, { urn })
+  }
+
   const trackEmpty =
     scope === 'favorites'
       ? h(EmptyState, {
@@ -194,7 +199,7 @@ export function LibraryScreen({
                   {
                     accessibilityRole: 'button',
                     accessibilityLabel: album.title,
-                    onPress: () => onOpenAlbum?.(album.urn),
+                    onPress: () => handleOpenAlbum(album.urn),
                     style: {
                       flexDirection: 'row',
                       alignItems: 'center',
@@ -220,9 +225,22 @@ export function LibraryScreen({
   )
 }
 
-export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): ReactElement {
+export function AlbumScreen({
+  ctx,
+  urn,
+  onBack,
+}: {
+  ctx: Context
+  urn?: string
+  onBack?: () => void
+}): ReactElement {
   const native = nativePrimitives()
   const album = useAlbum(ctx, urn)
+
+  const handleBack = () => {
+    if (onBack) onBack()
+    else serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.library)
+  }
 
   if (album.status === 'loading' || album.status === 'idle') {
     return h(Pending, { label: 'Loading album…' })
@@ -232,6 +250,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       icon: '⚠',
       title: 'Album unavailable',
       description: album.error?.message,
+      action: h(Button, { onPress: handleBack, variant: 'secondary', children: 'Back to library' }),
     })
   }
 
@@ -239,6 +258,32 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   return h(
     native.View as never,
     { style: { flex: 1, backgroundColor: p().bg.base } },
+    h(
+      native.View as never,
+      {
+        style: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: tokens.space[3],
+          paddingVertical: tokens.space[2],
+        },
+      },
+      h(
+        native.Pressable as never,
+        {
+          accessibilityRole: 'button',
+          accessibilityLabel: 'Back to library',
+          onPress: handleBack,
+          style: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: tokens.space[1],
+            paddingHorizontal: tokens.space[2],
+          },
+        },
+        h(Text, { variant: 'sm', tone: 'accent', children: '‹ Library' }),
+      ),
+    ),
     h(
       native.View as never,
       { style: { alignItems: 'center', gap: tokens.space[2], padding: tokens.space[4] } },

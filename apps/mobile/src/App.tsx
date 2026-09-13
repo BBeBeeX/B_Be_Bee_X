@@ -5,8 +5,8 @@
  * tab bar. No feature knowledge here either.
  */
 
-import { createElement as h, useEffect, useState, type ComponentType } from 'react'
-import { ScrollView, Text, View, Pressable, ActivityIndicator } from 'react-native'
+import { createElement as h, useCallback, useEffect, useState, type ComponentType } from 'react'
+import { ActivityIndicator, BackHandler, Pressable, Text, View } from 'react-native'
 /*
  * ⚠️ `react-native-safe-area-context`, not React Native's own `SafeAreaView`.
  *
@@ -26,6 +26,11 @@ import { boot } from './boot'
 interface Tab {
   id: string
   title: string
+}
+
+interface HistoryItem {
+  id: string
+  params?: Record<string, unknown>
 }
 
 /**
@@ -54,7 +59,7 @@ function useTabs(ctx: Context): Tab[] {
 
   return [
     ...state.routes
-      .filter((r) => r.placement?.includes('tab-bar') ?? true)
+      .filter((r) => r.placement?.includes('tab-bar') === true)
       .map((r) => ({ id: r.id, title: r.title })),
     /*
      * Settings pages that actually have a view.
@@ -73,58 +78,186 @@ function useTabs(ctx: Context): Tab[] {
 
 function Shell({ ctx }: { ctx: Context }) {
   const tabs = useTabs(ctx)
-  const [activeId, setActiveId] = useState<string | undefined>()
+  const defaultTab = tabs[0]
+  const [isFullscreenNowPlaying, setIsFullscreenNowPlaying] = useState(false)
+
+  const [navState, setNavState] = useState<{ history: HistoryItem[]; index: number }>({
+    history: [],
+    index: 0,
+  })
+
+  const navigateTo = useCallback(
+    (id: string, params?: Record<string, unknown>) => {
+      if (id === 'player.now-playing') {
+        setIsFullscreenNowPlaying(true)
+        return
+      }
+      setIsFullscreenNowPlaying(false)
+      setNavState((prev) => {
+        const base =
+          prev.history.length === 0 && defaultTab ? [{ id: defaultTab.id }] : prev.history
+        const current = base[prev.index]
+        if (
+          current &&
+          current.id === id &&
+          JSON.stringify(current.params) === JSON.stringify(params)
+        ) {
+          return prev
+        }
+        const nextHistory = base.slice(0, prev.index + 1)
+        nextHistory.push({ id, params })
+        return {
+          history: nextHistory,
+          index: nextHistory.length - 1,
+        }
+      })
+    },
+    [defaultTab],
+  )
+
+  const canGoBack = navState.index > 0
+
+  const goBack = useCallback(() => {
+    if (isFullscreenNowPlaying) {
+      setIsFullscreenNowPlaying(false)
+      return true
+    }
+    if (navState.index > 0) {
+      setNavState((prev) => ({ ...prev, index: prev.index - 1 }))
+      return true
+    }
+    return false
+  }, [isFullscreenNowPlaying, navState.index])
 
   useEffect(() => {
-    const off = ctx.on('ui/navigate', (routeId: string) => {
-      setActiveId(routeId)
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      return goBack()
+    })
+    return () => subscription.remove()
+  }, [goBack])
+
+  useEffect(() => {
+    const off = ctx.on('ui/navigate', (routeId: string, params?: Record<string, unknown>) => {
+      navigateTo(routeId, params)
     })
     return () => void off()
-  }, [ctx])
+  }, [ctx, navigateTo])
 
-  const active = tabs.find((t) => t.id === activeId) ?? tabs[0]
-  const ViewComponent = active
-    ? (ctx.ui.viewFor(active.id) as ComponentType<{ ctx: Context }> | undefined)
+  const currentItem: HistoryItem | undefined =
+    navState.history[navState.index] ?? (defaultTab ? { id: defaultTab.id } : undefined)
+  const currentId = currentItem?.id
+  const currentParams = currentItem?.params
+
+  const activeTab = tabs.find((t) => t.id === currentId)
+  const ViewComponent = currentId
+    ? (ctx.ui.viewFor(currentId) as
+        | ComponentType<{
+            ctx: Context
+            onBack?: () => void
+            onOpenAlbum?: (urn: string) => void
+            [key: string]: unknown
+          }>
+        | undefined)
     : undefined
+
+  const BottomBar = ctx.ui.viewFor('player.now-playing-bar') as
+    | ComponentType<{ ctx: Context; onOpenNowPlaying?: () => void }>
+    | undefined
+  const NowPlayingView = ctx.ui.viewFor('player.now-playing') as
+    | ComponentType<{ ctx: Context; onClose?: () => void }>
+    | undefined
+
+  if (isFullscreenNowPlaying) {
+    return h(
+      SafeAreaView,
+      { style: { flex: 1, backgroundColor: '#0B0B0F' } },
+      NowPlayingView
+        ? h(NowPlayingView, { ctx, onClose: () => setIsFullscreenNowPlaying(false) })
+        : h(
+            Text,
+            { style: { padding: 24, color: '#A0A0AE' } },
+            '"Now playing" has no mobile view.',
+          ),
+    )
+  }
 
   return h(
     SafeAreaView,
     { style: { flex: 1, backgroundColor: '#0B0B0F' } },
+    canGoBack
+      ? h(
+          View,
+          {
+            style: {
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              borderBottomColor: '#1E1E28',
+              borderBottomWidth: 1,
+            },
+          },
+          h(
+            Pressable,
+            {
+              onPress: goBack,
+              accessibilityRole: 'button',
+              accessibilityLabel: 'Go back',
+              style: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
+            },
+            h(Text, { style: { color: '#7C5CFF', fontSize: 16, fontWeight: '600' } }, '‹ Back'),
+          ),
+        )
+      : null,
     h(
-      ScrollView,
+      View,
       { style: { flex: 1 } },
       ViewComponent
-        ? h(ViewComponent, { ctx })
+        ? h(ViewComponent, {
+            ctx,
+            ...currentParams,
+            onBack: goBack,
+            onOpenAlbum: (urn: string) => navigateTo('sources.album', { urn }),
+          })
         : h(
             Text,
             { style: { padding: 24, color: '#A0A0AE' } },
-            active ? `"${active.title}" has no mobile view.` : 'No plugin has contributed a route.',
+            currentId ? `"${currentId}" has no mobile view.` : 'No plugin has contributed a route.',
           ),
     ),
+    BottomBar
+      ? h(BottomBar, {
+          ctx,
+          onOpenNowPlaying: () => setIsFullscreenNowPlaying(true),
+        })
+      : null,
     h(
       View,
       { style: { flexDirection: 'row', borderTopColor: '#1E1E28', borderTopWidth: 1 } },
-      ...tabs.map((tab) =>
-        h(
+      ...tabs.map((tab) => {
+        const isSelected =
+          activeTab?.id === tab.id ||
+          (currentId === 'sources.album' && tab.id === 'sources.library')
+        return h(
           Pressable,
           {
             key: tab.id,
-            onPress: () => setActiveId(tab.id),
+            onPress: () => navigateTo(tab.id),
             accessibilityRole: 'tab',
             accessibilityLabel: tab.title,
-            accessibilityState: { selected: active?.id === tab.id },
+            accessibilityState: { selected: isSelected },
             style: { flex: 1, padding: 14, alignItems: 'center' },
           },
           h(
             Text,
             {
               numberOfLines: 1,
-              style: { color: active?.id === tab.id ? '#F5F5F7' : '#5A5A68' },
+              style: { color: isSelected ? '#F5F5F7' : '#5A5A68' },
             },
             tab.title,
           ),
-        ),
-      ),
+        )
+      }),
     ),
   )
 }

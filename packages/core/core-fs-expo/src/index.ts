@@ -439,4 +439,5 @@ function hashUri(value: string): string {
   return lanes.map((n) => n.toString(16).padStart(8, '0')).join('')
 }
 
+export { File, Directory, Paths } from 'expo-file-system'
 export default FsExpo

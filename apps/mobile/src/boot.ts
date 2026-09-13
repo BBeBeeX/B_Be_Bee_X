@@ -30,7 +30,7 @@ import { FlashList } from '@shopify/flash-list'
 import { AudioContext, AudioManager } from 'react-native-audio-api'
 import { createApp, type App } from '@BBeBee/kernel'
 import { PathsExpo } from '@BBeBee/core-paths-expo'
-import { FsExpo } from '@BBeBee/core-fs-expo'
+import { File, FsExpo } from '@BBeBee/core-fs-expo'
 import { StoreFs } from '@BBeBee/core-store-fs'
 import { DbExpo } from '@BBeBee/core-db-expo'
 import { SecretsExpo } from '@BBeBee/core-secrets-expo'
@@ -40,6 +40,7 @@ import { MediaSessionRn } from '@BBeBee/core-media-session-rn'
 import { CodecRn } from '@BBeBee/core-codec-rn'
 import { HttpRn } from '@BBeBee/core-http-rn'
 import { AudioWebAudio } from '@BBeBee/core-audio-webaudio'
+import { fetch as expoFetch } from 'expo/fetch'
 import { configureNative } from '@BBeBee/ui-kit-mobile'
 
 import { bundled } from '../generated/plugins'
@@ -169,6 +170,23 @@ export async function boot(): Promise<App> {
            * `StreamerNode` (docs/05 §1).
            */
           fallbackLatencyMs: 100,
+          fetchBytes: async (
+            src: string,
+            opts: { headers?: Record<string, string>; signal?: AbortSignal },
+          ) => {
+            const isLocal =
+              src.startsWith('file:') || src.startsWith('content:') || src.startsWith('/')
+            if (isLocal) {
+              opts?.signal?.throwIfAborted()
+              const file = new File(src)
+              const bytes = await file.bytes()
+              opts?.signal?.throwIfAborted()
+              return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+            }
+            const response = await expoFetch(src, { headers: opts?.headers, signal: opts?.signal })
+            if (!response.ok) throw new Error(`audio: ${response.status} loading ${src}`)
+            return response.arrayBuffer()
+          },
         },
       ],
 
