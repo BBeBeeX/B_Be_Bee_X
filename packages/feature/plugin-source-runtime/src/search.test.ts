@@ -209,4 +209,38 @@ describe('rules that do not hold up', () => {
       retryable: true,
     })
   })
+
+  it('derives streaming qualities from ruleStream.qualities, doc.qualities, or fallback', async () => {
+    const docBase = await shippedDocument()
+    const { http } = fakeHttp({})
+
+    // 1. ruleStream.qualities
+    const docWithRuleStreamQualities = {
+      ...docBase,
+      ruleStream: { ...((docBase.ruleStream as any) || {}), qualities: ['low', 'normal', 'high'] },
+    }
+    const s1 = new DocumentSource(recordFor(docWithRuleStreamQualities), { http })
+    expect(s1.capabilities.streaming.qualities).toEqual(['low', 'normal', 'high'])
+
+    // 2. doc.qualities
+    const docWithDocQualities = {
+      ...docBase,
+      qualities: ['normal', 'hi-res'],
+    }
+    const s2 = new DocumentSource(recordFor(docWithDocQualities), { http })
+    expect(s2.capabilities.streaming.qualities).toEqual(['normal', 'hi-res'])
+
+    // 3. ruleStream.qualities takes precedence over doc.qualities
+    const docWithBoth = {
+      ...docBase,
+      qualities: ['normal'],
+      ruleStream: { ...((docBase.ruleStream as any) || {}), qualities: ['lossless', 'hi-res'] },
+    }
+    const s3 = new DocumentSource(recordFor(docWithBoth), { http })
+    expect(s3.capabilities.streaming.qualities).toEqual(['lossless', 'hi-res'])
+
+    // 4. Default fallback when url has no prefs.quality
+    const s4 = new DocumentSource(recordFor(docBase), { http })
+    expect(s4.capabilities.streaming.qualities).toEqual(['normal'])
+  })
 })

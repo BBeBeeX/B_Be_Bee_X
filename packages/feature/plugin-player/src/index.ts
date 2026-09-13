@@ -819,6 +819,16 @@ export class Player extends Service implements PlayerService {
   }
 
   private async load(handle: StreamHandle): Promise<AudioSourceHandle> {
+    if (
+      handle.headers &&
+      typeof window !== 'undefined' &&
+      typeof (window as unknown as { BBeBee?: { stream?: { setHeaders: (entry: { url: string; headers: Record<string, string> }) => Promise<void> } } }).BBeBee?.stream?.setHeaders === 'function'
+    ) {
+      void (window as unknown as { BBeBee: { stream: { setHeaders: (entry: { url: string; headers: Record<string, string> }) => Promise<void> } } }).BBeBee.stream.setHeaders({
+        url: handle.target,
+        headers: handle.headers,
+      })
+    }
     return this.ownCtx.audio.load(handle.target, {
       strategy: this.strategyFor(handle),
       ...(handle.headers ? { headers: handle.headers } : {}),

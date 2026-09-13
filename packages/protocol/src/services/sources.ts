@@ -174,12 +174,24 @@ export type AuthFlow =
   | { kind: 'variable'; comment?: string }
   | { kind: 'form'; fields: LoginField[]; submitTo: string }
   | { kind: 'webview'; loginUrl: string; requiredCookies: string[] }
+  | { kind: 'qrcode'; pollIntervalMs?: number }
 
 export type AuthStatus =
   | { state: 'anonymous' }
   | { state: 'authenticated'; displayName?: string; expiresAt?: number }
   | { state: 'expired' }
   | { state: 'error'; message: string }
+
+export interface QrCodeSession {
+  /** The code or URL to display as a QR code */
+  code: string
+  /** Opaque session or ticket key */
+  key: string
+  /** Optional expiry epoch ms */
+  expiresAt?: number
+  /** Poll the status of the QR code */
+  poll(): Promise<'pending' | 'scanned' | 'confirmed' | 'expired'>
+}
 
 /**
  * Sign-in and sign-out.
@@ -195,6 +207,9 @@ export interface ProviderAuth {
 
   /** Resolves once `status` is 'authenticated'; throws `AuthError` otherwise. */
   signIn(input: Record<string, string>): Promise<void>
+
+  /** Start a QR code login session when flow.kind === 'qrcode' */
+  createQrSession?(): Promise<QrCodeSession>
 
   /**
    * Must leave nothing behind: clears the source's secrets namespace, its

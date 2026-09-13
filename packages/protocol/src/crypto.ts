@@ -289,3 +289,208 @@ export function randomHex(length: number): string {
   globalThis.crypto.getRandomValues(bytes)
   return hex(bytes)
 }
+
+/* ── RSA & RSA-OAEP (PKCS#1 v1.5 & RFC 8017 OAEP-SHA256) ────────────────── */
+
+export function base64ToBytes(input: string): Uint8Array {
+  const clean = input.replace(/-/g, '+').replace(/_/g, '/').replace(/[^A-Za-z0-9+/=]/g, '')
+  const padIndex = clean.indexOf('=')
+  const unpadded = padIndex === -1 ? clean : clean.slice(0, padIndex)
+  const bytes: number[] = []
+  for (let i = 0; i < unpadded.length; i += 4) {
+    const c0 = B64.indexOf(unpadded[i]!)
+    const c1 = B64.indexOf(unpadded[i + 1] ?? 'A')
+    const c2 = unpadded[i + 2] ? B64.indexOf(unpadded[i + 2]!) : 0
+    const c3 = unpadded[i + 3] ? B64.indexOf(unpadded[i + 3]!) : 0
+    const n = (c0 << 18) | (c1 << 12) | (c2 << 6) | c3
+    bytes.push((n >> 16) & 0xff)
+    if (i + 2 < unpadded.length) bytes.push((n >> 8) & 0xff)
+    if (i + 3 < unpadded.length) bytes.push(n & 0xff)
+  }
+  return new Uint8Array(bytes)
+}
+
+export interface RsaPublicKey {
+  n: bigint
+  e: bigint
+  k: number
+}
+
+/**
+ * Parse an RSA public key from PEM format (PKCS#1 or X.509 SubjectPublicKeyInfo).
+ */
+export function parseRsaPublicKey(pem: string): RsaPublicKey {
+  const b64 = pem.replace(/-----[^-]+-----/g, '').replace(/\\n/g, '').replace(/\s+/g, '')
+  const der = base64ToBytes(b64)
+  let pos = 0
+
+  function readLength(): number {
+    const b = der[pos++]!
+    if ((b & 0x80) === 0) return b
+    const numBytes = b & 0x7f
+    let len = 0
+    for (let i = 0; i < numBytes; i++) {
+      len = (len << 8) | der[pos++]!
+    }
+    return len
+  }
+
+  function readInteger(): bigint {
+    const tag = der[pos++]!
+    if (tag !== 0x02) throw new Error(`expected INTEGER (0x02), got 0x${tag.toString(16)}`)
+    const len = readLength()
+    let val = 0n
+    for (let i = 0; i < len; i++) {
+      val = (val << 8n) | BigInt(der[pos++]!)
+    }
+    return val
+  }
+
+  if (der[pos++] !== 0x30) throw new Error('expected outer SEQUENCE')
+  readLength()
+
+  // SubjectPublicKeyInfo check: AlgorithmIdentifier sequence
+  if (der[pos] === 0x30) {
+    pos++
+    const algoLen = readLength()
+    pos += algoLen
+    if (der[pos++] !== 0x03) throw new Error('expected BIT STRING')
+    readLength()
+    pos++ // unused bits byte
+    if (der[pos++] !== 0x30) throw new Error('expected inner SEQUENCE')
+    readLength()
+  }
+
+  const n = readInteger()
+  const e = readInteger()
+  let hexLen = n.toString(16).length
+  if (hexLen % 2 !== 0) hexLen++
+  const k = hexLen / 2
+
+  return { n, e, k }
+}
+
+function modPow(base: bigint, exp: bigint, mod: bigint): bigint {
+  let res = 1n
+  base = base % mod
+  while (exp > 0n) {
+    if ((exp & 1n) === 1n) res = (res * base) % mod
+    base = (base * base) % mod
+    exp >>= 1n
+  }
+  return res
+}
+
+function bytesToBigInt(bytes: Uint8Array): bigint {
+  let val = 0n
+  for (let i = 0; i < bytes.length; i++) {
+    val = (val << 8n) | BigInt(bytes[i]!)
+  }
+  return val
+}
+
+function bigintToBytes(val: bigint, length: number): Uint8Array {
+  const out = new Uint8Array(length)
+  for (let i = length - 1; i >= 0; i--) {
+    out[i] = Number(val & 0xffn)
+    val >>= 8n
+  }
+  return out
+}
+
+/**
+ * Encrypt using RSA PKCS#1 v1.5 padding, returned as base64 string.
+ */
+export function rsaEncrypt(plainText: string | Uint8Array, publicKeyPem: string): string {
+  const key = parseRsaPublicKey(publicKeyPem)
+  const m = bytesOf(plainText)
+  const k = key.k
+  if (m.length > k - 11) {
+    throw new Error(`message too long: max ${k - 11} bytes for ${k * 8}-bit RSA key`)
+  }
+
+  const psLen = k - m.length - 3
+  const ps = new Uint8Array(psLen)
+  for (let i = 0; i < psLen; i++) {
+    let r = 0
+    while (r === 0) {
+      const b = new Uint8Array(1)
+      globalThis.crypto.getRandomValues(b)
+      r = b[0]!
+    }
+    ps[i] = r
+  }
+
+  const em = new Uint8Array(k)
+  em[0] = 0x00
+  em[1] = 0x02
+  em.set(ps, 2)
+  em[2 + psLen] = 0x00
+  em.set(m, 3 + psLen)
+
+  const c = modPow(bytesToBigInt(em), key.e, key.n)
+  return base64Encode(bigintToBytes(c, k))
+}
+
+function mgf1Sha256(seed: Uint8Array, maskLen: number): Uint8Array {
+  const t = new Uint8Array(maskLen)
+  let outPos = 0
+  let counter = 0
+  const c = new Uint8Array(4)
+  const cView = new DataView(c.buffer)
+  while (outPos < maskLen) {
+    cView.setUint32(0, counter, false)
+    const combined = new Uint8Array(seed.length + 4)
+    combined.set(seed, 0)
+    combined.set(c, seed.length)
+    const hash = fromHex(sha256Hex(combined))
+    const copyLen = Math.min(hash.length, maskLen - outPos)
+    t.set(hash.subarray(0, copyLen), outPos)
+    outPos += copyLen
+    counter++
+  }
+  return t
+}
+
+/**
+ * Encrypt using RSA-OAEP with SHA-256, returned as lowercase hex string.
+ */
+export function rsaOaepEncrypt(
+  plainText: string | Uint8Array,
+  publicKeyPem: string,
+  label: string = '',
+): string {
+  const key = parseRsaPublicKey(publicKeyPem)
+  const m = bytesOf(plainText)
+  const k = key.k
+  const hLen = 32
+
+  if (m.length > k - 2 * hLen - 2) {
+    throw new Error(`message too long: max ${k - 2 * hLen - 2} bytes for RSA-OAEP SHA-256`)
+  }
+
+  const lHash = fromHex(sha256Hex(bytesOf(label)))
+  const psLen = k - m.length - 2 * hLen - 2
+  const db = new Uint8Array(k - hLen - 1)
+  db.set(lHash, 0)
+  db.fill(0, hLen, hLen + psLen)
+  db[hLen + psLen] = 0x01
+  db.set(m, hLen + psLen + 1)
+
+  const seed = new Uint8Array(hLen)
+  globalThis.crypto.getRandomValues(seed)
+
+  const dbMask = mgf1Sha256(seed, k - hLen - 1)
+  for (let i = 0; i < db.length; i++) db[i] = db[i]! ^ dbMask[i]!
+
+  const seedMask = mgf1Sha256(db, hLen)
+  for (let i = 0; i < seed.length; i++) seed[i] = seed[i]! ^ seedMask[i]!
+
+  const em = new Uint8Array(k)
+  em[0] = 0x00
+  em.set(seed, 1)
+  em.set(db, 1 + hLen)
+
+  const c = modPow(bytesToBigInt(em), key.e, key.n)
+  return hex(bigintToBytes(c, k))
+}

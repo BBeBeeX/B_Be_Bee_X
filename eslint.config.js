@@ -151,6 +151,8 @@ export default tseslint.config(
       '**/out/**',
       // Emitted by `pnpm gen:plugins`; checked by regenerating, not linting.
       '**/generated/**',
+      // Source scripts run in sandboxed QuickJS realm, outside package tsconfig.
+      'sources/**',
       // Build-tool config in plain JS, outside every tsconfig program.
       'apps/*/metro.config.js',
       'apps/*/babel.config.js',

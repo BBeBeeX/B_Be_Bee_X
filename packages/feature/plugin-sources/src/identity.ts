@@ -8,8 +8,8 @@
  * cached row, cookie jar and playlist reference (docs/06 §1.2, §9).
  */
 
-import { sha256Hex, SourceFormatError } from '@BBeBee/protocol'
-import type { SourceDocument, SourceRecord, SourceType } from '@BBeBee/protocol'
+import { sha256Hex, SourceFormatError, STREAM_QUALITIES } from '@BBeBee/protocol'
+import type { SourceDocument, SourceRecord, SourceType, StreamQuality } from '@BBeBee/protocol'
 
 const SOURCE_TYPES: readonly SourceType[] = ['music', 'podcast', 'radio']
 
@@ -163,10 +163,12 @@ const RULE_FIELDS: Record<string, readonly string[]> = {
   ruleTrackList: LIST_FIELDS,
   ruleAlbum: ['title', 'artist', 'artwork', 'year', 'description', 'trackCount', 'trackListUrl'],
   ruleStream: ['url', 'headers', 'mimeType', 'codec', 'bitrateKbps', 'sampleRate', 'byteLength',
-    'seekable', 'expiresAt'],
+    'seekable', 'expiresAt', 'qualities'],
   ruleLyric: ['lyric', 'format', 'offsetMs'],
   ruleLibrary: ['list', 'setSaved', 'createPlaylist', 'addToPlaylist', 'removeFromPlaylist',
     'deletePlaylist'],
+  ruleArtist: ['artist', 'name', 'bio', 'artwork', 'albums', 'topTracks'],
+  rulePlaylist: ['playlist', 'name', 'description', 'artwork', 'trackList', 'trackId', 'title', 'artist', 'durationMs'],
 }
 
 /** Top-level fields that are rules, and so must be strings like any other. */
@@ -236,6 +238,15 @@ export function validateDocument(value: unknown, index = 0): SourceDocument {
     validateAllowedHosts(doc.allowedHosts, at)
   }
 
+  if (doc.qualities !== undefined) {
+    if (
+      !Array.isArray(doc.qualities) ||
+      !doc.qualities.every((q) => typeof q === 'string' && STREAM_QUALITIES.includes(q as StreamQuality))
+    ) {
+      at('qualities', `must be an array of valid stream qualities (${STREAM_QUALITIES.join(', ')})`)
+    }
+  }
+
   /* rule blocks */
   for (const [block, fields] of Object.entries(RULE_FIELDS)) {
     const rules = doc[block]
@@ -258,6 +269,15 @@ export function validateDocument(value: unknown, index = 0): SourceDocument {
          * user to diagnose in a document they did not write.
          */
         at(`${block}.${field}`, `is not a known rule (expected one of: ${fields.join(', ')})`)
+        continue
+      }
+      if (block === 'ruleStream' && field === 'qualities') {
+        if (
+          !Array.isArray(rule) ||
+          !rule.every((q) => typeof q === 'string' && STREAM_QUALITIES.includes(q as StreamQuality))
+        ) {
+          at(`${block}.${field}`, `must be an array of valid stream qualities (${STREAM_QUALITIES.join(', ')})`)
+        }
         continue
       }
       if (typeof rule !== 'string') at(`${block}.${field}`, 'must be a rule string')

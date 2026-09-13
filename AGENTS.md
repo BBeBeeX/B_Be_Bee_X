@@ -196,7 +196,9 @@ packages/ui/                ui-tokens, ui-core, ui-parity, ui-kit-{mobile,deskto
                             plugin-*-ui-{mobile,desktop} — including plugin-inspector-ui-desktop
                             and the plugin-sources / plugin-local-scanner UI pairs
 packages/tooling/           tooling-gen-plugins, tooling-create-plugin, tooling-fixtures
-fixtures/sources/           example source documents; the golden corpus
+sources/                    multi-file source development directory (source.json + source.js)
+fixtures/sources/           compiled single-file example source documents; the golden corpus
+scripts/                    developer and build scripts (e.g. scripts/sources/)
 test/stubs/                 the three native modules Node cannot load, aliased by vitest.config.ts
 ```
 
@@ -572,9 +574,19 @@ per enabled row, each in its own fiber inside its own `ctx.isolate('http')` scop
   `ctx.http`, enforced before *and* after the `http/request` waterfall so a listener cannot
   launder a host.
 - Credentials never live in the document. Export must be shareable as-is.
+- **Qualities**: `StreamRule` and `SourceDocument` support explicit `qualities?: StreamQuality[]` ('low' | 'normal' | 'high' | 'lossless' | 'hi-res'). The runtime prioritizes `ruleStream.qualities ?? doc.qualities` before falling back to heuristics.
+- **Dynamic Stream Headers**: Stream playback requiring custom referrers or user agents registers them dynamically via the desktop IPC bridge `stream:set-headers` (`window.BBeBee.stream.setHeaders({ url, headers })`), avoiding hardcoded domain intercepts in the core.
 
-Adding a source is not a development task: **Settings → Sources → Import**, paste, review,
-confirm. Documents this repo ships live in `fixtures/sources/`.
+### Source authoring and workflow
+- **Development (Dual-file)**: complex sources live in `sources/<id>/`:
+  - `source.json`: metadata, allowedHosts, rules (ruleSearch, ruleStream, ruleArtist, rulePlaylist, ruleLibrary, etc.)
+  - `source.js`: unescaped JavaScript library code with full IDE syntax highlighting and linting
+- **Build (Single-file)**:
+  - `pnpm build:sources` runs `scripts/sources/cli.ts` to validate and compile `sources/` into self-contained single-file JSONs in `fixtures/sources/`.
+  - `pnpm watch:sources` monitors `sources/` and recompiles on file changes.
+  - `node --experimental-strip-types scripts/sources/cli.ts --unpack <file> [dest]` unpacks any single-file source back into dual-file development format.
+- Adding a source for an end user is not a development task: **Settings → Sources → Import**, paste, review,
+confirm. Single-file documents this repo ships live in `fixtures/sources/`.
 
 ---
 
@@ -596,7 +608,7 @@ Test conventions in this repo:
 
 - Tests live beside their subject as `*.test.ts` / `*.test.tsx` under `src/`; vitest's include
   globs are `packages/*/*/src/**/*.test.{ts,tsx}`, `packages/*/src/**/*.test.{ts,tsx}` — Layers 0
-  and 1 are packages, not directories of packages — and `apps/*/**/*.test.ts`.
+  and 1 are packages, not directories of packages — `apps/*/**/*.test.ts`, and `scripts/**/*.test.ts`.
 - Environment is `node`. A test needing a DOM opts in per file with `// @vitest-environment jsdom`
   — `environmentMatchGlobs` was removed in Vitest 4 and failed silently.
 - `test/stubs/` aliases the three native modules Node cannot load: `react-native-audio-api` throws

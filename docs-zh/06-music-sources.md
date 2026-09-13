@@ -153,13 +153,20 @@ export interface SourceDocument {
   jsLib?: string
 
   /* ── auth (§5) ──────────────────────────────────────────────── */
+  loginType?: 'qrcode' | 'oauth2' | 'form'
   loginUrl?: string
   loginUi?: LoginField[]
   loginCheckJs?: string
+  loginQrJs?: string
+  loginPollJs?: string
+  loginRefreshJs?: string
 
   /* ── entry points ───────────────────────────────────────────── */
   searchUrl?: string
   exploreUrl?: string                             // JSON array of { title, url }, or a rule
+
+  /* ── stream qualities (§1.2) ────────────────────────────────── */
+  qualities?: StreamQuality[]
 
   /* ── rule blocks (§2.2) ─────────────────────────────────────── */
   ruleSearch?: ListRule
@@ -169,6 +176,8 @@ export interface SourceDocument {
   ruleStream?: StreamRule                         // required in practice — see §1.3
   ruleLyric?: LyricRule
   ruleLibrary?: LibraryRule
+  ruleArtist?: ArtistRule
+  rulePlaylist?: PlaylistRule
 
   /* ── maintained by the app, not the author ──────────────────── */
   lastUpdated?: number
@@ -223,6 +232,27 @@ export interface AlbumRule {
   trackListUrl?: string
 }
 
+export interface ArtistRule {
+  artist?: string                 // full artist object or JSON rule
+  name?: string
+  bio?: string
+  artwork?: string
+  albums?: string
+  topTracks?: string
+}
+
+export interface PlaylistRule {
+  playlist?: string               // full playlist object or JSON rule
+  name?: string
+  description?: string
+  artwork?: string
+  trackList?: string
+  trackId?: string
+  title?: string
+  artist?: string
+  durationMs?: string
+}
+
 export interface StreamRule {
   /** The only required member of the only required block. */
   url: string
@@ -235,16 +265,38 @@ export interface StreamRule {
   seekable?: string               // truthy string; default probed with a HEAD
   /** Epoch ms. Its presence is what sets `capabilities.streaming.urlExpiry`. */
   expiresAt?: string
+  /** Quality tiers supported by this stream rule ('low' | 'normal' | 'high' | 'lossless' | 'hi-res'). */
+  qualities?: StreamQuality[]
 }
 
 export interface LyricRule { lyric: string; format?: string; offsetMs?: string }
+```
+
+### 2.3 开发态双文件维护与打包
+
+当音源需要复杂的 JavaScript 代码（如混淆签名、多步会话建立、音轨协商等）时，直接在单文件 JSON 的 `"jsLib"` 中编写上百行带 `\n` 转义的代码是极不友好的。
+
+因此，音源采用**开发态拆分维护，构建态合并分发**：
+- **`sources/<id>/source.json`**：存放元数据、规则声明与 URL 模板。
+- **`sources/<id>/source.js`**：存放未转义的原生 JavaScript，享受 IDE 完整的高亮、ESLint 校验与代码补全。
+
+通过构建工具统一编译为单个自包含 JSON（输出至 `fixtures/sources/<id>.json`）：
+```bash
+# 编译全量音源
+pnpm build:sources
+
+# 监听变更并自动热重编
+pnpm watch:sources
+
+# 反向解包现有单文件 JSON 为双文件开发结构
+node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources/bilibili.json sources/bilibili
 ```
 
 `browse` 就是 `exploreUrl` + `ruleExplore`：每个探索条目是一个带标题的 URL，而 `childUrl` 非空的条目是要深入下去的节点，而不是拿来播放的叶子。文件夹树、流派列表、排行榜、播客 feed 的单集列表，用的都是同样三个字段 —— 这正是同一个 UI 组件能渲染它们全部的原因。
 
 **规则块内的未知字段会在导入时被拒绝。** 不是忽略 —— 是拒绝，并指明路径，因此 `{ "ruleSearch": { "titel": "$.title" } }` 会在导入界面上失败，而不是导入一个标题永远缺席的源。与顶层的非对称（[07 §4.1](./07-data-model.md#41-音源账号与会话)，在那里未知字段被原样保留、只是根本无人去读）是刻意的：`sourceName` 旁边多出来的一个键是向前兼容，而 `title` 旁边多出来的一个键是笔误 —— 恰好是笔误只产出静默、不产出错误的唯一一处。
 
-### 2.3 一个完整的例子
+### 2.4 一个完整的例子
 
 **下限。** 一个只播放一条流的源 —— 最小的合法文档，也是"每个界面都能在一个完全没有可选块的源面前存活"的回归测试：
 

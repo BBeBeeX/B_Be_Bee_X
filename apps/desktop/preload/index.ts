@@ -39,6 +39,10 @@ const api = {
     close: (): Promise<void> => ipcRenderer.invoke('window:close'),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
   },
+  stream: {
+    setHeaders: (entry: { url: string; headers: Record<string, string> }): Promise<void> =>
+      ipcRenderer.invoke('stream:set-headers', entry),
+  },
   platform: process.platform,
   versions: { electron: process.versions.electron, node: process.versions.node },
   isDebug: Boolean(

@@ -14,6 +14,7 @@
  */
 
 import { createServer, type Server } from 'node:http'
+import { generateKeyPairSync, privateDecrypt, constants } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
@@ -241,6 +242,28 @@ describe('src, the whole host surface', () => {
     expect(await evaluate("return src.crypto.sha1('abc')")).toBe(
       'a9993e364706816aba3e25717850c26c9cd0d89d',
     )
+  }, 30_000)
+
+  it('encrypts with rsa and rsa-oaep in sandbox', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+      modulusLength: 1024,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    })
+    const pubEscaped = JSON.stringify(publicKey)
+    const b64 = await evaluate(`return src.url.encode(src.crypto.rsaEncrypt('hello', ${pubEscaped}))`)
+    const decrypted = privateDecrypt(
+      { key: privateKey, padding: constants.RSA_PKCS1_PADDING },
+      Buffer.from(decodeURIComponent(b64!), 'base64'),
+    )
+    expect(decrypted.toString('utf8')).toBe('hello')
+
+    const hexCipher = await evaluate(`return src.crypto.rsaOaepEncrypt('refresh_token', ${pubEscaped})`)
+    const decryptedOaep = privateDecrypt(
+      { key: privateKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
+      Buffer.from(hexCipher!, 'hex'),
+    )
+    expect(decryptedOaep.toString('utf8')).toBe('refresh_token')
   }, 30_000)
 
   it('encodes and resolves URLs', async () => {

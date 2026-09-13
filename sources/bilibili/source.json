@@ -1,0 +1,57 @@
+{
+  "sourceUrl": "https://www.bilibili.com",
+  "sourceName": "Bilibili",
+  "sourceGroup": "bilibili,video",
+  "sourceComment": "Bilibili video & audio source.",
+  "concurrentRate": "5/1000",
+  "allowedHosts": [
+    "bilibili.com",
+    "*.bilibili.com",
+    "*.bilivideo.com",
+    "*.bilivideo.cn",
+    "*.akamaized.net",
+    "*.szbdyd.com",
+    "hdslb.com",
+    "*.hdslb.com"
+  ],
+  "searchUrl": "{{@js:biliSearchUrl(key, page)}}",
+  "ruleSearch": {
+    "trackList": "$.data.result[*]",
+    "trackId": "$.bvid",
+    "title": "@js:cleanTitle(item.title)",
+    "artist": "$.author",
+    "artwork": "@js:cleanPic(item.pic)",
+    "durationMs": "@js:parseDuration(item.duration)"
+  },
+  "ruleStream": {
+    "url": "={{@js:resolveBiliStream(track, prefs)}}",
+    "headers": "={\"Referer\": \"https://www.bilibili.com/\", \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\"}",
+    "seekable": "=true",
+    "expiresAt": "={{@js:src.time.now() + 7200000}}",
+    "qualities": [
+      "low",
+      "normal",
+      "high",
+      "lossless",
+      "hi-res"
+    ]
+  },
+  "ruleLyric": {
+    "lyric": "={{@js:getBiliLyrics(track)}}",
+    "format": "=lrc"
+  },
+  "loginType": "qrcode",
+  "loginQrJs": "return getBiliQrCode()",
+  "loginPollJs": "return pollBiliQrCode(key)",
+  "loginRefreshJs": "return refreshBiliCookie()",
+  "loginCheckJs": "return result?.code !== -101",
+  "ruleArtist": {
+    "artist": "={{@js:getBiliArtist(id)}}"
+  },
+  "rulePlaylist": {
+    "playlist": "={{@js:getBiliPlaylist(id, page)}}"
+  },
+  "ruleLibrary": {
+    "list": "={{@js:getBiliLibraryList(kind, page)}}"
+  }
+}

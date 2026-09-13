@@ -26,9 +26,13 @@ import type {
   AuthFlow,
   BrowseEntry,
   AlbumDetail,
+  ArtistDetail,
+  PlaylistDetail,
+  PlaylistItem,
   BrowseResult,
   DebugStep,
   PageRequest,
+  Paged,
   SearchQuery,
   SearchResult,
   AuthStatus,
@@ -39,6 +43,7 @@ import type {
   JsService,
   MediaProvider,
   ProviderAuth,
+  QrCodeSession,
   SourceRecord,
   StreamHandle,
   Lyrics,
@@ -53,12 +58,13 @@ import {
   evaluate,
   parseRule,
   type JsEvaluator,
+  type RuleSite,
   type RuleTraceEntry,
   type TemplateScope,
 } from '@BBeBee/source-rules'
 import { evaluateRule, evaluateUrlTemplate } from '@BBeBee/source-rules'
 import { capabilitiesFor } from './capabilities.js'
-import { SRC_SHIM, createSourceHost } from './host.js'
+import { SRC_SHIM, createSourceHost, type HostDeps } from './host.js'
 import { TraceCollector, tracedHttp } from './trace.js'
 import { fetchDocument, parseUrlObject } from './fetch.js'
 import { evaluateListRule, rowToTrack } from './list-rule.js'
@@ -74,6 +80,7 @@ export interface SourceDeps {
    * affected capabilities as absent rather than offering a button that fails.
    */
   js?: JsService
+  cookies?: HostDeps['cookies']
   /**
    * Persistent per-source values, behind `src.vars`.
    *
@@ -133,17 +140,25 @@ class DocumentAuth implements ProviderAuth {
      * user is shown, and offering a single-line variable box for a two-field
      * login is a screen nobody can complete.
      */
-    this.flow = record.doc.loginUi?.length
-      ? { kind: 'form', fields: record.doc.loginUi, submitTo: record.doc.loginUrl ?? '' }
-      : record.doc.variableComment
-        ? { kind: 'variable', comment: record.doc.variableComment }
-        : { kind: 'none' }
+    this.flow =
+      record.doc.loginType === 'qrcode' || record.doc.loginQrJs
+        ? { kind: 'qrcode', pollIntervalMs: 2000 }
+        : record.doc.loginUi?.length
+          ? { kind: 'form', fields: record.doc.loginUi, submitTo: record.doc.loginUrl ?? '' }
+          : record.doc.variableComment
+            ? { kind: 'variable', comment: record.doc.variableComment }
+            : { kind: 'none' }
   }
 
   /** Called by the runtime when a response says the session is over. */
   markExpired(): void {
     if (this.status.state === 'expired') return
     this.set({ state: 'expired' })
+  }
+
+  markAuthenticated(): void {
+    this.explicit = undefined
+    for (const listener of this.listeners) listener(this.status)
   }
 
   /**
@@ -161,6 +176,13 @@ class DocumentAuth implements ProviderAuth {
   get status(): AuthStatus {
     if (this.explicit) return this.explicit
     if (this.flow.kind === 'none') return { state: 'authenticated' }
+    if (this.flow.kind === 'qrcode') {
+      const stored =
+        this.session.get('refresh_token') !== undefined ||
+        this.session.get('token') !== undefined ||
+        this.session.get('var') !== undefined
+      return stored ? { state: 'authenticated' } : { state: 'anonymous' }
+    }
     // A form source keeps its credentials under the field ids it declared, not
     // under `var`. Checking only `var` reported every signed-in form source as
     // anonymous — the same class of bug as reading the status before the vars
@@ -182,6 +204,17 @@ class DocumentAuth implements ProviderAuth {
    * with the source and never appears in a trace.
    */
   async signIn(input: Record<string, string> = {}): Promise<void> {
+    if (this.flow.kind === 'qrcode') {
+      const token = input.refresh_token ?? input.token ?? input.var
+      if (token) {
+        await this.session.put('refresh_token', token)
+        await this.session.put('var', token)
+      }
+      this.explicit = undefined
+      for (const listener of this.listeners) listener(this.status)
+      return
+    }
+
     if (this.flow.kind === 'variable') {
       const variable = input.var ?? input.variable
       if (!variable) {
@@ -225,6 +258,14 @@ class DocumentAuth implements ProviderAuth {
     for (const listener of this.listeners) listener(this.status)
   }
 
+  /** Start a QR code login session. */
+  async createQrSession(): Promise<QrCodeSession> {
+    if (this.flow.kind !== 'qrcode' || !this.session.createQrSession) {
+      throw new AuthError('this source does not support QR code login', this.sourceIdForErrors)
+    }
+    return this.session.createQrSession()
+  }
+
   /**
    * Re-run the login, once, however many callers asked.
    *
@@ -249,13 +290,14 @@ class DocumentAuth implements ProviderAuth {
     if (this.explicit?.state === 'expired') {
       throw new AuthError('this source is signed out — sign in again', this.sourceIdForErrors)
     }
-    if (this.flow.kind !== 'form') {
+    if (this.flow.kind !== 'form' && this.flow.kind !== 'qrcode') {
       // Nothing to re-run: a `variable` source's credentials are static, so an
       // expired session there needs the *user*, not a retry.
       throw new AuthError('this source cannot refresh its own session')
     }
-    this.inFlight ??= this.session
-      .login()
+    this.inFlight ??= (this.flow.kind === 'qrcode' && this.session.refresh
+      ? this.session.refresh()
+      : this.session.login())
       .then(() => {
         this.explicit = undefined
         for (const listener of this.listeners) listener(this.status)
@@ -335,6 +377,8 @@ export class DocumentSource {
         await deps.forget?.(key)
       },
       login: () => this.login(),
+      createQrSession: () => this.createQrSession(),
+      refresh: () => this.refreshSession(),
     })
     // ⚠️ No rule is evaluated here. `seekable` used to be rendered in the
     // constructor against an empty scope, so a perfectly reasonable document
@@ -423,6 +467,46 @@ export class DocumentSource {
     await this.deps.vars?.load?.()
 
     const realm = await js.createRealm()
+    const jar = this.deps.http.cookies?.jar(this.record.id)
+    const hostCookies =
+      this.deps.cookies ??
+      (jar
+        ? {
+            get: async (name: string, url?: string) => {
+              await jar.ready
+              const cookies = url ? await jar.get(url) : await jar.all()
+              const found = cookies.find((c) => c.name === name)
+              return found?.value
+            },
+            set: async (name: string, value: string, url?: string) => {
+              await jar.ready
+              const parsedUrl = new URL(url || this.record.doc.sourceUrl || 'http://localhost')
+              const domain = parsedUrl.hostname.replace(/^www\./, '')
+              const dotDomain = domain.startsWith('.') ? domain : '.' + domain
+              await jar.set([
+                {
+                  name,
+                  value,
+                  domain: dotDomain,
+                  path: '/',
+                  secure: true,
+                  httpOnly: false,
+                  expiresAt: Date.now() + 180 * 86400 * 1000,
+                },
+              ])
+            },
+            all: async (url?: string) => {
+              await jar.ready
+              const cookies = url ? await jar.get(url) : await jar.all()
+              const res: Record<string, string> = {}
+              for (const c of cookies) {
+                res[c.name] = c.value
+              }
+              return res
+            },
+          }
+        : undefined)
+
     const host = createSourceHost({
       http: this.deps.http,
       sourceId: this.record.id,
@@ -436,6 +520,7 @@ export class DocumentSource {
         // is logged by the writer rather than surfaced to the rule.
         put: (key, value) => void this.deps.vars?.put(key, value),
       },
+      cookies: hostCookies,
       ...(this.deps.log ? { log: this.deps.log } : {}),
     })
 
@@ -456,6 +541,7 @@ export class DocumentSource {
       searchable: this.searchable,
       browsable: this.browsable,
       lyrics: this.lyricable,
+      library: this.librariable,
     })
   }
 
@@ -550,6 +636,36 @@ export class DocumentSource {
     )
   }
 
+  private get artistable(): boolean {
+    const doc = this.record.doc
+    if (!doc.ruleArtist) return false
+    return rulesRunnable(
+      Object.values(doc.ruleArtist).filter((r): r is string => typeof r === 'string'),
+      [],
+      { js: this.deps.js !== undefined },
+    )
+  }
+
+  private get playlistable(): boolean {
+    const doc = this.record.doc
+    if (!doc.rulePlaylist) return false
+    return rulesRunnable(
+      Object.values(doc.rulePlaylist).filter((r): r is string => typeof r === 'string'),
+      [],
+      { js: this.deps.js !== undefined },
+    )
+  }
+
+  private get librariable(): boolean {
+    const doc = this.record.doc
+    if (!doc.ruleLibrary?.list) return false
+    return rulesRunnable(
+      Object.values(doc.ruleLibrary).filter((r): r is string => typeof r === 'string'),
+      [],
+      { js: this.deps.js !== undefined },
+    )
+  }
+
   provider(): MediaProvider {
     // `capabilities` is a getter, not a value. Snapshotting it at registration
     // froze `streaming.seekable` at its default of true, so what the HEAD
@@ -576,7 +692,22 @@ export class DocumentSource {
       ...(this.searchable ? { search: (q, page) => this.search(q, page) } : {}),
       ...(this.browsable ? { browse: (nodeId, page) => this.browse(nodeId, page) } : {}),
       ...(this.albumable ? { getAlbum: (id: string) => this.getAlbum(id) } : {}),
+      ...(this.artistable ? { getArtist: (id: string) => this.getArtist(id) } : {}),
+      ...(this.playlistable ? { getPlaylist: (id: string, page?: PageRequest) => this.getPlaylist(id, page) } : {}),
       ...(this.lyricable ? { getLyrics: (id: string) => this.getLyrics(id) } : {}),
+      ...(this.librariable
+        ? {
+            library: {
+              list: (kind, page) => this.libraryList(kind, page),
+              setSaved: async () => {},
+              createPlaylist: async () => '',
+              addToPlaylist: async () => {},
+              removeFromPlaylist: async () => {},
+              reorderPlaylist: async () => {},
+              deletePlaylist: async () => {},
+            },
+          }
+        : {}),
       // Always present: a source whose rules cannot run is exactly the one a
       // user needs to trace, so gating this on a capability would withdraw the
       // tool at the moment it is wanted.
@@ -1120,6 +1251,69 @@ export class DocumentSource {
     }
   }
 
+  private async createQrSession(): Promise<QrCodeSession> {
+    if (!this.record.doc.loginQrJs) {
+      throw new AuthError('source document has no loginQrJs', this.record.id)
+    }
+    const evaluated = await this.js!(this.record.doc.loginQrJs, {})
+    const sessionData = (evaluated && typeof evaluated === 'object' ? evaluated : {}) as Record<string, unknown>
+    const code = String(sessionData.code ?? sessionData.url ?? '')
+    const key = String(sessionData.key ?? sessionData.qrcode_key ?? '')
+    const expiresAt = typeof sessionData.expiresAt === 'number' ? sessionData.expiresAt : undefined
+
+    return {
+      code,
+      key,
+      ...(expiresAt ? { expiresAt } : {}),
+      poll: async () => {
+        if (!this.record.doc.loginPollJs) return 'expired'
+        const pollRes = await this.js!(this.record.doc.loginPollJs, { key })
+        let state: 'pending' | 'scanned' | 'confirmed' | 'expired' = 'pending'
+        let token: string | undefined
+        if (typeof pollRes === 'string') {
+          state = pollRes as 'pending' | 'scanned' | 'confirmed' | 'expired'
+        } else if (pollRes && typeof pollRes === 'object') {
+          const obj = pollRes as Record<string, unknown>
+          state = (obj.state ?? (obj.code === 0 ? 'confirmed' : 'pending')) as
+            | 'pending'
+            | 'scanned'
+            | 'confirmed'
+            | 'expired'
+          const dataObj =
+            obj.data && typeof obj.data === 'object' ? (obj.data as Record<string, unknown>) : undefined
+          token =
+            typeof obj.token === 'string'
+              ? obj.token
+              : typeof obj.refresh_token === 'string'
+                ? obj.refresh_token
+                : typeof dataObj?.refresh_token === 'string'
+                  ? dataObj.refresh_token
+                  : undefined
+        }
+        if (state === 'confirmed') {
+          if (token) {
+            await this.deps.vars?.put('refresh_token', token)
+          }
+          this.auth.markAuthenticated()
+        }
+        return state
+      },
+    }
+  }
+
+  private async refreshSession(): Promise<void> {
+    if (!this.record.doc.loginRefreshJs) return
+    const res = await this.js!(this.record.doc.loginRefreshJs, {})
+    if (res && typeof res === 'object') {
+      const obj = res as Record<string, unknown>
+      const token = (obj.token ?? obj.refresh_token) as string | undefined
+      if (token) {
+        await this.deps.vars?.put('refresh_token', token)
+      }
+    }
+    this.auth.markAuthenticated()
+  }
+
   /**
    * Run a request, and re-authenticate once if the session turned out to be over.
    *
@@ -1132,7 +1326,10 @@ export class DocumentSource {
     try {
       return await run()
     } catch (error) {
-      if (!(error instanceof AuthError) || this.auth.flow.kind !== 'form') {
+      const canRefresh =
+        this.auth.flow.kind === 'form' ||
+        (this.auth.flow.kind === 'qrcode' && !!this.record.doc.loginRefreshJs)
+      if (!(error instanceof AuthError) || !canRefresh) {
         // Nothing to re-run for a `variable` source: its credentials are
         // static, so an expired session there needs the user.
         if (error instanceof AuthError) this.auth.markExpired()
@@ -1362,6 +1559,354 @@ export class DocumentSource {
     scope: TemplateScope,
   ): Promise<string | undefined> {
     return evaluateRule(rule, scope, { block, field, sourceId: this.record.id }, this.js)
+  }
+
+  private async evaluateJsOrRule<T = unknown>(
+    rule: string,
+    scope: TemplateScope,
+    site: RuleSite,
+  ): Promise<T> {
+    const trimmed = rule.trim()
+    if (trimmed.startsWith('@js:')) {
+      if (!this.js) throw new RuleError('JS engine required', site, this.record.id)
+      return (await this.js(trimmed.slice(4), scope)) as T
+    }
+    const jsMatch = trimmed.match(/^=(?:\{\{@js:([\s\S]+?)\}\}|@js:([\s\S]+))$/)
+    if (jsMatch) {
+      if (!this.js) throw new RuleError('JS engine required', site, this.record.id)
+      const code = jsMatch[1] ?? jsMatch[2] ?? ''
+      return (await this.js(code, scope)) as T
+    }
+    return (await evaluateRule(rule, scope, site, this.js)) as unknown as T
+  }
+
+  async getArtist(id: string): Promise<ArtistDetail> {
+    const rules = this.record.doc.ruleArtist
+    if (!rules) {
+      throw new RuleError('no ruleArtist in source document', { block: 'ruleArtist', field: 'artist' }, this.record.id)
+    }
+    const scope: TemplateScope = {
+      source: this.sourceScope(),
+      id,
+      artist: { id },
+      baseUrl: this.record.sourceUrl,
+    }
+
+    const artistUrn = formatUrn({ sourceId: this.record.id, kind: 'artist', id })
+
+    if (rules.artist) {
+      const result = await this.withReauth(() =>
+        this.evaluateJsOrRule<Record<string, unknown>>(rules.artist!, scope, {
+          block: 'ruleArtist',
+          field: 'artist',
+          sourceId: this.record.id,
+        }),
+      )
+      if (result && typeof result === 'object') {
+        const topTracks: Track[] = Array.isArray(result.topTracks)
+          ? result.topTracks.map((t: unknown) => {
+              const trackObj = (t && typeof t === 'object' ? t : {}) as Record<string, unknown>
+              return {
+                urn:
+                  (trackObj.urn as string | undefined) ||
+                  formatUrn({
+                    sourceId: this.record.id,
+                    kind: 'track',
+                    id: String(trackObj.id),
+                  }),
+                title: (trackObj.title as string | undefined) || '',
+                artists: (trackObj.artists as Track['artists']) || [
+                  { urn: artistUrn, name: (result.name as string | undefined) || id, role: 'main', ordinal: 0 },
+                ],
+                ...(trackObj.durationMs !== undefined ? { durationMs: trackObj.durationMs as number } : {}),
+                ...(trackObj.artwork
+                  ? {
+                      artwork:
+                        typeof trackObj.artwork === 'string'
+                          ? { id: trackObj.artwork, sourceUrl: trackObj.artwork }
+                          : (trackObj.artwork as Artwork),
+                    }
+                  : {}),
+                available: true,
+              }
+            })
+          : []
+
+        const payloads: Record<string, unknown> = result.payloads
+          ? { ...(result.payloads as Record<string, unknown>) }
+          : {}
+        if (!result.payloads && Array.isArray(result.topTracks)) {
+          for (const [idx, item] of result.topTracks.entries()) {
+            const track = topTracks[idx]
+            if (track) {
+              const tid = track.urn.split(':').pop()!
+              payloads[track.urn] = {
+                ...((item && typeof item === 'object' ? item : {}) as Record<string, unknown>),
+                id: tid,
+              }
+            }
+          }
+        }
+
+        return {
+          urn: (result.urn as string | undefined) || artistUrn,
+          name: (result.name as string | undefined) || id,
+          ...(result.bio ? { bio: result.bio as string } : {}),
+          ...(result.artwork
+            ? {
+                artwork:
+                  typeof result.artwork === 'string'
+                    ? { id: result.artwork, sourceUrl: result.artwork }
+                    : (result.artwork as Artwork),
+              }
+            : {}),
+          albums: Array.isArray(result.albums)
+            ? result.albums.map((a: unknown) => {
+                const albumObj = (a && typeof a === 'object' ? a : {}) as Record<string, unknown>
+                return {
+                  urn:
+                    (albumObj.urn as string | undefined) ||
+                    formatUrn({
+                      sourceId: this.record.id,
+                      kind: 'album',
+                      id: String(albumObj.id),
+                    }),
+                  title: (albumObj.title as string | undefined) || (albumObj.name as string | undefined) || '',
+                  artists: (albumObj.artists as AlbumDetail['artists']) || [
+                    { urn: artistUrn, name: (result.name as string | undefined) || id, role: 'main', ordinal: 0 },
+                  ],
+                  ...(albumObj.artwork
+                    ? {
+                        artwork:
+                          typeof albumObj.artwork === 'string'
+                            ? { id: albumObj.artwork, sourceUrl: albumObj.artwork }
+                            : (albumObj.artwork as Artwork),
+                      }
+                    : {}),
+                }
+              })
+            : [],
+          topTracks,
+          payloads,
+        }
+      }
+    }
+
+    const name = rules.name ? await this.renderOptionalIn('ruleArtist', 'name', rules.name, scope) : id
+    const bio = rules.bio ? await this.renderOptionalIn('ruleArtist', 'bio', rules.bio, scope) : undefined
+    const artwork = rules.artwork ? await this.renderOptionalIn('ruleArtist', 'artwork', rules.artwork, scope) : undefined
+
+    return {
+      urn: artistUrn,
+      name: name || id,
+      ...(bio ? { bio } : {}),
+      ...(artwork ? { artwork: { id: artwork, sourceUrl: artwork } } : {}),
+      albums: [],
+      topTracks: [],
+    }
+  }
+
+  async getPlaylist(id: string, page?: PageRequest): Promise<PlaylistDetail> {
+    const rules = this.record.doc.rulePlaylist
+    if (!rules) {
+      throw new RuleError('no rulePlaylist in source document', { block: 'rulePlaylist', field: 'playlist' }, this.record.id)
+    }
+    const scope: TemplateScope = {
+      source: this.sourceScope(),
+      id,
+      playlist: { id },
+      page: page ?? { limit: 50 },
+      baseUrl: this.record.sourceUrl,
+    }
+
+    const playlistUrn = formatUrn({ sourceId: this.record.id, kind: 'playlist', id })
+
+    if (rules.playlist) {
+      const result = await this.withReauth(() =>
+        this.evaluateJsOrRule<Record<string, unknown>>(rules.playlist!, scope, {
+          block: 'rulePlaylist',
+          field: 'playlist',
+          sourceId: this.record.id,
+        }),
+      )
+      if (result && typeof result === 'object') {
+        const rawItems: unknown[] = Array.isArray(result.items)
+          ? (result.items as unknown[])
+          : Array.isArray(result.songs)
+            ? (result.songs as unknown[])
+            : []
+        const items: PlaylistItem[] = rawItems.map((rawItem: unknown, idx: number) => {
+          const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>
+          const trackId = String(item.id || item.onlineId || idx)
+          const trackUrn =
+            (item.trackUrn as string | undefined) ||
+            (item.urn as string | undefined) ||
+            formatUrn({ sourceId: this.record.id, kind: 'track', id: trackId })
+          return {
+            id: String(item.itemId || item.id || idx),
+            trackUrn,
+            position: (item.position as string | undefined) || String(idx),
+            ...(item.addedAt !== undefined ? { addedAt: item.addedAt as number } : {}),
+          }
+        })
+        const tracks: Track[] = rawItems.map((rawItem: unknown, idx: number) => {
+          const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>
+          const trackId = String(item.id || item.onlineId || idx)
+          const trackUrn =
+            (item.trackUrn as string | undefined) ||
+            (item.urn as string | undefined) ||
+            formatUrn({ sourceId: this.record.id, kind: 'track', id: trackId })
+          const itemArtist = item.artist && typeof item.artist === 'object' ? (item.artist as Record<string, unknown>) : undefined
+          const artistName =
+            (typeof item.artist === 'string' ? item.artist : undefined) ||
+            (typeof itemArtist?.name === 'string' ? itemArtist.name : undefined) ||
+            (typeof result.owner === 'string' ? result.owner : '') ||
+            ''
+          return {
+            urn: trackUrn,
+            title: (item.title as string | undefined) || '',
+            artists: (item.artists as Track['artists']) || (artistName
+              ? [
+                  {
+                    urn: formatUrn({
+                      sourceId: this.record.id,
+                      kind: 'artist',
+                      id: String(item.artistId || itemArtist?.id || slugOf(artistName)),
+                    }),
+                    name: artistName,
+                    role: 'main',
+                    ordinal: 0,
+                  },
+                ]
+              : []),
+            durationMs: (item.durationMs as number | undefined) ?? (typeof item.duration === 'number' ? item.duration * 1000 : undefined),
+            artwork:
+              item.cover || item.coverWebUrl || item.pic || item.artwork
+                ? {
+                    id: item.cover || item.coverWebUrl || item.pic || item.artwork,
+                    sourceUrl: item.cover || item.coverWebUrl || item.pic || item.artwork,
+                  }
+                : undefined,
+            available: true,
+          }
+        })
+        const payloads: Record<string, unknown> = result.payloads ? { ...result.payloads } : {}
+        if (!result.payloads) {
+          for (const [idx, item] of rawItems.entries()) {
+            const track = tracks[idx]
+            if (track) {
+              const tid = track.urn.split(':').pop()!
+              payloads[track.urn] = {
+                ...item,
+                id: tid,
+              }
+            }
+          }
+        }
+
+        return {
+          urn: result.urn || playlistUrn,
+          name: result.name || result.title || id,
+          ...(result.description ? { description: result.description } : {}),
+          ...(result.artwork
+            ? {
+                artwork:
+                  typeof result.artwork === 'string'
+                    ? { id: result.artwork, sourceUrl: result.artwork }
+                    : result.artwork,
+              }
+            : result.cover
+              ? { artwork: { id: result.cover, sourceUrl: result.cover } }
+              : {}),
+          ...(result.owner
+            ? { owner: typeof result.owner === 'string' ? result.owner : result.owner.name }
+            : {}),
+          items,
+          tracks,
+          payloads,
+          hasMore: result.hasMore ?? false,
+          ...(result.cursor ? { cursor: result.cursor } : {}),
+          ...(result.trackCount !== undefined
+            ? { trackCount: result.trackCount }
+            : { trackCount: items.length }),
+        }
+      }
+    }
+
+    return {
+      urn: playlistUrn,
+      name: id,
+      items: [],
+      hasMore: false,
+    }
+  }
+
+  async libraryList(
+    kind: 'track' | 'album' | 'artist' | 'playlist',
+    page?: PageRequest,
+  ): Promise<Paged<{ urn: string; addedAt?: number }>> {
+    const rules = this.record.doc.ruleLibrary
+    if (!rules?.list) {
+      return { items: [], hasMore: false }
+    }
+    const scope: TemplateScope = {
+      source: this.sourceScope(),
+      kind,
+      page: page ?? { limit: 50 },
+      baseUrl: this.record.sourceUrl,
+    }
+    const result = await this.withReauth(() =>
+      this.evaluateJsOrRule<Record<string, unknown> | unknown[]>(rules.list!, scope, {
+        block: 'ruleLibrary',
+        field: 'list',
+        sourceId: this.record.id,
+      }),
+    )
+    if (result && !Array.isArray(result) && typeof result === 'object' && Array.isArray(result.items)) {
+      const itemsList = result.items as unknown[]
+      return {
+        items: itemsList.map((rawItem: unknown) => {
+          const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>
+          return {
+            urn:
+              typeof rawItem === 'string'
+                ? rawItem
+                : (item.urn as string | undefined) ||
+                  formatUrn({
+                    sourceId: this.record.id,
+                    kind,
+                    id: String(item.id),
+                  }),
+            ...(item.addedAt !== undefined ? { addedAt: item.addedAt as number } : {}),
+          }
+        }),
+        hasMore: (result.hasMore as boolean | undefined) ?? false,
+        ...(result.total !== undefined ? { total: result.total as number } : {}),
+        ...(result.cursor ? { cursor: result.cursor as string } : {}),
+      }
+    }
+    if (Array.isArray(result)) {
+      return {
+        items: result.map((rawItem: unknown) => {
+          const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>
+          return {
+            urn:
+              typeof rawItem === 'string'
+                ? rawItem
+                : (item.urn as string | undefined) ||
+                  formatUrn({
+                    sourceId: this.record.id,
+                    kind,
+                    id: String(item.id),
+                  }),
+            ...(item.addedAt !== undefined ? { addedAt: item.addedAt as number } : {}),
+          }
+        }),
+        hasMore: false,
+        total: result.length,
+      }
+    }
+    return { items: [], hasMore: false }
   }
 
   /**
@@ -1838,6 +2383,10 @@ interface SessionStore {
   clear(): Promise<void>
   /** Perform the document's `loginUrl` request. Throws `AuthError` on refusal. */
   login(): Promise<void>
+  /** Start a QR code login session. */
+  createQrSession?(): Promise<QrCodeSession>
+  /** Refresh the current session (e.g. cookie or token refresh). */
+  refresh?(): Promise<void>
   /** Drop one stored value. Used to undo a sign-in the backend refused. */
   forget?(key: string): Promise<void>
 }

@@ -41,10 +41,13 @@ export interface TemplateScope {
   source?: { url?: string; var?: string; name?: string }
   track?: Record<string, unknown>
   album?: Record<string, unknown>
+  artist?: Record<string, unknown>
+  playlist?: Record<string, unknown>
   prefs?: Record<string, unknown>
   key?: string
-  page?: number
+  page?: number | unknown
   baseUrl?: string
+  kind?: string
   /**
    * The current list element, while a `ListRule`'s fields are evaluated.
    *
@@ -53,6 +56,7 @@ export interface TemplateScope {
    * selector reaches *into* the element rather than across it.
    */
   item?: Record<string, unknown>
+  [key: string]: unknown
 }
 
 const TEMPLATE_PREFIX = '='

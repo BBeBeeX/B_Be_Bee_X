@@ -15,7 +15,7 @@
  * See docs/06-music-sources.md §1.3.
  */
 
-import type { Capabilities, SourceDocument } from '@BBeBee/protocol'
+import type { Capabilities, SourceDocument, StreamQuality } from '@BBeBee/protocol'
 
 /** `'3/1000'` → three requests per second. Unparseable means "no stated limit". */
 export function parseRate(rate: string | undefined): Capabilities['rateLimit'] {
@@ -62,6 +62,8 @@ export function isInterpretable(doc: SourceDocument): boolean {
     hasRules(doc.ruleStream) ||
     hasRules(doc.ruleLyric) ||
     hasRules(doc.ruleLibrary) ||
+    hasRules(doc.ruleArtist) ||
+    hasRules(doc.rulePlaylist) ||
     !!doc.searchUrl ||
     !!doc.exploreUrl
   )
@@ -74,6 +76,8 @@ export function capabilitiesFor(
     searchable?: boolean
     browsable?: boolean
     lyrics?: boolean
+    library?: boolean
+    qualities?: StreamQuality[]
   } = {},
 ): Capabilities {
   const rateLimit = parseRate(doc.concurrentRate)
@@ -85,6 +89,14 @@ export function capabilitiesFor(
    * anyway offers the UI a button the runtime would fail.
    */
   const searchable = opts.searchable ?? false
+  const derivedQualities: StreamQuality[] =
+    opts.qualities ??
+    doc.ruleStream?.qualities ??
+    doc.qualities ??
+    (doc.ruleStream?.url?.includes('prefs.quality')
+      ? ['hi-res', 'lossless', 'high', 'normal', 'low']
+      : ['normal'])
+
   return {
     search: {
       tracks: searchable,
@@ -101,9 +113,14 @@ export function capabilitiesFor(
     // thing is how the two drift apart.
     lyrics: opts.lyrics ?? false,
     artwork: false,
-    library: { read: false, save: false, playlistWrite: false, playlistReorder: false },
+    library: {
+      read: opts.library ?? (hasRules(doc.ruleLibrary) && !!doc.ruleLibrary?.list),
+      save: false,
+      playlistWrite: false,
+      playlistReorder: false,
+    },
     streaming: {
-      qualities: ['normal'],
+      qualities: derivedQualities,
       transcoding: false,
       // Learned from the document, or from the server's `Accept-Ranges` — not
       // assumed. A stream that cannot be ranged cannot be seeked, and the UI

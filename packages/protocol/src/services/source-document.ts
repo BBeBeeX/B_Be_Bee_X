@@ -1,4 +1,5 @@
 import type { SourceFormatError } from '../errors.js'
+import type { StreamQuality } from '../entities/media.js'
 
 /**
  * The **source document** — a music backend, as a string a user can import.
@@ -81,6 +82,8 @@ export interface StreamRule {
   seekable?: Rule
   /** Epoch ms. Its presence is what sets `capabilities.streaming.urlExpiry`. */
   expiresAt?: Rule
+  /** Supported stream qualities. Overrides capability deduction. */
+  qualities?: StreamQuality[]
 }
 
 export interface LyricRule {
@@ -96,6 +99,27 @@ export interface LibraryRule {
   addToPlaylist?: Rule
   removeFromPlaylist?: Rule
   deletePlaylist?: Rule
+}
+
+export interface ArtistRule {
+  artist?: Rule
+  name?: Rule
+  bio?: Rule
+  artwork?: Rule
+  albums?: Rule
+  topTracks?: Rule
+}
+
+export interface PlaylistRule {
+  playlist?: Rule
+  name?: Rule
+  description?: Rule
+  artwork?: Rule
+  trackList?: Rule
+  trackId?: Rule
+  title?: Rule
+  artist?: Rule
+  durationMs?: Rule
 }
 
 /* ── Authentication ─────────────────────────────────────────────────────── */
@@ -144,9 +168,13 @@ export interface SourceDocument {
   /** Functions shared by every `@js:` block in this document. */
   jsLib?: string
 
+  loginType?: 'form' | 'variable' | 'webview' | 'qrcode'
   loginUrl?: string
   loginUi?: LoginField[]
   loginCheckJs?: string
+  loginQrJs?: string
+  loginPollJs?: string
+  loginRefreshJs?: string
 
   searchUrl?: Rule
   /** A JSON array of `{ title, url }`, or a rule producing one. */
@@ -159,6 +187,10 @@ export interface SourceDocument {
   ruleStream?: StreamRule
   ruleLyric?: LyricRule
   ruleLibrary?: LibraryRule
+  ruleArtist?: ArtistRule
+  rulePlaylist?: PlaylistRule
+  /** Supported stream qualities. Can also be declared inside `ruleStream.qualities`. */
+  qualities?: StreamQuality[]
 
   /*
    * Maintained by the app, not the author. Stripped on export, so sharing a

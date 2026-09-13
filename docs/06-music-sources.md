@@ -189,13 +189,20 @@ export interface SourceDocument {
   jsLib?: string
 
   /* ── auth (§5) ──────────────────────────────────────────────── */
+  loginType?: 'qrcode' | 'oauth2' | 'form'
   loginUrl?: string
   loginUi?: LoginField[]
   loginCheckJs?: string
+  loginQrJs?: string
+  loginPollJs?: string
+  loginRefreshJs?: string
 
   /* ── entry points ───────────────────────────────────────────── */
   searchUrl?: string
   exploreUrl?: string                             // JSON array of { title, url }, or a rule
+
+  /* ── stream qualities (§1.2) ────────────────────────────────── */
+  qualities?: StreamQuality[]
 
   /* ── rule blocks (§2.2) ─────────────────────────────────────── */
   ruleSearch?: ListRule
@@ -205,6 +212,8 @@ export interface SourceDocument {
   ruleStream?: StreamRule                         // required in practice — see §1.3
   ruleLyric?: LyricRule
   ruleLibrary?: LibraryRule
+  ruleArtist?: ArtistRule
+  rulePlaylist?: PlaylistRule
 
   /* ── maintained by the app, not the author ──────────────────── */
   lastUpdated?: number
@@ -262,6 +271,27 @@ export interface AlbumRule {
   trackListUrl?: string
 }
 
+export interface ArtistRule {
+  artist?: string                 // full artist object or JSON rule
+  name?: string
+  bio?: string
+  artwork?: string
+  albums?: string
+  topTracks?: string
+}
+
+export interface PlaylistRule {
+  playlist?: string               // full playlist object or JSON rule
+  name?: string
+  description?: string
+  artwork?: string
+  trackList?: string
+  trackId?: string
+  title?: string
+  artist?: string
+  durationMs?: string
+}
+
 export interface StreamRule {
   /** The only required member of the only required block. */
   url: string
@@ -274,9 +304,31 @@ export interface StreamRule {
   seekable?: string               // truthy string; default probed with a HEAD
   /** Epoch ms. Its presence is what sets `capabilities.streaming.urlExpiry`. */
   expiresAt?: string
+  /** Explicit quality tiers supported by this stream rule ('low' | 'normal' | 'high' | 'lossless' | 'hi-res'). */
+  qualities?: StreamQuality[]
 }
 
 export interface LyricRule { lyric: string; format?: string; offsetMs?: string }
+```
+
+### 2.3 Dual-file authoring vs single-file distribution
+
+Complex sources often involve substantial JavaScript logic (e.g. signature mixing, multi-stage authentication, audio stream track ranking). Authoring hundreds of lines of JS inside an escaped `\n` string in a single JSON file is unergonomic.
+
+Sources in this repository adopt **dual-file authoring during development, compiled to single-file for distribution**:
+- **`sources/<id>/source.json`**: source metadata, allowed hosts, and rule mappings.
+- **`sources/<id>/source.js`**: pure, unescaped JavaScript helpers with IDE syntax highlighting, linting, and completion.
+
+Build tooling validates and merges these files into single-file JSONs in `fixtures/sources/<id>.json`:
+```bash
+# Compile all sources into fixtures/sources/
+pnpm build:sources
+
+# Watch sources/ directory for changes and hot-recompile
+pnpm watch:sources
+
+# Unpack any single-file JSON back into dual-file source format
+node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources/bilibili.json sources/bilibili
 ```
 
 `browse` is `exploreUrl` + `ruleExplore`: each explore entry is a titled URL, and an item whose

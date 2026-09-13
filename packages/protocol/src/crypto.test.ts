@@ -8,9 +8,9 @@
  * a block boundary, which is where those mistakes live.
  */
 
-import { createHash, createHmac } from 'node:crypto'
+import { createHash, createHmac, generateKeyPairSync, privateDecrypt, constants } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { base64Decode, base64Encode, hmacHex, md5Hex, randomHex, sha1Hex } from './crypto.js'
+import { base64Decode, base64Encode, hmacHex, md5Hex, randomHex, rsaEncrypt, rsaOaepEncrypt, sha1Hex } from './crypto.js'
 
 describe('md5', () => {
   it('matches the RFC 1321 vectors', () => {
@@ -135,3 +135,36 @@ describe('base64url', () => {
     expect(() => base64Decode('YWJjZA'.slice(0, 5))).toThrow(/base64/)
   })
 })
+
+describe('rsa and rsa-oaep', () => {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+    modulusLength: 1024,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  })
+
+  it('encrypts with PKCS#1 v1.5 and decrypts successfully with node crypto', () => {
+    const plain = 'test_password_hash_123456'
+    const cipherB64 = rsaEncrypt(plain, publicKey)
+    const decrypted = privateDecrypt(
+      { key: privateKey, padding: constants.RSA_PKCS1_PADDING },
+      Buffer.from(cipherB64, 'base64'),
+    )
+    expect(decrypted.toString('utf8')).toBe(plain)
+  })
+
+  it('encrypts with RSA-OAEP SHA-256 and decrypts successfully with node crypto', () => {
+    const plain = 'refresh_1726000000000'
+    const cipherHex = rsaOaepEncrypt(plain, publicKey)
+    const decrypted = privateDecrypt(
+      {
+        key: privateKey,
+        padding: constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: 'sha256',
+      },
+      Buffer.from(cipherHex, 'hex'),
+    )
+    expect(decrypted.toString('utf8')).toBe(plain)
+  })
+})
+

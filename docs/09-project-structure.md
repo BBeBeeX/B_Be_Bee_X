@@ -211,7 +211,9 @@ B_Be_Bee/
 │                                             ctx.fs, and the byte-serving http fixture the
 │                                             conformance suite runs on
 │
-├── fixtures/sources/                         example source documents; the golden corpus (§6)
+├── sources/                                  multi-file source development directory (source.json + source.js)
+├── fixtures/sources/                         compiled single-file example source documents; golden corpus (§6)
+├── scripts/                                  developer & build scripts (scripts/sources/ source packaging & watch tools)
 ├── test/stubs/                               the three native modules Node cannot load, aliased
 │                                             by vitest.config.ts: react-native-audio-api throws
 │                                             on anything genuinely native, expo-sqlite and
@@ -221,7 +223,7 @@ B_Be_Bee/
 ├── tsconfig.base.json                        every package tsconfig extends this
 ├── vitest.config.ts · vitest.global.ts       aliases + the scratch root each run allocates under
 ├── pnpm-workspace.yaml · .npmrc
-└── package.json                              the root scripts: check, gen:plugins, new:plugin
+└── package.json                              the root scripts: check, gen:plugins, new:plugin, build:sources, watch:sources
 ```
 
 ### Why the layer is a directory
@@ -831,16 +833,21 @@ list, and a leak test to wire up, hand-rolling a plugin means getting one of the
 the one that fails *silently*. The template ships the correct `await ctx.plugin(...)` form and a
 leak test, both of which cost a debugging session to discover the hard way.
 
-### Adding a music source
+### Adding & authoring music sources
 
-Not a development task at all, which is the point. In the app: **Settings → Sources → Import**,
-paste the string, review what it says it will do, confirm
-([06 §9](./06-music-sources.md#9-importing-updating-and-sharing)). No install, no rebuild, no
-restart.
+- **End users**: not a development task at all. In the app: **Settings → Sources → Import**, paste the string, review what it says it will do, confirm ([06 §9](./06-music-sources.md#9-importing-updating-and-sharing)). No install, no rebuild, no restart.
+- **Source authors & developers**:
+  To avoid writing hundreds of lines of escaped JavaScript inside a single JSON string, author sources in the `sources/<id>/` directory:
+  - `source.json`: metadata, allowed hosts, and declarative rule blocks.
+  - `source.js`: unescaped JavaScript logic with full IDE syntax highlighting, ESLint, and autocomplete.
 
-Two commands are **planned** (M2 cleanup; neither exists in root `package.json` yet) for working
-on the *documents this repository ships* in `fixtures/sources/`. Until they land, the corpus
-suite's responses are recorded inline in the tests under `packages/feature/plugin-source-runtime/src/`:
+| Command | What it does |
+|---|---|
+| `pnpm build:sources` | Validates and compiles all `sources/` into self-contained single-file documents in `fixtures/sources/<id>.json` |
+| `pnpm watch:sources` | Watches `sources/` and recompiles automatically on change |
+| `node --experimental-strip-types scripts/sources/cli.ts --unpack <file> [dest]` | Unpacks any existing single-file JSON back into `source.json` + `source.js` dual-file format |
+
+Two commands are **planned** (M2 cleanup; for online backend testing) for working on the *documents this repository ships* in `fixtures/sources/`:
 
 | Command (planned) | What it will do |
 |---|---|

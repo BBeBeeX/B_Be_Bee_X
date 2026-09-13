@@ -23,6 +23,8 @@ import {
   hmacHex,
   md5Hex,
   randomHex,
+  rsaEncrypt,
+  rsaOaepEncrypt,
   sha1Hex,
   sha256Hex,
 } from '@BBeBee/protocol'
@@ -45,6 +47,11 @@ export interface HostDeps {
   vars: {
     get(key: string): string | undefined
     put(key: string, value: string): void
+  }
+  cookies?: {
+    get(name: string, url?: string): Promise<string | undefined>
+    set(name: string, value: string, url?: string): Promise<void>
+    all(url?: string): Promise<Record<string, string>>
   }
   log?(message: string): void
 }
@@ -123,7 +130,7 @@ export function createSourceHost(deps: HostDeps) {
       undefined,
       { sourceId: deps.sourceId, block: '@js:' },
     )
-    return { status: fetched.status, headers: {}, body: fetched.text }
+    return { status: fetched.status, headers: fetched.headers, body: fetched.text }
   }
 
   return {
@@ -143,6 +150,9 @@ export function createSourceHost(deps: HostDeps) {
       __src_b64encode: (value: unknown) => base64Encode(String(value)),
       __src_b64decode: (value: unknown) => base64Decode(String(value)),
       __src_randomHex: (length: unknown) => randomHex(Number(length) || 16),
+      __src_rsaEncrypt: (val: unknown, key: unknown) => rsaEncrypt(String(val), String(key)),
+      __src_rsaOaepEncrypt: (val: unknown, key: unknown, label: unknown) =>
+        rsaOaepEncrypt(String(val), String(key), label ? String(label) : ''),
 
       __src_cacheGet: (key: unknown) => cache.get(String(key)),
       __src_cachePut: (key: unknown, value: unknown, ttlMs: unknown) => {
@@ -153,6 +163,13 @@ export function createSourceHost(deps: HostDeps) {
       __src_varsPut: (key: unknown, value: unknown) => {
         deps.vars.put(String(key), String(value))
       },
+
+      __src_cookieGet: (name: unknown, url: unknown) =>
+        deps.cookies?.get(String(name), url ? String(url) : undefined),
+      __src_cookieSet: (name: unknown, value: unknown, url: unknown) =>
+        deps.cookies?.set(String(name), String(value), url ? String(url) : undefined),
+      __src_cookieAll: (url: unknown) =>
+        deps.cookies?.all(url ? String(url) : undefined),
 
       __src_urlEncode: (value: unknown) => encodeURIComponent(String(value)),
       __src_urlDecode: (value: unknown) => {
@@ -216,11 +233,18 @@ globalThis.src = Object.freeze({
     base64Encode: (s) => __src_b64encode(s),
     base64Decode: (s) => __src_b64decode(s),
     randomHex: (n) => __src_randomHex(n),
+    rsaEncrypt: (val, key) => __src_rsaEncrypt(val, key),
+    rsaOaepEncrypt: (val, key, label) => __src_rsaOaepEncrypt(val, key, label),
     aesEncrypt: () => { throw new Error('src.crypto.aesEncrypt is not available in this build') },
     aesDecrypt: () => { throw new Error('src.crypto.aesDecrypt is not available in this build') },
   }),
   cache: Object.freeze({ get: (k) => __src_cacheGet(k), put: (k, v, ttl) => __src_cachePut(k, v, ttl) }),
   vars: Object.freeze({ get: (k) => __src_varsGet(k), put: (k, v) => __src_varsPut(k, v) }),
+  cookie: Object.freeze({
+    get: (name, url) => __src_cookieGet(name, url),
+    set: (name, value, url) => __src_cookieSet(name, value, url),
+    all: (url) => __src_cookieAll(url),
+  }),
   url: Object.freeze({
     encode: (s) => __src_urlEncode(s),
     decode: (s) => __src_urlDecode(s),

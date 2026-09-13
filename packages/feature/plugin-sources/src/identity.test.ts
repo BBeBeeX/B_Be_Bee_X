@@ -140,6 +140,22 @@ describe('validateDocument', () => {
     expect(() => validateDocument(doc({ ruleLibrary: { list: '=a' } }))).not.toThrow()
   })
 
+  it('validates qualities in ruleStream and top-level', () => {
+    expect(() =>
+      validateDocument(doc({ ruleStream: { url: 'x', qualities: ['normal', 'hi-res'] } })),
+    ).not.toThrow()
+    expect(issuePaths(doc({ ruleStream: { url: 'x', qualities: 'invalid' } }))).toContain(
+      'ruleStream.qualities',
+    )
+    expect(
+      issuePaths(doc({ ruleStream: { url: 'x', qualities: ['invalid-quality'] } })),
+    ).toContain('ruleStream.qualities')
+
+    expect(() => validateDocument(doc({ qualities: ['normal', 'high'] }))).not.toThrow()
+    expect(issuePaths(doc({ qualities: 'invalid' }))).toContain('qualities')
+    expect(issuePaths(doc({ qualities: ['not-a-quality'] }))).toContain('qualities')
+  })
+
   it('validates loginUi, which the shell has to render', () => {
     expect(() => validateDocument(doc({ loginUi: 'not an array' }))).toThrow(SourceFormatError)
     expect(issuePaths(doc({ loginUi: [{ label: 'User' }] }))).toContain('loginUi[0].id')

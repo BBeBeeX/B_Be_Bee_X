@@ -25,6 +25,8 @@
     "dev:android:debug": "EXPO_PUBLIC_DEBUG=1 pnpm --filter @BBeBee/mobile android",
     "build:desktop": "pnpm --filter @BBeBee/desktop build",
     "gen:plugins": "node --experimental-strip-types packages/tooling/tooling-gen-plugins/src/cli.ts",
+    "build:sources": "node --experimental-strip-types scripts/sources/cli.ts",
+    "watch:sources": "node --experimental-strip-types scripts/sources/cli.ts --watch",
     "new:plugin": "node --experimental-strip-types packages/tooling/tooling-create-plugin/src/cli.ts",
     "clean": "pnpm -r exec rm -rf dist out *.tsbuildinfo",
     "clean:all": "pnpm -r exec rm -rf dist out *.tsbuildinfo node_modules"

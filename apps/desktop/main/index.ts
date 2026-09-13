@@ -24,6 +24,7 @@ import {
   shell,
   Tray,
   Menu,
+  session,
 } from 'electron'
 import { createHost, type Host } from '@BBeBee/core-desktop-bridge/main'
 import {
@@ -399,6 +400,42 @@ protocol.registerSchemesAsPrivileged([
 
 void app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
+
+  const streamHeaders = new Map<string, Record<string, string>>()
+
+  ipcMain.handle(
+    'stream:set-headers',
+    (_event, entry: { url: string; headers: Record<string, string> }) => {
+      if (entry?.url && entry?.headers) {
+        try {
+          const u = new URL(entry.url)
+          streamHeaders.set(u.origin, entry.headers)
+          streamHeaders.set(u.hostname, entry.headers)
+        } catch {
+          // ignore invalid url
+        }
+        streamHeaders.set(entry.url, entry.headers)
+      }
+    },
+  )
+
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    try {
+      const u = new URL(details.url)
+      const matched =
+        streamHeaders.get(details.url) ??
+        streamHeaders.get(u.origin) ??
+        streamHeaders.get(u.hostname)
+      if (matched) {
+        for (const [k, v] of Object.entries(matched)) {
+          details.requestHeaders[k] = v
+        }
+      }
+    } catch {
+      // ignore header inspection error
+    }
+    callback({ requestHeaders: details.requestHeaders })
+  })
 
   protocol.handle('bbebee-file', (request) => {
     const fileUrl = request.url.replace(/^bbebee-file:\/\//, 'file:///')

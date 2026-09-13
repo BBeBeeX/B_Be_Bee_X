@@ -70,6 +70,7 @@ export default defineConfig({
       // code each — the sidebar and the pane that renders contributed views —
       // and without this the file testing it is collected as nothing.
       'apps/*/**/*.test.tsx',
+      'scripts/**/*.test.ts',
     ],
     environment: 'node',
     /*

@@ -180,7 +180,9 @@ B_Be_Bee/
 │                                             ctx.fs，以及契约套件运行所在的
 │                                             按字节服务的 http fixture
 │
-├── fixtures/sources/                         示例音源文档；黄金语料库 (§6)
+├── sources/                                  多文件音源开发源码目录（source.json + source.js 双文件维护）
+├── fixtures/sources/                         编译后的单文件示例音源文档；黄金语料库 (§6)
+├── scripts/                                  工程脚本（scripts/sources/ 音源打包、校验与热重载工具）
 ├── test/stubs/                               Node 无法加载的三个原生模块，由
 │                                             vitest.config.ts 别名：react-native-audio-api
 │                                             对任何真正原生的东西抛错，expo-sqlite 与
@@ -190,7 +192,7 @@ B_Be_Bee/
 ├── tsconfig.base.json                        每个包的 tsconfig 都扩展它
 ├── vitest.config.ts · vitest.global.ts       别名 + 每次运行在下面分配的暂存根目录
 ├── pnpm-workspace.yaml · .npmrc
-└── package.json                              根脚本：check、gen:plugins、new:plugin
+└── package.json                              根脚本：check、gen:plugins、new:plugin、build:sources、watch:sources
 ```
 
 ### 为什么层是一个目录
@@ -682,11 +684,21 @@ pnpm check                   # already green — the template ships passing test
 
 脚手架并非可有可无的点缀。三包约定、清单格式、能力列表、泄漏测试都要接对，手工搭一个插件意味着总会在其中一环出错 —— 而且往往是*无声*失败的那一环。模板自带正确的 `await ctx.plugin(...)` 形态与泄漏测试，这两样若靠踩坑领悟，各要付出一整个调试会话的代价。
 
-### 添加一个音源
+### 添加与开发音源
 
-这根本不算一项开发任务 —— 这正是要点所在。在应用内：**设置 → 音源 → 导入**，粘贴字符串，查看它声明自己会做什么，确认（[06 §9](./06-music-sources.md#9-导入更新与分享)）。无需安装、无需重新构建、无需重启。
+- **面向最终用户**：在应用内 **设置 → 音源 → 导入**，粘贴字符串，查看它声明自己会做什么，确认（[06 §9](./06-music-sources.md#9-导入更新与分享)）。无需安装、无需重新构建、无需重启。
+- **面向音源作者与开发者**：
+  为避免在一个巨大单行 JSON 字符串中调试复杂 JavaScript 代码，音源在开发时采用双文件架构放置在 `sources/<id>/`：
+  - `source.json`：声明元数据与规则。
+  - `source.js`：原生 JavaScript 逻辑代码，享有完整的 IDE 代码补全与语法检查。
 
-有两个命令是**计划中的**（M2 收尾；目前都还不在根 `package.json` 里），用于维护本仓库随附在 `fixtures/sources/` 中的*文档*。在它们落地之前，语料库套件的响应内联录制在 `packages/feature/plugin-source-runtime/src/` 下的测试里：
+| 命令 | 作用 |
+|---|---|
+| `pnpm build:sources` | 校验并将 `sources/` 下的所有音源编译输出为 `fixtures/sources/<id>.json` 单文件文档 |
+| `pnpm watch:sources` | 监听 `sources/` 目录中的文件变动，自动即时热重编 |
+| `node --experimental-strip-types scripts/sources/cli.ts --unpack <file> [dest]` | 将现有的单文件 JSON 反向解包为 `source.json` + `source.js` 双文件开发结构 |
+
+有两个命令是**计划中的**（M2 收尾；用于在线测试后端），用于维护本仓库随附在 `fixtures/sources/` 中的*文档*：
 
 | 命令（计划中） | 将来的作用 |
 |---|---|

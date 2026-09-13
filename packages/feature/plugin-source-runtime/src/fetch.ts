@@ -89,6 +89,7 @@ export interface FetchedDocument {
   /** The URL after redirects — what a relative link in the body resolves against. */
   baseUrl: string
   status: number
+  headers: Record<string, string>
 }
 
 /**
@@ -138,7 +139,13 @@ export async function fetchDocument(
     }
   }
 
-  return { value, text, baseUrl: response.url || target.url, status: response.status }
+  return {
+    value,
+    text,
+    baseUrl: response.url || target.url,
+    status: response.status,
+    headers: response.headers,
+  }
 }
 
 /** Where a fetch came from, so a failure names the rule and not just the URL. */

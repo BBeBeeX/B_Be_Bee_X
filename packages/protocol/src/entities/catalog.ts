@@ -27,7 +27,7 @@ export interface Artist {
   artwork?: ArtworkRef
 }
 
-export interface ArtistDetail extends Artist {
+export interface ArtistDetail extends Artist, WithPayloads {
   bio?: string
   albums: Album[]
   topTracks?: Track[]
@@ -126,8 +126,9 @@ export interface PlaylistItem {
   note?: string
 }
 
-export interface PlaylistDetail extends Playlist {
+export interface PlaylistDetail extends Playlist, WithPayloads {
   items: PlaylistItem[]
+  tracks?: Track[]
   cursor?: string
   hasMore: boolean
 }
