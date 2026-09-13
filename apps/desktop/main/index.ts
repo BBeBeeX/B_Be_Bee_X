@@ -401,20 +401,35 @@ protocol.registerSchemesAsPrivileged([
 void app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
 
+  /*
+   * Stream request headers, keyed at three granularities — origin, hostname,
+   * and the hostname's registrable domain.
+   *
+   * Registered per resolved stream by the player (through the preload bridge)
+   * and applied below by `onBeforeSendHeaders`, because a media element's
+   * request cannot set `Referer`/`User-Agent` itself and the CDNs that need
+   * them refuse the request without.
+   *
+   * ⚠️ Keyed by host, never by the exact URL. A per-URL map has two defects:
+   * it grows by an entry per resolved track for as long as the app runs, and
+   * it loses the redirect — a CDN routinely answers a mirror with a 302 to
+   * another mirror of the same domain, and only the domain key survives that.
+   */
   const streamHeaders = new Map<string, Record<string, string>>()
 
   ipcMain.handle(
     'stream:set-headers',
     (_event, entry: { url: string; headers: Record<string, string> }) => {
-      if (entry?.url && entry?.headers) {
-        try {
-          const u = new URL(entry.url)
-          streamHeaders.set(u.origin, entry.headers)
-          streamHeaders.set(u.hostname, entry.headers)
-        } catch {
-          // ignore invalid url
-        }
-        streamHeaders.set(entry.url, entry.headers)
+      if (!entry?.url || !entry?.headers) return
+      try {
+        const u = new URL(entry.url)
+        const labels = u.hostname.split('.')
+        const domain = labels.slice(-2).join('.')
+        streamHeaders.set(u.origin, entry.headers)
+        streamHeaders.set(u.hostname, entry.headers)
+        if (labels.length > 2) streamHeaders.set(domain, entry.headers)
+      } catch {
+        // ignore invalid url
       }
     },
   )
@@ -422,10 +437,11 @@ void app.whenReady().then(async () => {
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
     try {
       const u = new URL(details.url)
+      const labels = u.hostname.split('.')
       const matched =
-        streamHeaders.get(details.url) ??
         streamHeaders.get(u.origin) ??
-        streamHeaders.get(u.hostname)
+        streamHeaders.get(u.hostname) ??
+        (labels.length > 2 ? streamHeaders.get(labels.slice(-2).join('.')) : undefined)
       if (matched) {
         for (const [k, v] of Object.entries(matched)) {
           details.requestHeaders[k] = v

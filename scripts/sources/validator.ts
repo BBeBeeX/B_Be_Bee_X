@@ -9,6 +9,7 @@ const LIST_FIELDS = [
 
 const RULE_FIELDS: Record<string, readonly string[]> = {
   ruleSearch: LIST_FIELDS,
+  ruleSearchArtist: LIST_FIELDS,
   ruleExplore: LIST_FIELDS,
   ruleTrackList: LIST_FIELDS,
   ruleAlbum: ['title', 'artist', 'artwork', 'year', 'description', 'trackCount', 'trackListUrl'],
@@ -21,7 +22,7 @@ const RULE_FIELDS: Record<string, readonly string[]> = {
   rulePlaylist: ['playlist', 'name', 'description', 'artwork', 'trackList', 'trackId', 'title', 'artist', 'durationMs'],
 }
 
-const TOP_LEVEL_RULES = ['header', 'searchUrl', 'exploreUrl'] as const
+const TOP_LEVEL_RULES = ['header', 'searchUrl', 'searchArtistUrl', 'exploreUrl'] as const
 
 /**
  * Validates a SourceDocument object.

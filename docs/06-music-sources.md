@@ -116,6 +116,7 @@ such gap: **the runtime computes `Capabilities` from which rule blocks are prese
 | Present in the document | Enables |
 |---|---|
 | `searchUrl` + `ruleSearch` | `search`, and participation in `searchAll` |
+| `searchArtistUrl` + `ruleSearchArtist` | artist results in `search` (`searchResult.artists`) |
 | `exploreUrl` + `ruleExplore` | `browse` |
 | `ruleAlbum` | `getAlbum`, album detail screens |
 | `ruleTrackList` | Album and playlist track listings |
@@ -126,6 +127,14 @@ such gap: **the runtime computes `Capabilities` from which rule blocks are prese
 
 A rule block that is present but empty counts as absent. There is exactly one required block —
 `ruleStream` — because a source that cannot produce a playable URL is not a music source.
+
+The artist search is the one search block that can share another's fetch: with `searchArtistUrl`
+absent, `ruleSearchArtist` runs over the same document `searchUrl` fetched (a backend whose
+combined search returns users and videos together); with it present, the artist rules run over
+their own fetch. Rows borrow the track-shaped fields — `trackId` is the backend's id for the
+person, `title` their name — and become `SearchResult.artists`. A query that names `types` gets
+exactly those; a query that names none gets everything the source can serve, and a failing artist
+search degrades (the tracks survive) rather than failing the search.
 
 ```ts
 export interface Capabilities {
@@ -199,6 +208,7 @@ export interface SourceDocument {
 
   /* ── entry points ───────────────────────────────────────────── */
   searchUrl?: string
+  searchArtistUrl?: string                        // artist search, when the backend splits it off
   exploreUrl?: string                             // JSON array of { title, url }, or a rule
 
   /* ── stream qualities (§1.2) ────────────────────────────────── */
@@ -206,6 +216,7 @@ export interface SourceDocument {
 
   /* ── rule blocks (§2.2) ─────────────────────────────────────── */
   ruleSearch?: ListRule
+  ruleSearchArtist?: ListRule
   ruleExplore?: ListRule
   ruleAlbum?: AlbumRule
   ruleTrackList?: ListRule

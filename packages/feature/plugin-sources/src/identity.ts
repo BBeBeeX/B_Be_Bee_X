@@ -159,6 +159,7 @@ const LIST_FIELDS = [
 /** Every rule field, by block. A rule that is not a string cannot be evaluated. */
 const RULE_FIELDS: Record<string, readonly string[]> = {
   ruleSearch: LIST_FIELDS,
+  ruleSearchArtist: LIST_FIELDS,
   ruleExplore: LIST_FIELDS,
   ruleTrackList: LIST_FIELDS,
   ruleAlbum: ['title', 'artist', 'artwork', 'year', 'description', 'trackCount', 'trackListUrl'],
@@ -172,7 +173,7 @@ const RULE_FIELDS: Record<string, readonly string[]> = {
 }
 
 /** Top-level fields that are rules, and so must be strings like any other. */
-const TOP_LEVEL_RULES = ['header', 'searchUrl', 'exploreUrl'] as const
+const TOP_LEVEL_RULES = ['header', 'searchUrl', 'searchArtistUrl', 'exploreUrl'] as const
 
 /**
  * Validate a parsed document.

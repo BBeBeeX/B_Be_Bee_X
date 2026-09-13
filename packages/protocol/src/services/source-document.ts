@@ -177,10 +177,18 @@ export interface SourceDocument {
   loginRefreshJs?: string
 
   searchUrl?: Rule
+  /**
+   * Where to search *artists* (bilibili users, Subsonic a sidebar), when the
+   * backend searches them at a different endpoint from tracks. Absent with a
+   * present `ruleSearchArtist` means the artist rules run over the same
+   * document `searchUrl` fetched.
+   */
+  searchArtistUrl?: Rule
   /** A JSON array of `{ title, url }`, or a rule producing one. */
   exploreUrl?: Rule
 
   ruleSearch?: ListRule
+  ruleSearchArtist?: ListRule
   ruleExplore?: ListRule
   ruleAlbum?: AlbumRule
   ruleTrackList?: ListRule

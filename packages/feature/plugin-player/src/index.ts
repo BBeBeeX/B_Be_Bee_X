@@ -27,6 +27,7 @@ import type {
   RepeatMode,
   StreamHandle,
   StreamPrefs,
+  StreamQuality,
   TransportState,
 } from '@BBeBee/protocol'
 import { QueueModel, type QueueEntry } from './queue.js'
@@ -69,6 +70,17 @@ export interface PlayerConfig {
    * forever, which is the one outcome worse than saying so.
    */
   stallTimeoutMs?: number
+  /**
+   * The quality preference handed to sources when they resolve a stream.
+   *
+   * A source reads it as `prefs.quality` and maps it onto the tiers its
+   * backend actually has, degrading downwards — asking for `lossless` on a
+   * backend without one plays the best stream that *can* be decoded, not
+   * nothing. `lossless` is the default because it costs nothing where the
+   * backend has no lossless tier, and it is what a music player means by
+   * "best" everywhere it does.
+   */
+  quality?: StreamQuality
   /** Which device wrote `playback_state`, for future sync. */
   deviceId?: string
 }
@@ -86,6 +98,9 @@ const DEFAULTS = {
   // Long enough that a tunnel or a lift is survived, short enough that a dead
   // connection is reported while the user still remembers pressing play.
   stallTimeoutMs: 30_000,
+  // "Best that plays": sources degrade the tier themselves when the backend
+  // has no lossless stream (or the account lacks the entitlement for one).
+  quality: 'lossless',
 }
 
 /** Prefetch starts here, per docs/05 §2. */
@@ -936,7 +951,7 @@ export class Player extends Service implements PlayerService {
         acceptFormats = []
       }
     }
-    return { quality: 'lossless', saveData, acceptFormats }
+    return { quality: this.config.quality, saveData, acceptFormats }
   }
 
   /* ── the clock ─────────────────────────────────────────────────────── */

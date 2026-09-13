@@ -4,6 +4,7 @@
   "sourceGroup": "bilibili,video",
   "sourceComment": "Bilibili video & audio source.",
   "concurrentRate": "5/1000",
+  "header": "={\"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36\", \"Referer\": \"https://www.bilibili.com/\"}",
   "allowedHosts": [
     "bilibili.com",
     "*.bilibili.com",
@@ -15,6 +16,7 @@
     "*.hdslb.com"
   ],
   "searchUrl": "{{@js:biliSearchUrl(key, page)}}",
+  "searchArtistUrl": "{{@js:biliUserSearchUrl(key, page)}}",
   "ruleSearch": {
     "trackList": "$.data.result[*]",
     "trackId": "$.bvid",
@@ -23,9 +25,27 @@
     "artwork": "@js:cleanPic(item.pic)",
     "durationMs": "@js:parseDuration(item.duration)"
   },
+  "ruleSearchArtist": {
+    "trackList": "$.data.result[*]",
+    "trackId": "$.mid",
+    "title": "$.uname",
+    "artwork": "@js:cleanPic(item.upic)"
+  },
+  "exploreUrl": "={{@js:biliExploreUrl()}}",
+  "ruleExplore": {
+    "trackList": "@js:biliExploreRows(result)",
+    "trackId": "$.trackId",
+    "title": "$.title",
+    "artist": "$.artist",
+    "album": "$.album",
+    "artwork": "$.artwork",
+    "durationMs": "$.durationMs",
+    "kind": "$.kind",
+    "childUrl": "$.childUrl"
+  },
   "ruleStream": {
     "url": "={{@js:resolveBiliStream(track, prefs)}}",
-    "headers": "={\"Referer\": \"https://www.bilibili.com/\", \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36\"}",
+    "headers": "={\"Referer\": \"https://www.bilibili.com/\", \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36\"}",
     "seekable": "=true",
     "expiresAt": "={{@js:src.time.now() + 7200000}}",
     "qualities": [

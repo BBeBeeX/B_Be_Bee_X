@@ -74,6 +74,7 @@ export function capabilitiesFor(
   opts: {
     seekable?: boolean
     searchable?: boolean
+    searchArtists?: boolean
     browsable?: boolean
     lyrics?: boolean
     library?: boolean
@@ -101,7 +102,7 @@ export function capabilitiesFor(
     search: {
       tracks: searchable,
       albums: false,
-      artists: false,
+      artists: opts.searchArtists ?? false,
       playlists: false,
       // Whether the *backend* does full-text is unknowable from a rule; the
       // honest answer is no rather than a guess the UI would act on.

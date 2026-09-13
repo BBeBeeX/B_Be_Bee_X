@@ -26,6 +26,7 @@ import type {
   AuthFlow,
   BrowseEntry,
   AlbumDetail,
+  Artist,
   ArtistDetail,
   ArtworkRef,
   PlaylistDetail,
@@ -67,7 +68,7 @@ import { capabilitiesFor, hasRules } from './capabilities.js'
 import { SRC_SHIM, createSourceHost, type HostDeps } from './host.js'
 import { TraceCollector, tracedHttp } from './trace.js'
 import { fetchDocument, parseUrlObject, type FetchSite } from './fetch.js'
-import { evaluateListRule, rowToTrack } from './list-rule.js'
+import { coerceDuration, evaluateListRule, rowToTrack } from './list-rule.js'
 
 /** What the runtime needs from its context. Kept narrow so tests need no kernel. */
 export interface SourceDeps {
@@ -545,6 +546,7 @@ export class DocumentSource {
     return capabilitiesFor(this.record.doc, {
       ...(this.seekable !== undefined ? { seekable: this.seekable } : {}),
       searchable: this.searchable,
+      searchArtists: this.searchArtists,
       browsable: this.browsable,
       lyrics: this.lyricable,
       library: this.librariable,
@@ -580,6 +582,25 @@ export class DocumentSource {
         ...Object.values(doc.ruleSearch).filter((r): r is string => typeof r === 'string'),
       ],
       [doc.searchUrl],
+      { js: this.deps.js !== undefined },
+    )
+  }
+
+  /**
+   * Whether this document can search *artists*, on the same two-part test as
+   * `searchable`. A document may point the artist rules at their own URL or
+   * at the track search's document; both shapes run through the same test.
+   */
+  private get searchArtists(): boolean {
+    const doc = this.record.doc
+    if (!doc.searchArtistUrl && !doc.searchUrl) return false
+    if (!doc.ruleSearchArtist?.trackList) return false
+    return rulesRunnable(
+      [
+        ...(doc.header ? [doc.header] : []),
+        ...Object.values(doc.ruleSearchArtist).filter((r): r is string => typeof r === 'string'),
+      ],
+      [doc.searchArtistUrl ?? doc.searchUrl!],
       { js: this.deps.js !== undefined },
     )
   }
@@ -723,12 +744,55 @@ export class DocumentSource {
   }
 
   async getTrack(id: string): Promise<Track> {
-    const payload = await this.payloadFor(id)
-    const title = typeof payload?.title === 'string' ? payload.title : lastSegment(this.record.sourceUrl)
+    const payload = (await this.payloadFor(id)) ?? {}
+    /*
+     * The payload is the search/browse row the track came from, so it carries
+     * the identity a bare id cannot: who made it, how long it is, what cover
+     * it wears. A payload-less track (the URN known but the row lost) still
+     * answers with what the id alone can say.
+     *
+     * ⚠️ Every list-rule value arrives as text — `evaluateParsed` maps to
+     * `string[]` by contract — so the duration a document wrote as a number
+     * comes back as `"228000"` and needs the same coercion a track row gets.
+     */
+    const title =
+      typeof payload.title === 'string' && payload.title.trim()
+        ? payload.title
+        : lastSegment(this.record.sourceUrl)
+    const artist = typeof payload.artist === 'string' ? payload.artist : undefined
+    const artists: Track['artists'] = artist
+      ? [
+          {
+            urn: formatUrn({
+              sourceId: this.record.id,
+              kind: 'artist',
+              id:
+                typeof payload.artistId === 'string' && payload.artistId
+                  ? payload.artistId
+                  : slugOf(artist),
+            }),
+            name: artist,
+            role: 'main',
+            ordinal: 0,
+          },
+        ]
+      : []
+    let durationMs: number | undefined
+    try {
+      durationMs = coerceDuration(payload.durationMs, this.record.id, 'getTrack')
+    } catch {
+      // A payload duration the backend wrote oddly is dropped, not fatal —
+      // getTrack is an identity answer, not a re-run of the rules.
+    }
     return {
       urn: formatUrn({ sourceId: this.record.id, kind: 'track', id }),
       title,
-      artists: [],
+      artists,
+      ...(durationMs !== undefined ? { durationMs } : {}),
+      ...(typeof payload.album === 'string' && payload.album ? { albumTitle: payload.album } : {}),
+      ...(typeof payload.artwork === 'string' && payload.artwork
+        ? { artwork: { id: payload.artwork, sourceUrl: payload.artwork } }
+        : {}),
       available: true,
     }
   }
@@ -812,7 +876,7 @@ export class DocumentSource {
       if (track) payloads[track.urn] = payloadFor(row)
     }
 
-    return {
+    const result: SearchResult = {
       tracks: {
         items: tracks,
         // The backend rarely says, and inventing a total produces a progress
@@ -822,6 +886,68 @@ export class DocumentSource {
       },
       payloads,
     }
+
+    /*
+     * Artists, when the document describes how to search for them.
+     *
+     * A query that names its types gets exactly those; a query that names
+     * none gets everything the source can serve — which for a backend with a
+     * separate user search means one more request. A failing artist search
+     * degrades rather than fails the search: tracks the user asked for must
+     * not vanish because a secondary endpoint answered badly.
+     */
+    const wantsArtists = !query.types?.length || query.types.includes('artist')
+    if (wantsArtists && this.searchArtists && doc.ruleSearchArtist) {
+      try {
+        const artistDoc = doc.searchArtistUrl
+          ? await this.fetchSearchDocument(doc.searchArtistUrl, scope, 'searchArtistUrl')
+          : fetched
+        const artistRows = await evaluateListRule(doc.ruleSearchArtist, {
+          document: artistDoc.value,
+          scope: { ...scope, baseUrl: artistDoc.baseUrl },
+          sourceId: this.record.id,
+          block: 'ruleSearchArtist',
+          ...(this.js ? { js: this.js } : {}),
+        })
+        const artists = artistRows.rows
+          .map((row) => artistFromRow(row, this.record.id))
+          .filter((a): a is Artist => a !== undefined)
+        result.artists = {
+          items: artists,
+          hasMore: artists.length > 0,
+          ...(artists.length > 0 ? { cursor: String(pageNumber + 1) } : {}),
+        }
+      } catch (error) {
+        this.deps.log?.(
+          `${this.record.id}: artist search failed (tracks kept): ${String(error)}`,
+        )
+      }
+    }
+
+    return result
+  }
+
+  /**
+   * One search fetch, shared by the track and artist halves of `search`.
+   *
+   * The artist rules either run over the track search's document (no URL of
+   * their own) or over a second fetch; both come through here so the login
+   * check and the trace attribution are the same shape.
+   */
+  private async fetchSearchDocument(
+    urlTemplate: string,
+    scope: TemplateScope,
+    block: string,
+  ): Promise<Awaited<ReturnType<typeof fetchDocument>>> {
+    const rendered = await evaluateUrlTemplate(
+      urlTemplate,
+      scope,
+      { block, field: block, sourceId: this.record.id },
+      this.js,
+    )
+    const target = parseUrlObject(rendered)
+    this.assertAllowed(target.url)
+    return this.withReauth(() => this.fetchChecked(target, scope, block))
   }
 
   /** Headers the document declares, rendered against the current scope. */
@@ -898,6 +1024,12 @@ export class DocumentSource {
       scope: { ...scope, baseUrl: fetched.baseUrl },
       sourceId: this.record.id,
       block,
+      // ⚠️ Browse rules may be scripts (`@js:` trackList on a document whose
+      // rows are computed, not selected) — the sandbox has to reach this call
+      // exactly as it reaches the search path's. Omitting it meant a document
+      // that was declared browsable failed its first descent with
+      // RuleEngineUnavailableError.
+      ...(this.js ? { js: this.js } : {}),
     })
     if (dropped > 0) {
       this.deps.log?.(
@@ -1875,7 +2007,14 @@ export class DocumentSource {
         }
 
         return {
-          urn: (result.urn as string | undefined) || playlistUrn,
+          urn:
+            (result.urn as string | undefined) ||
+            // A document may canonicalise the playlist's id — a fav folder
+            // reached as a bare number or a pasted URL is still one playlist,
+            // and every spelling of it must resolve to one URN.
+            (typeof result.id === 'string' && result.id
+              ? formatUrn({ sourceId: this.record.id, kind: 'playlist', id: result.id })
+              : playlistUrn),
           name: (result.name as string | undefined) || (result.title as string | undefined) || id,
           ...(result.description ? { description: String(result.description) } : {}),
           ...(result.artwork
@@ -2315,6 +2454,30 @@ function payloadFor(row: Record<string, unknown>): Record<string, unknown> {
       ? (raw as Record<string, unknown>)
       : {}
   return { ...base, ...evaluated }
+}
+
+/**
+ * One artist-search row as an `Artist`.
+ *
+ * The ListRule fields are track-shaped (`trackId`/`title`), so an artist row
+ * borrows them: `trackId` is the backend's id for the person and `title` is
+ * their name. A row without either is dropped rather than turned into a
+ * nameless artist — the same rule a track row is held to.
+ */
+function artistFromRow(
+  row: Record<string, unknown>,
+  sourceId: string,
+): Artist | undefined {
+  const id = row.trackId !== undefined ? String(row.trackId).trim() : ''
+  const name = typeof row.title === 'string' ? row.title.trim() : ''
+  if (!id || !name) return undefined
+  return {
+    urn: formatUrn({ sourceId, kind: 'artist', id }),
+    name,
+    ...(typeof row.artwork === 'string' && row.artwork
+      ? { artwork: { id: row.artwork, sourceUrl: row.artwork } }
+      : {}),
+  }
 }
 
 /* ── browse nodes ─────────────────────────────────────────────────────── */

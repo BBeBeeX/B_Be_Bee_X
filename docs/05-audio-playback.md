@@ -238,6 +238,17 @@ only when that yields nothing does the player enter `error`.
 - **Prefetch** begins at `max(15s, crossfadeMs + 5s)` before the end, and is cancelled via
   `AbortSignal` if the queue changes.
 
+### Stream preferences
+
+The `prefs` handed down the resolution pipeline is built by the player, not resolved from a
+store: `prefs.quality` comes from the player's `quality` config (`lossless` by default —
+sources are expected to degrade the tier themselves onto the best stream that *can* be decoded
+when their backend has no such tier, or the account lacks the entitlement for one),
+`prefs.saveData` from `ctx.device.network().metered`, and `prefs.acceptFormats` from
+`ctx.codec.supportedFormats()`. A source that needs anything else about the request — a
+per-quality URL, a format filter of its own — reads it out of `prefs` in `ruleStream`, and the
+player has no concept of the tiers any given backend carries.
+
 ### Persistence
 
 `playback_state` is written on a 5-second throttle while playing, and immediately on pause, track
