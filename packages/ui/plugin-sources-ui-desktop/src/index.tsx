@@ -23,6 +23,7 @@ import {
   useSourceEditor,
   useSourceImport,
   useSourceTrace,
+  useSources,
   useTracks,
 } from '@BBeBee/plugin-sources/hooks'
 import {
@@ -569,6 +570,12 @@ function TraceList({
             borderLeft: `3px solid ${event.kind === 'error' ? scheme.state.error : scheme.border.subtle}`,
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
+            // A whole value — a response body, a return value — is the thing
+            // the test screen exists to show, but it must not stretch the
+            // page to the height of the body it is showing.
+            ...(event.kind === 'value'
+              ? { maxHeight: 320, overflow: 'auto', background: scheme.bg.overlay }
+              : {}),
           },
         },
         traceLine(event),
@@ -590,11 +597,266 @@ function traceLine(event: TraceEvent): string {
       return `✗ ${event.block ? `${event.block}.${event.field ?? ''} ` : ''}${event.message}`
     case 'result':
       return `✓ ${event.summary}`
+    case 'log':
+      return `· ${event.message}`
+    case 'value':
+      return `${event.label}\n${prettyValue(event.value)}`
   }
 }
 
-export const name = 'plugin-sources-ui-desktop'
+/** Pretty-print JSON bodies for reading; leave anything else exactly as sent. */
+function prettyValue(text: string): string {
+  if (text.length >= 2 && (text.startsWith('{') || text.startsWith('['))) {
+    try {
+      return JSON.stringify(JSON.parse(text), null, 2)
+    } catch {
+      // Not JSON after all — the raw text is the honest answer.
+    }
+  }
+  return text
+}
 
+/* ── the source list ───────────────────────────────────────────────────── */
+
+/**
+ * The imported sources — the hub everything else hangs off.
+ *
+ * Until this screen existed, "Music sources" was a settings contribution with
+ * no view: the Shell filters settings pages by whether a view is registered,
+ * so the entry was invisible and Import, Diagnose and Test were reachable by
+ * nothing but a `ui/navigate` call. Every navigation here is one button.
+ */
+export function SourcesListScreen({ ctx }: { ctx: Context }): ReactElement {
+  const scheme = p()
+  const sources = useSources(ctx)
+
+  return h(
+    'section',
+    { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[4], padding: tokens.space[4] } },
+    h(Text, { variant: 'lg' }, 'Music sources'),
+    h(
+      'div',
+      { style: { display: 'flex', gap: tokens.space[2] } },
+      h(Button, {
+        onPress: () => serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.sourceImport),
+        testID: 'sources-list-import',
+        children: 'Import a source',
+      }),
+    ),
+    sources.length === 0
+      ? h(EmptyState, {
+          title: 'No sources yet',
+          description: 'Import a source string to add a music backend.',
+        })
+      : h(
+          'ul',
+          {
+            'aria-label': 'Imported sources',
+            style: {
+              margin: 0,
+              padding: 0,
+              listStyle: 'none',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: tokens.space[2],
+            },
+          },
+          ...sources.map((source) =>
+            h(
+              'li',
+              {
+                key: source.id,
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: tokens.space[3],
+                  padding: tokens.space[3],
+                  borderRadius: tokens.radius.sm,
+                  background: scheme.bg.raised,
+                },
+              },
+              h(
+                'div',
+                { style: { minWidth: 0 } },
+                h(Text, { variant: 'md' }, source.name),
+                h(Text, { variant: 'sm', tone: 'muted' }, source.sourceUrl),
+                ...(!source.enabled
+                  ? [h(Text, { variant: 'sm', tone: 'muted' }, 'disabled')]
+                  : source.lastError
+                    ? [h(Text, { variant: 'sm', tone: 'muted' }, source.lastError)]
+                    : []),
+              ),
+              h(
+                'div',
+                { style: { display: 'flex', gap: tokens.space[2], flexShrink: 0 } },
+                h(Button, {
+                  variant: 'secondary',
+                  onPress: () => serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.sourceDebug, { sourceId: source.id }),
+                  testID: `sources-list-diagnose-${source.id}`,
+                  children: 'Diagnose',
+                }),
+                h(Button, {
+                  variant: 'secondary',
+                  onPress: () => serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.sourceTest, { sourceId: source.id }),
+                  testID: `sources-list-test-${source.id}`,
+                  children: 'Test',
+                }),
+              ),
+            ),
+          ),
+        ),
+  )
+}
+
+/* ── testing by hand ───────────────────────────────────────────────────── */
+
+/**
+ * One source, exercised by hand.
+ *
+ * Where Diagnose runs the document's own rules, this runs *your* request: one
+ * HTTP call through the source's scoped client (allowlist, cookies and all),
+ * or any script in its sandbox — where the document's own functions are
+ * already loaded — with arguments you choose. The trace shows every `src.log`
+ * line, the HTTP status, and the body or return value whole.
+ */
+export function TestScreen({ ctx, sourceId }: { ctx: Context; sourceId: string }): ReactElement {
+  const trace = useSourceTrace(ctx, sourceId)
+  const [method, setMethod] = useState<'GET' | 'POST'>('GET')
+  const [url, setUrl] = useState(ctx.sources.source(sourceId)?.sourceUrl ?? '')
+  const [headersJson, setHeadersJson] = useState('')
+  const [body, setBody] = useState('')
+  const [code, setCode] = useState("return src.time.now()")
+  const [argsJson, setArgsJson] = useState('{ "key": "test", "page": 1 }')
+  const [requestError, setRequestError] = useState<string | undefined>(undefined)
+
+  const runHttp = () => {
+    setRequestError(undefined)
+    let headers: Record<string, string> | undefined
+    if (headersJson.trim()) {
+      try {
+        const parsed: unknown = JSON.parse(headersJson)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          setRequestError('headers must be a JSON object')
+          return
+        }
+        headers = Object.fromEntries(
+          Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+        )
+      } catch (error) {
+        setRequestError(`headers are not valid JSON: ${error instanceof Error ? error.message : String(error)}`)
+        return
+      }
+    }
+    trace.run({
+      kind: 'http',
+      method,
+      url,
+      ...(headers ? { headers } : {}),
+      ...(method === 'POST' && body ? { body } : {}),
+    })
+  }
+
+  const runJs = () => {
+    setRequestError(undefined)
+    trace.run({ kind: 'js', code, ...(argsJson.trim() ? { argsJson } : {}) })
+  }
+
+  return h(
+    'section',
+    { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[4], padding: tokens.space[4] } },
+    h(Text, { variant: 'lg' }, 'Test a source'),
+    h(
+      Text,
+      { variant: 'sm', tone: 'muted' },
+      'Requests go through this source\'s own client — the host allowlist and cookies apply exactly as they do to its rules.',
+    ),
+
+    h(Text, { variant: 'md' }, 'HTTP request'),
+    h(
+      'div',
+      { style: { display: 'flex', gap: tokens.space[2] } },
+      h(Button, {
+        variant: method === 'GET' ? 'secondary' : 'ghost',
+        onPress: () => setMethod('GET'),
+        testID: 'test-method-get',
+        children: 'GET',
+      }),
+      h(Button, {
+        variant: method === 'POST' ? 'secondary' : 'ghost',
+        onPress: () => setMethod('POST'),
+        testID: 'test-method-post',
+        children: 'POST',
+      }),
+    ),
+    h(TextField, {
+      value: url,
+      onChange: setUrl,
+      placeholder: 'https://…',
+      accessibilityLabel: 'Request URL',
+      testID: 'test-url',
+    }),
+    h(TextField, {
+      value: headersJson,
+      onChange: setHeadersJson,
+      multiline: true,
+      rows: 2,
+      placeholder: '{ "User-Agent": "…" } (optional)',
+      accessibilityLabel: 'Request headers as JSON',
+      testID: 'test-headers',
+    }),
+    method === 'POST'
+      ? h(TextField, {
+          value: body,
+          onChange: setBody,
+          multiline: true,
+          rows: 3,
+          placeholder: 'Request body (optional)',
+          accessibilityLabel: 'Request body',
+          testID: 'test-body',
+        })
+      : null,
+    h(Button, {
+      onPress: runHttp,
+      disabled: trace.running || !url.trim(),
+      loading: trace.running,
+      testID: 'test-http-run',
+      children: 'Send request',
+    }),
+
+    h(Text, { variant: 'md' }, 'Script — the document\'s functions are in scope'),
+    h(TextField, {
+      value: code,
+      onChange: setCode,
+      multiline: true,
+      rows: 6,
+      placeholder: "return getBiliArtist('9469745')",
+      accessibilityLabel: 'Script',
+      testID: 'test-code',
+    }),
+    h(TextField, {
+      value: argsJson,
+      onChange: setArgsJson,
+      multiline: true,
+      rows: 2,
+      placeholder: '{ "key": "…", "page": 1 } (becomes variables)',
+      accessibilityLabel: 'Script arguments as JSON',
+      testID: 'test-args',
+    }),
+    h(Button, {
+      onPress: runJs,
+      disabled: trace.running || !code.trim(),
+      loading: trace.running,
+      testID: 'test-js-run',
+      children: 'Run script',
+    }),
+    requestError ? h(Text, { variant: 'sm', tone: 'muted' }, requestError) : null,
+
+    h(TraceList, { events: trace.events, running: trace.running }),
+  )
+}
+
+export const name = 'plugin-sources-ui-desktop'
 /**
  * Bind a screen to *this* plugin's context, not the shell's.
  *
@@ -630,8 +892,10 @@ export async function apply(ctx: Context) {
   return ctx.effect(function* () {
     yield ctx.ui.registerView(SOURCES_VIEWS.library, bound(ctx, LibraryScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.album, bound(ctx, AlbumScreen))
+    yield ctx.ui.registerView(SOURCES_VIEWS.sourceList, bound(ctx, SourcesListScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceImport, bound(ctx, ImportScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceDebug, bound(ctx, DebugScreen))
+    yield ctx.ui.registerView(SOURCES_VIEWS.sourceTest, bound(ctx, TestScreen))
   }, 'sources-ui-desktop')
 }
 

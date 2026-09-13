@@ -522,7 +522,13 @@ export class DocumentSource {
         put: (key, value) => void this.deps.vars?.put(key, value),
       },
       cookies: hostCookies,
-      ...(this.deps.log ? { log: this.deps.log } : {}),
+      // A document's own log lines reach the app logger as always, and an
+      // active trace as well — on the test screen they are the narration of
+      // what a script did between its requests.
+      log: (message) => {
+        this.deps.log?.(message)
+        this.tracing?.log(message)
+      },
     })
 
     for (const [name, fn] of Object.entries(host.functions)) {
@@ -1091,6 +1097,62 @@ export class DocumentSource {
               ? `resolved to ${handle.seekable ? 'a seekable' : 'a non-seekable'} stream`
               : 'resolved to a local file',
           )
+          break
+        }
+        case 'http': {
+          // The same scoped HTTP a rule's request would use — allowlist,
+          // cookies, rate limits — with the body handed back whole instead of
+          // parsed by a rule. The http line itself comes from `tracedHttp`,
+          // so a request that never answers still shows.
+          const target = parseUrlObject(step.url)
+          this.assertAllowed(target.url)
+          const started = Date.now()
+          const fetched = await fetchDocument(
+            tracedHttp(this.deps.http, collector),
+            {
+              url: target.url,
+              options: {
+                ...target.options,
+                method: step.method,
+                ...(step.headers ? { headers: step.headers } : {}),
+                ...(step.body !== undefined ? { body: step.body } : {}),
+              },
+            },
+            undefined,
+            { sourceId: this.record.id, block: 'debug' },
+          )
+          collector.value(
+            `HTTP ${fetched.status} body (${Date.now() - started}ms, ${fetched.text.length} chars)`,
+            fetched.text,
+          )
+          break
+        }
+        case 'js': {
+          const evaluator = this.js
+          if (!evaluator) {
+            collector.error(new Error('this build has no JavaScript sandbox, so scripts cannot run'))
+            break
+          }
+          let args: Record<string, unknown> = {}
+          if (step.argsJson && step.argsJson.trim()) {
+            let parsed: unknown
+            try {
+              parsed = JSON.parse(step.argsJson)
+            } catch (error) {
+              collector.error(new Error(`arguments are not valid JSON: ${String(error)}`))
+              break
+            }
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+              collector.error(new Error('arguments must be a JSON object — its keys become variables'))
+              break
+            }
+            args = parsed as Record<string, unknown>
+          }
+          const started = Date.now()
+          // `source` in scope, matching what a rule would see; the user's
+          // arguments override it, so a deliberate `source: …` still works.
+          const result = await evaluator(step.code, { source: this.sourceScope(), ...args })
+          collector.value(`return value (${Date.now() - started}ms)`, result)
           break
         }
       }

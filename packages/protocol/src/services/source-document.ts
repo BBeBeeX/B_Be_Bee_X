@@ -288,6 +288,24 @@ export type DebugStep =
   | { kind: 'explore'; url?: string; page?: number }
   | { kind: 'album'; url: string }
   | { kind: 'stream'; urn: string }
+  /**
+   * One raw request through the source's own scoped HTTP — the same
+   * allowlist, cookies and rate limits a rule's request would get, with the
+   * body handed back for reading rather than parsed by a rule.
+   */
+  | {
+      kind: 'http'
+      method: 'GET' | 'POST'
+      url: string
+      headers?: Record<string, string>
+      body?: string
+    }
+  /**
+   * Arbitrary JavaScript in the source's sandbox: `src.*` is installed and
+   * the document's `jsLib` is loaded, so a document's own functions can be
+   * called with hand-picked arguments and the return value read whole.
+   */
+  | { kind: 'js'; code: string; /** JSON object whose keys become scope variables. */ argsJson?: string }
 
 /**
  * Text that has been through the trace redactor.
@@ -336,3 +354,11 @@ export type TraceEvent =
     }
   | { at: number; kind: 'error'; message: Redacted; block?: string; field?: string }
   | { at: number; kind: 'result'; summary: Redacted }
+  /** A line the document itself printed — `src.log(...)`. */
+  | { at: number; kind: 'log'; message: Redacted }
+  /**
+   * A whole value worth reading, not previewing: an HTTP response body, a
+   * debug script's return value. Still redacted and capped — the cap is
+   * generous where a rule preview's is not.
+   */
+  | { at: number; kind: 'value'; label: string; value: Redacted }

@@ -1310,12 +1310,18 @@ importers:
       '@BBeBee/core-fs-node':
         specifier: workspace:*
         version: link:../../core/core-fs-node
+      '@BBeBee/core-http-node':
+        specifier: workspace:*
+        version: link:../../core/core-http-node
       '@BBeBee/core-paths-node':
         specifier: workspace:*
         version: link:../../core/core-paths-node
       '@BBeBee/kernel':
         specifier: workspace:*
         version: link:../../kernel
+      '@BBeBee/plugin-source-runtime':
+        specifier: workspace:*
+        version: link:../../feature/plugin-source-runtime
       '@BBeBee/plugin-sources':
         specifier: workspace:*
         version: link:../../feature/plugin-sources

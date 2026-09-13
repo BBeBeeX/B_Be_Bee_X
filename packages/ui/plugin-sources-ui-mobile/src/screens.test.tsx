@@ -32,7 +32,9 @@ import { DbNode } from '@BBeBee/core-db-node'
 import sourcesPlugin from '@BBeBee/plugin-sources'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import { configureNative } from '@BBeBee/ui-kit-mobile'
-import { LibraryScreen, inject } from './index.js'
+import httpPlugin from '@BBeBee/core-http-node'
+import sourceRuntime from '@BBeBee/plugin-source-runtime'
+import { LibraryScreen, SourcesListScreen, TestScreen, inject } from './index.js'
 
 afterEach(cleanup)
 
@@ -102,6 +104,20 @@ async function harness(): Promise<{ ctx: Context; admin: Context }> {
   await tick()
   if (!scoped) throw new Error('mobile screens harness: no scoped context')
   return { ctx: scoped, admin: root }
+}
+
+/**
+ * The same, plus the source runtime — without it `ctx.sources.debug` reports
+ * "no source" rather than running anything. This build has no sandbox, which
+ * is exactly the mobile situation the test screen has to degrade on.
+ */
+async function harnessWithRuntime(): Promise<{ ctx: Context; admin: Context }> {
+  const { ctx, admin } = await harness()
+  await admin.plugin(httpPlugin, {})
+  await admin.plugin(sourceRuntime, {})
+  await tick()
+  await tick()
+  return { ctx, admin }
 }
 
 async function withTrack(admin: Context): Promise<void> {
@@ -196,5 +212,67 @@ describe('LibraryScreen on mobile', () => {
     })
 
     expect(container.textContent).toContain('No favorites yet')
+  })
+})
+
+/* ── the source list and the test screen ────────────────────────────────── */
+
+const EXAMPLE_DOC = {
+  sourceUrl: 'https://music.example.org',
+  sourceName: 'Example',
+  ruleStream: { url: '={{source.url}}/stream' },
+}
+
+describe('SourcesListScreen on mobile', () => {
+  it('lists the imported sources', async () => {
+    const { ctx, admin } = await harness()
+    await admin.sources.import(JSON.stringify(EXAMPLE_DOC))
+    await tick()
+
+    const { container } = render(h(SourcesListScreen, { ctx }))
+    await act(async () => {
+      await tick()
+    })
+
+    expect(container.textContent).toContain('Example')
+    expect(container.textContent).toContain('https://music.example.org')
+    expect(container.textContent).toContain('Test')
+  })
+
+  it('renders an empty list as an empty state, not a blank screen', async () => {
+    const { ctx } = await harness()
+    const { container } = render(h(SourcesListScreen, { ctx }))
+    await act(async () => {
+      await tick()
+    })
+    expect(container.textContent).toContain('No sources yet')
+  })
+})
+
+describe('TestScreen on mobile', () => {
+  it('shows both probes and streams the script step into the trace', async () => {
+    const { ctx, admin } = await harnessWithRuntime()
+    await admin.sources.import(JSON.stringify(EXAMPLE_DOC))
+    await tick()
+    const sourceId = admin.sources.sources[0]!.id
+
+    const { container } = render(h(TestScreen, { ctx, sourceId }))
+    await act(async () => {
+      await tick()
+    })
+
+    expect(container.textContent).toContain('HTTP request')
+    expect(container.textContent).toContain('Script')
+
+    // This build has no sandbox — the honest mobile situation today — so
+    // running the script reports that inline rather than failing silently.
+    const run = container.querySelector('[data-testid="test-js-run"]') as HTMLElement
+    expect(run, 'the run button is on screen').toBeTruthy()
+    await act(async () => {
+      run.click()
+      await tick()
+      await tick()
+    })
+    expect(container.textContent).toContain('no JavaScript sandbox')
   })
 })

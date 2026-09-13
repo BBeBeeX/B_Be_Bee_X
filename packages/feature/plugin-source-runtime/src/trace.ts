@@ -81,6 +81,29 @@ export class TraceCollector {
     this.push({ at: Date.now(), kind: 'result', summary: redactForTrace(summary, this.secrets) })
   }
 
+  /** A line the document printed itself — `src.log(...)` in an `@js:` block. */
+  log(message: string): void {
+    this.push({
+      at: Date.now(),
+      kind: 'log',
+      message: redactForTrace(message, this.secrets),
+    })
+  }
+
+  /**
+   * A whole value worth reading — an HTTP response body, a debug script's
+   * return value. Capped far more generously than a rule preview, because on
+   * the test screen the body *is* what the user came to read.
+   */
+  value(label: string, value: unknown): void {
+    this.push({
+      at: Date.now(),
+      kind: 'value',
+      label,
+      value: redactForTrace(valueTextOf(value), this.secrets),
+    })
+  }
+
   close(): void {
     this.closed = true
     const waiter = this.waiting
@@ -160,6 +183,9 @@ export function tracedHttp(http: HttpService, collector: TraceCollector): HttpSe
 /** Cap on one traced value. A trace is for reading, not for archiving. */
 const PREVIEW = 400
 
+/** Cap on a whole value — a body or return value shown on the test screen. */
+const VALUE = 20_000
+
 function preview(value: unknown): string {
   if (typeof value === 'string') return value.slice(0, PREVIEW)
   if (value === undefined) return ''
@@ -168,6 +194,19 @@ function preview(value: unknown): string {
     return JSON.stringify(value).slice(0, PREVIEW)
   } catch {
     return String(value).slice(0, PREVIEW)
+  }
+}
+
+/** The full text of a value, within the whole-value cap. */
+function valueTextOf(value: unknown): string {
+  if (typeof value === 'string') return value.slice(0, VALUE)
+  if (value === undefined) return 'undefined'
+  if (value === null) return 'null'
+  try {
+    const text = JSON.stringify(value)
+    return text === undefined ? String(value) : text.slice(0, VALUE)
+  } catch {
+    return String(value).slice(0, VALUE)
   }
 }
 

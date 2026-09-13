@@ -27,6 +27,8 @@
   },
   "devDependencies": {
     "@BBeBee/plugin-sources": "workspace:*",
+    "@BBeBee/plugin-source-runtime": "workspace:*",
+    "@BBeBee/core-http-node": "workspace:*",
     "@types/react": "^19.2.0",
     "vitest": "^4.1.11",
     "@BBeBee/core-paths-node": "workspace:*",

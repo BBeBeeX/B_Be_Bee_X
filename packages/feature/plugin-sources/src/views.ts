@@ -23,6 +23,13 @@ export const SOURCES_VIEWS = {
    * that a navigation exercise.
    */
   sourceDebug: 'sources.debug',
+  /**
+   * One source, exercised by hand: a raw request through its scoped HTTP, or
+   * a script run in its sandbox with custom arguments. Where `sourceDebug`
+   * answers "which rule failed", this answers "what does this backend
+   * actually say, and what does my code return".
+   */
+  sourceTest: 'sources.test',
 } as const
 
 export const SOURCES_ROUTES = {
@@ -30,4 +37,5 @@ export const SOURCES_ROUTES = {
   album: 'sources.album',
   sourceImport: 'sources.import',
   sourceDebug: 'sources.debug',
+  sourceTest: 'sources.test',
 } as const

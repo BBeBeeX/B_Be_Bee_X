@@ -348,6 +348,13 @@ export class Sources extends Service implements SourcesService {
           title: 'Diagnose a source',
           order: 0,
         })
+        yield scoped.ui.contribute({
+          kind: 'route',
+          id: SOURCES_ROUTES.sourceTest,
+          path: '/sources/:id/test',
+          title: 'Test a source',
+          order: 0,
+        })
       }, 'sources-ui-contributions'),
     )
 

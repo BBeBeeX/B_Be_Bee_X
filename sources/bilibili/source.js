@@ -5,8 +5,26 @@ const WBI_ENC_TAB = [
   36, 20, 34, 44, 52
 ];
 
+// One-line preview of a return value, for src.log. Long strings and objects
+// are clipped so a search page full of rows does not flood the log buffer.
+function previewValue(v, limit) {
+  limit = limit || 240;
+  var s;
+  try {
+    s = typeof v === 'string' ? v : JSON.stringify(v);
+  } catch (e) {
+    s = String(v);
+  }
+  if (s === undefined) s = 'undefined';
+  if (s.length > limit) s = s.slice(0, limit) + '…(' + s.length + ' chars)';
+  return s;
+}
+
 function cleanTitle(s) {
-  if (!s) return '';
+  if (!s) {
+    src.log('cleanTitle(' + previewValue(s) + ') → "" (empty input)');
+    return '';
+  }
   let str = String(s)
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -22,26 +40,52 @@ function cleanTitle(s) {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ');
-  return str.trim();
+  src.log('cleanTitle(' + previewValue(s) + ') → ' + previewValue(str));
+  return str;
 }
 
 function cleanPic(pic) {
-  if (!pic) return '';
-  return pic.startsWith('http') ? pic : 'https:' + (pic.startsWith('//') ? '' : '//') + pic;
+  if (!pic) {
+    src.log('cleanPic → "" (empty input)');
+    return '';
+  }
+  var out = pic.startsWith('http') ? pic : 'https:' + (pic.startsWith('//') ? '' : '//') + pic;
+  src.log('cleanPic(' + previewValue(pic) + ') → ' + previewValue(out));
+  return out;
 }
 
 function parseDuration(d) {
-  if (d == null) return 0;
-  if (typeof d === 'number') return Math.round(d * 1000);
-  const parts = String(d).trim().split(':').map(p => parseInt(p, 10) || 0);
-  if (parts.length === 3) return ((parts[0] * 3600) + (parts[1] * 60) + parts[2]) * 1000;
-  if (parts.length === 2) return ((parts[0] * 60) + parts[1]) * 1000;
-  return (parts[0] || 0) * 1000;
+  if (d == null) {
+    src.log('parseDuration(' + previewValue(d) + ') → 0 (empty input)');
+    return 0;
+  }
+  if (typeof d === 'number') {
+    var ms = Math.round(d * 1000);
+    src.log('parseDuration(' + d + 's) → ' + ms + 'ms');
+    return ms;
+  }
+  var parts = String(d).trim().split(':').map(p => parseInt(p, 10) || 0);
+  if (parts.length === 3) {
+    var ms3 = ((parts[0] * 3600) + (parts[1] * 60) + parts[2]) * 1000;
+    src.log('parseDuration("' + d + '") → ' + ms3 + 'ms');
+    return ms3;
+  }
+  if (parts.length === 2) {
+    var ms2 = ((parts[0] * 60) + parts[1]) * 1000;
+    src.log('parseDuration("' + d + '") → ' + ms2 + 'ms');
+    return ms2;
+  }
+  var ms1 = (parts[0] || 0) * 1000;
+  src.log('parseDuration("' + d + '") → ' + ms1 + 'ms');
+  return ms1;
 }
 
 async function getWbiMixinKey() {
   const cached = src.cache.get('bili_wbi_mixin_key');
-  if (cached) return String(cached);
+  if (cached) {
+    src.log('getWbiMixinKey → cached key ' + previewValue(cached));
+    return String(cached);
+  }
 
   let rawKey = 'ea1db124c0474257a4be650bd4024229ffd086a47a8e4832a286561f211c8114';
   try {
@@ -62,6 +106,7 @@ async function getWbiMixinKey() {
     mixinKey += rawKey[WBI_ENC_TAB[i]] || '';
   }
   src.cache.put('bili_wbi_mixin_key', mixinKey, 3600000);
+  src.log('getWbiMixinKey → new mixin key ' + previewValue(mixinKey));
   return mixinKey;
 }
 
@@ -79,7 +124,9 @@ async function signWbiQuery(params) {
   }
   const queryStr = pairs.join('&');
   const w_rid = src.crypto.md5(queryStr + mixinKey);
-  return queryStr + '&w_rid=' + w_rid;
+  const signed = queryStr + '&w_rid=' + w_rid;
+  src.log('signWbiQuery → ' + previewValue(signed));
+  return signed;
 }
 
 async function biliSearchUrl(key, page) {
@@ -88,7 +135,9 @@ async function biliSearchUrl(key, page) {
     search_type: 'video',
     page: page || 1,
   });
-  return 'https://api.bilibili.com/x/web-interface/wbi/search/type?' + query;
+  const url = 'https://api.bilibili.com/x/web-interface/wbi/search/type?' + query;
+  src.log('biliSearchUrl("' + previewValue(key) + '", ' + (page || 1) + ') → ' + url);
+  return url;
 }
 
 async function resolveBiliStream(track, prefs) {
@@ -102,6 +151,7 @@ async function resolveBiliStream(track, prefs) {
     } catch (e) {}
   }
   if (!cid) {
+    src.log('resolveBiliStream: no cid for bvid ' + bvid + ' — throwing');
     throw new Error('cannot resolve cid for bvid ' + bvid);
   }
 
@@ -156,7 +206,11 @@ async function resolveBiliStream(track, prefs) {
   }
 
   const url = chosen?.baseUrl || chosen?.base_url || chosen?.backupUrl?.[0] || chosen?.backup_url?.[0];
-  if (!url) throw new Error('No playable audio stream returned from Bilibili');
+  if (!url) {
+    src.log('resolveBiliStream(' + bvid + ', qn=' + (prefs?.quality || 'best') + ') → no audio stream in response (' + audios.length + ' candidates) — throwing');
+    throw new Error('No playable audio stream returned from Bilibili');
+  }
+  src.log('resolveBiliStream(' + bvid + ') → ' + previewValue(url) + ' [' + (chosen.qTier || '?') + '/' + (chosen.format || '?') + ']');
   return url;
 }
 
@@ -170,14 +224,23 @@ async function getBiliLyrics(track) {
       cid = pJson?.data?.[0]?.cid;
     } catch (e) {}
   }
-  if (!cid) return '';
+  if (!cid) {
+    src.log('getBiliLyrics(' + bvid + ') → "" (no cid)');
+    return '';
+  }
 
   const subRes = await src.get('https://api.bilibili.com/x/player/wbi/v2?cid=' + cid + '&bvid=' + bvid);
   const subData = src.parse.json(subRes.body)?.data?.subtitle?.subtitles;
-  if (!Array.isArray(subData) || subData.length === 0) return '';
+  if (!Array.isArray(subData) || subData.length === 0) {
+    src.log('getBiliLyrics(' + bvid + ') → "" (video has no subtitles)');
+    return '';
+  }
 
   const subUrl = subData[0]?.subtitle_url;
-  if (!subUrl) return '';
+  if (!subUrl) {
+    src.log('getBiliLyrics(' + bvid + ') → "" (subtitle entry has no url)');
+    return '';
+  }
 
   let fullUrl = subUrl;
   if (subUrl.startsWith('//')) {
@@ -187,9 +250,12 @@ async function getBiliLyrics(track) {
   }
   const contentRes = await src.get(fullUrl);
   const body = src.parse.json(contentRes.body)?.body;
-  if (!Array.isArray(body)) return '';
+  if (!Array.isArray(body)) {
+    src.log('getBiliLyrics(' + bvid + ') → "" (subtitle body is not a list)');
+    return '';
+  }
 
-  return body
+  const lrc = body
     .filter(item => item && typeof item.from === 'number')
     .map(item => {
       const mins = Math.floor(item.from / 60).toString().padStart(2, '0');
@@ -197,6 +263,8 @@ async function getBiliLyrics(track) {
       return '[' + mins + ':' + secs + ']' + (item.content || '');
     })
     .join('\\n');
+  src.log('getBiliLyrics(' + bvid + ') → ' + body.length + ' line(s)');
+  return lrc;
 }
 
 async function getBiliQrCode() {
@@ -208,8 +276,10 @@ async function getBiliQrCode() {
   });
   const data = src.parse.json(res.body);
   if (data.code !== 0 || !data.data) {
+    src.log('getBiliQrCode → failed: ' + (data.message || data.code));
     throw new Error('Failed to generate Bilibili QR code: ' + (data.message || data.code));
   }
+  src.log('getBiliQrCode → qr key ' + previewValue(data.data.qrcode_key));
   return {
     url: data.data.url,
     key: data.data.qrcode_key,
@@ -227,16 +297,20 @@ async function pollBiliQrCode(key) {
   const data = json?.data;
   const pollCode = data?.code;
   if (pollCode === 0) {
+    src.log('pollBiliQrCode → confirmed');
     return {
       state: 'confirmed',
       token: data.refresh_token,
       refresh_token: data.refresh_token,
     };
   } else if (pollCode === 86038) {
+    src.log('pollBiliQrCode → expired');
     return { state: 'expired' };
   } else if (pollCode === 86090) {
+    src.log('pollBiliQrCode → scanned, waiting for confirm');
     return { state: 'scanned' };
   } else {
+    src.log('pollBiliQrCode → pending (code ' + pollCode + ')');
     return { state: 'pending' };
   }
 }
@@ -244,6 +318,7 @@ async function pollBiliQrCode(key) {
 async function refreshBiliCookie() {
   const refreshCsrf = (await src.vars.get('refresh_token')) || (await src.vars.get('bili_refresh_token'));
   if (!refreshCsrf) {
+    src.log('refreshBiliCookie → no refresh_token in vars — throwing');
     throw new Error('No refresh_token found');
   }
 
@@ -256,6 +331,7 @@ async function refreshBiliCookie() {
   });
   const info = src.parse.json(infoRes.body);
   if (info.code !== 0) {
+    src.log('refreshBiliCookie → cookie/info failed: ' + (info.message || info.code));
     throw new Error('cookie/info check failed: ' + (info.message || info.code));
   }
   const timestamp = info.data?.timestamp || src.time.now();
@@ -281,6 +357,7 @@ async function refreshBiliCookie() {
   });
   const match = correspondRes.body.match(/<div id="1-name">\s*([\s\S]*?)\s*<\/div>/);
   if (!match) {
+    src.log('refreshBiliCookie → refresh_csrf not found in correspond page');
     throw new Error('refresh_csrf not found in correspond page');
   }
   const refreshCsrfVal = match[1].trim();
@@ -304,6 +381,7 @@ async function refreshBiliCookie() {
   );
   const refreshData = src.parse.json(refreshPostRes.body);
   if (refreshData.code !== 0) {
+    src.log('refreshBiliCookie → refresh failed: ' + (refreshData.message || refreshData.code));
     throw new Error('Cookie refresh failed: ' + (refreshData.message || refreshData.code));
   }
   const newRefreshToken = refreshData.data?.refresh_token;
@@ -325,6 +403,7 @@ async function refreshBiliCookie() {
     }
   );
 
+  src.log('refreshBiliCookie → refreshed' + (newRefreshToken ? ' (new token stored)' : ' (kept existing token)'));
   return {
     token: newRefreshToken || refreshCsrf,
     refresh_token: newRefreshToken || refreshCsrf,
@@ -415,13 +494,15 @@ async function getBiliArtist(id) {
     }
   } catch (e) {}
 
-  return {
+  const artist = {
     name,
     bio,
     artwork: face,
     albums,
     topTracks,
   };
+  src.log('getBiliArtist(' + uid + ') → ' + albums.length + ' album(s), ' + topTracks.length + ' track(s), name=' + previewValue(name));
+  return artist;
 }
 
 async function getBiliPlaylist(id, page) {
@@ -442,7 +523,7 @@ async function getBiliPlaylist(id, page) {
     const archives = data?.archives || [];
     const total = data?.page?.total || archives.length;
     const hasMore = pn * ps < total;
-    return {
+    const result = {
       id: sid,
       name: meta.name || '',
       artwork: cleanPic(meta.cover || ''),
@@ -460,6 +541,8 @@ async function getBiliPlaylist(id, page) {
       cursor: hasMore ? String(pn + 1) : undefined,
       trackCount: total,
     };
+    src.log('getBiliPlaylist(season ' + seasonId + ', page ' + pn + ') → ' + result.items.length + ' item(s), hasMore=' + hasMore + ', name=' + previewValue(result.name));
+    return result;
   } else if (sid.startsWith('bili_series_')) {
     const parts = sid.replace(/^bili_series_/, '').split('_');
     const mid = parts[0];
@@ -475,7 +558,7 @@ async function getBiliPlaylist(id, page) {
     const archives = data?.archives || [];
     const total = data?.page?.total || archives.length;
     const hasMore = pn * ps < total;
-    return {
+    const result = {
       id: sid,
       name: meta.name || '',
       artwork: cleanPic(meta.cover || ''),
@@ -492,6 +575,8 @@ async function getBiliPlaylist(id, page) {
       cursor: hasMore ? String(pn + 1) : undefined,
       trackCount: total,
     };
+    src.log('getBiliPlaylist(series ' + seriesId + ', page ' + pn + ') → ' + result.items.length + ' item(s), hasMore=' + hasMore + ', name=' + previewValue(result.name));
+    return result;
   } else {
     const mediaId = sid.replace(/^bili_collect_/, '');
     const res = await src.get('https://api.bilibili.com/x/v3/fav/resource/list?media_id=' + mediaId + '&pn=' + pn + '&ps=' + ps, {
@@ -504,7 +589,7 @@ async function getBiliPlaylist(id, page) {
     const info = data?.info || {};
     const medias = data?.medias || [];
     const hasMore = data?.has_more || false;
-    return {
+    const result = {
       id: sid,
       name: info.title || '',
       artwork: cleanPic(info.cover || ''),
@@ -524,11 +609,14 @@ async function getBiliPlaylist(id, page) {
       cursor: hasMore ? String(pn + 1) : undefined,
       trackCount: info.media_count,
     };
+    src.log('getBiliPlaylist(collect ' + mediaId + ', page ' + pn + ') → ' + result.items.length + ' item(s), hasMore=' + hasMore + ', name=' + previewValue(result.name));
+    return result;
   }
 }
 
 async function getBiliLibraryList(kind, page) {
   if (kind !== 'playlist') {
+    src.log('getBiliLibraryList(' + kind + ') → 0 item(s) (kind not supported)');
     return { items: [], hasMore: false };
   }
 
@@ -541,6 +629,7 @@ async function getBiliLibraryList(kind, page) {
   const navData = src.parse.json(navRes.body);
   const mid = navData?.data?.mid;
   if (!mid) {
+    src.log('getBiliLibraryList(playlist) → 0 item(s) (not signed in, no mid)');
     return { items: [], hasMore: false };
   }
 
@@ -582,9 +671,11 @@ async function getBiliLibraryList(kind, page) {
     }
   } catch (e) {}
 
-  return {
+  const libraryResult = {
     items,
     hasMore: false,
     total: items.length,
   };
+  src.log('getBiliLibraryList(playlist) → ' + items.length + ' list(s) for mid ' + mid);
+  return libraryResult;
 }
