@@ -95,6 +95,8 @@ async function harness(state: Partial<TransportState> = {}, queue: QueueItem[] =
     setVolume = (v: number) => void calls.push(`volume:${v}`)
     setMuted = (m: boolean) => void calls.push(`muted:${m}`)
     playNow = async (urns: string[]) => void calls.push(`playNow:${urns.join(',')}`)
+    playFromContext = async (urn: string, contextUrns: readonly string[] = []) =>
+      void calls.push(`jump:${urn}${contextUrns.length ? `|${contextUrns.join(',')}` : ''}`)
   }
 
   class UiStub extends Service {
@@ -209,12 +211,22 @@ describe('QueueScreen on mobile', () => {
     expect(container.textContent).toContain('Nothing queued')
   })
 
-  it('renders queue items when queue has tracks', async () => {
-    const { ctx } = await harness(
+  it('renders queue items and jumps to a tapped row instead of re-queueing it', async () => {
+    const { ctx, calls } = await harness(
       { currentItemId: 'q-1' },
-      [{ id: 'q-1', trackUrn: 'BBeBee:local:track:1', addedBy: 'user' }],
+      [
+        { id: 'q-1', trackUrn: 'BBeBee:local:track:1', addedBy: 'user' },
+        { id: 'q-2', trackUrn: 'BBeBee:local:track:2', addedBy: 'user' },
+      ],
     )
     const { container } = render(h(QueueScreen, { ctx }))
     expect(container.textContent).toContain('BBeBee:local:track:1')
+
+    const row = container.querySelector('[role="listitem"] [data-host]') as HTMLElement
+    expect(row, 'the queue row is tappable').toBeTruthy()
+    await act(async () => {
+      row.click()
+    })
+    expect(calls).toContain('jump:BBeBee:local:track:1')
   })
 })

@@ -147,6 +147,7 @@ export interface PlayerService {
   // Queue
   readonly queue: readonly QueueItem[]
   playNow(urns: string[], opts?: { startIndex?: number; context?: QueueItem['sourceContext'] }): Promise<void>
+  playFromContext(urn: string, contextUrns?: readonly string[], opts?: { startIndex?: number; context?: QueueItem['sourceContext'] }): Promise<void>
   enqueueNext(urns: string[]): void
   enqueueLast(urns: string[]): void
   removeItems(ids: string[]): void
@@ -178,6 +179,11 @@ Behaviours worth pinning down, because they are where players feel wrong:
 
 - **`previous()`** restarts the current track if position > 3000 ms, otherwise goes back. The
   threshold is configurable and defaults to what users expect from every other player.
+- **`playFromContext(urn, contextUrns)`** is what a tap on a track row means. If the queue
+  already holds the track, the queue is kept and playback jumps to that entry — a queue the
+  user has built is never silently reordered or replaced. If it does not, the list the row was
+  tapped in (`contextUrns`: the album's tracks, the whole local library) becomes the queue and
+  playback starts at the tap; with no usable context the track plays alone.
 - **Shuffle** is a persisted **seed plus a permutation**, not a random pick each time. This makes
   the shuffled order stable across restarts, makes `previous()` meaningful, and lets the upcoming
   queue be displayed truthfully.

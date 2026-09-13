@@ -644,6 +644,45 @@ export class Player extends Service implements PlayerService {
     if (entry) await this.start(entry, { autoplay: true })
   }
 
+  async playFromContext(
+    urn: string,
+    contextUrns: readonly string[] = [],
+    opts: PlayNowOptions = {},
+  ): Promise<void> {
+    const queued = this.entryForUrn(urn)
+    if (queued) {
+      // Already queued: the queue *is* the context, and the tap means "play
+      // that one" — reordering or replacing it would throw away what the user
+      // had built. A jump is what next()/previous() would land on.
+      this.ownCtx.logger.info('player: playFromContext jumps to queued %s (itemId: %s)', urn, queued.item.id)
+      this.pausedByInterruption = false
+      this.playIntent = true
+      await this.start(queued, { autoplay: true })
+      return
+    }
+
+    // Not queued: the tapped row stands for the list it was tapped in — the
+    // album, the local library — and that list becomes the queue, starting at
+    // the tap. Without a usable context (or a track the context does not
+    // actually contain), the track plays alone rather than starting somewhere
+    // the user did not point at.
+    const at = contextUrns.indexOf(urn)
+    if (contextUrns.length > 0 && at >= 0) {
+      await this.playNow([...contextUrns], { ...opts, ...(opts.startIndex === undefined ? { startIndex: at } : {}) })
+      return
+    }
+    await this.playNow([urn], opts)
+  }
+
+  /** The first queue entry for a track, in play order — not row order. */
+  private entryForUrn(urn: string): QueueEntry | undefined {
+    for (const id of this.model.order()) {
+      const entry = this.model.entry(id)
+      if (entry?.item.trackUrn === urn) return entry
+    }
+    return undefined
+  }
+
   enqueueNext(urns: string[]): void {
     const items = this.beforeEnqueue(urns).map((urn) => this.newItem(urn, 'user'))
     if (items.length === 0) return
@@ -769,6 +808,11 @@ export class Player extends Service implements PlayerService {
       this.attach(ready, entry, opts)
       return
     }
+
+    // A buffer for some *other* item is stale from here on — it would sit in
+    // memory and block prefetching until the next queue mutation, which a
+    // jump to an out-of-order item never performs.
+    this.cancelPrefetch()
 
     try {
       const handle = await this.resolveStream(entry.item.trackUrn)

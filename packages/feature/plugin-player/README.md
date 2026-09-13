@@ -31,6 +31,7 @@ Layer 4（feature）— `ctx.player`：transport（走带控制）、queue（队
 | `next()` / `previous()` | previous 在位置 > `previousThresholdMs`（默认 3s）时先 seek(0)"重播当前曲" |
 | `setVolume/setMuted/setRepeat/setShuffle` | 委托 `ctx.audio` + 状态 + 持久化；shuffle 开启时生成新种子 |
 | `playNow(urns, opts?)` | **整队替换**：经 `player/before-enqueue` waterfall 过滤 → 换队列 → 从 `startIndex` 开始播 |
+| `playFromContext(urn, contextUrns?, opts?)` | **列表语境的点播**：URN 已在队列（按播放序，含 shuffle）→ 原队列不动、跳到该项；不在 → 用 `contextUrns`（专辑/本地库等被点击行所属的列表）整队替换并从点击处播；语境缺失或不含该曲 → 单曲播放 |
 | `enqueueNext / enqueueLast / removeItems / moveItem / clearQueue` | 队列操作。删到正在播的那首则 `stop()`，不悄悄跳曲；`moveItem` 只写一行（fractional index 的回报） |
 | `upcoming()` / `refresh()` | 播放序的"接下来"；1 Hz 时钟的一跳（发 `player/position`、驱动 prefetch/crossfade/节流持久化） |
 

@@ -957,7 +957,7 @@ export class SourceFormatError extends Error {
 | `NotFoundError` | Skip. Mark `tracks.available = 0` | Track leaves library listings (rows kept, so URN-keyed reads still work) |
 | `NetworkError` | Exponential backoff, 3 attempts, then pause | "Offline" banner; queue preserved |
 | `ProviderError` | Skip, log with the backend's raw payload | Generic error with a "copy details" action |
-| `RuleError` | Skip. Increment the source's failure counter | **"<source> needs updating"**, with a one-tap route into the debug view ([§10](#10-diagnosing-a-broken-source)) |
+| `RuleError` | Skip. Increment the source's failure counter | **"<source> needs updating"**, with a one-tap route into the test view ([§10](#10-diagnosing-a-broken-source)) |
 
 An error is never allowed to clear the queue. Every failure path preserves what the user was
 listening to, so regaining connectivity — or fixing a rule — means pressing play rather than
@@ -1094,6 +1094,11 @@ export interface ImportReport {
 }
 ```
 
+> ⚠️ A rejection's issues are what the import screen renders — so a failure the gate or the
+> driver produced (a value SQLite will not bind, a capability refusal) rides along **in the
+> issues** as `could not be stored: <cause>`, and is logged. An opaque "could not be stored"
+> with nothing to investigate was a bug report that wrote itself and helped no one.
+
 **Where a string can come from.** All four land in the same `import()`:
 
 | Input | Handling |
@@ -1145,39 +1150,68 @@ canonical search, take the first result, resolve its stream, and HEAD it. It rec
 [§7](#7-errors). Running it over every source is one command and the first thing to do when
 "search stopped working".
 
-**`debug`** — the step-by-step trace, and the direct equivalent of legado's source-debug screen:
+**`debug`** — run one feature of one source and stream everything it did. This is the transport
+behind the **test screen**: a selector picks which imported source the page tests, and each
+feature the source actually implements gets its own test area — the list of areas *is* the list
+of features, because a source without a `ruleAlbum` block has no album lookup to offer. Two areas
+belong to no document and are always there: a raw HTTP request and an arbitrary script.
 
 ```ts
 export type DebugStep =
   | { kind: 'search'; text: string; page?: number }
-  | { kind: 'explore'; url?: string; page?: number }
-  | { kind: 'album'; url: string }
-  | { kind: 'stream'; urn: string }
+  | { kind: 'browse'; nodeId?: string; page?: number }
+  | { kind: 'album'; id: string }
+  | { kind: 'artist'; id: string }
+  | { kind: 'playlist'; id: string; page?: number }
+  | { kind: 'lyrics'; id: string }
+  | { kind: 'library'; list: 'track' | 'album' | 'artist' | 'playlist'; page?: number }
+  | { kind: 'stream'; id: string; quality?: StreamQuality }
+  | { kind: 'http'; method: 'GET' | 'POST'; url: string
+      headers?: Record<string, string>; body?: string }
+  | { kind: 'js'; code: string; argsJson?: string }
 
 export type TraceEvent =
   | { at: number; kind: 'http'; method: string; url: string; status: number; ms: number; bytes: number }
-  | { at: number; kind: 'rule'; block: string; field: string; engine: string; rule: string
-      input: string; output: string; ms: number }        // input/output truncated and redacted
-  | { at: number; kind: 'error'; error: SourceError }
+  | { at: number; kind: 'error'; message: string; block?: string; field?: string }
   | { at: number; kind: 'result'; summary: string }
+  | { at: number; kind: 'log'; message: string }                  // a src.log(...) line from the document
+  | { at: number; kind: 'value'; label: string; value: string }   // a whole output, redacted, capped
 ```
 
-Rendered as a scrollable trace where every rule shows what it received, what it produced, and how
-long it took. Three properties are what make it useful rather than decorative:
+The `http` step is one raw request through the source's own scoped client — allowlist, cookies
+and rate limits exactly as its rules get them — with the body handed back for reading. The `js`
+step runs arbitrary script in the source's sandbox, where the document's `jsLib` functions are
+already loaded and the JSON arguments become scope variables. Together they are how an author
+pokes a backend by hand.
 
-- **Every step is visible, including the ones that worked.** The failure is usually two steps
-  before the empty result.
-- **It is editable in place.** The debug screen is the source editor: change a rule, re-run the
-  step, keep the rest of the trace. A fix is seconds, not a re-import cycle.
+The page is two columns: what you run on the left, what came back on the right — each scrolling
+on its own. Four properties are what make the results useful rather than decorative:
+
+- **It streams.** A request to a server that has stopped answering shows as an `http` line with
+  status 0 and nothing after it — which *is* the diagnosis. Collecting first would show nothing
+  until the run gave up.
+- **The output is shown whole.** A feature's answer and every response body land as a `value`
+  event — capped far more generously than a rule line was (20 KB) — and a parseable body renders
+  as a collapsible JSON tree (`JsonTree`, in both kits), because the shape is what a reader scans.
+  Bodies reach the trace because `fetchDocument` mirrors the decoded text out as it reads it
+  (`FetchSite.onBody`): the response's text is consumed exactly once, so there is no second read
+  to take without stealing it from the rule that parses next.
+- **A missing feature is an answer, not a crash.** A step whose document has no matching rule
+  block reports "this source does not implement …" in the trace.
 - **It redacts.** Credentials, cookies, and `source.var` never appear in a trace, because the
   trace is the thing users paste into a forum thread asking for help. This is a **type**
   obligation, not a convention: every user-derived field of `TraceEvent` is `Redacted`, which only
   the redactor produces, so a URL carrying `{{source.var}}` — the common case, not the exotic one
-  — cannot reach a trace by being forgotten about.
+  — cannot reach a trace by being forgotten about. A document's own `src.log(...)` lines are
+  mirrored into the trace as `log` events, through the same redactor.
 
-**Reporting upstream.** "Copy trace" produces the source's id, the failing rule, the redacted
-input excerpt, and the app version — everything a source author needs to fix their document, and
-nothing about the user.
+**Editing.** The document is not edited on this screen: a fix is a re-import, which dedupes on
+`sourceUrl` and keeps the id — every URN, cached row and cookie jar survives it
+([§9](#9-importing-updating-and-sharing)).
+
+**Reporting upstream.** A trace carries the source's id, the failing step's block and field, the
+redacted excerpts, and the whole outputs — everything a source author needs to fix their document,
+and nothing about the user.
 
 ---
 

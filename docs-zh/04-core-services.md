@@ -646,7 +646,7 @@ export interface LogTransport {
 
 > ⚠️ **脱敏是强制的。** 传输端会对 `meta` 与 `message` 跑一个脱敏器，剔除键名为
 > `token`、`password`、`authorization`、`cookie` 或 `refresh_token` 的内容，并重写 URL
-> 上的查询字符串。音源规则动辄把凭据放进请求头与查询字符串，而规则追踪器
+> 上的查询字符串。音源规则动辄把凭据放进请求头与查询字符串，而测试界面的追踪
 > （[06 §10](./06-music-sources.md#10-诊断一个坏掉的源)）存在的意义就是被复制进
 > 论坛帖子 —— 所以同一个脱敏器也跑在追踪记录上，而不只是日志上。
 

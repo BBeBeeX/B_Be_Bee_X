@@ -310,11 +310,10 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
         // catalogue read the row does for itself in a later milestone.
         track: { urn: item.trackUrn, title: item.trackUrn, artists: [] } as Track,
         active: item.id === state.currentItemId,
-        // `PlayerService` has no "jump to this queue item" today, so the row
-        // plays its track rather than pretending to reposition the queue —
-        // an affordance that silently does the wrong thing is worse than a
-        // narrower one that does the right thing.
-        onPress: () => void ctx.player.playNow([item.trackUrn]),
+        // A row tap means "play that one", and the track is in the queue by
+        // definition — so playFromContext jumps to it without touching the
+        // queue the user already has.
+        onPress: () => void ctx.player.playFromContext(item.trackUrn),
       }),
   })
 }

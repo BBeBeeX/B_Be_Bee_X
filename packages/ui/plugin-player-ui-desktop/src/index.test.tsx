@@ -53,6 +53,8 @@ async function harness(state: Partial<TransportState> = {}, queue: QueueItem[] =
     setVolume = (v: number) => void calls.push(`volume:${v}`)
     setMuted = (m: boolean) => void calls.push(`muted:${m}`)
     playNow = async (urns: string[]) => void calls.push(`playNow:${urns.join(',')}`)
+    playFromContext = async (urn: string, contextUrns: readonly string[] = []) =>
+      void calls.push(`jump:${urn}${contextUrns.length ? `|${contextUrns.join(',')}` : ''}`)
   }
 
   const ctx = new Context()
@@ -181,13 +183,20 @@ describe('QueueScreen', () => {
     expect(out).toContain('library')
   })
 
-  it('lists the queue and marks the playing item', async () => {
-    const { ctx } = await harness({ currentItemId: 'b' }, [
+  it('lists the queue, marks the playing item, and jumps to a tapped row', async () => {
+    const { ctx, calls } = await harness({ currentItemId: 'b' }, [
       { id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' },
       { id: 'b', trackUrn: 'BBeBee:local:track:b', addedBy: 'user' },
     ])
     const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
     expect(container.querySelectorAll('[role="listitem"]')).toHaveLength(2)
     expect(container.querySelector('[role="list"]')).not.toBeNull()
+
+    const row = container.querySelector('[role="row"]') as HTMLElement
+    expect(row, 'a queue row is tappable').toBeTruthy()
+    row.click()
+    // A tap means "play that one" — a jump, never a re-queue of one track.
+    expect(calls).toContain('jump:BBeBee:local:track:a')
+    expect(calls).not.toContain('playNow:BBeBee:local:track:a')
   })
 })

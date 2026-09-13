@@ -338,6 +338,8 @@ describe('LibraryScreen', () => {
     class PlayerStub extends Service {
       constructor(c: Context) { super(c, 'player') }
       playNow = async (urns: string[]) => void calls.push(`play:${urns.join(',')}`)
+      playFromContext = async (urn: string, contextUrns: readonly string[] = []) =>
+        void calls.push(`play:${urn}|context:${contextUrns.join(',')}`)
     }
     class UiStub extends Service {
       constructor(c: Context) { super(c, 'ui') }
@@ -364,7 +366,9 @@ describe('LibraryScreen', () => {
         await tick()
       })
 
-      expect(calls).toContain('play:BBeBee:local:track:1')
+      // A tap plays the track in the list it was tapped in: the whole library
+      // (one track here) goes with it as the queue context.
+      expect(calls).toContain('play:BBeBee:local:track:1|context:BBeBee:local:track:1')
       expect(calls).toContain('nav:player.now-playing')
     })
   })

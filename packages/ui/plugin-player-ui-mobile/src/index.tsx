@@ -174,10 +174,10 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
       h(TrackRow, {
         track: { urn: item.trackUrn, title: item.trackUrn, artists: [] } as Track,
         active: item.id === state.currentItemId,
-        // Same narrowing as desktop: there is no "jump to this queue item" on
-        // PlayerService yet, and an affordance that quietly does something
-        // else is worse than one that does less.
-        onPress: () => void ctx.player.playNow([item.trackUrn]),
+        // A row tap means "play that one", and the track is in the queue by
+        // definition — so playFromContext jumps to it without touching the
+        // queue the user already has.
+        onPress: () => void ctx.player.playFromContext(item.trackUrn),
       }),
   })
 }

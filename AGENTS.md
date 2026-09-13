@@ -659,7 +659,7 @@ Test conventions in this repo:
 | A plugin still works after unload | The disposer came back through a service proxy unwrapped, or the entry point is a plain `function` |
 | `CapabilityError: … may not …` | The manifest is missing a capability, or the path/table is genuinely out of scope. Widen the manifest, never the gate |
 | `CapabilityError: host … not allowed` from a source | The document's rules reach a host it did not declare. Add it to `allowedHosts` and re-import, so the user sees it |
-| A source returns nothing, with no error | A rule matched nothing where the field was optional. The rule tracer names the step |
+| A source returns nothing, with no error | A rule matched nothing where the field was optional. The test screen shows what the backend actually answered |
 | `JsTimeoutError` in a source | An `@js:` block looped, or awaited a request that never resolved. Limits are per evaluation and not configurable per source |
 | Renderer: preload bridge is missing | The renderer loaded without `preload/index.cjs` — rebuild, since preload must be CJS |
 | Electron will not launch on a headless machine | Expected. It needs `libgtk-3`, `libnss3` and a display; the bundles still build |
@@ -678,8 +678,9 @@ Test conventions in this repo:
   Both shells load the **generated** registry.
 - M2: `source-rules` (full rule engine with its own tests), `core-js-quickjs-node`, the runtime
   with search/explore/album/lyrics/login (`DocumentAuth`, single-flight re-auth), `ctx.secrets`
-  on both targets with persistent per-source cookie jars, the import/review flow, the rule tracer
-  and editor UI (`plugin-sources-ui-*`), and the corpus suite over `fixtures/sources/`
+  on both targets with persistent per-source cookie jars, the import/review flow, the per-feature
+  test screen with its streaming trace (`plugin-sources-ui-*`), and the corpus suite over
+  `fixtures/sources/`
   (`direct-url.json`, `subsonic.json`, `podcast-json-feed.json`).
 - Also built: the three log transports (`plugin-log-{buffer,console,file}`), `plugin-ui`
   (`ctx.ui`), `plugin-inspector` (`ctx.inspector`), `core-desktop-bridge`, `core-store-fs`.

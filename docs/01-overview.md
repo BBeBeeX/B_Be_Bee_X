@@ -221,7 +221,7 @@ escape hatch produces sources that *almost* work, and the workaround is worse th
   as a side effect.
 - **ADR-1 loses its reason for existing** and is amended above.
 - **Diagnosis becomes a shipped feature.** When sources are user-owned, "why did this stop
-  working" is a user's question, so the step-by-step rule tracer in
+  working" is a user's question, so the per-feature test screen with its streaming trace in
   [06 §10](./06-music-sources.md#10-diagnosing-a-broken-source) is not a developer tool that
   happens to be in the build — it is the maintenance story for the whole model.
 

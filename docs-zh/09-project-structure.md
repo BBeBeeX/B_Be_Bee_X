@@ -166,7 +166,7 @@ B_Be_Bee/
 │   │   ├── plugin-player-ui-desktop/ ✅      ┐ 正在播放、播放控制、队列
 │   │   ├── plugin-player-ui-mobile/  ✅      ┘
 │   │   ├── plugin-sources-ui-desktop/ ✅     ┐ 曲库、专辑详情、音源列表、导入
-│   │   ├── plugin-sources-ui-mobile/  ✅     ┘ 审查、编辑器、规则追踪器 (08 §4)
+│   │   ├── plugin-sources-ui-mobile/  ✅     ┘ 审查、测试界面 (08 §4)
 │   │   ├── plugin-local-scanner-ui-desktop/ ✅ ┐ 设置：扫描根目录
 │   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
 │   │   └── plugin-inspector-ui-desktop/ ✅   渲染出来的 fiber 树
@@ -729,7 +729,7 @@ pnpm check                   # already green — the template ships passing test
 | `app.start()` 已 resolve 但某个服务尚未就绪 | 某处有未等待的 `ctx.plugin()`。`pnpm test packages/kernel` 会点名文件 |
 | `CapabilityError: … may not …` | manifest 缺少某项能力，或路径/表确实越界。要放宽的是 manifest，永远不要放宽门 |
 | 来自音源的 `CapabilityError: host … not allowed` | 文档的规则触达了它未声明的主机。把它加进 `allowedHosts` 并重新导入，让用户看得见 (06 §8) |
-| 音源不返回任何结果，也没有报错 | 某条规则在字段本可为空的地方什么都没匹配到。规则追踪器会点名那一步 (06 §10)；`check` 会赶在用户之前找到它 |
+| 音源不返回任何结果，也没有报错 | 某条规则在字段本可为空的地方什么都没匹配到。测试界面会展示后端实际返回了什么 (06 §10)；`check` 会赶在用户之前找到它 |
 | 音源中出现 `JsTimeoutError` | 某个 `@js:` 块在死循环，或在等待一个永不 resolve 的请求。限制按每次求值计，不能按音源配置 (04 §19) |
 | 渲染进程：*preload bridge 缺失* | 渲染进程加载时没有拿到 `preload/index.cjs` —— 重新构建，preload 必须是 CJS |
 | Electron 在无头机器上无法启动 | 预期行为。它需要 `libgtk-3`、`libnss3` 与显示器；产物本身仍可构建 |

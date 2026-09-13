@@ -13,6 +13,7 @@ import type {} from '@BBeBee/protocol'
 import type { Album, CatalogQuery, ImportReport, PlayerService, Track, TraceEvent, UiService } from '@BBeBee/protocol'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
+  playFromList,
   useAlbum,
   useAlbums,
   useSetLoved,
@@ -180,8 +181,11 @@ export function LibraryScreen({
                 h(TrackRow, {
                   track,
                   showAlbum: true,
+                  // A tap plays the track in the list it was tapped in: jump
+                  // if the queue already holds it, otherwise that whole list
+                  // becomes the queue (docs/05 §2).
                   onPress: () => {
-                    void serviceOf<PlayerService>(ctx, 'player')?.playNow([track.urn])
+                    void playFromList(ctx, track.urn, { query })
                     serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
                   },
                   onToggleLoved: () => void setLoved(track.urn, !track.loved),
@@ -309,16 +313,19 @@ export function AlbumScreen({
       estimatedItemSize: tokens.size.row,
       keyExtractor: (track) => track.urn,
       empty: h(EmptyState, { title: 'This album has no tracks' }),
-      renderItem: (track, index) =>
+      renderItem: (track) =>
         h(TrackRow, {
           track,
           showArtwork: false,
-          // Playing from an album plays the album from that point.
+          // A tap plays the track in the list it was tapped in: jump if the
+          // queue already holds it, otherwise the whole album becomes the
+          // queue, starting here. "Play album" above is the explicit
+          // from-the-top gesture, and replaces outright.
           onPress: () => {
-            void serviceOf<PlayerService>(ctx, 'player')?.playNow(
-              detail.tracks.map((t) => t.urn),
-              { startIndex: index },
-            )
+            void playFromList(ctx, track.urn, {
+              urns: detail.tracks.map((t) => t.urn),
+              context: { kind: 'album', urn: detail.urn, label: detail.title },
+            })
             serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
           },
         }),

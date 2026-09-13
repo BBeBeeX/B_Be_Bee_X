@@ -78,6 +78,7 @@ Layer 4（feature）— `ctx.sources`：导入的源文档、provider 注册表�
 | `useSourceImport(ctx)` | 导入屏；**输入即预览**（parse 是本地纯计算）；rejected 进 issues 而非 throw（否则坏文档"看起来按钮没反应"） |
 | `useSourceEditor(ctx, sourceId?)` | 内联编辑；保存走 `import()`（按 sourceUrl 去重保 id）；`dirty = text !== base` |
 | `useSourceTrace(ctx, sourceId?)` | 步骤 tracer；事件**到达即追加**（对无响应服务器的诊断就是"一行 http 后面什么都没有"）；generation ref 防新旧 trace 交错 |
+| `listAllTracks(ctx, query)` / `playFromList(ctx, urn, list)` | 非 hook 的共享播放逻辑：前者把 query **翻页取全**（"播放这个列表"指整个列表，不是已滚入的页）；后者解析被点行所属的列表（`urns` 在手或 `query` 现取）交给 `player.playFromContext`——队列已有该曲则跳转，没有则整列表换入队列；目录读失败仍播单曲 |
 
 ### `src/views.ts` — 描述符 id 常量
 
@@ -114,7 +115,7 @@ export { cacheEntities, MAX_PAYLOAD_BYTES }
 export { MERGE_CONFIDENCE, linkManually, linkTracks, linksFor, unlink, writeExternalIds }
 export { SourceStore }
 export { allowedHostsFor, changedFields, exportableDocument, parseSourceInput, sourceIdFor, validateDocument }
-// './hooks'：useTracks / useAlbums / useAlbum / useSources / useLiveSourceIds / useSourceImport / useSourceEditor / useSourceTrace
+// './hooks'：useTracks / useAlbums / useAlbum / useSources / useLiveSourceIds / useSourceImport / useSourceEditor / useSourceTrace / listAllTracks / playFromList
 // './views'：SOURCES_VIEWS / SOURCES_ROUTES
 ```
 

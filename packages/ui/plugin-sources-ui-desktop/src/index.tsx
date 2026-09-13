@@ -17,6 +17,7 @@ import type {} from '@BBeBee/protocol'
 import type { Album, CatalogQuery, ImportReport, PlayerService, StreamQuality, Track, TraceEvent, UiService } from '@BBeBee/protocol'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
+  playFromList,
   useAlbum,
   useAlbums,
   useSetLoved,
@@ -158,6 +159,7 @@ export function LibraryScreen({
               ctx,
               tracks: tracks.items,
               scope,
+              query,
               onToggleLoved: (urn, loved) => void setLoved(urn, loved),
               onEndReached: tracks.loadMore,
             })
@@ -174,12 +176,14 @@ function TrackList({
   ctx,
   tracks,
   scope,
+  query,
   onToggleLoved,
   onEndReached,
 }: {
   ctx: Context
   tracks: readonly Track[]
   scope: LibraryScope
+  query: CatalogQuery
   onToggleLoved: (urn: string, loved: boolean) => void
   onEndReached: () => void
 }): ReactElement {
@@ -213,10 +217,11 @@ function TrackList({
       h(TrackRow, {
         track,
         showAlbum: true,
-        // Playing one track queues just that track; queueing the whole list
-        // is a decision for the album screen, where "the rest" has a meaning.
+        // A tap plays the track in the list it was tapped in: jump if the
+        // queue already holds it, otherwise that whole list — the library,
+        // the local one, the favourites — becomes the queue (docs/05 §2).
         onPress: () => {
-          void serviceOf<PlayerService>(ctx, 'player')?.playNow([track.urn])
+          void playFromList(ctx, track.urn, { query })
           serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
         },
         onToggleLoved: () => onToggleLoved(track.urn, !track.loved),
@@ -336,17 +341,19 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       estimatedItemSize: tokens.size.row,
       keyExtractor: (track) => track.urn,
       empty: h(EmptyState, { title: 'This album has no tracks' }),
-      renderItem: (track, index) =>
+      renderItem: (track) =>
         h(TrackRow, {
           track,
           showArtwork: false,
-          // Playing from an album plays the album from that point, which is
-          // what "play this track" means in an album context.
+          // A tap plays the track in the list it was tapped in: jump if the
+          // queue already holds it, otherwise the whole album becomes the
+          // queue, starting here. "Play album" above is the explicit
+          // from-the-top gesture, and replaces outright.
           onPress: () => {
-            void serviceOf<PlayerService>(ctx, 'player')?.playNow(
-              detail.tracks.map((t) => t.urn),
-              { startIndex: index },
-            )
+            void playFromList(ctx, track.urn, {
+              urns: detail.tracks.map((t) => t.urn),
+              context: { kind: 'album', urn: detail.urn, label: detail.title },
+            })
             serviceOf<UiService>(ctx, 'ui')?.navigate('player.now-playing')
           },
         }),

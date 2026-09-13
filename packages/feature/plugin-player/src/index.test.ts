@@ -420,6 +420,65 @@ describe('the queue', () => {
   })
 })
 
+describe('playFromContext', () => {
+  it('jumps to a track the queue already holds, and keeps the queue', async () => {
+    const { player } = await harness()
+    await player.playNow([urn('a'), urn('b'), urn('c')])
+    await player.next()
+
+    await player.playFromContext(urn('a'))
+    expect(player.state.trackUrn).toBe(urn('a'))
+    expect(player.state.status).toBe('playing')
+    expect(player.queue.map((i) => i.trackUrn), 'the queue the user had is untouched').toEqual([
+      urn('a'),
+      urn('b'),
+      urn('c'),
+    ])
+
+    // The same from a paused transport: a tap is a play, wherever it lands.
+    player.pause()
+    await player.playFromContext(urn('c'))
+    expect(player.state.trackUrn).toBe(urn('c'))
+    expect(player.state.status).toBe('playing')
+  })
+
+  it('starts the tapped track inside its context when the queue does not hold it', async () => {
+    const { player } = await harness()
+    await player.playNow([urn('a'), urn('b')])
+
+    await player.playFromContext(urn('x'), [urn('y'), urn('x'), urn('z')])
+    expect(player.state.trackUrn).toBe(urn('x'))
+    expect(player.state.status).toBe('playing')
+    expect(player.queue.map((i) => i.trackUrn), 'the tapped list becomes the queue').toEqual([
+      urn('y'),
+      urn('x'),
+      urn('z'),
+    ])
+  })
+
+  it('plays the track alone when there is no context for it', async () => {
+    const { player } = await harness()
+    await player.playFromContext(urn('a'))
+    expect(player.state.trackUrn).toBe(urn('a'))
+    expect(player.queue.map((i) => i.trackUrn)).toEqual([urn('a')])
+
+    // A context the track is not actually in cannot start somewhere the user
+    // did not point at, either.
+    await player.playFromContext(urn('q'), [urn('b'), urn('c')])
+    expect(player.queue.map((i) => i.trackUrn)).toEqual([urn('q')])
+  })
+
+  it('jumps under shuffle, where row order is not play order', async () => {
+    const { player } = await harness()
+    await player.playNow([urn('a'), urn('b'), urn('c'), urn('d'), urn('e')])
+    player.setShuffle(true)
+
+    await player.playFromContext(urn('e'))
+    expect(player.state.trackUrn).toBe(urn('e'))
+    expect(player.queue, 'still the same five tracks').toHaveLength(5)
+  })
+})
+
 describe('persistence', () => {
   it('restores the queue and position across a restart, and does not auto-play', async () => {
     // M1 exit criterion. Resuming into playback on launch is startling,

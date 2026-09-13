@@ -18,12 +18,14 @@ import type {
   DebugStep,
   ImportReport,
   Paged,
+  PlayerService,
+  QueueSourceContext,
   SourceRecord,
   Track,
   TraceEvent,
 } from '@BBeBee/protocol'
 import { parseSourceInput } from './identity.js'
-import { useServiceState, shallowArrayEqual, type AsyncState } from '@BBeBee/ui-core'
+import { serviceOf, useServiceState, shallowArrayEqual, type AsyncState } from '@BBeBee/ui-core'
 
 /**
  * A paged catalogue read, as a view needs it.
@@ -331,6 +333,58 @@ export function useSourceTrace(ctx: Context, sourceId: string | undefined): Trac
 
 export function useSetLoved(ctx: Context): (urn: string, loved: boolean) => Promise<void> {
   return useCallback((urn: string, loved: boolean) => ctx.sources.setLoved(urn, loved), [ctx])
+}
+
+/* ── playing a tapped track with its surrounding list ───────────────────── */
+
+/**
+ * Every track matching `query`, across all pages.
+ *
+ * A view renders one page at a time, but "play this list" means the whole list
+ * it stands for — the local library, the favourites — not just the rows that
+ * have scrolled in so far.
+ */
+export async function listAllTracks(ctx: Context, query: CatalogQuery): Promise<readonly Track[]> {
+  const items: Track[] = []
+  let cursor: string | undefined
+  do {
+    const page = await ctx.sources.listTracks(cursor ? { ...query, page: { cursor } } : query)
+    items.push(...page.items)
+    cursor = page.hasMore ? page.cursor : undefined
+  } while (cursor)
+  return items
+}
+
+/** What a tapped row's list is, in whichever shape the screen has it. */
+export interface PlayFromList {
+  /** The list as rows already at hand — an album detail, a playlist. */
+  urns?: readonly string[]
+  /** The list as a catalogue query, fetched in full at play time. */
+  query?: CatalogQuery
+  /** Where the queue came from, for the "playing from …" line. */
+  context?: QueueSourceContext
+}
+
+/**
+ * Play `urn` the way a tap in a list means it.
+ *
+ * `ctx.player.playFromContext` decides jump-versus-replace against the live
+ * queue; this is only the catalogue half, shared by both shells: resolving
+ * the list the tapped row belongs to when the screen only has a query.
+ *
+ * A catalogue read that fails must not take playback down with it — the tap
+ * still plays the track itself, which is the closest surviving intent.
+ */
+export async function playFromList(ctx: Context, urn: string, list: PlayFromList = {}): Promise<void> {
+  let contextUrns: readonly string[] = list.urns ?? []
+  if (list.urns === undefined && list.query) {
+    try {
+      contextUrns = (await listAllTracks(ctx, list.query)).map((track) => track.urn)
+    } catch {
+      contextUrns = []
+    }
+  }
+  void serviceOf<PlayerService>(ctx, 'player')?.playFromContext(urn, contextUrns, list.context ? { context: list.context } : {})
 }
 
 

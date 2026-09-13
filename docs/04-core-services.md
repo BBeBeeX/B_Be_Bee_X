@@ -679,8 +679,8 @@ export interface LogTransport {
 > ⚠️ **Redaction is mandatory.** Transports run a redactor over `meta` and `message` that strips
 > anything keyed `token`, `password`, `authorization`, `cookie`, or `refresh_token`, and rewrites
 > query strings on URLs. Source rules put credentials in headers and query strings routinely, and
-> the rule tracer ([06 §10](./06-music-sources.md#10-diagnosing-a-broken-source)) exists to be
-> copied into a forum thread — so the same redactor runs over traces, not only over logs.
+> the test screen's trace ([06 §10](./06-music-sources.md#10-diagnosing-a-broken-source)) exists
+> to be copied into a forum thread — so the same redactor runs over traces, not only over logs.
 
 ---
 

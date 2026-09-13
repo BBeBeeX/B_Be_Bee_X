@@ -314,7 +314,8 @@ file contents at all. Still nothing audible.
 
 `plugin-player` and `core-media-session-*`.
 
-**Demo.** From a test or the debug console: `playNow`, pause, seek, next, previous, reorder. The
+**Demo.** From a test or the debug console: `playNow`, `playFromContext` (a queued URN jumps and
+the queue survives; an unqueued one brings its list in), pause, seek, next, previous, reorder. The
 lock screen shows the track and its buttons work. Kill and relaunch: the queue and position are
 back, and nothing is playing.
 

@@ -795,7 +795,7 @@ export class SourceFormatError extends Error {
 | `NotFoundError` | 跳过。标记 `tracks.available = 0` | 列表中该曲目置灰 |
 | `NetworkError` | 指数退避，重试 3 次，然后暂停 | "Offline" 横幅；队列保留 |
 | `ProviderError` | 跳过，并用后端的原始载荷记录日志 | 通用错误提示，附"复制详情"操作 |
-| `RuleError` | 跳过。递增该源的失败计数器 | **"<source> needs updating"**，一键直达调试视图（[§10](#10-诊断一个坏掉的源)） |
+| `RuleError` | 跳过。递增该源的失败计数器 | **"<source> needs updating"**，一键直达测试界面（[§10](#10-诊断一个坏掉的源)） |
 
 任何错误都不允许清空队列。每一条失败路径都保留用户正在听的东西，因此恢复联网 —— 或者修好一条规则 —— 意味着按下播放，而不是重新拼凑一个队列。
 
@@ -927,30 +927,42 @@ export interface ImportReport {
 
 **`check`** —— 对一个或多个源跑一次健康检查。对每个源：解析基础 URL、跑一次规范化搜索、取第一个结果、解析它的流，并对它发一次 HEAD。它记录 `respondTime`，设置或清除 `last_error`，并更新 [§7](#7-错误) 中的过期徽标。对所有源跑一遍只是一条命令，也是"搜索不好使了"时要做的第一件事。
 
-**`debug`** —— 逐步的追踪，也就是 legado 源调试界面的直接对应物：
+**`debug`** —— 运行一个源的单个功能，并流式展示它做过的每一件事。这是**测试界面**背后的传输层：页面顶部的选择器挑选要测试的已导入源，该源实际实现的每个功能都拥有自己的测试区 —— 区域列表**就是**功能列表，因为没有 `ruleAlbum` 块的源本来就没有专辑查询可提供。两个区域不属于任何文档、永远存在：一次裸 HTTP 请求，和一段任意脚本。
 
 ```ts
 export type DebugStep =
   | { kind: 'search'; text: string; page?: number }
-  | { kind: 'explore'; url?: string; page?: number }
-  | { kind: 'album'; url: string }
-  | { kind: 'stream'; urn: string }
+  | { kind: 'browse'; nodeId?: string; page?: number }
+  | { kind: 'album'; id: string }
+  | { kind: 'artist'; id: string }
+  | { kind: 'playlist'; id: string; page?: number }
+  | { kind: 'lyrics'; id: string }
+  | { kind: 'library'; list: 'track' | 'album' | 'artist' | 'playlist'; page?: number }
+  | { kind: 'stream'; id: string; quality?: StreamQuality }
+  | { kind: 'http'; method: 'GET' | 'POST'; url: string
+      headers?: Record<string, string>; body?: string }
+  | { kind: 'js'; code: string; argsJson?: string }
 
 export type TraceEvent =
   | { at: number; kind: 'http'; method: string; url: string; status: number; ms: number; bytes: number }
-  | { at: number; kind: 'rule'; block: string; field: string; engine: string; rule: string
-      input: string; output: string; ms: number }        // input/output truncated and redacted
-  | { at: number; kind: 'error'; error: SourceError }
+  | { at: number; kind: 'error'; message: string; block?: string; field?: string }
   | { at: number; kind: 'result'; summary: string }
+  | { at: number; kind: 'log'; message: string }                  // 文档自己 src.log(...) 的一行
+  | { at: number; kind: 'value'; label: string; value: string }   // 完整输出，已脱敏，有上限
 ```
 
-它渲染成一份可滚动的追踪，每条规则都展示自己收到了什么、产出了什么、花了多久。三个性质让它有用而不是摆设：
+`http` 步骤是经由该源自己的 scoped client 发出的一次裸请求 —— 白名单、cookie、限速与它的规则完全一致 —— 并把响应体交回来供阅读。`js` 步骤在该源的沙箱里运行任意脚本，文档 `jsLib` 的函数已经就位，JSON 参数会变成作用域变量。两者合起来，就是源作者徒手戳一个后端的方式。
 
-- **每一步都可见，包括成功的那些。** 出错的地方通常在空结果之前两步。
-- **它可以原地编辑。** 调试界面就是源编辑器：改一条规则、重跑这一步、保留追踪的其余部分。一次修复是几秒钟的事，不是一轮重新导入。
-- **它会脱敏。** 凭据、cookie 与 `source.var` 绝不出现在追踪里，因为追踪正是用户会贴到论坛求助帖里的东西。这是一条**类型**义务，而非一条约定：`TraceEvent` 的每个源自用户的字段都是 `Redacted`，而只有脱敏器能产出它，因此一个携带 `{{source.var}}` 的 URL —— 这是常见情形，不是罕见情形 —— 不可能因为被人遗忘而混进追踪。
+页面分为两栏：左边是你运行的东西，右边是返回的东西 —— 各自独立滚动。四个性质让结果有用而不是摆设：
 
-**向上游报告。** "复制追踪"会产出源的 id、出错的规则、脱敏后的输入摘录，以及应用版本 —— 一个源作者修好自己文档所需的一切，而不包含任何关于用户的信息。
+- **它流式输出。** 一个不再应答的服务器显示为一条 status 0 的 `http` 行，后面什么都没有 —— 这**正是**诊断本身。先收集再展示，在运行放弃之前什么都看不到。
+- **输出完整呈现。** 每个功能的回答和每个响应体都以 `value` 事件落地 —— 上限比原来的规则行宽裕得多（20 KB）—— 可解析的响应体渲染为可折叠的 JSON 树（两个 kit 都有的 `JsonTree`），因为读者扫的是形状。响应体能进入追踪，是因为 `fetchDocument` 在读取解码文本时就把它镜像出来（`FetchSite.onBody`）：响应文本只会被消费一次，没有"第二次读取"可拿而不从接下来解析它的规则那里偷走它。
+- **缺失的功能是一个回答，而不是崩溃。** 文档里没有对应规则块的步骤会在追踪中报告"this source does not implement …"。
+- **它会脱敏。** 凭据、cookie 与 `source.var` 绝不出现在追踪里，因为追踪正是用户会贴到论坛求助帖里的东西。这是一条**类型**义务，而非一条约定：`TraceEvent` 的每个源自用户的字段都是 `Redacted`，而只有脱敏器能产出它，因此一个携带 `{{source.var}}` 的 URL —— 这是常见情形，不是罕见情形 —— 不可能因为被人遗忘而混进追踪。文档自己的 `src.log(...)` 行也会经过同一个脱敏器，以 `log` 事件镜像进追踪。
+
+**编辑。** 文档不在这个界面上编辑：修复就是一次重新导入，它按 `sourceUrl` 去重并保留 id —— 每个 URN、缓存的行和 cookie jar 都会在编辑中幸存（[§9](#9-导入更新与分享)）。
+
+**向上游报告。** 一份追踪携带源的 id、出错步骤的块与字段、脱敏后的摘录，以及完整输出 —— 一个源作者修好自己文档所需的一切，而不包含任何关于用户的信息。
 
 ---
 

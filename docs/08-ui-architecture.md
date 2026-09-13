@@ -154,8 +154,7 @@ export type SlotId =
   | 'search.results-section'     // an extra results group
   | 'settings.sources'            // the source list: import, groups, enable, reorder
   | 'source.browse'               // a source's explore tree
-  | 'source.editor'               // the document editor for one source
-  | 'source.debug'                // the rule tracer (06 §10)
+  | 'source.test'                // one source, exercised feature by feature (06 §10)
   | 'status-bar'                 // desktop only; ignored on mobile
 ```
 
@@ -290,7 +289,6 @@ them is privileged.
 |---|---|---|
 | **Source list** | Enable, disable, reorder, group, and see each source's health badge | Ordinary list; parity is free |
 | **Import review** | Show what a pasted string contains — added / updated / rejected, and the host allowlist — before anything is written ([06 §9](./06-music-sources.md#9-importing-updating-and-sharing)) | The one screen that must never be skipped, so it is a modal route on both, not a slot |
-| **Source editor** | Edit the document's fields and rules | ⚠️ Genuinely different: desktop gets a two-pane JSON/form editor, mobile a sectioned form. The *validation* is in the headless package, so the two cannot disagree about what is valid |
 | **Rule tracer** | Run one step and show every rule's input, output and timing ([06 §10](./06-music-sources.md#10-diagnosing-a-broken-source)) | A long scrollable log with an editable rule at each row — the closest thing in the app to a developer tool, and the reason a user can fix a source themselves |
 
 The rule that keeps this affordable is [§1](#1-the-three-package-convention)'s: parsing,
@@ -483,7 +481,8 @@ The scale relies on **"weight follows size"**:
     swipe-up lyrics pane.
 
 **Component parity is a contract.** Both kits export the same component names with the same props —
-`Button`, `IconButton`, `TrackRow`, `Slider`, `Sheet`/`Dialog`, `List`, `EmptyState`, `Toast`. A
+`Button`, `IconButton`, `TrackRow`, `Slider`, `Sheet`/`Dialog`, `List`, `EmptyState`, `Toast`,
+`TextField`, `Text`, `Artwork`, `JsonTree`. A
 plugin author writing both view packages should be transcribing, not redesigning. A parity test in
 CI diffs the exported names and prop types of the two kits and fails on divergence, because without
 it the kits drift silently and every plugin author pays.

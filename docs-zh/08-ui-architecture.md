@@ -126,8 +126,7 @@ export type SlotId =
   | 'search.results-section'     // an extra results group
   | 'settings.sources'            // the source list: import, groups, enable, reorder
   | 'source.browse'               // a source's explore tree
-  | 'source.editor'               // the document editor for one source
-  | 'source.debug'                // the rule tracer (06 §10)
+  | 'source.test'                // one source, exercised feature by feature (06 §10)
   | 'status-bar'                 // desktop only; ignored on mobile
 ```
 
@@ -232,7 +231,6 @@ export const usePosition = () =>
 |---|---|---|
 | **源列表** | 启用、禁用、重排、分组，并查看每个源的健康徽标 | 普通列表；对等性是免费的 |
 | **导入审核** | 在任何内容被写入之前，展示粘贴进来的源字符串里有什么 —— 新增 / 更新 / 拒绝，以及主机白名单（[06 §9](./06-music-sources.md#9-导入更新与分享)） | 唯一绝不可跳过的界面，因此它在两端都是模态路由，而不是槽位 |
-| **源编辑器** | 编辑文档的字段与规则 | ⚠️ 真正不同：桌面端是双栏 JSON/表单编辑器，移动端是分区表单。*校验*位于 headless 包中，因此两者不可能对"什么算合法"产生分歧 |
 | **规则追踪器** | 运行一步，并展示每条规则的输入、输出与耗时（[06 §10](./06-music-sources.md#10-诊断一个坏掉的源)） | 一份可以长距离滚动的日志，每一行都带一条可编辑的规则 —— 应用中最接近开发者工具的东西，也是用户能够自己修好一个源的原因 |
 
 让这件事保持低成本的正是 [§1](#1-三包约定) 的那条规则：解析、校验、diff、追踪与脱敏全部位于 headless 包。视图包要做的只是展示一个列表和一个文本框。
@@ -371,7 +369,7 @@ export const tokens = {
   - 常驻迷你播放器紧贴标签栏之上停靠，显示封面缩略图、跑马灯标题、艺术家名、播放/暂停开关，以及一条发丝级播放进度条。
   - 全屏正在播放面板：展开迷你播放器会向上滑出一个沉浸式播放器，包含大幅方形封面、粗犷的几何字体、进度条、圆形传输控件，以及上滑展开的歌词面板。
 
-**组件对等是一份契约。** 两个组件库导出同名且同 props 的组件 —— `Button`、`IconButton`、`TrackRow`、`Slider`、`Sheet`/`Dialog`、`List`、`EmptyState`、`Toast`。同时编写两个视图包的插件作者应该是在"誊写"，而不是"重新设计"。CI 中有一个对等性测试，会对比两个组件库导出的名称与 props 类型，出现分歧即失败 —— 因为没有它，两个组件库会悄然漂移，而每个插件作者都要为此买单。
+**组件对等是一份契约。** 两个组件库导出同名且同 props 的组件 —— `Button`、`IconButton`、`TrackRow`、`Slider`、`Sheet`/`Dialog`、`List`、`EmptyState`、`Toast`、`TextField`、`Text`、`Artwork`、`JsonTree`。同时编写两个视图包的插件作者应该是在"誊写"，而不是"重新设计"。CI 中有一个对等性测试，会对比两个组件库导出的名称与 props 类型，出现分歧即失败 —— 因为没有它，两个组件库会悄然漂移，而每个插件作者都要为此买单。
 
 ---
 

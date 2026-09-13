@@ -196,7 +196,7 @@ B_Be_Bee/
 │   │   ├── plugin-player-ui-desktop/ ✅      ┐ now playing, transport, queue
 │   │   ├── plugin-player-ui-mobile/  ✅      ┘
 │   │   ├── plugin-sources-ui-desktop/ ✅     ┐ library, album detail, source list, import
-│   │   ├── plugin-sources-ui-mobile/  ✅     ┘ review, editor, rule tracer (08 §4)
+│   │   ├── plugin-sources-ui-mobile/  ✅     ┘ review, test screen (08 §4)
 │   │   ├── plugin-local-scanner-ui-desktop/ ✅ ┐ settings: scan roots
 │   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
 │   │   └── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered
@@ -881,7 +881,7 @@ than a typo:
 | `app.start()` resolves but a service is not ready | An un-awaited `ctx.plugin()` somewhere. `pnpm test packages/kernel` will name the file |
 | `CapabilityError: … may not …` | The manifest is missing a capability, or the path/table is genuinely out of scope. Widen the manifest, never the gate |
 | `CapabilityError: host … not allowed` from a source | The document's rules reach a host it did not declare. Add it to `allowedHosts` and re-import, so the user sees it (06 §8) |
-| A source returns nothing, with no error | A rule matched nothing where the field was optional. The rule tracer names the step (06 §10); `check` finds it before a user does |
+| A source returns nothing, with no error | A rule matched nothing where the field was optional. The test screen shows what the backend actually answered (06 §10); `check` finds it before a user does |
 | `JsTimeoutError` in a source | An `@js:` block looped, or awaited a request that never resolved. Limits are per evaluation and not configurable per source (04 §19) |
 | Renderer: *preload bridge is missing* | The renderer loaded without `preload/index.cjs` — rebuild, since preload must be CJS |
 | Electron will not launch on a headless machine | Expected. It needs `libgtk-3`, `libnss3` and a display; the bundles still build |

@@ -107,8 +107,9 @@ document.
 - **The sandbox holds.** A deliberately hostile document cannot reach an undeclared host, cannot
   read another source's cookies or vars, cannot touch the filesystem, and is interrupted rather
   than hanging the app ([06 §8](./06-music-sources.md#8-trust-what-an-imported-source-can-and-cannot-do)).
-- **A broken source is diagnosable by a user.** Break a rule deliberately; the tracer names the
-  failing step, the rule is edited in place, and the next run succeeds — without a rebuild.
+- **A broken source is diagnosable by a user.** Break a rule deliberately; the test screen shows
+  what the backend actually answered, and a re-import of the fixed document succeeds — without a
+  rebuild.
 - A local track and a server track of the same recording are linked by ISRC and shown as one
   library item with two sources.
 
@@ -116,9 +117,9 @@ document.
 (`core-js-quickjs-node`) and `ctx.js`, search, explore, album and lyrics, the catalogue round trip
 that keeps a searched or browsed track playable after a restart, `ctx.secrets` on both platforms
 (`core-secrets-node`, `core-secrets-expo`), per-source cookie jars that persist and are forgotten
-by sign-out, form and variable sign-in with transparent single-flight re-authentication, the step
-tracer, cross-source identity linking, the import and diagnose screens on both shells, and the
-full error taxonomy.
+by sign-out, form and variable sign-in with transparent single-flight re-authentication, the
+per-feature test screen with its streaming trace, cross-source identity linking, the import and
+source-list screens on both shells, and the full error taxonomy.
 
 Still open, and both need a device to finish: **`core-js-quickjs-expo`** — React Native's Hermes
 has no WebAssembly, so the mobile sandbox needs a *native* QuickJS module and therefore a
@@ -315,7 +316,8 @@ broke".
 *Mitigation* — `RuleError` is a distinct class from a network failure, and the UI says "<source>
 needs updating", not "something went wrong" ([06 §7](./06-music-sources.md#7-errors)). A stale
 source keeps its cached catalogue rather than vanishing. `check` finds rot before playback does,
-and the rule tracer makes the fix a two-minute edit by the person holding the string
+and the test screen shows what the backend actually answered, making the fix a two-minute edit
+by the person holding the string
 ([06 §10](./06-music-sources.md#10-diagnosing-a-broken-source)).
 
 *What would make it worse* — shipping the model without the tracer. That is the one piece of M2

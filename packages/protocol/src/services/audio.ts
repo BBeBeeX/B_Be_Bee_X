@@ -114,6 +114,16 @@ export interface PlayerService {
 
   readonly queue: readonly QueueItem[]
   playNow(urns: string[], opts?: PlayNowOptions): Promise<void>
+  /**
+   * Play one track the way a tap in a list means it.
+   *
+   * If the queue already holds `urn`, the queue is kept and playback jumps to
+   * that entry. If it does not, the queue is replaced by `contextUrns` — the
+   * list the tapped row belongs to (an album, the local library) — and
+   * playback starts at `urn` within it. With no usable context the track
+   * plays alone.
+   */
+  playFromContext(urn: string, contextUrns?: readonly string[], opts?: PlayNowOptions): Promise<void>
   enqueueNext(urns: string[]): void
   enqueueLast(urns: string[]): void
   removeItems(ids: string[]): void
