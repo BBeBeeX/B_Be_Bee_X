@@ -1190,12 +1190,14 @@ on its own. Four properties are what make the results useful rather than decorat
 - **It streams.** A request to a server that has stopped answering shows as an `http` line with
   status 0 and nothing after it — which *is* the diagnosis. Collecting first would show nothing
   until the run gave up.
-- **The output is shown whole.** A feature's answer and every response body land as a `value`
-  event — capped far more generously than a rule line was (20 KB) — and a parseable body renders
-  as a collapsible JSON tree (`JsonTree`, in both kits), because the shape is what a reader scans.
-  Bodies reach the trace because `fetchDocument` mirrors the decoded text out as it reads it
-  (`FetchSite.onBody`): the response's text is consumed exactly once, so there is no second read
-  to take without stealing it from the rule that parses next.
+- **The output is shown whole — never truncated.** A feature's answer and every response body
+  land as a `value` event that carries the full text, and a parseable body renders as a
+  collapsible JSON tree (`JsonTree`, in both kits) with expand-all / collapse-all controls,
+  because the shape is what a reader scans. Redaction still runs over every value — size is not
+  a secret, but a credential in one still is. Bodies reach the trace because `fetchDocument`
+  mirrors the decoded text out as it reads it (`FetchSite.onBody`): the response's text is
+  consumed exactly once, so there is no second read to take without stealing it from the rule
+  that parses next.
 - **A missing feature is an answer, not a crash.** A step whose document has no matching rule
   block reports "this source does not implement …" in the trace.
 - **It redacts.** Credentials, cookies, and `source.var` never appear in a trace, because the

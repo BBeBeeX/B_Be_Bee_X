@@ -650,16 +650,34 @@ export function EmptyState(props: EmptyStateProps) {
   )
 }
 
+let jsonEpoch = 0
+
 /** Syntax colours for the tree, all from the palette. */
 function jsonColor(value: unknown, palette: Palette): string | undefined {
   if (typeof value === 'string') return palette.state.ok
-  if (typeof value === 'number') return palette.state.warn
-  if (typeof value === 'boolean' || value === null) return palette.text.disabled
+  if (typeof value === 'number') return palette.text.primary
+  if (typeof value === 'boolean' || value === null) return palette.state.warn
   return undefined
 }
 
+/** Per-level indent. 16px — deep enough to read, shallow enough to stay narrow. */
+const INDENT = tokens.space[4]
+
 /** Long strings start clipped; clicking spreads them. A body can hold a URL no one needs all of. */
 const STRING_CLIP = 300
+
+/** One expand-all/collapse-all directive, shared by every branch. */
+export interface JsonDirective {
+  value: boolean
+  /** Bumped on every press, so pressing the same button twice still re-applies. */
+  epoch: number
+}
+
+interface JsonFrame {
+  palette: Palette
+  defaultExpandedDepth: number
+  directive: JsonDirective | undefined
+}
 
 function JsonString(props: { value: string; palette: Palette }): ReactElement {
   const [spread, setSpread] = useState(false)
@@ -679,55 +697,117 @@ function JsonString(props: { value: string; palette: Palette }): ReactElement {
   )
 }
 
+/**
+ * Everything a row needs to behave like a row: hover highlight, arrow-key
+ * navigation across the whole tree, and the left/right collapse contract.
+ * A leaf takes the navigation and the highlight; collapse is the branch's.
+ */
+function rowBehavior(
+  frame: JsonFrame,
+  opts: { onCollapse?: (open: boolean) => void } = {},
+): Record<string, unknown> {
+  return {
+    tabIndex: -1,
+    'data-json-row': true,
+    onKeyDown: (event: KeyboardEvent & { currentTarget: HTMLElement }) => {
+      const container = event.currentTarget.closest('[data-json-tree]') as HTMLElement | null
+      const rows = container
+        ? Array.from(container.querySelectorAll<HTMLElement>('[data-json-row]'))
+        : []
+      const index = rows.indexOf(event.currentTarget)
+      if (event.key === 'ArrowDown' && index >= 0 && index < rows.length - 1) {
+        event.preventDefault()
+        rows[index + 1]!.focus()
+      } else if (event.key === 'ArrowUp' && index > 0) {
+        event.preventDefault()
+        rows[index - 1]!.focus()
+      } else if (event.key === 'ArrowRight') {
+        opts.onCollapse?.(true)
+      } else if (event.key === 'ArrowLeft') {
+        opts.onCollapse?.(false)
+      }
+    },
+  }
+}
+
 function JsonBranch(props: {
   name: string | undefined
   value: Record<string, unknown> | readonly unknown[]
   depth: number
-  defaultExpandedDepth: number
-  palette: Palette
+  frame: JsonFrame
 }): ReactElement {
-  const [open, setOpen] = useState(props.depth < props.defaultExpandedDepth)
+  const { palette, directive } = props.frame
+  // A branch mounted *after* a directive was issued (its parent was just
+  // expanded) must honour that directive on arrival, not only on the next one
+  // — hence the initial state, not an effect.
+  const [open, setOpen] = useState(
+    directive ? directive.value : props.depth < props.frame.defaultExpandedDepth,
+  )
+  const appliedEpoch = useRef(directive?.epoch)
+  useEffect(() => {
+    if (directive && directive.epoch !== appliedEpoch.current) {
+      appliedEpoch.current = directive.epoch
+      setOpen(directive.value)
+    }
+  }, [directive])
+
   const entries: [string, unknown][] = Array.isArray(props.value)
     ? props.value.map((v, i) => [String(i), v])
     : Object.entries(props.value)
   const brace = Array.isArray(props.value) ? ['[', ']'] : ['{', '}']
+  const [hovered, setHovered] = useState(false)
+
+  const row = h(
+    'div',
+    {
+      role: 'button',
+      onClick: () => setOpen(!open),
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      ...rowBehavior(props.frame, { onCollapse: setOpen }),
+      // One tab stop per tree: the root branch. Deeper rows are reachable by
+      // arrow keys from there, not by tabbing through every line.
+      tabIndex: props.depth === 0 ? 0 : undefined,
+      style: {
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: tokens.space[1],
+        borderRadius: tokens.radius.sm,
+        background: hovered ? palette.bg.overlay : undefined,
+        outline: 'none',
+      },
+    },
+    h('span', { style: { color: palette.text.disabled, userSelect: 'none' } }, open ? '▼' : '▶'),
+    props.name !== undefined
+      ? h('span', { style: { color: palette.text.secondary } }, props.name)
+      : null,
+    h('span', { style: { color: palette.text.primary } }, brace[0]),
+    !open
+      ? h(
+          'span',
+          { style: { color: palette.text.disabled } },
+          `…} ${entries.length} ${Array.isArray(props.value) ? 'items' : 'keys'}`,
+        )
+      : null,
+    h('span', { style: { color: palette.text.primary } }, open ? '' : brace[1]),
+  )
 
   return h(
     'div',
-    { style: { paddingLeft: props.depth === 0 ? 0 : tokens.space[3] } },
-    h(
-      'div',
-      {
-        onClick: () => setOpen(!open),
-        role: 'button',
-        style: { cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: tokens.space[1] },
-      },
-      h('span', { style: { color: props.palette.text.disabled, userSelect: 'none' } }, open ? '▾' : '▸'),
-      props.name !== undefined
-        ? h('span', { style: { color: props.palette.text.secondary } }, props.name)
-        : null,
-      h('span', { style: { color: props.palette.text.primary } }, brace[0]),
-      !open
-        ? h(
-            'span',
-            { style: { color: props.palette.text.disabled } },
-            `${entries.length} ${Array.isArray(props.value) ? 'items' : 'keys'}`,
-          )
-        : null,
-      h('span', { style: { color: props.palette.text.primary } }, open ? '' : brace[1]),
-    ),
+    { style: { paddingLeft: props.depth === 0 ? 0 : INDENT } },
+    row,
     open
       ? h(
           'div',
-          { style: { borderLeft: `1px solid ${props.palette.border.subtle}`, marginLeft: tokens.space[1] } },
+          { style: { borderLeft: `1px solid ${palette.border.subtle}`, marginLeft: tokens.space[1] } },
           ...entries.map(([key, child]) =>
             h(JsonEntry, {
               key,
               name: key,
               value: child,
               depth: props.depth + 1,
-              defaultExpandedDepth: props.defaultExpandedDepth,
-              palette: props.palette,
+              frame: props.frame,
             }),
           ),
         )
@@ -735,44 +815,52 @@ function JsonBranch(props: {
     open
       ? h(
           'div',
-          { style: { color: props.palette.text.primary, paddingLeft: tokens.space[3] } },
+          { style: { color: palette.text.primary, paddingLeft: INDENT }, 'data-json-row': true, tabIndex: -1 },
           brace[1],
         )
       : null,
   )
 }
 
-function JsonEntry(props: {
-  name: string
-  value: unknown
-  depth: number
-  defaultExpandedDepth: number
-  palette: Palette
-}): ReactElement {
+function JsonEntry(props: { name: string; value: unknown; depth: number; frame: JsonFrame }): ReactElement {
+  const { palette } = props.frame
   const value = props.value
   const isBranch = value !== null && typeof value === 'object'
-  const color = jsonColor(value, props.palette)
 
   if (isBranch) {
     return h(JsonBranch, {
       name: props.name,
       value: value as Record<string, unknown>,
       depth: props.depth,
-      defaultExpandedDepth: props.defaultExpandedDepth,
-      palette: props.palette,
+      frame: props.frame,
     })
   }
 
+  const color = jsonColor(value, palette)
+  const [hovered, setHovered] = useState(false)
   const rendered =
     typeof value === 'string'
-      ? h(JsonString, { value, palette: props.palette })
+      ? h(JsonString, { value, palette })
       : h('span', { style: { color } }, value === undefined ? 'undefined' : String(value))
 
   return h(
     'div',
-    { style: { paddingLeft: tokens.space[3], display: 'flex', alignItems: 'baseline', gap: tokens.space[1] } },
+    {
+      ...rowBehavior(props.frame),
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      style: {
+        paddingLeft: INDENT,
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: tokens.space[1],
+        borderRadius: tokens.radius.sm,
+        background: hovered ? palette.bg.overlay : undefined,
+        outline: 'none',
+      },
+    },
     // The root entry has no name: the tree opens with the value itself.
-    props.name !== '' ? h('span', { style: { color: props.palette.text.secondary } }, props.name) : null,
+    props.name !== '' ? h('span', { style: { color: palette.text.secondary } }, props.name) : null,
     props.name !== '' ? h('span', null, ':') : null,
     rendered,
   )
@@ -782,20 +870,33 @@ function JsonEntry(props: {
  * A parsed JSON value as a collapsible tree.
  *
  * For *reading* a response — the test screen's output pane — not editing it.
-**/ 
+ * Objects and arrays collapse on click (leaves just highlight); the toolbar
+ * expands or collapses everything at once; arrows move between rows and
+ * left/right collapse or expand the focused branch.
+ */
 export function JsonTree(props: {
   value: unknown
   /** How many nesting levels start open. Default 2: the shape without the noise. */
   defaultExpandedDepth?: number
+  /** Render the expand-all / collapse-all toolbar above the tree. */
+  controls?: boolean
   testID?: string
   accessibilityLabel?: string
 }): ReactElement {
   const palette = c()
+  const [directive, setDirective] = useState<JsonDirective | undefined>(undefined)
+  const frame: JsonFrame = {
+    palette,
+    defaultExpandedDepth: props.defaultExpandedDepth ?? 2,
+    directive,
+  }
+
   return h(
     'div',
     {
       'data-testid': props.testID,
       'aria-label': props.accessibilityLabel,
+      'data-json-tree': true,
       style: {
         fontFamily: tokens.font.family.mono,
         fontSize: tokens.font.size.sm,
@@ -804,12 +905,52 @@ export function JsonTree(props: {
         color: palette.text.primary,
       },
     },
+    // Row hover via one scoped rule rather than a listener per row: it
+    // arrives and leaves with the component.
+    h('style', null, `[data-json-tree] [data-json-row]:hover { background: ${palette.bg.overlay}; }`),
+    props.controls
+      ? h(
+          'div',
+          { style: { display: 'flex', gap: tokens.space[2], marginBottom: tokens.space[1] } },
+          h(
+            'button',
+            {
+              onClick: () => setDirective({ value: true, epoch: ++jsonEpoch }),
+              style: {
+                background: 'none',
+                border: 'none',
+                color: palette.text.secondary,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                fontSize: tokens.font.size.sm,
+                padding: 0,
+              },
+            },
+            'Expand all',
+          ),
+          h(
+            'button',
+            {
+              onClick: () => setDirective({ value: false, epoch: ++jsonEpoch }),
+              style: {
+                background: 'none',
+                border: 'none',
+                color: palette.text.secondary,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                fontSize: tokens.font.size.sm,
+                padding: 0,
+              },
+            },
+            'Collapse all',
+          ),
+        )
+      : null,
     h(JsonEntry, {
       name: '',
       value: props.value,
       depth: 0,
-      defaultExpandedDepth: props.defaultExpandedDepth ?? 2,
-      palette,
+      frame,
     }),
   )
 }

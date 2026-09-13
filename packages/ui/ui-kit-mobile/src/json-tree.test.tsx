@@ -81,3 +81,23 @@ describe('JsonTree on mobile', () => {
     expect(view.container.textContent?.includes('(+100)')).toBe(false)
   })
 })
+
+describe('JsonTree toolbar on mobile', () => {
+  it('expands and collapses everything', async () => {
+    const view = render(
+      h(JsonTree, { value: { a: { b: { deep: 7 } } }, defaultExpandedDepth: 1, controls: true }),
+    )
+    expect(view.container.textContent).not.toContain('7')
+
+    const buttons = view.container.querySelectorAll<HTMLElement>('[data-host="Pressable"]')
+    await act(async () => {
+      buttons[0]!.click()
+    })
+    expect(view.container.textContent).toContain('7')
+
+    await act(async () => {
+      buttons[1]!.click()
+    })
+    expect(view.container.textContent).not.toContain('7')
+  })
+})

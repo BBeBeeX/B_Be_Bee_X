@@ -401,6 +401,41 @@ describe('JsonTree', () => {
     expect(view.container.textContent).toContain('7')
   })
 
+  it('expands and collapses everything from the toolbar', async () => {
+    const view = render(
+      h(JsonTree, { value: { a: { b: { deep: 7 } } }, defaultExpandedDepth: 1, controls: true }),
+    )
+    // Level two starts collapsed: the value is not on screen.
+    expect(view.container.textContent).not.toContain('7')
+
+    const buttons = view.container.querySelectorAll('button')
+    await act(async () => {
+      buttons[0]!.click()
+    })
+    expect(view.container.textContent).toContain('7')
+
+    await act(async () => {
+      buttons[1]!.click()
+    })
+    // Collapse all includes the root: only its count remains.
+    expect(view.container.textContent).not.toContain('7')
+  })
+
+  it('collapses and expands a branch with arrow keys', async () => {
+    const view = render(h(JsonTree, { value: { a: { deep: 7 } }, defaultExpandedDepth: 3 }))
+    expect(view.container.textContent).toContain('7')
+
+    const root = view.container.querySelector('[role="button"]') as HTMLElement
+    await act(async () => {
+      root.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+    })
+    expect(view.container.textContent).not.toContain('7')
+    await act(async () => {
+      root.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    })
+    expect(view.container.textContent).toContain('7')
+  })
+
   it('clips a long string until it is clicked', async () => {
     const view = render(h(JsonTree, { value: { url: 'x'.repeat(400) }, defaultExpandedDepth: 3 }))
     expect(view.container.textContent).toContain('(+100)')

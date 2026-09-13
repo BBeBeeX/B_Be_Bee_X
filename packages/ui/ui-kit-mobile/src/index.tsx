@@ -14,7 +14,7 @@
  * `configureNative` once at boot with the real module.
  */
 
-import { createElement as h, useCallback, useRef, useState } from 'react'
+import { createElement as h, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import { palettes, tokens, type Palette, type Scheme } from '@BBeBee/ui-tokens'
 import { identicon } from '@BBeBee/ui-core'
@@ -623,16 +623,34 @@ export function EmptyState(props: EmptyStateProps): ReactElement {
   )
 }
 
+let jsonEpoch = 0
+
 /** Syntax colours for the tree, all from the palette. */
 function jsonColor(value: unknown, palette: Palette): string | undefined {
   if (typeof value === 'string') return palette.state.ok
-  if (typeof value === 'number') return palette.state.warn
-  if (typeof value === 'boolean' || value === null) return palette.text.disabled
+  if (typeof value === 'number') return palette.text.primary
+  if (typeof value === 'boolean' || value === null) return palette.state.warn
   return undefined
 }
 
+/** Per-level indent. 16px — deep enough to read, shallow enough to stay narrow. */
+const INDENT = tokens.space[4]
+
 /** Long strings start clipped; tapping spreads them. A body can hold a URL no one needs all of. */
 const STRING_CLIP = 300
+
+/** One expand-all/collapse-all directive, shared by every branch. */
+export interface JsonDirective {
+  value: boolean
+  /** Bumped on every press, so pressing the same button twice still re-applies. */
+  epoch: number
+}
+
+interface JsonFrame {
+  palette: Palette
+  defaultExpandedDepth: number
+  directive: JsonDirective | undefined
+}
 
 function JsonString(props: { value: string; palette: Palette }): ReactElement {
   const [spread, setSpread] = useState(false)
@@ -652,10 +670,23 @@ function JsonBranch(props: {
   name: string | undefined
   value: Record<string, unknown> | readonly unknown[]
   depth: number
-  defaultExpandedDepth: number
-  palette: Palette
+  frame: JsonFrame
 }): ReactElement {
-  const [open, setOpen] = useState(props.depth < props.defaultExpandedDepth)
+  const { palette, directive } = props.frame
+  // A branch mounted *after* a directive was issued (its parent was just
+  // expanded) must honour that directive on arrival, not only on the next one
+  // — hence the initial state, not an effect.
+  const [open, setOpen] = useState(
+    directive ? directive.value : props.depth < props.frame.defaultExpandedDepth,
+  )
+  const appliedEpoch = useRef(directive?.epoch)
+  useEffect(() => {
+    if (directive && directive.epoch !== appliedEpoch.current) {
+      appliedEpoch.current = directive.epoch
+      setOpen(directive.value)
+    }
+  }, [directive])
+
   const entries: [string, unknown][] = Array.isArray(props.value)
     ? props.value.map((v, i) => [String(i), v])
     : Object.entries(props.value)
@@ -663,7 +694,7 @@ function JsonBranch(props: {
 
   return h(
     native.View as never,
-    { style: { paddingLeft: props.depth === 0 ? 0 : tokens.space[3] } },
+    { style: { paddingLeft: props.depth === 0 ? 0 : INDENT } },
     h(
       native.Pressable as never,
       {
@@ -671,32 +702,31 @@ function JsonBranch(props: {
         accessibilityRole: 'button',
         style: { flexDirection: 'row', alignItems: 'baseline', gap: tokens.space[1] },
       },
-      h(native.Text as never, { style: { color: props.palette.text.disabled } }, open ? '▾' : '▸'),
+      h(native.Text as never, { style: { color: palette.text.disabled } }, open ? '▼' : '▶'),
       props.name !== undefined
-        ? h(native.Text as never, { style: { color: props.palette.text.secondary } }, props.name)
+        ? h(native.Text as never, { style: { color: palette.text.secondary } }, props.name)
         : null,
-      h(native.Text as never, { style: { color: props.palette.text.primary } }, brace[0]),
+      h(native.Text as never, { style: { color: palette.text.primary } }, brace[0]),
       !open
         ? h(
             native.Text as never,
-            { style: { color: props.palette.text.disabled } },
-            `${entries.length} ${Array.isArray(props.value) ? 'items' : 'keys'}`,
+            { style: { color: palette.text.disabled } },
+            `…} ${entries.length} ${Array.isArray(props.value) ? 'items' : 'keys'}`,
           )
         : null,
-      h(native.Text as never, { style: { color: props.palette.text.primary } }, open ? '' : brace[1]),
+      h(native.Text as never, { style: { color: palette.text.primary } }, open ? '' : brace[1]),
     ),
     open
       ? h(
           native.View as never,
-          { style: { borderLeftWidth: 1, borderLeftColor: props.palette.border.subtle, marginLeft: tokens.space[1] } },
+          { style: { borderLeftWidth: 1, borderLeftColor: palette.border.subtle, marginLeft: tokens.space[1] } },
           ...entries.map(([key, child]) =>
             h(JsonEntry, {
               key,
               name: key,
               value: child,
               depth: props.depth + 1,
-              defaultExpandedDepth: props.defaultExpandedDepth,
-              palette: props.palette,
+              frame: props.frame,
             }),
           ),
         )
@@ -704,44 +734,38 @@ function JsonBranch(props: {
     open
       ? h(
           native.Text as never,
-          { style: { color: props.palette.text.primary, paddingLeft: tokens.space[3] } },
+          { style: { color: palette.text.primary, paddingLeft: INDENT } },
           brace[1],
         )
       : null,
   )
 }
 
-function JsonEntry(props: {
-  name: string
-  value: unknown
-  depth: number
-  defaultExpandedDepth: number
-  palette: Palette
-}): ReactElement {
+function JsonEntry(props: { name: string; value: unknown; depth: number; frame: JsonFrame }): ReactElement {
+  const { palette } = props.frame
   const value = props.value
   const isBranch = value !== null && typeof value === 'object'
-  const color = jsonColor(value, props.palette)
 
   if (isBranch) {
     return h(JsonBranch, {
       name: props.name,
       value: value as Record<string, unknown>,
       depth: props.depth,
-      defaultExpandedDepth: props.defaultExpandedDepth,
-      palette: props.palette,
+      frame: props.frame,
     })
   }
 
+  const color = jsonColor(value, palette)
   const rendered =
     typeof value === 'string'
-      ? h(JsonString, { value, palette: props.palette })
+      ? h(JsonString, { value, palette })
       : h(native.Text as never, { style: { color } }, value === undefined ? 'undefined' : String(value))
 
   return h(
     native.View as never,
-    { style: { paddingLeft: tokens.space[3], flexDirection: 'row', alignItems: 'baseline', gap: tokens.space[1] } },
+    { style: { paddingLeft: INDENT, flexDirection: 'row', alignItems: 'baseline', gap: tokens.space[1] } },
     // The root entry has no name: the tree opens with the value itself.
-    props.name !== '' ? h(native.Text as never, { style: { color: props.palette.text.secondary } }, props.name) : null,
+    props.name !== '' ? h(native.Text as never, { style: { color: palette.text.secondary } }, props.name) : null,
     props.name !== '' ? h(native.Text as never, null, ':') : null,
     rendered,
   )
@@ -751,28 +775,53 @@ function JsonEntry(props: {
  * A parsed JSON value as a collapsible tree.
  *
  * For *reading* a response — the test screen's output pane — not editing it.
- * Twin of the desktop kit's, down to the clip and expand behaviour.
+ * Twin of the desktop kit's, down to the toolbar, the counts and the clip
+ * behaviour; hover and arrow keys are the desktop half of that bargain.
  */
 export function JsonTree(props: {
   value: unknown
   /** How many nesting levels start open. Default 2: the shape without the noise. */
   defaultExpandedDepth?: number
+  /** Render the expand-all / collapse-all toolbar above the tree. */
+  controls?: boolean
   testID?: string
   accessibilityLabel?: string
 }): ReactElement {
   const palette = c()
+  const [directive, setDirective] = useState<JsonDirective | undefined>(undefined)
+  const frame: JsonFrame = {
+    palette,
+    defaultExpandedDepth: props.defaultExpandedDepth ?? 2,
+    directive,
+  }
+
   return h(
     native.View as never,
     {
       testID: props.testID,
       accessibilityLabel: props.accessibilityLabel,
     },
+    props.controls
+      ? h(
+          native.View as never,
+          { style: { flexDirection: 'row', gap: tokens.space[3], marginBottom: tokens.space[1] } },
+          h(Button, {
+            variant: 'ghost',
+            onPress: () => setDirective({ value: true, epoch: ++jsonEpoch }),
+            children: 'Expand all',
+          }),
+          h(Button, {
+            variant: 'ghost',
+            onPress: () => setDirective({ value: false, epoch: ++jsonEpoch }),
+            children: 'Collapse all',
+          }),
+        )
+      : null,
     h(JsonEntry, {
       name: '',
       value: props.value,
       depth: 0,
-      defaultExpandedDepth: props.defaultExpandedDepth ?? 2,
-      palette,
+      frame,
     }),
   )
 }

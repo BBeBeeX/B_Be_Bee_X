@@ -164,15 +164,18 @@ describe('the js debug step', () => {
      * one thing the value event exists to prevent.
      */
     const ctx = await app()
-    const code = 'return { items: Array.from({ length: 60 }, (_, i) => ({ id: i, title: "track " + i, url: "https://music.example.org/stream/" + i })) }'
+    // Large enough to exceed every cap the trace has ever had (2 KB, 20 KB):
+    // a value cut anywhere is a string the tree can never parse.
+    const code = 'return { items: Array.from({ length: 300 }, (_, i) => ({ id: i, title: "track " + i, url: "https://music.example.org/stream/" + i })) }'
     const events = await traceOf(ctx, { kind: 'js', code })
 
     const value = events.find((e) => e.kind === 'value')
     expect(value && value.kind === 'value').toBe(true)
     const text = value && value.kind === 'value' ? value.value : ''
-    expect(text.length).toBeGreaterThan(2000)
+    expect(text.length).toBeGreaterThan(20_000)
+    expect(text).not.toContain('truncated')
     const parsed = JSON.parse(text) as { items: { title: string }[] }
-    expect(parsed.items).toHaveLength(60)
+    expect(parsed.items).toHaveLength(300)
   }, 30_000)
 
   it('reports malformed arguments as a trace error, not a throw', async () => {

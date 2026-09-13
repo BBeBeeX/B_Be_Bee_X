@@ -165,19 +165,16 @@ export function tracedHttp(http: HttpService, collector: TraceCollector): HttpSe
   return traced as unknown as HttpService
 }
 
-/** Cap on a whole value — a body, an output, a return value shown on the test screen. */
-const VALUE = 20_000
-
-/** The full text of a value, within the whole-value cap. */
+/** The full text of a value. Never truncated — the tree renders what arrived. */
 function valueTextOf(value: unknown): string {
-  if (typeof value === 'string') return value.slice(0, VALUE)
+  if (typeof value === 'string') return value
   if (value === undefined) return 'undefined'
   if (value === null) return 'null'
   try {
     const text = JSON.stringify(value)
-    return text === undefined ? String(value) : text.slice(0, VALUE)
+    return text === undefined ? String(value) : text
   } catch {
-    return String(value).slice(0, VALUE)
+    return String(value)
   }
 }
 

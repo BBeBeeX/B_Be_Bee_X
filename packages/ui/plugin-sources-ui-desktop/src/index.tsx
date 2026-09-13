@@ -553,7 +553,7 @@ function valueBlock(event: Extract<TraceEvent, { kind: 'value' }>): ReactElement
     null,
     h('div', { style: { color: p().text.secondary, marginBottom: tokens.space[1] } }, event.label),
     parsed !== undefined
-      ? h(JsonTree, { value: parsed, accessibilityLabel: event.label })
+      ? h(JsonTree, { value: parsed, accessibilityLabel: event.label, controls: true })
       : text,
   )
 }
