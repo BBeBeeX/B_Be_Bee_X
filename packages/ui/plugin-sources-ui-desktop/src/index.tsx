@@ -420,12 +420,12 @@ export function SearchScreen({
         gap: tokens.space[4],
       },
     },
-    // The search bar. It is first in the DOM in both states, so focusing it
-    // and typing works the same before and after the first search.
+    // The search bar with its source chips directly beneath it. Both stay
+    // pinned at the top in either state — the results never push the controls
+    // off screen, and the chips never float away from what they configure.
     h(
       'div',
       { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[2] } },
-      h(Text, { variant: submitted ? 'lg' : 'display' }, 'Search'),
       h(
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: tokens.space[2] } },
@@ -451,32 +451,6 @@ export function SearchScreen({
           ? h(Button, { variant: 'ghost', onPress: clear, testID: 'search-clear', children: 'Clear' })
           : null,
       ),
-    ),
-    // The toggles: centred while there is nothing else on screen, a compact
-    // row under the bar once the results are.
-    h(
-      'div',
-      {
-        style: submitted
-          ? {
-              display: 'flex',
-              flexDirection: 'column',
-              gap: tokens.space[2],
-            }
-          : {
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flex: 1,
-              gap: tokens.space[3],
-            },
-      },
-      h(
-        Text,
-        { variant: 'sm', tone: 'muted' },
-        submitted ? 'Search in' : 'Choose which sources to search',
-      ),
       h(
         'div',
         {
@@ -485,27 +459,28 @@ export function SearchScreen({
           style: {
             display: 'flex',
             flexWrap: 'wrap',
-            gap: tokens.space[2],
-            justifyContent: 'center',
+            alignItems: 'center',
+            gap: tokens.space[1],
           },
         },
         ...selection.options.map((option) =>
-          h(Button, {
+          h(SourceChip, {
             key: option.id,
-            variant: selection.isSelected(option.id) ? 'primary' : 'ghost',
+            label: option.name,
+            selected: selection.isSelected(option.id),
             disabled: !option.searchable,
             onPress: () => selection.toggle(option.id),
             accessibilityLabel: `${selection.isSelected(option.id) ? 'Do not search' : 'Search'} ${option.name}`,
             testID: `search-source-${option.id}`,
-            children: option.name,
           }),
         ),
         selection.options.some((option) => option.searchable)
-          ? h(Button, {
-              variant: 'ghost',
+          ? h(SourceChip, {
+              label: selection.allSelected ? 'None' : 'All',
+              selected: false,
               onPress: selection.toggleAll,
+              accessibilityLabel: selection.allSelected ? 'Deselect every source' : 'Select every source',
               testID: 'search-toggle-all',
-              children: selection.allSelected ? 'None' : 'All',
             })
           : null,
       ),
@@ -614,6 +589,68 @@ export function SearchScreen({
                         : h(ResultLine, { row }),
               }),
             ),
+  )
+}
+
+/**
+ * A source toggle.
+ *
+ * Deliberately not `Button`: the kit's control is sized for a primary action
+ * (44px, the platform's minimum), and a row of those is a wall under the
+ * search box. A chip is the filter-sized control the design language calls
+ * for, and the *selection* it edits already lives in the headless hooks — so
+ * this is layout, the half a view package is allowed to write twice.
+ */
+function SourceChip({
+  label,
+  selected,
+  disabled = false,
+  onPress,
+  accessibilityLabel,
+  testID,
+}: {
+  label: string
+  selected: boolean
+  disabled?: boolean
+  onPress: () => void
+  accessibilityLabel: string
+  testID: string
+}): ReactElement {
+  const scheme = p()
+  const [hovered, setHovered] = useState(false)
+  const interactive = hovered && !disabled
+  return h(
+    'button',
+    {
+      type: 'button',
+      disabled,
+      onClick: disabled ? undefined : onPress,
+      'aria-pressed': selected,
+      'aria-label': accessibilityLabel,
+      'data-testid': testID,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      style: {
+        // Small enough to read as a filter, tall enough to hit: 26px is above
+        // the WCAG 2.2 target-size floor with the gaps between chips.
+        minHeight: 26,
+        padding: `0 ${tokens.space[3]}px`,
+        borderRadius: tokens.radius.pill,
+        border: `1px solid ${
+          selected ? 'transparent' : interactive ? scheme.border.strong : scheme.border.subtle
+        }`,
+        background: selected ? (interactive ? scheme.accent.hover : scheme.accent.base) : 'transparent',
+        color: selected ? scheme.accent.on : interactive ? scheme.text.primary : scheme.text.secondary,
+        fontFamily: tokens.font.family.ui,
+        fontSize: tokens.font.size.xs,
+        fontWeight: tokens.font.weight.bold,
+        letterSpacing: 0.3,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        transition: `background-color ${tokens.duration.fast}ms, color ${tokens.duration.fast}ms, border-color ${tokens.duration.fast}ms`,
+      },
+    },
+    label,
   )
 }
 

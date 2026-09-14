@@ -265,7 +265,10 @@ which events invalidate which state — are written once. Only the JSX is writte
   ([07 §5](./07-data-model.md#5-the-event-map)); a progress bar animates between ticks with
   `requestAnimationFrame` and re-syncs on each event.
 - **Artwork renders `blurhash` first**, then the image
-  ([07 §4.2](./07-data-model.md#42-artwork)). No layout shift, no grey flash on scroll.
+  ([07 §4.2](./07-data-model.md#42-artwork)). No layout shift, no grey flash on scroll. A remote
+  cover is requested with **no `Referer`**: several CDNs answer a hotlink 403 when the referrer is
+  a foreign origin (Bilibili's `hdslb.com` does, and in dev the renderer's referrer is
+  `localhost`), which shows every result as a broken image while the same URL opens fine in a tab.
 - **Artwork with no image falls back to a generated identicon.** When there is no cover to load —
   a local file without embedded art gets no `artworks` row at all — `Artwork` renders a
   GitHub-identicon-style square derived from the entity's URN: a FNV-1a hash of the seed drives a

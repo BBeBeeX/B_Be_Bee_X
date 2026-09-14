@@ -334,14 +334,20 @@ describe('SearchScreen on mobile', () => {
   ]
 
   it('shows the box and the source toggles before a search', async () => {
-    const { ctx } = await harness()
+    const { ctx, admin } = await harness()
+    await admin.sources.import(JSON.stringify(DOCS))
+    await tick()
     const { container } = render(h(SearchScreen, { ctx }))
     await act(async () => {
       await tick()
     })
-    expect(container.textContent).toContain('Choose which sources to search')
     expect(container.querySelector('[data-testid="search-input"]')).toBeTruthy()
     expect(container.querySelector('[data-testid="search-submit"]')).toBeTruthy()
+    expect(
+      container.querySelector(`[data-testid="search-source-${admin.sources.sources[0]!.id}"]`),
+    ).toBeTruthy()
+    // Nothing asked yet: no results section, not an empty one.
+    expect(container.textContent).not.toContain('Nothing found')
   })
 
   it('lists each source’s hits under its own heading', async () => {

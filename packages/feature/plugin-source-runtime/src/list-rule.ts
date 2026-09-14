@@ -13,6 +13,7 @@
 
 import { RuleError } from '@BBeBee/protocol'
 import type { ListRule, Track } from '@BBeBee/protocol'
+import { artistKey } from '@BBeBee/toolkit'
 import {
   RuleSyntaxError,
   evaluateNodes,
@@ -201,7 +202,20 @@ export function rowToTrack(
     urn: `BBeBee:${sourceId}:track:${id}`,
     title: String(row.title),
     artists: artist
-      ? [{ urn: `BBeBee:${sourceId}:artist:${slug(artist)}`, name: artist, role: 'main', ordinal: 0 }]
+      ? [
+          {
+            // The backend's own artist id when the row carries one — that is
+            // the identity a later `getArtist` takes — and a derived key
+            // otherwise. Either way it must be unique per artist: the slug
+            // alone mapped every CJK name to one shared row.
+            urn: `BBeBee:${sourceId}:artist:${
+              typeof row.artistId === 'string' && row.artistId ? row.artistId : artistKey(artist)
+            }`,
+            name: artist,
+            role: 'main',
+            ordinal: 0,
+          },
+        ]
       : [],
     available: true,
   }
@@ -262,6 +276,4 @@ export function coerceDuration(
   )
 }
 
-function slug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
-}
+

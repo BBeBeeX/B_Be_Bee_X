@@ -49,6 +49,23 @@ export function artistId(name: string): string {
 }
 
 /**
+ * A remote artist's URN segment.
+ *
+ * The readable slug where the name is Latin, the stable hash where it is not.
+ * An ASCII-only slug collapses every CJK name to the empty string, and the
+ * `|| 'unknown'` that used to follow meant every Chinese uploader shared one
+ * artist URN and one `artists` row — so the library showed whichever name was
+ * written last, for all of them at once. Readable where it can be, unique
+ * always.
+ */
+export function artistKey(name: string): string {
+  const slug = normalise(name)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug || artistId(name)
+}
+
+/**
  * Artwork is content-addressed, so two files sharing a cover share a row.
  *
  * Two rounds over different salts, like `stableId`. A single 32-bit round plus

@@ -386,12 +386,12 @@ export function SearchScreen({
         gap: tokens.space[4],
       },
     },
-    // The search bar stays first in the tree in both states, so the keyboard
-    // and the submit button do not move when the results arrive.
+    // The search bar with its source chips directly beneath it. Both stay
+    // pinned at the top in either state — the results never push the controls
+    // off screen, and the chips never float away from what they configure.
     h(
       native.View as never,
       { style: { gap: tokens.space[2] } },
-      h(Text, { variant: submitted ? 'lg' : 'display' }, 'Search'),
       h(TextField, {
         value: text,
         onChange: setText,
@@ -413,50 +413,31 @@ export function SearchScreen({
           ? h(Button, { variant: 'ghost', onPress: clear, testID: 'search-clear', children: 'Clear' })
           : null,
       ),
-    ),
-    // Centred while the screen has nothing else to show; a compact row once it
-    // has, which is the "moves up" half of the layout.
-    h(
-      native.View as never,
-      {
-        style: submitted
-          ? { gap: tokens.space[2] }
-          : {
-              alignItems: 'center',
-              justifyContent: 'center',
-              flex: 1,
-              gap: tokens.space[3],
-            },
-      },
-      h(
-        Text,
-        { variant: 'sm', tone: 'muted' },
-        submitted ? 'Search in' : 'Choose which sources to search',
-      ),
       h(
         native.View as never,
         {
           accessibilityRole: 'group',
           accessibilityLabel: 'Sources to search',
-          style: { flexDirection: 'row', flexWrap: 'wrap', gap: tokens.space[2], justifyContent: 'center' },
+          style: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: tokens.space[1] },
         },
         ...selection.options.map((option) =>
-          h(Button, {
+          h(SourceChip, {
             key: option.id,
-            variant: selection.isSelected(option.id) ? 'primary' : 'ghost',
+            label: option.name,
+            selected: selection.isSelected(option.id),
             disabled: !option.searchable,
             onPress: () => selection.toggle(option.id),
             accessibilityLabel: `${selection.isSelected(option.id) ? 'Do not search' : 'Search'} ${option.name}`,
             testID: `search-source-${option.id}`,
-            children: option.name,
           }),
         ),
         selection.options.some((option) => option.searchable)
-          ? h(Button, {
-              variant: 'ghost',
+          ? h(SourceChip, {
+              label: selection.allSelected ? 'None' : 'All',
+              selected: false,
               onPress: selection.toggleAll,
+              accessibilityLabel: selection.allSelected ? 'Deselect every source' : 'Select every source',
               testID: 'search-toggle-all',
-              children: selection.allSelected ? 'None' : 'All',
             })
           : null,
       ),
@@ -557,6 +538,65 @@ export function SearchScreen({
                         : h(ResultLine, { row }),
               }),
             ),
+  )
+}
+
+/**
+ * A source toggle. See the desktop twin: a filter-sized chip rather than the
+ * kit's action-sized `Button`, because the selection it edits already lives
+ * in the headless hooks and this is the half a view package writes twice.
+ */
+function SourceChip({
+  label,
+  selected,
+  disabled = false,
+  onPress,
+  accessibilityLabel,
+  testID,
+}: {
+  label: string
+  selected: boolean
+  disabled?: boolean
+  onPress: () => void
+  accessibilityLabel: string
+  testID: string
+}): ReactElement {
+  const native = nativePrimitives()
+  const scheme = p()
+  return h(
+    native.Pressable as never,
+    {
+      accessibilityRole: 'button',
+      accessibilityLabel,
+      accessibilityState: { selected, disabled },
+      testID,
+      disabled,
+      onPress: disabled ? undefined : onPress,
+      style: {
+        // 30, not the 44 an action button takes: a chip is a filter, and the
+        // row still clears the touch-target guidance with its own padding.
+        minHeight: 30,
+        paddingHorizontal: tokens.space[3],
+        borderRadius: tokens.radius.pill,
+        borderWidth: 1,
+        borderColor: selected ? 'transparent' : scheme.border.subtle,
+        backgroundColor: selected ? scheme.accent.base : 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: disabled ? 0.5 : 1,
+      },
+    },
+    h(
+      native.Text as never,
+      {
+        style: {
+          color: selected ? scheme.accent.on : scheme.text.secondary,
+          fontSize: tokens.font.size.xs,
+          fontWeight: tokens.font.weight.bold,
+        },
+      },
+      label,
+    ),
   )
 }
 

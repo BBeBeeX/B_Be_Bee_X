@@ -295,6 +295,15 @@ describe('Artwork', () => {
     expect(out).not.toContain('<svg')
   })
 
+  it('fetches a remote cover with no Referer', () => {
+    // Several CDNs — Bilibili's hdslb.com among them — answer a hotlink 403
+    // when the referrer is a foreign origin, which in dev is localhost.
+    const out = html(h(Artwork, { size: 48, artwork: { id: 'a', sourceUrl: 'https://x/a.jpg' } }))
+    // React's server renderer spells it back in camelCase; the DOM attribute
+    // it writes is `referrerpolicy`.
+    expect(out).toContain('referrerPolicy="no-referrer"')
+  })
+
   it('a colour from a real cover outranks the generated one', () => {
     const out = html(
       h(Artwork, { size: 48, seed: 'BBeBee:local:track:9f2c8a1e', artwork: { id: 'a', dominantColor: '#3a5f7d' } }),

@@ -64,6 +64,7 @@ import {
   type TemplateScope,
 } from '@BBeBee/source-rules'
 import { evaluateRule, evaluateUrlTemplate } from '@BBeBee/source-rules'
+import { artistKey } from '@BBeBee/toolkit'
 import { capabilitiesFor, hasRules } from './capabilities.js'
 import { SRC_SHIM, createSourceHost, type HostDeps } from './host.js'
 import { TraceCollector, tracedHttp } from './trace.js'
@@ -769,7 +770,7 @@ export class DocumentSource {
               id:
                 typeof payload.artistId === 'string' && payload.artistId
                   ? payload.artistId
-                  : slugOf(artist),
+                  : artistKey(artist),
             }),
             name: artist,
             role: 'main',
@@ -1668,7 +1669,7 @@ export class DocumentSource {
       artists: artist
         ? [
             {
-              urn: formatUrn({ sourceId: this.record.id, kind: 'artist', id: slugOf(artist) }),
+              urn: formatUrn({ sourceId: this.record.id, kind: 'artist', id: artistKey(artist) }),
               name: artist,
               role: 'main',
               ordinal: 0,
@@ -1971,7 +1972,7 @@ export class DocumentSource {
                     urn: formatUrn({
                       sourceId: this.record.id,
                       kind: 'artist',
-                      id: String(item.artistId || itemArtist?.id || slugOf(artistName)),
+                      id: String(item.artistId || itemArtist?.id || artistKey(artistName)),
                     }),
                     name: artistName,
                     role: 'main',
@@ -2634,10 +2635,5 @@ interface SessionStore {
   forget?(key: string): Promise<void>
 }
 
-
-/** A name as a URN segment. The same slug the catalogue writer uses. */
-function slugOf(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
-}
 
 

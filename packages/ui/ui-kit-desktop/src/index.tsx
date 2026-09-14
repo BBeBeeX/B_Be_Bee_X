@@ -326,6 +326,16 @@ export function Artwork(props: ArtworkProps) {
           src: uri,
           alt: '',
           loading: 'lazy',
+          /*
+           * A remote cover is fetched with no Referer.
+           *
+           * Several CDNs answer a hotlink 403 when the referrer is a foreign
+           * origin — Bilibili's `hdslb.com` is one, and in dev the renderer's
+           * referrer is `http://localhost:5173`. Without this every search
+           * result shows a broken cover while the same URL opens fine in a
+           * browser tab, which is exactly the wrong way round to debug.
+           */
+          referrerPolicy: 'no-referrer',
           style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
         })
       : pattern

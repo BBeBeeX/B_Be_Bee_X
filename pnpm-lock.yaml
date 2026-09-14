@@ -822,6 +822,9 @@ importers:
       '@BBeBee/source-rules':
         specifier: workspace:*
         version: link:../source-rules
+      '@BBeBee/toolkit':
+        specifier: workspace:*
+        version: link:../toolkit
       cordis:
         specifier: 4.0.0-rc.9
         version: 4.0.0-rc.9
@@ -859,6 +862,9 @@ importers:
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
+      '@BBeBee/toolkit':
+        specifier: workspace:*
+        version: link:../toolkit
       '@BBeBee/ui-core':
         specifier: workspace:*
         version: link:../../ui/ui-core

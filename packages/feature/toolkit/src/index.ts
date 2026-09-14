@@ -9,6 +9,7 @@
 export {
   albumId,
   artistId,
+  artistKey,
   artworkId,
   normalise,
   stableId,

@@ -377,14 +377,37 @@ function trackBvid(track) {
 }
 
 /**
+ * One playurl request, at one entitlement bitmap.
+ *
+ * `fnval` is what asks for the richer formats: 4048 is the standard DASH set
+ * (4K, HDR, Dolby, Dolby Vision, AV1), and bit 4096 adds Hi-Res (30251),
+ * which is the whole point of asking as a signed-in user. Bilibili now
+ * answers -400 to a bitmap carrying tracks the video does not offer instead
+ * of ignoring the extra bits, so the caller walks this down rather than
+ * pinning one value.
+ */
+async function fetchBiliPlayurl(bvid, cid, fnval) {
+  const query = await signWbiQuery({
+    bvid: bvid,
+    cid: cid,
+    qn: 127,
+    fnval: fnval,
+    fourk: 1,
+    platform: 'pc',
+  });
+  const res = await src.get('https://api.bilibili.com/x/player/wbi/playurl?' + query, { headers: BROWSER_HEADERS });
+  return src.parse.json(res.body);
+}
+
+/**
  * The audio stream, per docs/video/videostreamurl.md.
  *
- * fnval carries bit 4096 because Hi-Res (30251) is only offered when the
- * request asks for it; without the bit the best signed-in answer is 192K AAC
- * no matter what prefs asked for. Quality is picked by tier ladder from
- * prefs.quality — the player sends 'lossless' — with every step degrading to
- * a decodable AAC rather than to the Dolby track the bandwidth sort used to
- * select.
+ * Hi-Res first (4096), then the standard DASH set, then DASH alone: a video
+ * that offers no FLAC answers -400 to the richer request, and without the
+ * walk-down it was a failed resolve rather than a 192K AAC stream. Quality is
+ * picked by tier ladder from prefs.quality — the player sends 'lossless' —
+ * with every step degrading to a decodable AAC rather than to the Dolby track
+ * the bandwidth sort used to select.
  */
 async function resolveBiliStream(track, prefs) {
   const bvid = trackBvid(track);
@@ -398,16 +421,17 @@ async function resolveBiliStream(track, prefs) {
     throw new Error('cannot resolve cid for bvid ' + bvid);
   }
 
-  const query = await signWbiQuery({
-    bvid: bvid,
-    cid: cid,
-    qn: 127,
-    fnval: 8144, // 4048 (dash|hdr|4k|dolby|dolby-vision|8k|av1) | 4096 (Hi-Res)
-    fourk: 1,
-    platform: 'pc',
-  });
-  const res = await src.get('https://api.bilibili.com/x/player/wbi/playurl?' + query, { headers: BROWSER_HEADERS });
-  const data = src.parse.json(res.body);
+  const FNVAL_STEPS = [
+    [8144, 'dash+hi-res'],
+    [4048, 'dash'],
+    [16, 'dash-minimal'],
+  ];
+  let data;
+  for (const step of FNVAL_STEPS) {
+    data = await fetchBiliPlayurl(bvid, cid, step[0]);
+    if (!data?.code || data.code === 0) break;
+    src.log('resolveBiliStream(' + bvid + ') → fnval ' + step[0] + ' (' + step[1] + ') refused: code ' + data.code + ' ' + previewValue(data.message));
+  }
   if (data?.code && data.code !== 0) {
     src.log('resolveBiliStream(' + bvid + ') → playurl code ' + data.code + ': ' + previewValue(data.message));
     throw new Error('playurl failed: ' + (data.message || data.code));

@@ -501,6 +501,29 @@ describe('the shipped Bilibili document', () => {
     expect(handle.expiresAt).toBeGreaterThan(Date.now())
   })
 
+  it('walks fnval down when the Hi-Res request is refused', async () => {
+    /*
+     * Bilibili answers -400 to a bitmap carrying tracks the video does not
+     * offer rather than ignoring the extra bits. Pinned at 8144, that made
+     * every video without a FLAC track unplayable; the walk-down lands on the
+     * same AAC the older pinned-but-tolerant API used to answer.
+     */
+    let calls = 0
+    const { source, requests } = await makeSource({
+      playurl: () => (++calls === 1 ? { code: -400, message: '请求错误' } : PLAYURL_LOGGED_OUT),
+    })
+    const handle = await source.resolveStream('BV1GJ411x7h7', {
+      quality: 'lossless',
+      saveData: false,
+      acceptFormats: [],
+    })
+    expect(handle.target).toContain('30232.m4s')
+    const fnvals = requests
+      .filter((r) => r.url.includes('/x/player/wbi/playurl'))
+      .map((r) => new URL(r.url).searchParams.get('fnval'))
+    expect(fnvals).toEqual(['8144', '4048'])
+  })
+
   it('degrades to the best AAC when signed out offers nothing better', async () => {
     const { source } = await makeSource({ playurl: () => PLAYURL_LOGGED_OUT })
     const handle = await source.resolveStream('BV1GJ411x7h7', {

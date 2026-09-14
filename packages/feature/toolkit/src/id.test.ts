@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { albumId, artistId, artworkId, normalise, stableId, trackId } from './id.js'
+import { albumId, artistId, artistKey, artworkId, normalise, stableId, trackId } from './id.js'
 
 describe('stableId', () => {
   it('is derived, not random — the same parts give the same id', () => {
@@ -46,6 +46,27 @@ describe('catalogue entity ids', () => {
 
   it('keys an artist on the normalised name', () => {
     expect(artistId('AC/DC')).toBe(artistId('ac/dc'))
+  })
+})
+
+describe('artistKey', () => {
+  it('keeps the readable slug for a Latin name', () => {
+    expect(artistKey('The Beatles')).toBe('the-beatles')
+    expect(artistKey('AC/DC')).toBe('ac-dc')
+    // Stable across the shape a caller writes and the shape a backend sends.
+    expect(artistKey('  The   BEATLES ')).toBe('the-beatles')
+  })
+
+  it('falls back to a stable hash for a name the slug cannot represent', () => {
+    // The bug this exists for: an ASCII-only slug collapses every CJK name to
+    // the empty string, so `|| 'unknown'` made one artist row for all of them.
+    expect(artistKey('洛天依')).toMatch(/^[0-9a-f]{16}$/)
+    expect(artistKey('洛天依')).toBe(artistKey('洛天依'))
+  })
+
+  it('gives different non-Latin names different keys', () => {
+    expect(artistKey('洛天依')).not.toBe(artistKey('言和'))
+    expect(artistKey('中国天气')).not.toBe(artistKey('好奇三知'))
   })
 })
 

@@ -30,6 +30,7 @@
   "dependencies": {
     "@BBeBee/protocol": "workspace:*",
     "@BBeBee/source-rules": "workspace:*",
+    "@BBeBee/toolkit": "workspace:*",
     "cordis": "4.0.0-rc.9"
   },
   "devDependencies": {

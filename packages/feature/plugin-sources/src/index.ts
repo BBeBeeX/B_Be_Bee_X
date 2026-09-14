@@ -61,6 +61,7 @@ import type {
   Track,
   TraceEvent,
 } from '@BBeBee/protocol'
+import { artistKey } from '@BBeBee/toolkit'
 import { canSearchProvider } from './capabilities.js'
 import { Catalog } from './catalog.js'
 import { cacheEntities } from './cache.js'
@@ -166,7 +167,7 @@ function browsedTrack(
   if (entry.subtitle) {
     track.artists = [
       {
-        urn: formatUrn({ sourceId, kind: 'artist', id: artistSlug(entry.subtitle) }),
+        urn: formatUrn({ sourceId, kind: 'artist', id: artistKey(entry.subtitle) }),
         name: entry.subtitle,
         role: 'main',
         ordinal: 0,
@@ -194,7 +195,7 @@ function browsedAlbum(entry: BrowseEntry, sourceId: string): Album {
   if (entry.subtitle) {
     album.artists = [
       {
-        urn: formatUrn({ sourceId, kind: 'artist', id: artistSlug(entry.subtitle) }),
+        urn: formatUrn({ sourceId, kind: 'artist', id: artistKey(entry.subtitle) }),
         name: entry.subtitle,
         role: 'main',
         ordinal: 0,
@@ -203,11 +204,6 @@ function browsedAlbum(entry: BrowseEntry, sourceId: string): Album {
   }
   if (entry.artwork) album.artwork = entry.artwork
   return album
-}
-
-/** The same slug the runtime mints, so one artist is one row. */
-function artistSlug(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
 }
 
 /**
