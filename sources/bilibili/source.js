@@ -755,6 +755,22 @@ function biliStreamBitrate(track) {
 }
 
 /**
+ * Headers the CDN needs — BiliBiliIE's `http_headers: {'Referer': url}`.
+ *
+ * yt-dlp's formats carry the *video page* as Referer, not the site root: the
+ * CDN's hotlink check compares the referer domain, and the page URL is what
+ * the web player itself sends. The browser UA rides along for the same reason
+ * it does on every other request.
+ */
+function biliStreamHeaders(track) {
+  const bvid = trackBvid(track);
+  return JSON.stringify({
+    Referer: bvid ? 'https://www.bilibili.com/video/' + bvid : 'https://www.bilibili.com/',
+    'User-Agent': BROWSER_HEADERS['User-Agent'],
+  });
+}
+
+/**
  * Subtitles as LRC — BilibiliBaseIE._get_subtitles.
  *
  * The endpoint is `x/player/wbi/v2` and yt-dlp calls it unsigned, with

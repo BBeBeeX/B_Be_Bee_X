@@ -46,7 +46,7 @@ node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources
 | `ruleSearchArtist` | 用户行:`trackId=$.mid`、`title=$.uname`、`artwork=item.upic`,由运行时映射为 `Artist{urn,name,artwork}` |
 | `exploreUrl` | `{{@js:biliExploreUrl()}}` — 生成 4 个 browse 栏目(见下;bilibili.py 没有对应流程,为本源自有的浏览面) |
 | `ruleExplore` | `trackList=@js:biliExploreRows(result)` — 同一规则处理两种榜单文档(期数列表 / 歌曲列表) |
-| `ruleStream` | `url=resolveBiliStream(track, prefs)`;单次 playurl 取回全部音轨后按应用档位选择;`headers`=Referer+UA(CDN 必需,经桌面 IPC `stream:set-headers` 注册);`seekable=true`(跳过 HEAD 探测);`expiresAt`=2 小时 |
+| `ruleStream` | `url=resolveBiliStream(track, prefs)`;单次 playurl 取回全部音轨后按应用档位选择;`headers=biliStreamHeaders(track)`(视频页 Referer + UA,与 yt-dlp 的 `http_headers` 一致,经桌面 IPC `stream:set-headers` 注册);`seekable=true`(跳过 HEAD 探测);`expiresAt`=2 小时 |
 | `ruleLyric` | `getBiliLyrics(track)` → LRC(无签名 `x/player/wbi/v2`) |
 | `ruleArtist` | `getBiliArtist(id)` |
 | `rulePlaylist` | `getBiliPlaylist(id, page)` |
@@ -79,6 +79,7 @@ node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources
 | `trackBvid(track) / ensureCid(track)` | 从 `track.bvid || onlineId || id` 取 bvid;`x/player/pagelist` 取第一页 cid(带 `jsonp=jsonp`,yt-dlp 同参),按 bvid 缓存 1h |
 | `fetchBiliPlayurl(bvid, cid, query)` | yt-dlp `_download_playinfo`:`x/player/wbi/playurl`,WBI 签名,`fnval=4048` + `dm_*`;未登录带 `try_look=1`,登录后剔除(与 yt-dlp 的 `params.pop('try_look', None)` 一致);错误码归一化为 `code * -1`,`-401/-352` 附 "please wait and try later" |
 | `resolveBiliStream(track, prefs)` | 取流,见下节 |
+| `biliStreamHeaders(track)` | 流请求头:视频页 `Referer`(bvid 拼出)+ 浏览器 UA;`ruleStream.headers` 渲染它 |
 | `getBiliLyrics(track)` | yt-dlp `_get_subtitles`:`x/player/wbi/v2` **不签名**,有 aid 用 `aid+cid`、否则 `bvid+cid`;`need_login_subtitle` 记日志;选字幕(人工中文 > AI 中文 > 第一条)→ JSON 转 LRC(真实换行) |
 | `getBiliQrCode / pollBiliQrCode` | 二维码登录:`passport …/qrcode/generate|poll`;轮询码 0=确认(Set-Cookie 自动入 jar)、86090=已扫、86038=过期、86101=未扫 |
 | `refreshBiliCookie()` | Cookie 刷新:`cookie/info`(timestamp)→ RSA-OAEP-SHA256(`refresh_<ts>`)hex → `correspond/1/<hex>` 页面抓 `refresh_csrf` → `cookie/refresh` → `confirm/refresh`;新 `refresh_token` 存入 `src.vars` |
@@ -139,7 +140,8 @@ DASH 音频 id → 应用 `StreamQuality` 档位(对齐 B 站网页播放器给�
 2. **浏览器 UA + Referer**——jsLib 每个请求显式带 `BROWSER_HEADERS`;文档顶层 `header` 覆盖运行时自发起的抓取。
 3. **dm_* 指纹**——playurl 与 arc/search 都带 `dm_img_*`;缺了它们被 -412 的概率明显上升(yt-dlp 专门为此合成)。
 4. **WBI 签名三步缺一不可**——wts、排序、值过滤 `!'()*`;签名正确性由语料测试用文档示例密钥独立复算 `w_rid` 钉死。搜索与字幕接口按 yt-dlp 不签名,签名只用于 playurl 与 arc/search。
-5. `concurrentRate: "5/1000"` 声明限速;搜索一次会发 1–2 个请求(视频 + 用户,后者失败可降级)。
+5. **CDN 域名会轮换**——playurl 每次可能返回 `cn-*.bilivideo.com`、`upos-*.bilivideo.com` 等不同子域,`allowedHosts` 同时声明裸父域(`bilivideo.com`)与通配(`*.bilivideo.com`)。运行时若报 "did not declare …; add it to allowedHosts and re-import",说明本机库里的旧行还是旧的域名表(或被标为本地修改后重导被拒),重新导入本目录编译出的文档即可——文档内容变化会强制更新该行。
+6. `concurrentRate: "5/1000"` 声明限速;搜索一次会发 1–2 个请求(视频 + 用户,后者失败可降级)。
 
 ## 已知限制
 
