@@ -134,6 +134,77 @@ describe('the shipped Subsonic document', () => {
   })
 })
 
+describe('search types', () => {
+  /*
+   * A document with both interfaces, which is what the per-interface toggles
+   * on the search screen exist for. `types` has to mean exactly what it says:
+   * asking for artists must not fetch the track document, and asking for
+   * tracks must not run the artist rules.
+   */
+  const ARTIST_RESPONSE = {
+    'subsonic-response': {
+      searchResult3: { artist: [{ id: 'ar1', name: 'Björk' }] },
+    },
+  }
+
+  const withArtistRules = async (): Promise<Record<string, unknown>> => {
+    const doc = await shippedDocument()
+    return {
+      ...doc,
+      ruleSearchArtist: {
+        trackList: '$.subsonic-response.searchResult3.artist[*]',
+        trackId: '$.id',
+        title: '$.name',
+      },
+    }
+  }
+
+  it('runs only the track rules when types names tracks', async () => {
+    const { http, requests } = fakeHttp(SUBSONIC_RESPONSE)
+    const source = new DocumentSource(recordFor(await withArtistRules()), { http })
+    const result = await source.search({ text: 'x', types: ['track'] })
+    expect(result.tracks!.items).toHaveLength(2)
+    expect(result.artists).toBeUndefined()
+    expect(requests).toHaveLength(1)
+  })
+
+  it('runs only the artist rules when types names artists', async () => {
+    const { http, requests } = fakeHttp(ARTIST_RESPONSE)
+    const source = new DocumentSource(recordFor(await withArtistRules()), { http })
+    const result = await source.search({ text: 'x', types: ['artist'] })
+    expect(result.tracks, 'the track half was not asked for').toBeUndefined()
+    expect(result.artists!.items[0]).toMatchObject({ name: 'Björk' })
+    expect(requests).toHaveLength(1)
+  })
+
+  it('serves a document whose only search interface is artists', async () => {
+    // The artist search can live on its own URL, with no `searchUrl` at all —
+    // the provider still has to expose `search`, or that interface is
+    // unreachable from the search screen.
+    const doc = await withArtistRules()
+    delete doc.searchUrl
+    doc.searchArtistUrl = 'https://music.example.org/rest/searchArtist?query={{key}}'
+    const { http } = fakeHttp(ARTIST_RESPONSE)
+    const source = new DocumentSource(recordFor(doc), { http })
+
+    expect(source.capabilities.search.tracks).toBe(false)
+    expect(source.capabilities.search.artists).toBe(true)
+    expect(source.provider().search, 'present, not stubbed').toBeTypeOf('function')
+
+    const result = await source.provider().search!({ text: 'x' })
+    expect(result.tracks).toBeUndefined()
+    expect(result.artists!.items).toHaveLength(1)
+  })
+
+  it('refuses a type the document cannot serve', async () => {
+    // The shipped document has no artist rules; a caller that asks for
+    // artists anyway gets told, rather than a silently empty result.
+    const { http } = fakeHttp(SUBSONIC_RESPONSE)
+    const source = new DocumentSource(recordFor(await shippedDocument()), { http })
+    await expect(source.search({ text: 'x', types: ['artist'] })).rejects.toThrow(RuleError)
+  })
+})
+
 describe('rules that do not hold up', () => {
   const withRules = async (over: Record<string, unknown>) => {
     const doc = await shippedDocument()

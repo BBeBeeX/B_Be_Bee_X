@@ -132,6 +132,36 @@ describe('core-audio-webaudio', () => {
     expect(source.node).toBe(engine.mediaSources[0]!.node)
   })
 
+  it('reports the element clock when playback starts at zero', async () => {
+    /*
+     * `attach` starts every streamed track with `play(0)`. The element is
+     * already at 0, so no seek happens and no `seeked` event ever fires — and
+     * a pending-seek marker recorded there reported 0 as the position for the
+     * whole track while the audio played.
+     */
+    const { audio, elements } = await harness()
+    const source = await audio.load('https://example.org/a.mp3', { strategy: 'stream' })
+
+    source.play(0)
+    elements[0]!.currentTime = 5
+    expect(source.positionMs).toBe(5000)
+  })
+
+  it('reports a real seek target until the element lands it', async () => {
+    const { audio, elements } = await harness()
+    const source = await audio.load('https://example.org/a.mp3', { strategy: 'stream' })
+
+    elements[0]!.currentTime = 30
+    source.play(12_000)
+    expect(elements[0]!.currentTime, 'the element was asked to move').toBe(12)
+    expect(source.positionMs).toBe(12_000)
+
+    // The element's clock is authoritative once the seek lands.
+    elements[0]!.emit('seeked')
+    elements[0]!.currentTime = 13
+    expect(source.positionMs).toBe(13_000)
+  })
+
   it('mute restores the level it replaced', async () => {
     const { audio, engine } = await harness()
     const master = [...(audio.chainInput as unknown as { outputs: Set<unknown> }).outputs][0] as {

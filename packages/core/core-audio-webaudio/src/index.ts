@@ -214,7 +214,19 @@ class StreamedHandle implements AudioSourceHandle {
   private readonly stallListeners = new Set<(stalled: boolean) => void>()
   private stalled = false
   private readonly onStallNative = () => this.setStalled(true)
-  private readonly onRecoverNative = () => this.setStalled(false)
+  private readonly onRecoverNative = () => {
+    /*
+     * The element's own clock is authoritative as soon as it can play.
+     *
+     * A `play(atMs)` issued before metadata is stored by the element as its
+     * *default playback start position*, and that path does not fire `seeked`
+     * — so a pending marker recorded there would never clear. `attach` plays
+     * every streamed track with `play(0)`, which is exactly that call, and the
+     * position then reported 0 for the whole track while the audio played.
+     */
+    this.pendingSeekSeconds = undefined
+    this.setStalled(false)
+  }
   private readonly onSeekedNative = () => {
     this.pendingSeekSeconds = undefined
   }
@@ -261,8 +273,19 @@ class StreamedHandle implements AudioSourceHandle {
   play(atMs?: number): void {
     if (atMs !== undefined) {
       const seconds = Math.max(0, atMs / 1000)
-      this.pendingSeekSeconds = seconds
-      this.element.currentTime = seconds
+      /*
+       * Only a seek that moves the element can be pending.
+       *
+       * Setting `currentTime` to where the element already is fires no
+       * `seeked` event, so recording the target as pending would never clear
+       * it — and `positionMs` would report that target for the whole track.
+       * A fresh element is at 0, so `play(0)` is precisely the case that used
+       * to stick: the progress bar sat at zero while the audio played.
+       */
+      if (seconds !== this.element.currentTime) {
+        this.pendingSeekSeconds = seconds
+        this.element.currentTime = seconds
+      }
     }
     void this.element.play()
   }

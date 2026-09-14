@@ -26,7 +26,7 @@ import type {
 } from '@BBeBee/protocol'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
-import { ImportScreen, LibraryScreen, SearchScreen, TestScreen, inject } from './index.js'
+import { ImportScreen, LibraryScreen, SearchScreen, SourcesListScreen, TestScreen, inject } from './index.js'
 
 // Testing Library auto-cleans only with vitest globals, which this repo does
 // not enable. Without this every render stacks up in one document and
@@ -478,8 +478,8 @@ describe('SearchScreen', () => {
     render(h(SearchScreen, { ctx }))
 
     expect(screen.getByTestId('search-input')).toBeTruthy()
-    expect(screen.getByTestId(`search-source-${alpha}`)).toBeTruthy()
-    expect(screen.getByTestId(`search-source-${beta}`)).toBeTruthy()
+    expect(screen.getByTestId(`search-source-${alpha}-track`)).toBeTruthy()
+    expect(screen.getByTestId(`search-source-${beta}-track`)).toBeTruthy()
     // Nothing asked, nothing shown — and no empty-results screen either.
     expect(screen.queryByLabelText('Search results')).toBeNull()
   })
@@ -557,7 +557,7 @@ describe('SearchScreen', () => {
     await withListLayout(async () => {
       render(h(SearchScreen, { ctx }))
       await act(async () => {
-        screen.getByTestId(`search-source-${alpha!.id}`).click()
+        screen.getByTestId(`search-source-${alpha!.id}-track`).click()
       })
       await act(async () => {
         type('search-input', 'song')
@@ -572,5 +572,155 @@ describe('SearchScreen', () => {
       expect(shown).toContain('Beta Song')
       expect(shown, 'the toggled-off source was not asked').not.toContain('Alpha Song')
     })
+  })
+
+  it('gives songs and artists their own toggle, and passes the halves through', async () => {
+    /*
+     * A backend whose user search is a separate endpoint — Bilibili, for one —
+     * has two searchable interfaces. Turning the artist half off must reach
+     * the provider as `types: ['track']`, so it does not fetch the second
+     * document; that per-source filter is what the interface toggles *mean*.
+     */
+    const { ctx, admin } = await harness()
+    await withTwoSources(admin)
+    const alpha = admin.sources.sources[0]!
+
+    const seen: SearchQuery[] = []
+    const base = providerWith(alpha.id, {})
+    admin.sources.register({
+      ...base,
+      capabilities: {
+        ...base.capabilities,
+        search: { tracks: true, albums: false, artists: true, playlists: false, fullText: false },
+      },
+      search: async (query) => {
+        seen.push(query)
+        return { tracks: { items: [track(alpha.id, '1', 'Alpha Song')], hasMore: false } }
+      },
+    })
+    await tick()
+
+    await withListLayout(async () => {
+      render(h(SearchScreen, { ctx }))
+      expect(screen.getByTestId(`search-source-${alpha.id}-track`)).toBeTruthy()
+      const artists = screen.getByTestId(`search-source-${alpha.id}-artist`)
+
+      await act(async () => {
+        artists.click()
+      })
+      await act(async () => {
+        type('search-input', 'song')
+      })
+      await act(async () => {
+        screen.getByTestId('search-submit').click()
+        await tick()
+        await tick()
+      })
+
+      expect(seen).toHaveLength(1)
+      expect(seen[0]!.types, 'artist half turned off').toEqual(['track'])
+    })
+  })
+})
+
+describe('SourcesListScreen', () => {
+  it('toggles a source off and on, and the row follows', async () => {
+    const { ctx, admin } = await harness()
+    await admin.sources.import(JSON.stringify(DOC))
+    await tick()
+    const id = admin.sources.sources[0]!.id
+
+    render(h(SourcesListScreen, { ctx }))
+    await act(async () => {
+      await tick()
+    })
+
+    await act(async () => {
+      screen.getByTestId(`sources-list-toggle-${id}`).click()
+      await tick()
+    })
+    expect(ctx.sources.source(id)?.enabled).toBe(false)
+
+    await act(async () => {
+      screen.getByTestId(`sources-list-toggle-${id}`).click()
+      await tick()
+    })
+    expect(ctx.sources.source(id)?.enabled).toBe(true)
+  })
+
+  it('deletes a source only after the confirmation is pressed', async () => {
+    const { ctx, admin } = await harness()
+    await admin.sources.import(JSON.stringify(DOC))
+    await tick()
+    const id = admin.sources.sources[0]!.id
+
+    render(h(SourcesListScreen, { ctx }))
+    await act(async () => {
+      await tick()
+    })
+
+    // The first press asks; it must not take the cached library with it.
+    await act(async () => {
+      screen.getByTestId(`sources-list-delete-${id}`).click()
+      await tick()
+    })
+    expect(ctx.sources.source(id), 'the trash can only opens the question').toBeTruthy()
+
+    await act(async () => {
+      screen.getByTestId(`sources-list-delete-confirm-${id}`).click()
+      await tick()
+      await tick()
+    })
+    expect(ctx.sources.source(id)).toBeUndefined()
+  })
+
+  it('shows the local source its folders, with folder controls', async () => {
+    const { ctx, admin } = await harness()
+    await admin.sources.import(JSON.stringify(DOC))
+    await admin.db.exec(
+      `INSERT INTO sources (id, source_url, name, doc_json, doc_hash, imported_at, updated_at)
+       VALUES ('local', 'bbebee://local/local', 'This device', '{}', 'h', 0, 0)`,
+    )
+    // Refreshes the service's mirror of the table.
+    await admin.sources.setEnabled('local', true)
+
+    const calls: string[] = []
+    class ScannerStub extends Service {
+      constructor(c: Context) {
+        super(c, 'scanner')
+      }
+      specifiedDirs = [
+        { id: 'dir-1', uri: 'file:///music', recursive: true, enabled: true },
+      ] as never
+      addSpecifiedDir = async () => {
+        throw new Error('not needed')
+      }
+      removeSpecifiedDir = async (dirId: string) => void calls.push(`remove:${dirId}`)
+      setEnabled = async (dirId: string, on: boolean) => void calls.push(`enable:${dirId}:${on}`)
+      scan = async () => ({ added: 0, updated: 0, removed: 0, errors: 0 })
+      cancel = () => {}
+      progress = undefined
+    }
+    await admin.plugin(ScannerStub)
+    await tick()
+
+    render(h(SourcesListScreen, { ctx }))
+    await act(async () => {
+      await tick()
+    })
+
+    expect(screen.getByText('file:///music')).toBeTruthy()
+    // The local row has no whole-source switch — its folders are the elements.
+    expect(screen.queryByTestId('sources-list-toggle-local')).toBeNull()
+
+    await act(async () => {
+      screen.getByTestId('source-folder-toggle-dir-1').click()
+      await tick()
+    })
+    await act(async () => {
+      screen.getByTestId('source-folder-remove-dir-1').click()
+      await tick()
+    })
+    expect(calls).toEqual(['enable:dir-1:false', 'remove:dir-1'])
   })
 })

@@ -195,10 +195,14 @@ async function harness(
     config?: Record<string, unknown>
     mediaSession?: boolean
     background?: boolean | { refuse?: boolean; gate?: () => Promise<void> }
+    /** What a loaded source reports; 0 models a stream that knows no duration. */
+    sourceDurationMs?: number
+    /** What the catalogue row holds for every URN. */
+    trackDurationMs?: number
   } = {},
 ): Promise<Harness> {
   const root = opts.root ?? (await tempDir('bbebee-player'))
-  const audio = createMockAudio({ durationMs: 200_000 })
+  const audio = createMockAudio({ durationMs: opts.sourceDurationMs ?? 200_000 })
   const session: SessionLog = { states: [], updates: [], cleared: 0 }
   const wake = wakeLog()
 
@@ -217,7 +221,7 @@ async function harness(
           ),
         ]
       : []),
-    await ctx.plugin(sourcesStub(opts.provider ?? localProvider())),
+    await ctx.plugin(sourcesStub(opts.provider ?? localProvider(), opts.trackDurationMs)),
     await ctx.plugin(plugin, { tickMs: 3_600_000, saveThrottleMs: 0, ...opts.config }),
   ]
   await tick()
@@ -241,14 +245,25 @@ async function harness(
   return self
 }
 
-/** A minimal `ctx.sources`: the player only needs `forUrn`. */
-function sourcesStub(provider: MediaProvider) {
+/** A minimal `ctx.sources`: `forUrn` to resolve, `getTracks` for durations. */
+function sourcesStub(provider: MediaProvider, trackDurationMs?: number) {
   class SourcesStub extends Service {
     constructor(ctx: Context) {
       super(ctx, 'sources')
     }
     forUrn(u: string) {
       return u.startsWith(`BBeBee:${provider.sourceId}:`) ? provider : undefined
+    }
+    async getTracks(urns: readonly string[]) {
+      return urns.map(
+        (u) =>
+          ({
+            urn: u,
+            title: u,
+            artists: [],
+            ...(trackDurationMs !== undefined ? { durationMs: trackDurationMs } : {}),
+          }) as Track,
+      )
     }
     get providers() {
       return [provider]
@@ -286,6 +301,28 @@ describe('transport', () => {
     audio.advance(1000)
     await player.refresh()
     expect(player.state.positionMs).toBe(6000)
+  })
+
+  it('falls back to the catalogue duration when the stream reports none', async () => {
+    /*
+     * Bilibili's DASH audio is an fMP4 segment whose `moov` can carry no
+     * duration: the element reports `Infinity`, which the audio contract maps
+     * to 0 — and a progress bar with no maximum never leaves zero. The search
+     * rule stored the duration, so the transport uses it.
+     */
+    const { player, audio } = await harness({ sourceDurationMs: 0, trackDurationMs: 303_000 })
+    await player.playNow([urn('a')])
+
+    expect(player.state.status).toBe('playing')
+    expect(player.state.durationMs, 'the catalogue knows how long it is').toBe(303_000)
+    // Still a real source, not a synthesised one.
+    expect(audio.playing?.src).toBe('file:///music/a.flac')
+  })
+
+  it('prefers the source duration once the element has one', async () => {
+    const { player } = await harness({ sourceDurationMs: 180_000, trackDurationMs: 303_000 })
+    await player.playNow([urn('a')])
+    expect(player.state.durationMs).toBe(180_000)
   })
 
   it('seeks', async () => {

@@ -10,13 +10,15 @@ import { createElement as h, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Album, CatalogQuery, ImportReport, PlayerService, Track, TraceEvent, UiService } from '@BBeBee/protocol'
+import type { Album, CatalogQuery, ImportReport, PlayerService, ScanSpecifiedDir, ScannerService, Track, TraceEvent, UiService } from '@BBeBee/protocol'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
+  isLocalSource,
   playFromList,
   searchResultRows,
   useAlbum,
   useAlbums,
+  useLocalFolders,
   useSearchSourceSelection,
   useSetLoved,
   useSourceImport,
@@ -30,6 +32,7 @@ import {
   Artwork,
   Button,
   EmptyState,
+  IconButton,
   JsonTree,
   List,
   Text,
@@ -358,7 +361,12 @@ export function SearchScreen({
   const busy = search.status === 'loading'
   const canSearch = text.trim().length > 0 && selection.selectedIds.length > 0 && !busy
   const submit = () => {
-    if (canSearch) search.run(text, selection.selectedIds)
+    if (canSearch) {
+      search.run(text, {
+        sourceIds: selection.selectedIds,
+        typesBySource: selection.typesBySource,
+      })
+    }
   }
   const clear = () => {
     search.reset()
@@ -417,21 +425,24 @@ export function SearchScreen({
         native.View as never,
         {
           accessibilityRole: 'group',
-          accessibilityLabel: 'Sources to search',
+          accessibilityLabel: 'Sources and interfaces to search',
           style: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: tokens.space[1] },
         },
-        ...selection.options.map((option) =>
+        // One toggle per *interface*, not per source: a backend whose user
+        // search is a separate endpoint offers songs and artists as two
+        // independently searchable things. See the desktop twin.
+        ...selection.interfaces.map((iface) =>
           h(SourceChip, {
-            key: option.id,
-            label: option.name,
-            selected: selection.isSelected(option.id),
-            disabled: !option.searchable,
-            onPress: () => selection.toggle(option.id),
-            accessibilityLabel: `${selection.isSelected(option.id) ? 'Do not search' : 'Search'} ${option.name}`,
-            testID: `search-source-${option.id}`,
+            key: iface.id,
+            label: `${iface.sourceName} · ${iface.kind === 'track' ? 'Songs' : 'Artists'}`,
+            selected: selection.isInterfaceSelected(iface.id),
+            disabled: !iface.searchable,
+            onPress: () => selection.toggleInterface(iface.id),
+            accessibilityLabel: `${selection.isInterfaceSelected(iface.id) ? 'Do not search' : 'Search'} ${iface.sourceName} ${iface.kind === 'track' ? 'songs' : 'artists'}`,
+            testID: `search-source-${iface.sourceId}-${iface.kind}`,
           }),
         ),
-        selection.options.some((option) => option.searchable)
+        selection.interfaces.some((iface) => iface.searchable)
           ? h(SourceChip, {
               label: selection.allSelected ? 'None' : 'All',
               selected: false,
@@ -451,7 +462,11 @@ export function SearchScreen({
             description: search.error.message,
             action: h(Button, {
               variant: 'secondary',
-              onPress: () => search.run(search.text, selection.selectedIds),
+              onPress: () =>
+                search.run(search.text, {
+                  sourceIds: selection.selectedIds,
+                  typesBySource: selection.typesBySource,
+                }),
               children: 'Try again',
             }),
           })
@@ -815,13 +830,23 @@ function valueBlock(event: Extract<TraceEvent, { kind: 'value' }>): ReactElement
 
 /**
  * The imported sources — the hub everything else hangs off. See the desktop
- * twin: until this screen existed the Import, Diagnose and Test screens were
- * registered but reachable by nothing.
+ * twin: use/do-not-use keeps the cached library, delete takes it too and asks
+ * once, and the local-files row shows the folders it is actually made of
+ * rather than controls that would not mean anything for files on disk.
  */
 export function SourcesListScreen({ ctx }: { ctx: Context }): ReactElement {
   const native = nativePrimitives()
   const scheme = p()
   const sources = useSources(ctx)
+  const folders = useLocalFolders(ctx)
+  const scanner = serviceOf<ScannerService>(ctx, 'scanner')
+  const [confirming, setConfirming] = useState<string | undefined>(undefined)
+
+  const removeSource = (id: string) => {
+    setConfirming(undefined)
+    // `forgetCatalogue` because this is the *delete* button, not the switch.
+    void ctx.sources.remove(id, { forgetCatalogue: true })
+  }
 
   return h(
     native.View as never,
@@ -840,8 +865,9 @@ export function SourcesListScreen({ ctx }: { ctx: Context }): ReactElement {
       : h(
           native.View as never,
           { accessibilityLabel: 'Imported sources', style: { gap: tokens.space[2] } },
-          ...sources.map((source) =>
-            h(
+          ...sources.map((source) => {
+            const local = isLocalSource(source)
+            return h(
               native.View as never,
               {
                 key: source.id,
@@ -850,23 +876,139 @@ export function SourcesListScreen({ ctx }: { ctx: Context }): ReactElement {
                   borderRadius: tokens.radius.sm,
                   backgroundColor: scheme.bg.raised,
                   gap: tokens.space[1],
+                  opacity: source.enabled ? 1 : 0.6,
                 },
               },
               h(Text, { variant: 'md' }, source.name),
               h(Text, { variant: 'sm', tone: 'muted' }, source.sourceUrl),
+              !source.enabled
+                ? h(Text, { variant: 'sm', tone: 'muted' }, 'disabled')
+                : source.lastError
+                  ? h(Text, { variant: 'sm', tone: 'muted' }, source.lastError)
+                  : null,
               h(
                 native.View as never,
-                { style: { flexDirection: 'row', gap: tokens.space[2] } },
+                { style: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: tokens.space[2] } },
                 h(Button, {
                   variant: 'secondary',
                   onPress: () => serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.sourceTest, { sourceId: source.id }),
                   testID: `sources-list-test-${source.id}`,
                   children: 'Test',
                 }),
+                // The local row has no enable switch of its own: its folders
+                // are what can be switched off.
+                !local
+                  ? h(Button, {
+                      variant: source.enabled ? 'ghost' : 'secondary',
+                      onPress: () => void ctx.sources.setEnabled(source.id, !source.enabled),
+                      accessibilityLabel: source.enabled ? `Stop using ${source.name}` : `Use ${source.name}`,
+                      testID: `sources-list-toggle-${source.id}`,
+                      children: source.enabled ? 'Disable' : 'Enable',
+                    })
+                  : null,
+                !local && confirming === source.id
+                  ? h(Text, { variant: 'sm', tone: 'warn' }, 'Delete source and its cached tracks?')
+                  : null,
+                !local && confirming === source.id
+                  ? h(Button, {
+                      onPress: () => removeSource(source.id),
+                      accessibilityLabel: `Delete ${source.name} and its cached tracks`,
+                      testID: `sources-list-delete-confirm-${source.id}`,
+                      children: 'Delete',
+                    })
+                  : null,
+                !local && confirming === source.id
+                  ? h(Button, {
+                      variant: 'ghost',
+                      onPress: () => setConfirming(undefined),
+                      children: 'Cancel',
+                    })
+                  : null,
+                !local && confirming !== source.id
+                  ? h(IconButton, {
+                      icon: '🗑',
+                      accessibilityLabel: `Delete ${source.name}`,
+                      onPress: () => setConfirming(source.id),
+                      testID: `sources-list-delete-${source.id}`,
+                    })
+                  : null,
               ),
-            ),
-          ),
+              local ? h(LocalFolders, { folders, scanner }) : null,
+            )
+          }),
         ),
+  )
+}
+
+/**
+ * The folders behind the local source, said on the source's own row. See the
+ * desktop twin: the same elements the Music folders screen manages, minus the
+ * section entirely on a build without the scanner.
+ */
+function LocalFolders({
+  folders,
+  scanner,
+}: {
+  folders: readonly ScanSpecifiedDir[]
+  scanner: ScannerService | undefined
+}): ReactElement | null {
+  const native = nativePrimitives()
+  const scheme = p()
+  if (!scanner) return null
+  if (folders.length === 0) {
+    return h(Text, {
+      variant: 'sm',
+      tone: 'muted',
+      children: 'No folders yet — add one under Settings → Music folders.',
+    })
+  }
+  return h(
+    native.View as never,
+    {
+      accessibilityLabel: 'Local music folders',
+      style: {
+        gap: tokens.space[1],
+        borderTopWidth: 1,
+        borderTopColor: scheme.border.subtle,
+        paddingTop: tokens.space[2],
+      },
+    },
+    ...folders.map((dir) =>
+      h(
+        native.View as never,
+        {
+          key: dir.id,
+          style: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: tokens.space[2],
+            opacity: dir.enabled ? 1 : 0.5,
+          },
+        },
+        h(
+          native.View as never,
+          { style: { flex: 1, minWidth: 0 } },
+          h(Text, { variant: 'sm', numberOfLines: 1 }, dir.uri),
+          dir.lastError
+            ? h(Text, { variant: 'sm', tone: 'error', numberOfLines: 1, children: dir.lastError })
+            : null,
+        ),
+        h(Button, {
+          variant: 'ghost',
+          onPress: () => void scanner.setEnabled(dir.id, !dir.enabled),
+          accessibilityLabel: dir.enabled ? `Disable ${dir.uri}` : `Enable ${dir.uri}`,
+          testID: `source-folder-toggle-${dir.id}`,
+          children: dir.enabled ? 'Disable' : 'Enable',
+        }),
+        // Keeps the tracks, like Music folders.
+        h(IconButton, {
+          icon: '🗑',
+          accessibilityLabel: `Remove ${dir.uri}`,
+          onPress: () => void scanner.removeSpecifiedDir(dir.id),
+          testID: `source-folder-remove-${dir.id}`,
+        }),
+      ),
+    ),
   )
 }
 

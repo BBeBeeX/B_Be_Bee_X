@@ -133,8 +133,11 @@ absent, `ruleSearchArtist` runs over the same document `searchUrl` fetched (a ba
 combined search returns users and videos together); with it present, the artist rules run over
 their own fetch. Rows borrow the track-shaped fields — `trackId` is the backend's id for the
 person, `title` their name — and become `SearchResult.artists`. A query that names `types` gets
-exactly those; a query that names none gets everything the source can serve, and a failing artist
-search degrades (the tracks survive) rather than failing the search.
+exactly those — `['artist']` does not fetch the track document, `['track']` does not run the
+artist rules — and a query that names none gets everything the source can serve. `searchAll`
+carries that per source: `typesBySource` lets one fan-out ask a source for songs only while
+asking another for both, which is what the search screen's one-toggle-per-interface row edits. A
+failing artist search degrades (the tracks survive) rather than failing the search.
 
 ```ts
 export interface Capabilities {
@@ -609,7 +612,15 @@ export interface SourcesService {
   readonly providers: readonly MediaProvider[]
   get(sourceId: string): MediaProvider | undefined
   forUrn(urn: string): MediaProvider | undefined
-  searchAll(q: SearchQuery, opts?: { sourceIds?: string[]; timeoutMs?: number }): Promise<AggregatedSearch>
+  searchAll(
+    q: SearchQuery,
+    opts?: {
+      sourceIds?: string[]
+      timeoutMs?: number
+      /** Per-source interface filter; absent sources keep `q.types`. */
+      typesBySource?: Record<string, SearchQuery['types']>
+    },
+  ): Promise<AggregatedSearch>
 
   /* ── sources as data (§9, §10) ────────────────────────────────── */
   readonly sources: readonly SourceRecord[]

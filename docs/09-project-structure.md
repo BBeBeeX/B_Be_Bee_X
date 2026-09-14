@@ -175,7 +175,9 @@ B_Be_Bee/
 │   │   ├── plugin-inspector/       ✅        fiber tree + labelled effects (M0 exit criterion)
 │   │   ├── plugin-dsp/                       ctx.dsp — the effect chain (05 §3)
 │   │   ├── plugin-effect-eq10/               one DSP effect, as a plugin
-│   │   ├── plugin-download/                  media_bindings + before-resolve substitution
+│   │   ├── plugin-download/        ✅        media_bindings + before-resolve substitution;
+│   │   │                                       the automatic playback cache (05 §2). The task
+│   │   │                                       queue, policies and download UI are M3 (10 §M3)
 │   │   ├── plugin-library/                   playlists, favourites, smart lists
 │   │   ├── plugin-lyrics/                    lyric providers
 │   │   ├── plugin-cache/                     the http/request cache layer

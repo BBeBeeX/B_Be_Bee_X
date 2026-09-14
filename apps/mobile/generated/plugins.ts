@@ -9,6 +9,7 @@ import coreDeviceExpo from '@BBeBee/core-device-expo'
 import coreHttpRn from '@BBeBee/core-http-rn'
 import coreMediaSessionRn from '@BBeBee/core-media-session-rn'
 import coreSecretsExpo from '@BBeBee/core-secrets-expo'
+import pluginDownload from '@BBeBee/plugin-download'
 import pluginInspector from '@BBeBee/plugin-inspector'
 import pluginLocalScanner from '@BBeBee/plugin-local-scanner'
 import pluginLocalScannerUi from '@BBeBee/plugin-local-scanner-ui-mobile'
@@ -57,6 +58,11 @@ export const bundled: PluginRegistry = {
   "@BBeBee/core-secrets-expo": {
     plugin: coreSecretsExpo,
     manifest: {"id":"@BBeBee/core-secrets-expo","platforms":["mobile"],"version":"0.0.0","displayName":"Secrets","description":"ctx.secrets for iOS and Android, over expo-secure-store.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["secrets"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-download": {
+    plugin: pluginDownload,
+    manifest: {"id":"@BBeBee/plugin-download","version":"0.0.0","displayName":"Playback cache","description":"Caches remote streams as media_bindings and plays the local copy next time.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","db:read:core","db:write:core"]},
     builtin: true,
   },
   "@BBeBee/plugin-inspector": {

@@ -151,6 +151,12 @@ rule language is too weak, because every document written after M2 is one someon
 `plugin-download` with a resumable task queue, `media_bindings`, download policies, and the
 `player/before-resolve` substitution.
 
+> **Partially shipped.** The substitution and the automatic playback cache are built
+> ([05 §2](./05-audio-playback.md#resolution-pipeline)): playing a remote track writes a
+> `media_bindings` row with `origin: 'download'`, later plays open the file, missing files drop
+> their binding, and eviction is oldest-played-first under a byte budget. What remains is the
+> explicit half — the resumable queue, `wifi_only`/`charging_only` policies, and the download UI.
+
 **Exit criteria**
 - Kill the app mid-download; on relaunch it resumes from `bytes_done`, and a changed `etag`
   restarts cleanly rather than splicing corrupt bytes.

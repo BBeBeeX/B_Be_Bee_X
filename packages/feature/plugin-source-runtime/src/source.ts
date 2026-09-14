@@ -715,10 +715,13 @@ export class DocumentSource {
       getTrack: (id) => this.getTrack(id),
       resolveStream: (id, prefs) => this.resolveStream(id, prefs),
       ping: () => this.ping(),
-      // Absent, not stubbed, when the document does not describe a search or
-      // this build cannot run its rules. `ctx.sources` skips a provider whose
-      // `search` is missing rather than calling one that throws.
-      ...(this.searchable ? { search: (q, page) => this.search(q, page) } : {}),
+      // `search` is present when *either* interface is runnable, not just when
+      // tracks are: a backend that only offers a user/artist search still has
+      // an interface the search screen can toggle, and hiding it behind the
+      // track capability made that search unreachable.
+      ...(this.searchable || this.searchArtists
+        ? { search: (q, page) => this.search(q, page) }
+        : {}),
       ...(this.browsable ? { browse: (nodeId, page) => this.browse(nodeId, page) } : {}),
       ...(this.albumable ? { getAlbum: (id: string) => this.getAlbum(id) } : {}),
       ...(this.artistable ? { getArtist: (id: string) => this.getArtist(id) } : {}),
@@ -806,12 +809,27 @@ export class DocumentSource {
    * page number is 1-based and reaches the template as `{{page}}`; a document
    * that ignores it simply returns the same page, which is why the runtime
    * stops when a page repeats rather than trusting `hasMore`.
+   *
+   * `query.types` is honoured per half: a query naming `['artist']` fetches
+   * and runs only the artist rules, a query naming nothing gets everything the
+   * source can serve. That is what lets the search screen put a toggle on each
+   * *interface* a source has — songs and artists — instead of one switch for
+   * the whole source (docs/06 §4.1).
    */
   async search(query: SearchQuery, page?: PageRequest): Promise<SearchResult> {
     const doc = this.record.doc
-    if (!doc.searchUrl || !doc.ruleSearch) {
+    const wantsTracks = !query.types?.length || query.types.includes('track')
+    const wantsArtists =
+      (!query.types?.length || query.types.includes('artist')) &&
+      this.searchArtists &&
+      !!doc.ruleSearchArtist
+    const trackSearch = wantsTracks && this.searchable && doc.searchUrl && doc.ruleSearch
+
+    if (!trackSearch && !wantsArtists) {
       throw new RuleError(
-        'this source has no searchUrl or ruleSearch',
+        query.types?.length
+          ? `this source cannot search for ${query.types.join(' or ')}`
+          : 'this source has no searchUrl or ruleSearch',
         { block: 'ruleSearch', field: 'trackList' },
         this.record.id,
       )
@@ -825,86 +843,88 @@ export class DocumentSource {
       baseUrl: this.record.sourceUrl,
     }
 
-    // A URL template, not a selector: it builds the request rather than
-    // selecting out of a response, so `=` is optional (docs/06 §2.3).
-    const rendered = await evaluateUrlTemplate(
-      doc.searchUrl!,
-      scope,
-      { block: 'searchUrl', field: 'searchUrl', sourceId: this.record.id },
-      this.js,
-    )
-    const target = parseUrlObject(rendered)
-    this.assertAllowed(target.url)
+    const result: SearchResult = {}
+    /** The track search's fetch, reused by artist rules that share its document. */
+    let fetched: Awaited<ReturnType<typeof fetchDocument>> | undefined
 
-    const fetched = await this.withReauth(() =>
-      this.fetchChecked(target, scope, 'searchUrl'),
-    )
-
-    const { rows, dropped, incomplete, firstError } = await evaluateListRule(doc.ruleSearch, {
-      document: fetched.value,
-      scope: { ...scope, baseUrl: fetched.baseUrl },
-      sourceId: this.record.id,
-      block: 'ruleSearch',
-      ...(this.js ? { js: this.js } : {}),
-    })
-    if (incomplete > 0) {
-      this.deps.log?.(
-        `${this.record.id}: ruleSearch left ${incomplete} optional field(s) unset: ${String(firstError)}`,
+    if (trackSearch) {
+      // A URL template, not a selector: it builds the request rather than
+      // selecting out of a response, so `=` is optional (docs/06 §2.3).
+      const rendered = await evaluateUrlTemplate(
+        doc.searchUrl!,
+        scope,
+        { block: 'searchUrl', field: 'searchUrl', sourceId: this.record.id },
+        this.js,
       )
-    }
-    if (dropped > 0) {
-      // Counted rather than hidden: a search quietly returning three of
-      // twenty results reads as a thin backend, not as a broken rule.
-      this.deps.log?.(
-        `${this.record.id}: ruleSearch dropped ${dropped} result(s) missing trackId or title`,
+      const target = parseUrlObject(rendered)
+      this.assertAllowed(target.url)
+
+      fetched = await this.withReauth(() =>
+        this.fetchChecked(target, scope, 'searchUrl'),
       )
-    }
 
-    const tracks = rows.map((row) => rowToTrack(row, this.record.id, 'ruleSearch'))
+      const { rows, dropped, incomplete, firstError } = await evaluateListRule(doc.ruleSearch!, {
+        document: fetched.value,
+        scope: { ...scope, baseUrl: fetched.baseUrl },
+        sourceId: this.record.id,
+        block: 'ruleSearch',
+        ...(this.js ? { js: this.js } : {}),
+      })
+      if (incomplete > 0) {
+        this.deps.log?.(
+          `${this.record.id}: ruleSearch left ${incomplete} optional field(s) unset: ${String(firstError)}`,
+        )
+      }
+      if (dropped > 0) {
+        // Counted rather than hidden: a search quietly returning three of
+        // twenty results reads as a thin backend, not as a broken rule.
+        this.deps.log?.(
+          `${this.record.id}: ruleSearch dropped ${dropped} result(s) missing trackId or title`,
+        )
+      }
 
-    /*
-     * The payload is what makes `ruleStream` work hours later and offline from
-     * the search that produced the track (docs/06 §4). `ctx.sources` writes it
-     * to `tracks.raw_json`; `scopeFor` reads it back as `{{track.*}}`.
-     *
-     * Without it, resolution can only see the URN's id — so a document whose
-     * stream URL needs anything else (`{{track.quality}}` from `$.suffix`, a
-     * per-item token, a CDN path) worked during the search that fetched it and
-     * failed after a restart, which is the hardest kind of bug to attribute.
-     */
-    const payloads: Record<string, unknown> = {}
-    for (const [i, row] of rows.entries()) {
-      const track = tracks[i]
-      if (track) payloads[track.urn] = payloadFor(row)
-    }
+      const tracks = rows.map((row) => rowToTrack(row, this.record.id, 'ruleSearch'))
 
-    const result: SearchResult = {
-      tracks: {
+      /*
+       * The payload is what makes `ruleStream` work hours later and offline from
+       * the search that produced the track (docs/06 §4). `ctx.sources` writes it
+       * to `tracks.raw_json`; `scopeFor` reads it back as `{{track.*}}`.
+       *
+       * Without it, resolution can only see the URN's id — so a document whose
+       * stream URL needs anything else (`{{track.quality}}` from `$.suffix`, a
+       * per-item token, a CDN path) worked during the search that fetched it and
+       * failed after a restart, which is the hardest kind of bug to attribute.
+       */
+      const payloads: Record<string, unknown> = {}
+      for (const [i, row] of rows.entries()) {
+        const track = tracks[i]
+        if (track) payloads[track.urn] = payloadFor(row)
+      }
+
+      result.tracks = {
         items: tracks,
         // The backend rarely says, and inventing a total produces a progress
         // bar that lies (docs/06 §4.3).
         hasMore: tracks.length > 0,
         ...(tracks.length > 0 ? { cursor: String(pageNumber + 1) } : {}),
-      },
-      payloads,
+      }
+      result.payloads = payloads
     }
 
     /*
      * Artists, when the document describes how to search for them.
      *
-     * A query that names its types gets exactly those; a query that names
-     * none gets everything the source can serve — which for a backend with a
-     * separate user search means one more request. A failing artist search
-     * degrades rather than fails the search: tracks the user asked for must
-     * not vanish because a secondary endpoint answered badly.
+     * The artist rules either run over the track search's document (no URL of
+     * their own) or over a second fetch. A failing artist search degrades
+     * rather than fails the search: tracks the user asked for must not vanish
+     * because a secondary endpoint answered badly.
      */
-    const wantsArtists = !query.types?.length || query.types.includes('artist')
-    if (wantsArtists && this.searchArtists && doc.ruleSearchArtist) {
+    if (wantsArtists) {
       try {
         const artistDoc = doc.searchArtistUrl
           ? await this.fetchSearchDocument(doc.searchArtistUrl, scope, 'searchArtistUrl')
-          : fetched
-        const artistRows = await evaluateListRule(doc.ruleSearchArtist, {
+          : fetched ?? (await this.fetchSearchDocument(doc.searchUrl!, scope, 'searchUrl'))
+        const artistRows = await evaluateListRule(doc.ruleSearchArtist!, {
           document: artistDoc.value,
           scope: { ...scope, baseUrl: artistDoc.baseUrl },
           sourceId: this.record.id,

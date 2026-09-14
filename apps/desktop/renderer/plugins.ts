@@ -61,6 +61,10 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-local-scanner-ui-desktop': {},
   '@BBeBee/plugin-source-local': {},
   '@BBeBee/plugin-source-runtime': {},
+  // Hooks `player/before-resolve`: a remote track is streamed once and kept as
+  // a `media_bindings` row, and every later play opens the file. Disabling it
+  // leaves playback streaming, with no branch in the player either way.
+  '@BBeBee/plugin-download': {},
   '@BBeBee/plugin-player': {},
   '@BBeBee/plugin-player-ui-desktop': {},
 }

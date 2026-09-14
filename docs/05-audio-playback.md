@@ -190,6 +190,15 @@ Behaviours worth pinning down, because they are where players feel wrong:
 - **Repeat-one** does not re-resolve the stream; it reuses the loaded buffer.
 - **`stalled`** is distinct from `paused`. The UI shows a spinner, not a play button, and
   `ctx.mediaSession` keeps reporting `playing` so the lock screen does not flicker.
+- **Duration is a floor, not a promise.** The transport reports `source.durationMs` whenever the
+  element has one, and falls back to the duration stored in the catalogue row otherwise — Bilibili's
+  fMP4 streams are the motivating case, since the element reports `Infinity` while the search rule
+  already knew how long the track is. Only seekable handles get the fallback, so a live stream still
+  shows no scrubber.
+- **Position always comes from the element's clock.** A streamed handle may hold a seek target as
+  *pending* only while the element is actually moving there: `play(0)` on a fresh element moves
+  nowhere and fires no `seeked`, so recording it as pending left the progress bar at zero for the
+  whole track.
 
 ### Resolution pipeline
 
@@ -225,6 +234,16 @@ a `RuleError` from a source whose rules have rotted
 ([06 §7](./06-music-sources.md#7-errors)) — triggers a lookup in `track_links`
 ([07 §4.4](./07-data-model.md#44-identity-linking)) for the same recording on another source, and
 only when that yields nothing does the player enter `error`.
+
+`plugin-download` is the waterfall's resident listener, and its policy is a **playback cache**: a
+remote handle is fetched with the stream's own headers and written to `ctx.paths.cache` while it
+plays, recorded as a `media_bindings` row with `origin: 'download'`; every later resolve answers
+`kind: 'local'` and never reaches the provider. A binding whose file is gone is deleted rather than
+left to fail, files orphaned when a source removal cascaded their binding away are swept when the
+plugin starts, eviction is oldest-played-first once a byte budget is exceeded, and with the plugin
+disabled the same track simply streams — which is the control arm of the regression test at
+[09 §6](./09-project-structure.md#6-testing-strategy). Explicit user-initiated downloads, a
+resumable task queue and `wifi_only`/`charging_only` policies remain M3 ([10 §M3](./10-roadmap.md#m3--offline)).
 
 ### Gapless and crossfade
 

@@ -24,6 +24,8 @@ import type {
   PlayerService,
   Playlist,
   QueueSourceContext,
+  ScanSpecifiedDir,
+  ScannerService,
   SourceRecord,
   Track,
   TraceEvent,
@@ -188,6 +190,40 @@ export function useLiveSourceIds(ctx: Context): readonly string[] {
   )
 }
 
+/* ── this device's folders, where the source list shows them ─────────────── */
+
+/** Shared so the absent-scanner snapshot is referentially stable. */
+const NO_FOLDERS: readonly ScanSpecifiedDir[] = []
+
+/**
+ * Whether a source row is the scanner's local-files row.
+ *
+ * The row is not an imported document — the scanner writes it so the catalogue
+ * has a source to key on — so the source list shows its **folders** rather than
+ * import/delete controls that would not mean anything for files on disk.
+ */
+export function isLocalSource(record: SourceRecord): boolean {
+  return record.sourceUrl.startsWith('bbebee://local/')
+}
+
+/**
+ * The scanner's folders, for the local source's row.
+ *
+ * `ctx.scanner` is optional here: the source-list view package does not inject
+ * it, and a build without the scanner still lists remote sources. `serviceOf`
+ * is the read that answers `undefined` instead of throwing on a scoped
+ * context, which is exactly the may-be-absent case `docs/08 §3` asks views to
+ * handle.
+ */
+export function useLocalFolders(ctx: Context): readonly ScanSpecifiedDir[] {
+  return useServiceState(
+    ctx,
+    ['scan/specified-dirs-changed'],
+    () => serviceOf<ScannerService>(ctx, 'scanner')?.specifiedDirs ?? NO_FOLDERS,
+    { isEqual: shallowArrayEqual },
+  )
+}
+
 /* ── importing, editing and diagnosing (docs/06 §9, §10) ────────────────── */
 
 /** What the import screen shows while and after a paste. */
@@ -342,8 +378,29 @@ export function useSetLoved(ctx: Context): (urn: string, loved: boolean) => Prom
 
 /* ── searching across sources (docs/06 §4.1) ────────────────────────────── */
 
+/** The searchable halves of a source. Each one gets its own toggle. */
+export type SearchInterfaceKind = 'track' | 'artist'
+
 /**
- * One source the search screen can offer, and whether it can answer today.
+ * One interface a source offers: its song search or its artist search.
+ *
+ * The search screen draws one toggle per interface, so a source with both —
+ * which is the common case for a backend that splits user search from content
+ * search — can be asked for songs without being asked for artists, and vice
+ * versa. The key is namespaced by source so two sources' `track` interfaces
+ * cannot collide.
+ */
+export interface SearchInterfaceOption {
+  /** `${sourceId}:${kind}` — unique, stable, and safe as a list key. */
+  id: string
+  sourceId: string
+  sourceName: string
+  kind: SearchInterfaceKind
+  searchable: boolean
+}
+
+/**
+ * One source the search screen can offer, and the interfaces it exposes.
  *
  * A row is imported and enabled long before its provider is registered — a
  * source runtime that never loaded, or one whose document failed to build,
@@ -354,15 +411,18 @@ export function useSetLoved(ctx: Context): (urn: string, loved: boolean) => Prom
 export interface SearchSourceOption {
   id: string
   name: string
+  /** True when at least one interface can answer today. */
   searchable: boolean
+  interfaces: readonly SearchInterfaceOption[]
 }
 
 /**
- * The sources a search could ask.
+ * The sources a search could ask, expanded into their interfaces.
  *
  * Providers rather than records decide `searchable`, because capability is
  * derived from each live provider's rules — a `SourceRecord` only says the row
- * exists.
+ * exists. A record with no live provider still yields one disabled track
+ * interface, so it stays visible and says why it cannot be chosen.
  */
 export function useSearchSourceOptions(ctx: Context): readonly SearchSourceOption[] {
   const records = useSources(ctx)
@@ -374,24 +434,60 @@ export function useSearchSourceOptions(ctx: Context): readonly SearchSourceOptio
   )
   return useMemo(
     () =>
-      records.map((record) => ({
-        id: record.id,
-        name: record.name,
-        searchable:
-          record.enabled &&
-          canSearchProvider(providers.find((p) => p.sourceId === record.id)),
-      })),
+      records.map((record) => {
+        const provider = providers.find((p) => p.sourceId === record.id)
+        const live = record.enabled && canSearchProvider(provider) ? provider : undefined
+        const tracks = live?.capabilities.search.tracks ?? false
+        const artists = live?.capabilities.search.artists ?? false
+
+        const interfaces: SearchInterfaceOption[] = []
+        if (tracks) {
+          interfaces.push({
+            id: `${record.id}:track`,
+            sourceId: record.id,
+            sourceName: record.name,
+            kind: 'track',
+            searchable: true,
+          })
+        }
+        if (artists) {
+          interfaces.push({
+            id: `${record.id}:artist`,
+            sourceId: record.id,
+            sourceName: record.name,
+            kind: 'artist',
+            searchable: true,
+          })
+        }
+        if (interfaces.length === 0) {
+          // Imported and enabled, but not answering: one disabled row beats a
+          // source that silently is not there.
+          interfaces.push({
+            id: `${record.id}:track`,
+            sourceId: record.id,
+            sourceName: record.name,
+            kind: 'track',
+            searchable: false,
+          })
+        }
+
+        return { id: record.id, name: record.name, searchable: tracks || artists, interfaces }
+      }),
     [records, providers],
   )
 }
 
-/** Which sources the user has chosen to search. */
+/** Which interfaces the user has chosen to search. */
 export interface SearchSourceSelection {
   options: readonly SearchSourceOption[]
-  /** Searchable options only. */
+  /** Every interface of every source, in display order. */
+  interfaces: readonly SearchInterfaceOption[]
+  /** Sources with at least one interface selected. */
   selectedIds: readonly string[]
-  isSelected(id: string): boolean
-  toggle(id: string): void
+  /** The selected halves, per source — what `searchAll` gets. */
+  typesBySource: Readonly<Record<string, readonly SearchInterfaceKind[]>>
+  isInterfaceSelected(id: string): boolean
+  toggleInterface(id: string): void
   allSelected: boolean
   toggleAll(): void
 }
@@ -399,7 +495,7 @@ export interface SearchSourceSelection {
 /**
  * The toggle row's state.
  *
- * Stored as *exclusions* rather than inclusions, so every source the user
+ * Stored as *exclusions* rather than inclusions, so every interface the user
  * imports is searched by default and a source added later joins the selection
  * instead of silently being left out. Toggling records only what the user
  * turned off, which cannot go stale when the source list changes underneath.
@@ -408,11 +504,35 @@ export function useSearchSourceSelection(ctx: Context): SearchSourceSelection {
   const options = useSearchSourceOptions(ctx)
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(() => new Set())
 
-  const searchable = options.filter((option) => option.searchable)
-  const selectedIds = searchable.filter((option) => !excluded.has(option.id)).map((o) => o.id)
-  const allSelected = searchable.length > 0 && selectedIds.length === searchable.length
+  const interfaces = useMemo(() => options.flatMap((option) => option.interfaces), [options])
+  const searchable = useMemo(() => interfaces.filter((iface) => iface.searchable), [interfaces])
+  const isInterfaceSelected = useCallback(
+    (id: string) => !excluded.has(id) && searchable.some((iface) => iface.id === id),
+    [excluded, searchable],
+  )
 
-  const toggle = useCallback((id: string) => {
+  const selectedIds = useMemo(
+    () =>
+      options
+        .filter((option) => option.interfaces.some((iface) => isInterfaceSelected(iface.id)))
+        .map((option) => option.id),
+    [options, isInterfaceSelected],
+  )
+
+  const typesBySource = useMemo(() => {
+    const out: Record<string, SearchInterfaceKind[]> = {}
+    for (const option of options) {
+      const kinds = option.interfaces
+        .filter((iface) => isInterfaceSelected(iface.id))
+        .map((iface) => iface.kind)
+      if (kinds.length > 0) out[option.id] = kinds
+    }
+    return out
+  }, [options, isInterfaceSelected])
+
+  const allSelected = searchable.length > 0 && searchable.every((iface) => !excluded.has(iface.id))
+
+  const toggleInterface = useCallback((id: string) => {
     setExcluded((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -422,16 +542,16 @@ export function useSearchSourceSelection(ctx: Context): SearchSourceSelection {
   }, [])
 
   const toggleAll = useCallback(() => {
-    setExcluded(allSelected ? new Set(searchable.map((option) => option.id)) : new Set())
+    setExcluded(allSelected ? new Set(searchable.map((iface) => iface.id)) : new Set())
   }, [allSelected, searchable])
 
   return {
     options,
+    interfaces,
     selectedIds,
-    // A non-searchable source cannot be chosen, so it must not render as
-    // chosen: `!excluded` would mark it selected while the toggle is disabled.
-    isSelected: (id) => !excluded.has(id) && searchable.some((option) => option.id === id),
-    toggle,
+    typesBySource,
+    isInterfaceSelected,
+    toggleInterface,
     allSelected,
     toggleAll,
   }
@@ -441,7 +561,13 @@ export function useSearchSourceSelection(ctx: Context): SearchSourceSelection {
 export interface SourceSearchState extends AsyncState<AggregatedSearch> {
   /** The text the visible answer belongs to. */
   text: string
-  run(text: string, sourceIds?: readonly string[]): void
+  run(
+    text: string,
+    opts?: {
+      sourceIds?: readonly string[]
+      typesBySource?: Readonly<Record<string, readonly SearchInterfaceKind[]>>
+    },
+  ): void
   reset(): void
 }
 
@@ -459,14 +585,31 @@ export function useSourceSearch(ctx: Context): SourceSearchState {
   const generation = useRef(0)
 
   const run = useCallback(
-    (next: string, sourceIds?: readonly string[]) => {
+    (
+      next: string,
+      opts: {
+        sourceIds?: readonly string[]
+        typesBySource?: Readonly<Record<string, readonly SearchInterfaceKind[]>>
+      } = {},
+    ) => {
       const query = next.trim()
       if (!query) return
       const mine = ++generation.current
       setText(query)
       setState({ status: 'loading' })
+      const typesBySource = opts.typesBySource
+        ? Object.fromEntries(
+            Object.entries(opts.typesBySource).map(([id, kinds]) => [id, [...kinds]]),
+          )
+        : undefined
       void ctx.sources
-        .searchAll({ text: query }, sourceIds ? { sourceIds: [...sourceIds] } : {})
+        .searchAll(
+          { text: query },
+          {
+            ...(opts.sourceIds ? { sourceIds: [...opts.sourceIds] } : {}),
+            ...(typesBySource ? { typesBySource } : {}),
+          },
+        )
         .then((result) => {
           if (generation.current !== mine) return
           setState({ status: 'ready', data: result })

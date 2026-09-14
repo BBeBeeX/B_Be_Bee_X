@@ -184,6 +184,10 @@ export class Player extends Service implements PlayerService {
   private skipStreak = 0
   /** The outgoing source of a crossfade, kept alive until its fade finishes. */
   private fading?: { handle: AudioSourceHandle; timer: ReturnType<typeof setTimeout> }
+  /**
+   * The catalogue's duration for the track being started, as a floor.
+   */
+  private fallbackDurationMs = 0
   private disposed = false
 
   /**
@@ -830,14 +834,26 @@ export class Player extends Service implements PlayerService {
     this.cancelPrefetch()
 
     try {
+      // Started before the resolve, not after the load: the catalogue read is
+      // a database lookup and the resolve is a network round trip, so awaiting
+      // it beside the load costs nothing.
+      const knownDuration = this.knownDurationMs(entry.item.trackUrn)
       const handle = await this.resolveStream(entry.item.trackUrn)
       if (this.disposed || this.transport.currentItemId !== entry.item.id) return
       const source = await this.load(handle)
+      const known = await knownDuration
+      // Checked again after the second await: a start that begins while this
+      // one is in flight has already claimed `currentItemId`, and attaching
+      // here would play the wrong source.
       if (this.disposed || this.transport.currentItemId !== entry.item.id) {
         source.dispose()
         return
       }
       this.attempts = 0
+      // Only for a stream the provider says can be seeked: a live stream's
+      // catalogue duration (when it has one at all) is not a position the
+      // scrubber could ever reach, and offering one would be a lie.
+      this.fallbackDurationMs = handle.seekable ? known : 0
       this.attach(source, entry, opts)
     } catch (error) {
       await this.handleError(error, entry)
@@ -864,17 +880,39 @@ export class Player extends Service implements PlayerService {
     this.skipStreak = 0
 
     const positionMs = opts.positionMs ?? 0
+    // The element's own duration when it has one; the catalogue's otherwise —
+    // a streamed source reports 0 until (or unless) it learns the real value,
+    // and a zero duration is a progress bar that cannot move.
+    const durationMs = source.durationMs || this.fallbackDurationMs
     if (opts.autoplay && this.playIntent) {
       source.play(positionMs)
-      this.set({ status: 'playing', durationMs: source.durationMs, positionMs })
+      this.set({ status: 'playing', durationMs, positionMs })
       this.beginPlay(entry, positionMs)
     } else {
       // Either this was a deliberate load-without-play, or the user paused or
       // stopped while the load was in flight. Their intent wins.
-      this.set({ status: 'paused', durationMs: source.durationMs, positionMs })
+      this.set({ status: 'paused', durationMs, positionMs })
     }
     this.publishNowPlaying()
     void this.persist(true)
+  }
+
+  /**
+   * The duration the catalogue already holds for a track, or 0.
+   *
+   * Search rules usually know how long a track is long before the media
+   * element does, and some streams never tell the element at all. A failure
+   * here is not worth failing a track over: the transport simply reports no
+   * duration, exactly as it did before.
+   */
+  private async knownDurationMs(urn: string): Promise<number> {
+    try {
+      const [track] = await this.ownCtx.sources.getTracks([urn])
+      return track?.durationMs ?? 0
+    } catch (error) {
+      this.ownCtx.logger.warn(`player: could not read duration for ${urn}: ${String(error)}`)
+      return 0
+    }
   }
 
   private async load(handle: StreamHandle): Promise<AudioSourceHandle> {
@@ -1448,6 +1486,7 @@ export class Player extends Service implements PlayerService {
     this.sourceStalled = undefined
     this.source?.dispose()
     this.source = undefined
+    this.fallbackDurationMs = 0
   }
 }
 

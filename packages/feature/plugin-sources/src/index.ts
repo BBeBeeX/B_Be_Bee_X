@@ -436,7 +436,7 @@ export class Sources extends Service implements SourcesService {
    */
   async searchAll(
     query: SearchQuery,
-    opts: { sourceIds?: string[]; timeoutMs?: number } = {},
+    opts: { sourceIds?: string[]; timeoutMs?: number; typesBySource?: Record<string, SearchQuery['types']> } = {},
   ): Promise<AggregatedSearch> {
     this.ctx.logger.info(`sources: searching all sources for "${query.text}"`)
     const timeoutMs = opts.timeoutMs ?? this.config.searchTimeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS
@@ -445,7 +445,9 @@ export class Sources extends Service implements SourcesService {
     const asked = this.providers.filter((p) => (!wanted || wanted.has(p.sourceId)) && canSearchProvider(p))
 
     const bySource = await Promise.all(
-      asked.map((provider) => this.searchOne(provider, query, timeoutMs)),
+      asked.map((provider) =>
+        this.searchOne(provider, query, timeoutMs, opts.typesBySource?.[provider.sourceId]),
+      ),
     )
     return { bySource }
   }
@@ -454,6 +456,7 @@ export class Sources extends Service implements SourcesService {
     provider: MediaProvider,
     query: SearchQuery,
     timeoutMs: number,
+    types?: SearchQuery['types'],
   ): Promise<AggregatedSearchEntry> {
     const { sourceId } = provider
     const startedAt = Date.now()
@@ -462,7 +465,7 @@ export class Sources extends Service implements SourcesService {
     // synchronous throw escapes the handler and rejects the whole fan-out —
     // the one thing searchAll promises never to do.
     const inFlight = Promise.resolve()
-      .then(() => provider.search!(query))
+      .then(() => provider.search!(types ? { ...query, types } : query))
       .then(
       (result) => ({ ok: true as const, result }),
       (error: unknown) => ({ ok: false as const, error: asSourceError(error, sourceId) }),

@@ -72,6 +72,9 @@ importers:
       '@BBeBee/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@BBeBee/plugin-download':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-download
       '@BBeBee/plugin-inspector':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-inspector
@@ -184,6 +187,9 @@ importers:
       '@BBeBee/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@BBeBee/plugin-download':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-download
       '@BBeBee/plugin-inspector':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-inspector
@@ -687,6 +693,31 @@ importers:
       '@BBeBee/core-paths-node':
         specifier: workspace:*
         version: link:../core-paths-node
+
+  packages/feature/plugin-download:
+    dependencies:
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@BBeBee/toolkit':
+        specifier: workspace:*
+        version: link:../toolkit
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+    devDependencies:
+      '@BBeBee/core-db-node':
+        specifier: workspace:*
+        version: link:../../core/core-db-node
+      '@BBeBee/core-fs-node':
+        specifier: workspace:*
+        version: link:../../core/core-fs-node
+      '@BBeBee/core-paths-node':
+        specifier: workspace:*
+        version: link:../../core/core-paths-node
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
 
   packages/feature/plugin-inspector:
     dependencies:

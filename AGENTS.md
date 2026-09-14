@@ -684,10 +684,15 @@ Test conventions in this repo:
   `fixtures/sources/`
   (`direct-url.json`, `subsonic.json`, `podcast-json-feed.json`).
 - Also built: the three log transports (`plugin-log-{buffer,console,file}`), `plugin-ui`
-  (`ctx.ui`), `plugin-inspector` (`ctx.inspector`), `core-desktop-bridge`, `core-store-fs`.
+  (`ctx.ui`), `plugin-inspector` (`ctx.inspector`), `core-desktop-bridge`, `core-store-fs`, and the
+  playback-cache half of `plugin-download` (a remote stream is cached as a `media_bindings` row and
+  the local copy is preferred on the next play; docs/05 §2).
 
 Known gaps, so they are not rediscovered as bugs:
 
+- **`plugin-download` is a cache, not a download manager.** There is no task queue, no resume from
+  a partial file, no `wifi_only`/`charging_only` policy acceptance and no download UI — a kill
+  mid-write costs the partial file, and the next play starts over (docs/10 §M3).
 - **The Stage 0 audio spike has not been run on hardware** — no iOS device, no Android device, no
   Electron. ADR-4's verdict is still a hypothesis, as is the device smoke matrix.
 - **`load({ strategy: 'stream' })` has no mobile implementation.** React Native has no

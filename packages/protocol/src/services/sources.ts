@@ -336,10 +336,19 @@ export interface SourcesService {
    * that silently drops a failing backend. With a dozen imported sources of
    * uneven quality this is the difference between "search is broken" and
    * "three of your twelve answered, one is rate-limited, one needs updating".
+   *
+   * `typesBySource` is the per-source form of `SearchQuery.types`: the search
+   * screen gives each source's *interfaces* (songs, artists) their own toggle,
+   * so one fan-out can ask a source for songs only while asking another for
+   * both. A source absent from the map gets `q.types` unchanged.
    */
   searchAll(
     q: SearchQuery,
-    opts?: { sourceIds?: string[]; timeoutMs?: number },
+    opts?: {
+      sourceIds?: string[]
+      timeoutMs?: number
+      typesBySource?: Record<string, SearchQuery['types']>
+    },
   ): Promise<AggregatedSearch>
 
   /**

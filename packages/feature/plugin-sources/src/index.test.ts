@@ -6,7 +6,7 @@ import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
 import { diffSnapshots, snapshotContext, tempDir, tick } from '@BBeBee/kernel/testing'
 import { NetworkError } from '@BBeBee/protocol'
-import type { Capabilities, MediaProvider, SearchResult, Track } from '@BBeBee/protocol'
+import type { Capabilities, MediaProvider, SearchQuery, SearchResult, Track } from '@BBeBee/protocol'
 import plugin, { Sources } from './index.js'
 
 /** A provider with nothing but the required core, declaring no search. */
@@ -41,7 +41,7 @@ function fakeProvider(sourceId: string, overrides: Partial<MediaProvider> = {}):
 /** A provider that searches, answering with `whenSearched`. */
 function searchingProvider(
   sourceId: string,
-  whenSearched: () => Promise<SearchResult>,
+  whenSearched: (query: SearchQuery) => Promise<SearchResult>,
 ): MediaProvider {
   const base = fakeProvider(sourceId)
   return {
@@ -212,6 +212,36 @@ describe('searchAll', () => {
   it('returns an empty fan-out when nothing is registered', async () => {
     const { sources } = await withSources()
     await expect(sources.searchAll(query)).resolves.toEqual({ bySource: [] })
+  })
+
+  it('gives each source its own interface filter', async () => {
+    // What the per-interface toggles on the search screen pass through: one
+    // fan-out, three different asks. A provider absent from the map keeps the
+    // query's own `types`.
+    const { sources } = await withSources()
+    const seen: Record<string, SearchQuery['types']> = {}
+    const capture = (id: string) =>
+      searchingProvider(id, async (q) => {
+        seen[id] = q.types
+        return hit(id)
+      })
+    sources.register(capture('both'))
+    sources.register(capture('songs-only'))
+    sources.register(capture('artists-only'))
+    sources.register(capture('unspecified'))
+
+    await sources.searchAll(query, {
+      typesBySource: {
+        both: ['track', 'artist'],
+        'songs-only': ['track'],
+        'artists-only': ['artist'],
+      },
+    })
+
+    expect(seen['both']).toEqual(['track', 'artist'])
+    expect(seen['songs-only']).toEqual(['track'])
+    expect(seen['artists-only']).toEqual(['artist'])
+    expect(seen['unspecified']).toBeUndefined()
   })
 
   it('caches results asked for through a gated caller with no db grants', async () => {
