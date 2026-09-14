@@ -118,8 +118,9 @@ document.
 that keeps a searched or browsed track playable after a restart, `ctx.secrets` on both platforms
 (`core-secrets-node`, `core-secrets-expo`), per-source cookie jars that persist and are forgotten
 by sign-out, form and variable sign-in with transparent single-flight re-authentication, the
-per-feature test screen with its streaming trace, cross-source identity linking, the import and
-source-list screens on both shells, and the full error taxonomy.
+per-feature test screen with its streaming trace, the cross-source search screen (one result
+section per source, failures and timeouts kept visible), cross-source identity linking, the import
+and source-list screens on both shells, and the full error taxonomy.
 
 Still open, and both need a device to finish: **`core-js-quickjs-expo`** — React Native's Hermes
 has no WebAssembly, so the mobile sandbox needs a *native* QuickJS module and therefore a

@@ -281,19 +281,21 @@ which events invalidate which state — are written once. Only the JSX is writte
 ### The source surfaces
 
 Four screens carry the whole string model, and they are worth naming because they are the part of
-the UI that has no equivalent in a conventional player. All four are contributed by
-`plugin-source-runtime-ui-{mobile,desktop}`, and all four are ordinary descriptors — nothing about
-them is privileged.
+the UI that has no equivalent in a conventional player. The descriptors come from
+`plugin-sources` and the views from `plugin-sources-ui-{mobile,desktop}` — all four are ordinary
+descriptors, nothing about them is privileged.
 
 | Screen | Does | Notes on the split |
 |---|---|---|
 | **Source list** | Enable, disable, reorder, group, and see each source's health badge | Ordinary list; parity is free |
 | **Import review** | Show what a pasted string contains — added / updated / rejected, and the host allowlist — before anything is written ([06 §9](./06-music-sources.md#9-importing-updating-and-sharing)) | The one screen that must never be skipped, so it is a modal route on both, not a slot |
-| **Rule tracer** | Run one step and show every rule's input, output and timing ([06 §10](./06-music-sources.md#10-diagnosing-a-broken-source)) | A long scrollable log with an editable rule at each row — the closest thing in the app to a developer tool, and the reason a user can fix a source themselves |
+| **Test a source** | Run one feature — search, browse, album, artist, playlist, lyrics, library, stream, a raw HTTP request, or arbitrary script — and show every rule's input, output and timing ([06 §10](./06-music-sources.md#10-diagnosing-a-broken-source)) | The list of test areas is the source's derived capability list, so the screen shows what that source can actually do; the trace is a long scrollable log, the closest thing in the app to a developer tool, and the reason a user can fix a source themselves |
+| **Search** | One query fanned out over the selected sources with `searchAll`, one result section per source ([06 §4.1](./06-music-sources.md#41-a-sources-lifetime)) | Before the first search the bar and the source toggles are a hero; afterwards both collapse to the top and the results take the height. Selections are stored as *exclusions*, so a source imported later joins the next search instead of being silently missed — and a source that failed, timed out or matched nothing keeps its own header instead of vanishing into a merged list |
 
 The rule that keeps this affordable is [§1](#1-the-three-package-convention)'s: parsing,
 validating, diffing, tracing and redacting all live in the headless package. The view packages
-show a list and a text field.
+show a list, a text field, and a set of toggles. The library and album screens are conventional
+catalogue surfaces in the same packages; the four above are the ones the string model added.
 
 ---
 
@@ -472,8 +474,8 @@ The scale relies on **"weight follows size"**:
     next, repeat) and time scrubber. Right: volume slider and utility toggles (queue, lyrics,
     device picker).
 - **Mobile Shell**:
-  - Clean full-bleed dark views with bottom navigation tab bar and scoped library filtering
-    (`All` / `Local` / `Favorites`).
+  - Clean full-bleed dark views with bottom navigation tab bar (Library, Search) and scoped library
+    filtering (`All` / `Local` / `Favorites`).
   - Persistent mini-player docked directly above the tab bar showing cover thumbnail, marquee title,
     artist name, play/pause toggle, and a hairline playback progress bar.
   - Full-screen now-playing sheet: Expanding the mini-player slides up an immersive player featuring

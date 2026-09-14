@@ -14,13 +14,17 @@ import type { Album, CatalogQuery, ImportReport, PlayerService, Track, TraceEven
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
   playFromList,
+  searchResultRows,
   useAlbum,
   useAlbums,
+  useSearchSourceSelection,
   useSetLoved,
   useSourceImport,
+  useSourceSearch,
   useSourceTrace,
   useSources,
   useTracks,
+  type SearchResultRow,
 } from '@BBeBee/plugin-sources/hooks'
 import {
   Artwork,
@@ -328,6 +332,273 @@ export function AlbumScreen({
   )
 }
 
+
+/* ── search ────────────────────────────────────────────────────────────── */
+
+/**
+ * Search the selected sources, one section per source. See the desktop twin:
+ * the same hook, the same rows, a phone's column instead of a pane.
+ */
+export function SearchScreen({
+  ctx,
+  query,
+  onOpenAlbum,
+}: {
+  ctx: Context
+  query?: string
+  onOpenAlbum?: (urn: string) => void
+}): ReactElement {
+  const native = nativePrimitives()
+  const scheme = p()
+  const selection = useSearchSourceSelection(ctx)
+  const search = useSourceSearch(ctx)
+  const [text, setText] = useState(query ?? '')
+
+  const submitted = search.status !== 'idle'
+  const busy = search.status === 'loading'
+  const canSearch = text.trim().length > 0 && selection.selectedIds.length > 0 && !busy
+  const submit = () => {
+    if (canSearch) search.run(text, selection.selectedIds)
+  }
+  const clear = () => {
+    search.reset()
+    setText('')
+  }
+
+  const rows = searchResultRows(
+    search.data,
+    (sourceId) => selection.options.find((option) => option.id === sourceId)?.name ?? sourceId,
+  )
+
+  const openAlbum = (urn: string) => {
+    onOpenAlbum?.(urn)
+    serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.album, { urn })
+  }
+
+  return h(
+    native.View as never,
+    {
+      accessibilityLabel: 'Search',
+      style: {
+        flex: 1,
+        backgroundColor: scheme.bg.base,
+        padding: tokens.space[4],
+        gap: tokens.space[4],
+      },
+    },
+    // The search bar stays first in the tree in both states, so the keyboard
+    // and the submit button do not move when the results arrive.
+    h(
+      native.View as never,
+      { style: { gap: tokens.space[2] } },
+      h(Text, { variant: submitted ? 'lg' : 'display' }, 'Search'),
+      h(TextField, {
+        value: text,
+        onChange: setText,
+        placeholder: 'Songs, albums, artists…',
+        accessibilityLabel: 'Search query',
+        testID: 'search-input',
+      }),
+      h(
+        native.View as never,
+        { style: { flexDirection: 'row', gap: tokens.space[2] } },
+        h(Button, {
+          onPress: submit,
+          disabled: !canSearch,
+          loading: busy,
+          testID: 'search-submit',
+          children: 'Search',
+        }),
+        submitted
+          ? h(Button, { variant: 'ghost', onPress: clear, testID: 'search-clear', children: 'Clear' })
+          : null,
+      ),
+    ),
+    // Centred while the screen has nothing else to show; a compact row once it
+    // has, which is the "moves up" half of the layout.
+    h(
+      native.View as never,
+      {
+        style: submitted
+          ? { gap: tokens.space[2] }
+          : {
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: 1,
+              gap: tokens.space[3],
+            },
+      },
+      h(
+        Text,
+        { variant: 'sm', tone: 'muted' },
+        submitted ? 'Search in' : 'Choose which sources to search',
+      ),
+      h(
+        native.View as never,
+        {
+          accessibilityRole: 'group',
+          accessibilityLabel: 'Sources to search',
+          style: { flexDirection: 'row', flexWrap: 'wrap', gap: tokens.space[2], justifyContent: 'center' },
+        },
+        ...selection.options.map((option) =>
+          h(Button, {
+            key: option.id,
+            variant: selection.isSelected(option.id) ? 'primary' : 'ghost',
+            disabled: !option.searchable,
+            onPress: () => selection.toggle(option.id),
+            accessibilityLabel: `${selection.isSelected(option.id) ? 'Do not search' : 'Search'} ${option.name}`,
+            testID: `search-source-${option.id}`,
+            children: option.name,
+          }),
+        ),
+        selection.options.some((option) => option.searchable)
+          ? h(Button, {
+              variant: 'ghost',
+              onPress: selection.toggleAll,
+              testID: 'search-toggle-all',
+              children: selection.allSelected ? 'None' : 'All',
+            })
+          : null,
+      ),
+    ),
+    !submitted
+      ? null
+      : search.status === 'error' && search.error
+        ? h(EmptyState, {
+            icon: '⚠',
+            title: 'Search failed',
+            description: search.error.message,
+            action: h(Button, {
+              variant: 'secondary',
+              onPress: () => search.run(search.text, selection.selectedIds),
+              children: 'Try again',
+            }),
+          })
+        : busy
+          ? h(EmptyState, {
+              title: `Searching for “${search.text}”…`,
+              description: 'Waiting for every selected source to answer.',
+            })
+          : h(
+              native.View as never,
+              { style: { flex: 1, minHeight: 0 } },
+              h(List<SearchResultRow>, {
+                items: rows,
+                accessibilityLabel: 'Search results',
+                estimatedItemSize: tokens.size.row,
+                keyExtractor: (row) => row.key,
+                empty: h(EmptyState, {
+                  icon: '🔎',
+                  title: 'Nothing found',
+                  description: 'No selected source had a match. Try a different search or source set.',
+                }),
+                renderItem: (row) =>
+                  row.kind === 'header'
+                    ? h(
+                        native.View as never,
+                        {
+                          accessibilityRole: 'header',
+                          style: {
+                            flexDirection: 'row',
+                            alignItems: 'baseline',
+                            gap: tokens.space[2],
+                            paddingTop: tokens.space[3],
+                            paddingBottom: tokens.space[1],
+                          },
+                        },
+                        h(Text, { variant: 'md' }, row.name),
+                        h(
+                          Text,
+                          { variant: 'sm', tone: row.status === 'error' ? 'error' : 'muted' },
+                          row.detail,
+                        ),
+                      )
+                    : row.kind === 'track'
+                      ? h(TrackRow, {
+                          track: row.track,
+                          showAlbum: true,
+                          onPress: () =>
+                            void playFromList(ctx, row.track.urn, {
+                              urns: row.queue,
+                              context: { kind: 'search', label: search.text },
+                            }),
+                        })
+                      : row.kind === 'album'
+                        ? h(
+                            native.Pressable as never,
+                            {
+                              accessibilityRole: 'button',
+                              accessibilityLabel: row.album.title,
+                              onPress: () => openAlbum(row.album.urn),
+                              style: {
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: tokens.space[3],
+                                padding: tokens.space[2],
+                              },
+                            },
+                            h(Artwork, {
+                              artwork: row.album.artwork,
+                              seed: row.album.urn,
+                              size: tokens.size.artworkThumb,
+                            }),
+                            h(
+                              native.View as never,
+                              { style: { flex: 1, minWidth: 0 } },
+                              h(Text, { numberOfLines: 1, children: row.album.title }),
+                              h(Text, {
+                                variant: 'sm',
+                                tone: 'muted',
+                                numberOfLines: 1,
+                                children: row.album.artists?.map((a) => a.name).join(', ') ?? '',
+                              }),
+                            ),
+                          )
+                        : h(ResultLine, { row }),
+              }),
+            ),
+  )
+}
+
+/**
+ * A non-playable hit — an artist or a playlist. See the desktop twin: no
+ * artist screen exists yet, so the row does not pretend to be pressable.
+ */
+function ResultLine({
+  row,
+}: {
+  row: Extract<SearchResultRow, { kind: 'artist' | 'playlist' }>
+}): ReactElement {
+  const native = nativePrimitives()
+  const subtitle = row.kind === 'playlist' ? row.playlist.owner : undefined
+  return h(
+    native.View as never,
+    {
+      style: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: tokens.space[3],
+        padding: tokens.space[2],
+      },
+    },
+    h(Artwork, {
+      artwork: row.kind === 'playlist' ? row.playlist.artwork : row.artist.artwork,
+      seed: row.kind === 'playlist' ? row.playlist.urn : row.artist.urn,
+      size: tokens.size.artworkThumb,
+    }),
+    h(
+      native.View as never,
+      { style: { flex: 1, minWidth: 0 } },
+      h(Text, {
+        numberOfLines: 1,
+        children: row.kind === 'playlist' ? row.playlist.name : row.artist.name,
+      }),
+      subtitle
+        ? h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1, children: subtitle })
+        : null,
+    ),
+  )
+}
 
 /* ── importing ──────────────────────────────────────────────────────────── */
 
@@ -848,6 +1119,7 @@ export const inject = ['ui', 'sources']
 export async function apply(ctx: Context) {
   return ctx.effect(function* () {
     yield ctx.ui.registerView(SOURCES_VIEWS.library, bound(ctx, LibraryScreen))
+    yield ctx.ui.registerView(SOURCES_VIEWS.search, bound(ctx, SearchScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.album, bound(ctx, AlbumScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceList, bound(ctx, SourcesListScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceImport, bound(ctx, ImportScreen))

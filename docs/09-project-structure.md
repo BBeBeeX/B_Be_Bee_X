@@ -195,8 +195,8 @@ B_Be_Bee/
 │   │   ├── ui-kit-desktop/         ✅        React DOM components
 │   │   ├── plugin-player-ui-desktop/ ✅      ┐ now playing, transport, queue
 │   │   ├── plugin-player-ui-mobile/  ✅      ┘
-│   │   ├── plugin-sources-ui-desktop/ ✅     ┐ library, album detail, source list, import
-│   │   ├── plugin-sources-ui-mobile/  ✅     ┘ review, test screen (08 §4)
+│   │   ├── plugin-sources-ui-desktop/ ✅     ┐ library, album detail, search, source list,
+│   │   ├── plugin-sources-ui-mobile/  ✅     ┘ import review, test screen (08 §4)
 │   │   ├── plugin-local-scanner-ui-desktop/ ✅ ┐ settings: scan roots
 │   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
 │   │   └── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered

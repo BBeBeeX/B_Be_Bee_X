@@ -61,6 +61,7 @@ import type {
   Track,
   TraceEvent,
 } from '@BBeBee/protocol'
+import { canSearchProvider } from './capabilities.js'
 import { Catalog } from './catalog.js'
 import { cacheEntities } from './cache.js'
 import { linkManually, linkTracks, linksFor, unlink } from './links.js'
@@ -235,13 +236,6 @@ function safeCheckMessage(message: string): string {
   })
 }
 
-/** Whether a source can answer a search at all — method *and* capability. */
-function canSearch(provider: MediaProvider): boolean {
-  if (typeof provider.search !== 'function') return false
-  const { search } = provider.capabilities
-  return search.tracks || search.albums || search.artists || search.playlists
-}
-
 /**
  * Map anything a provider throws onto the taxonomy.
  *
@@ -315,6 +309,17 @@ export class Sources extends Service implements SourcesService {
           icon: 'library',
           placement: ['tab-bar', 'sidebar'],
           order: 0,
+        })
+        yield scoped.ui.contribute({
+          kind: 'route',
+          id: SOURCES_ROUTES.search,
+          path: '/search',
+          title: 'Search',
+          icon: 'search',
+          // A place people go on purpose, so it earns chrome: a sidebar entry
+          // on desktop, a tab on mobile, next to the library.
+          placement: ['tab-bar', 'sidebar'],
+          order: 1,
         })
         yield scoped.ui.contribute({
           kind: 'route',
@@ -436,7 +441,7 @@ export class Sources extends Service implements SourcesService {
     const timeoutMs = opts.timeoutMs ?? this.config.searchTimeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS
     const wanted = opts.sourceIds && new Set(opts.sourceIds)
 
-    const asked = this.providers.filter((p) => (!wanted || wanted.has(p.sourceId)) && canSearch(p))
+    const asked = this.providers.filter((p) => (!wanted || wanted.has(p.sourceId)) && canSearchProvider(p))
 
     const bySource = await Promise.all(
       asked.map((provider) => this.searchOne(provider, query, timeoutMs)),
@@ -794,7 +799,7 @@ export class Sources extends Service implements SourcesService {
         })
       }
 
-      if (canSearch(provider)) {
+      if (canSearchProvider(provider)) {
         failedStep = 'search'
         await withDeadline(provider.search!({ text: 'a' }), timeoutMs, 'search')
       }

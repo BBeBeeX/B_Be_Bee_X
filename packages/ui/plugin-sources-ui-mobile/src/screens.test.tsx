@@ -30,11 +30,18 @@ import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
 import sourcesPlugin from '@BBeBee/plugin-sources'
+import type {
+  Capabilities,
+  MediaProvider,
+  SearchQuery,
+  SearchResult,
+  Track,
+} from '@BBeBee/protocol'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import { configureNative } from '@BBeBee/ui-kit-mobile'
 import httpPlugin from '@BBeBee/core-http-node'
 import sourceRuntime from '@BBeBee/plugin-source-runtime'
-import { LibraryScreen, SourcesListScreen, TestScreen, inject } from './index.js'
+import { LibraryScreen, SearchScreen, SourcesListScreen, TestScreen, inject } from './index.js'
 
 afterEach(cleanup)
 
@@ -274,5 +281,156 @@ describe('TestScreen on mobile', () => {
       await tick()
     })
     expect(container.textContent).toContain('no JavaScript sandbox')
+  })
+})
+
+describe('SearchScreen on mobile', () => {
+  const track = (sourceId: string, id: string, title: string): Track => ({
+    urn: `BBeBee:${sourceId}:track:${id}`,
+    title,
+    artists: [
+      { urn: `BBeBee:${sourceId}:artist:${id}`, name: 'Someone', role: 'main', ordinal: 0 },
+    ],
+  })
+
+  function searchingProvider(
+    sourceId: string,
+    search: (query: SearchQuery) => Promise<SearchResult>,
+  ): MediaProvider {
+    const capabilities: Capabilities = {
+      search: { tracks: true, albums: false, artists: false, playlists: false, fullText: false },
+      browse: false,
+      lyrics: false,
+      artwork: false,
+      library: { read: false, save: false, playlistWrite: false, playlistReorder: false },
+      streaming: { qualities: ['normal'], transcoding: false, seekable: true, urlExpiry: false },
+      regional: false,
+    }
+    return {
+      sourceId,
+      displayName: sourceId,
+      capabilities,
+      auth: {
+        flow: { kind: 'none' },
+        status: { state: 'authenticated' },
+        async signIn() {},
+        async signOut() {},
+        onStatusChange: () => () => {},
+      },
+      async getTrack() {
+        throw new Error('not needed')
+      },
+      async resolveStream() {
+        return { kind: 'remote', target: 'https://a.example/s', seekable: true } as never
+      },
+      ping: async () => true,
+      search,
+    }
+  }
+
+  const DOCS = [
+    { sourceUrl: 'https://alpha.example', sourceName: 'Alpha', ruleStream: { url: '={{source.url}}/s' } },
+    { sourceUrl: 'https://beta.example', sourceName: 'Beta', ruleStream: { url: '={{source.url}}/s' } },
+  ]
+
+  it('shows the box and the source toggles before a search', async () => {
+    const { ctx } = await harness()
+    const { container } = render(h(SearchScreen, { ctx }))
+    await act(async () => {
+      await tick()
+    })
+    expect(container.textContent).toContain('Choose which sources to search')
+    expect(container.querySelector('[data-testid="search-input"]')).toBeTruthy()
+    expect(container.querySelector('[data-testid="search-submit"]')).toBeTruthy()
+  })
+
+  it('lists each source’s hits under its own heading', async () => {
+    const { ctx, admin } = await harness()
+    await admin.sources.import(JSON.stringify(DOCS))
+    await tick()
+    const [alpha, beta] = admin.sources.sources
+    admin.sources.register(
+      searchingProvider(alpha!.id, async () => ({
+        tracks: { items: [track(alpha!.id, '1', 'Alpha Song')], hasMore: false },
+      })),
+    )
+    admin.sources.register(
+      searchingProvider(beta!.id, async () => ({
+        tracks: { items: [track(beta!.id, '1', 'Beta Song')], hasMore: false },
+      })),
+    )
+    await tick()
+
+    const { container } = render(h(SearchScreen, { ctx, query: 'song' }))
+    await act(async () => {
+      ;(container.querySelector('[data-testid="search-submit"]') as HTMLElement).click()
+      await tick()
+      await tick()
+    })
+
+    expect(container.textContent).toContain('Alpha')
+    expect(container.textContent).toContain('Beta')
+    expect(container.textContent).toContain('Alpha Song')
+    expect(container.textContent).toContain('Beta Song')
+    expect(container.textContent).toContain('1 track')
+  })
+
+  it('reports a failing source instead of dropping it', async () => {
+    const { ctx, admin } = await harness()
+    await admin.sources.import(JSON.stringify(DOCS))
+    await tick()
+    const [alpha, beta] = admin.sources.sources
+    admin.sources.register(
+      searchingProvider(alpha!.id, async () => {
+        throw new Error('Alpha is down')
+      }),
+    )
+    admin.sources.register(
+      searchingProvider(beta!.id, async () => ({
+        tracks: { items: [track(beta!.id, '1', 'Beta Song')], hasMore: false },
+      })),
+    )
+    await tick()
+
+    const { container } = render(h(SearchScreen, { ctx, query: 'song' }))
+    await act(async () => {
+      ;(container.querySelector('[data-testid="search-submit"]') as HTMLElement).click()
+      await tick()
+      await tick()
+    })
+
+    expect(container.textContent).toContain('Alpha is down')
+    expect(container.textContent).toContain('Beta Song')
+  })
+
+  it('only asks the sources left toggled on', async () => {
+    const { ctx, admin } = await harness()
+    await admin.sources.import(JSON.stringify(DOCS))
+    await tick()
+    const [alpha, beta] = admin.sources.sources
+    admin.sources.register(
+      searchingProvider(alpha!.id, async () => ({
+        tracks: { items: [track(alpha!.id, '1', 'Alpha Song')], hasMore: false },
+      })),
+    )
+    admin.sources.register(
+      searchingProvider(beta!.id, async () => ({
+        tracks: { items: [track(beta!.id, '1', 'Beta Song')], hasMore: false },
+      })),
+    )
+    await tick()
+
+    const { container } = render(h(SearchScreen, { ctx, query: 'song' }))
+    await act(async () => {
+      ;(container.querySelector(`[data-testid="search-source-${alpha!.id}"]`) as HTMLElement).click()
+    })
+    await act(async () => {
+      ;(container.querySelector('[data-testid="search-submit"]') as HTMLElement).click()
+      await tick()
+      await tick()
+    })
+
+    expect(container.textContent).toContain('Beta Song')
+    expect(container.textContent).not.toContain('Alpha Song')
   })
 })

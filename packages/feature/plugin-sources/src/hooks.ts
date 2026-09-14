@@ -12,18 +12,23 @@ import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import { SourceFormatError } from '@BBeBee/protocol'
 import type {
+  AggregatedSearch,
+  AggregatedSearchEntry,
   Album,
   AlbumDetail,
+  Artist,
   CatalogQuery,
   DebugStep,
   ImportReport,
   Paged,
   PlayerService,
+  Playlist,
   QueueSourceContext,
   SourceRecord,
   Track,
   TraceEvent,
 } from '@BBeBee/protocol'
+import { canSearchProvider } from './capabilities.js'
 import { parseSourceInput } from './identity.js'
 import { serviceOf, useServiceState, shallowArrayEqual, type AsyncState } from '@BBeBee/ui-core'
 
@@ -333,6 +338,250 @@ export function useSourceTrace(ctx: Context, sourceId: string | undefined): Trac
 
 export function useSetLoved(ctx: Context): (urn: string, loved: boolean) => Promise<void> {
   return useCallback((urn: string, loved: boolean) => ctx.sources.setLoved(urn, loved), [ctx])
+}
+
+/* ── searching across sources (docs/06 §4.1) ────────────────────────────── */
+
+/**
+ * One source the search screen can offer, and whether it can answer today.
+ *
+ * A row is imported and enabled long before its provider is registered — a
+ * source runtime that never loaded, or one whose document failed to build,
+ * leaves an enabled row with no provider. That is `searchable: false`, and it
+ * is shown as a disabled toggle rather than omitted: the source is the user's,
+ * and a silent absence reads as data loss.
+ */
+export interface SearchSourceOption {
+  id: string
+  name: string
+  searchable: boolean
+}
+
+/**
+ * The sources a search could ask.
+ *
+ * Providers rather than records decide `searchable`, because capability is
+ * derived from each live provider's rules — a `SourceRecord` only says the row
+ * exists.
+ */
+export function useSearchSourceOptions(ctx: Context): readonly SearchSourceOption[] {
+  const records = useSources(ctx)
+  const providers = useServiceState(
+    ctx,
+    ['source/registered', 'source/unregistered'],
+    () => ctx.sources.providers,
+    { isEqual: shallowArrayEqual },
+  )
+  return useMemo(
+    () =>
+      records.map((record) => ({
+        id: record.id,
+        name: record.name,
+        searchable:
+          record.enabled &&
+          canSearchProvider(providers.find((p) => p.sourceId === record.id)),
+      })),
+    [records, providers],
+  )
+}
+
+/** Which sources the user has chosen to search. */
+export interface SearchSourceSelection {
+  options: readonly SearchSourceOption[]
+  /** Searchable options only. */
+  selectedIds: readonly string[]
+  isSelected(id: string): boolean
+  toggle(id: string): void
+  allSelected: boolean
+  toggleAll(): void
+}
+
+/**
+ * The toggle row's state.
+ *
+ * Stored as *exclusions* rather than inclusions, so every source the user
+ * imports is searched by default and a source added later joins the selection
+ * instead of silently being left out. Toggling records only what the user
+ * turned off, which cannot go stale when the source list changes underneath.
+ */
+export function useSearchSourceSelection(ctx: Context): SearchSourceSelection {
+  const options = useSearchSourceOptions(ctx)
+  const [excluded, setExcluded] = useState<ReadonlySet<string>>(() => new Set())
+
+  const searchable = options.filter((option) => option.searchable)
+  const selectedIds = searchable.filter((option) => !excluded.has(option.id)).map((o) => o.id)
+  const allSelected = searchable.length > 0 && selectedIds.length === searchable.length
+
+  const toggle = useCallback((id: string) => {
+    setExcluded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleAll = useCallback(() => {
+    setExcluded(allSelected ? new Set(searchable.map((option) => option.id)) : new Set())
+  }, [allSelected, searchable])
+
+  return {
+    options,
+    selectedIds,
+    // A non-searchable source cannot be chosen, so it must not render as
+    // chosen: `!excluded` would mark it selected while the toggle is disabled.
+    isSelected: (id) => !excluded.has(id) && searchable.some((option) => option.id === id),
+    toggle,
+    allSelected,
+    toggleAll,
+  }
+}
+
+/** A fan-out search: the answer, or the reason there is none. */
+export interface SourceSearchState extends AsyncState<AggregatedSearch> {
+  /** The text the visible answer belongs to. */
+  text: string
+  run(text: string, sourceIds?: readonly string[]): void
+  reset(): void
+}
+
+/**
+ * `searchAll`, as a screen consumes it.
+ *
+ * Per-source results and per-source errors, never a merged list: the section
+ * for a source that timed out says so. A generation guards the write so a
+ * second search started while the first is still out cannot have its results
+ * overwritten by the first one finishing late.
+ */
+export function useSourceSearch(ctx: Context): SourceSearchState {
+  const [state, setState] = useState<AsyncState<AggregatedSearch>>({ status: 'idle' })
+  const [text, setText] = useState('')
+  const generation = useRef(0)
+
+  const run = useCallback(
+    (next: string, sourceIds?: readonly string[]) => {
+      const query = next.trim()
+      if (!query) return
+      const mine = ++generation.current
+      setText(query)
+      setState({ status: 'loading' })
+      void ctx.sources
+        .searchAll({ text: query }, sourceIds ? { sourceIds: [...sourceIds] } : {})
+        .then((result) => {
+          if (generation.current !== mine) return
+          setState({ status: 'ready', data: result })
+        })
+        .catch((error: unknown) => {
+          if (generation.current !== mine) return
+          setState({
+            status: 'error',
+            error: error instanceof Error ? error : new Error(String(error)),
+          })
+        })
+    },
+    [ctx],
+  )
+
+  const reset = useCallback(() => {
+    generation.current++
+    setText('')
+    setState({ status: 'idle' })
+  }, [])
+
+  return { ...state, text, run, reset }
+}
+
+/**
+ * One row of the search results screen.
+ *
+ * Flat, because both shells render one virtualised list: a `List` per source
+ * would nest scrollers, and a section header is just another row. Built here
+ * rather than in each view so the two shells cannot draw different sections
+ * for the same answer.
+ */
+export type SearchResultRow =
+  | {
+      kind: 'header'
+      key: string
+      sourceId: string
+      name: string
+      status: 'ready' | 'error' | 'pending'
+      /** Human-readable: a count, "no matches", or why there is nothing. */
+      detail: string
+    }
+  | {
+      kind: 'track'
+      key: string
+      sourceId: string
+      track: Track
+      /** The list a tap plays the track in — this source's hits. */
+      queue: readonly string[]
+    }
+  | { kind: 'album'; key: string; sourceId: string; album: Album }
+  | { kind: 'artist'; key: string; sourceId: string; artist: Artist }
+  | { kind: 'playlist'; key: string; sourceId: string; playlist: Playlist }
+
+/**
+ * Flatten an aggregated search into list rows.
+ *
+ * A source that failed, timed out or answered nothing still gets a header —
+ * the whole reason `searchAll` does not merge: silence and "no matches" must
+ * not look the same.
+ */
+export function searchResultRows(
+  result: AggregatedSearch | undefined,
+  nameOf: (sourceId: string) => string,
+): SearchResultRow[] {
+  if (!result) return []
+  const rows: SearchResultRow[] = []
+
+  for (const entry of result.bySource) {
+    const sourceId = entry.sourceId
+    rows.push({
+      kind: 'header',
+      key: `header:${sourceId}`,
+      sourceId,
+      name: nameOf(sourceId),
+      status: entry.error ? 'error' : entry.pending ? 'pending' : 'ready',
+      detail: searchEntryDetail(entry),
+    })
+    if (!entry.result) continue
+
+    const trackUrns = entry.result.tracks?.items.map((track) => track.urn) ?? []
+    for (const track of entry.result.tracks?.items ?? []) {
+      rows.push({ kind: 'track', key: `track:${track.urn}`, sourceId, track, queue: trackUrns })
+    }
+    for (const album of entry.result.albums?.items ?? []) {
+      rows.push({ kind: 'album', key: `album:${album.urn}`, sourceId, album })
+    }
+    for (const artist of entry.result.artists?.items ?? []) {
+      rows.push({ kind: 'artist', key: `artist:${artist.urn}`, sourceId, artist })
+    }
+    for (const playlist of entry.result.playlists?.items ?? []) {
+      rows.push({ kind: 'playlist', key: `playlist:${playlist.urn}`, sourceId, playlist })
+    }
+  }
+  return rows
+}
+
+/** What a source's section header says when there is nothing to list. */
+function searchEntryDetail(entry: AggregatedSearchEntry): string {
+  if (entry.error) return entry.error.message
+  if (entry.pending) return 'still searching…'
+  const result = entry.result
+  const parts: string[] = []
+  addCount(parts, result?.tracks?.items.length, 'track')
+  addCount(parts, result?.albums?.items.length, 'album')
+  addCount(parts, result?.artists?.items.length, 'artist')
+  addCount(parts, result?.playlists?.items.length, 'playlist')
+  // A count of zero says the request succeeded and the backend has no match —
+  // which is not the same answer as an error line, and not a blank section.
+  const summary = parts.length > 0 ? parts.join(' · ') : 'no matches'
+  return `${summary} · ${entry.tookMs} ms`
+}
+
+function addCount(parts: string[], count: number | undefined, noun: string): void {
+  if (count) parts.push(`${count} ${noun}${count === 1 ? '' : 's'}`)
 }
 
 /* ── playing a tapped track with its surrounding list ───────────────────── */

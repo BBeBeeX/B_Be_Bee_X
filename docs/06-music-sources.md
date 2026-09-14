@@ -649,6 +649,15 @@ export interface AggregatedSearch {
 uneven quality, per-source results with per-source errors is the difference between "search is
 broken" and "three of your twelve sources answered, one is rate-limited, one needs re-import".
 
+The search screen consumes exactly that shape and never merges it. `useSourceSearch` (headless,
+shared by both shells) runs the fan-out and `searchResultRows` flattens the answer into one
+virtualised list whose sections are headed by source name — a source that failed, timed out or
+found nothing keeps its header, so "no matches" and "never answered" cannot look the same. The
+toggles come from `useSearchSourceSelection`: every searchable provider is selected by default and
+the user's choices are stored as *exclusions*, so a source imported later still joins the next
+search. `canSearchProvider` is the one predicate the service and the screen share, so the toggles
+cannot offer a source `searchAll` would silently skip ([08 §4](./08-ui-architecture.md#the-source-surfaces)).
+
 ### 4.2 The resolution pipeline
 
 ```mermaid

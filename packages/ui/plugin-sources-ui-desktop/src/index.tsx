@@ -18,13 +18,17 @@ import type { Album, CatalogQuery, ImportReport, PlayerService, StreamQuality, T
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
   playFromList,
+  searchResultRows,
   useAlbum,
   useAlbums,
+  useSearchSourceSelection,
   useSetLoved,
   useSourceImport,
+  useSourceSearch,
   useSourceTrace,
   useSources,
   useTracks,
+  type SearchResultRow,
 } from '@BBeBee/plugin-sources/hooks'
 import {
   Artwork,
@@ -356,6 +360,304 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   )
 }
 
+
+/* ── search ────────────────────────────────────────────────────────────── */
+
+/**
+ * Search the selected sources, one section per source.
+ *
+ * Two layouts, not one: before the first search the box and the source toggles
+ * are a hero, centred in the pane; afterwards both collapse to the top and the
+ * rest of the height belongs to the results. The switch is a state change
+ * rather than an animation — a transition that never settles would leave a
+ * result list half-way down the screen.
+ */
+export function SearchScreen({
+  ctx,
+  query,
+  onOpenAlbum,
+}: {
+  ctx: Context
+  query?: string
+  onOpenAlbum?: (urn: string) => void
+}): ReactElement {
+  const scheme = p()
+  const selection = useSearchSourceSelection(ctx)
+  const search = useSourceSearch(ctx)
+  const [text, setText] = useState(query ?? '')
+
+  const submitted = search.status !== 'idle'
+  const busy = search.status === 'loading'
+  const canSearch = text.trim().length > 0 && selection.selectedIds.length > 0 && !busy
+  const submit = () => {
+    if (canSearch) search.run(text, selection.selectedIds)
+  }
+  const clear = () => {
+    search.reset()
+    setText('')
+  }
+
+  const rows = searchResultRows(
+    search.data,
+    (sourceId) => selection.options.find((option) => option.id === sourceId)?.name ?? sourceId,
+  )
+
+  const openAlbum = (urn: string) => {
+    onOpenAlbum?.(urn)
+    serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.album, { urn })
+  }
+
+  return h(
+    'section',
+    {
+      'aria-label': 'Search',
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+        padding: tokens.space[4],
+        gap: tokens.space[4],
+      },
+    },
+    // The search bar. It is first in the DOM in both states, so focusing it
+    // and typing works the same before and after the first search.
+    h(
+      'div',
+      { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[2] } },
+      h(Text, { variant: submitted ? 'lg' : 'display' }, 'Search'),
+      h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: tokens.space[2] } },
+        h(
+          'div',
+          { style: { flex: 1, minWidth: 0 } },
+          h(TextField, {
+            value: text,
+            onChange: setText,
+            placeholder: 'Songs, albums, artists…',
+            accessibilityLabel: 'Search query',
+            testID: 'search-input',
+          }),
+        ),
+        h(Button, {
+          onPress: submit,
+          disabled: !canSearch,
+          loading: busy,
+          testID: 'search-submit',
+          children: 'Search',
+        }),
+        submitted
+          ? h(Button, { variant: 'ghost', onPress: clear, testID: 'search-clear', children: 'Clear' })
+          : null,
+      ),
+    ),
+    // The toggles: centred while there is nothing else on screen, a compact
+    // row under the bar once the results are.
+    h(
+      'div',
+      {
+        style: submitted
+          ? {
+              display: 'flex',
+              flexDirection: 'column',
+              gap: tokens.space[2],
+            }
+          : {
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: 1,
+              gap: tokens.space[3],
+            },
+      },
+      h(
+        Text,
+        { variant: 'sm', tone: 'muted' },
+        submitted ? 'Search in' : 'Choose which sources to search',
+      ),
+      h(
+        'div',
+        {
+          role: 'group',
+          'aria-label': 'Sources to search',
+          style: {
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: tokens.space[2],
+            justifyContent: 'center',
+          },
+        },
+        ...selection.options.map((option) =>
+          h(Button, {
+            key: option.id,
+            variant: selection.isSelected(option.id) ? 'primary' : 'ghost',
+            disabled: !option.searchable,
+            onPress: () => selection.toggle(option.id),
+            accessibilityLabel: `${selection.isSelected(option.id) ? 'Do not search' : 'Search'} ${option.name}`,
+            testID: `search-source-${option.id}`,
+            children: option.name,
+          }),
+        ),
+        selection.options.some((option) => option.searchable)
+          ? h(Button, {
+              variant: 'ghost',
+              onPress: selection.toggleAll,
+              testID: 'search-toggle-all',
+              children: selection.allSelected ? 'None' : 'All',
+            })
+          : null,
+      ),
+    ),
+    !submitted
+      ? null
+      : search.status === 'error' && search.error
+        ? h(EmptyState, {
+            icon: '⚠',
+            title: 'Search failed',
+            description: search.error.message,
+            action: h(Button, {
+              variant: 'secondary',
+              onPress: () => search.run(search.text, selection.selectedIds),
+              children: 'Try again',
+            }),
+          })
+        : busy
+          ? h(EmptyState, {
+              title: `Searching for “${search.text}”…`,
+              description: 'Waiting for every selected source to answer.',
+            })
+          : h(
+              'div',
+              { style: { flex: 1, minHeight: 0 } },
+              h(List<SearchResultRow>, {
+                items: rows,
+                accessibilityLabel: 'Search results',
+                estimatedItemSize: tokens.size.row,
+                keyExtractor: (row) => row.key,
+                empty: h(EmptyState, {
+                  icon: '🔎',
+                  title: 'Nothing found',
+                  description: 'No selected source had a match. Try a different search or source set.',
+                }),
+                renderItem: (row) =>
+                  row.kind === 'header'
+                    ? h(
+                        'div',
+                        {
+                          role: 'heading',
+                          'aria-level': 2,
+                          style: {
+                            display: 'flex',
+                            alignItems: 'baseline',
+                            gap: tokens.space[2],
+                            padding: `${tokens.space[3]}px ${tokens.space[2]}px ${tokens.space[1]}px`,
+                          },
+                        },
+                        h(Text, { variant: 'md' }, row.name),
+                        h(
+                          Text,
+                          {
+                            variant: 'sm',
+                            tone: row.status === 'error' ? 'error' : 'muted',
+                          },
+                          row.detail,
+                        ),
+                      )
+                    : row.kind === 'track'
+                      ? h(TrackRow, {
+                          track: row.track,
+                          showAlbum: true,
+                          onPress: () =>
+                            void playFromList(ctx, row.track.urn, {
+                              urns: row.queue,
+                              context: { kind: 'search', label: search.text },
+                            }),
+                        })
+                      : row.kind === 'album'
+                        ? h(
+                            'button',
+                            {
+                              type: 'button',
+                              onClick: () => openAlbum(row.album.urn),
+                              'aria-label': row.album.title,
+                              style: {
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: tokens.space[3],
+                                width: '100%',
+                                padding: tokens.space[2],
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: scheme.text.primary,
+                              },
+                            },
+                            h(Artwork, {
+                              artwork: row.album.artwork,
+                              seed: row.album.urn,
+                              size: tokens.size.artworkThumb,
+                            }),
+                            h(
+                              'span',
+                              { style: { textAlign: 'left', minWidth: 0 } },
+                              h(Text, { numberOfLines: 1, children: row.album.title }),
+                              h(Text, {
+                                variant: 'sm',
+                                tone: 'muted',
+                                numberOfLines: 1,
+                                children: row.album.artists?.map((a) => a.name).join(', ') ?? '',
+                              }),
+                            ),
+                          )
+                        : h(ResultLine, { row }),
+              }),
+            ),
+  )
+}
+
+/**
+ * A non-playable hit — an artist or a playlist.
+ *
+ * An artist row is a line of text rather than a card: there is no artist
+ * screen to open yet, and a row that looks pressable but is not is worse than
+ * one that plainly is not.
+ */
+function ResultLine({
+  row,
+}: {
+  row: Extract<SearchResultRow, { kind: 'artist' | 'playlist' }>
+}): ReactElement {
+  const subtitle = row.kind === 'playlist' ? row.playlist.owner : undefined
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: tokens.space[3],
+        padding: tokens.space[2],
+      },
+    },
+    h(Artwork, {
+      artwork: row.kind === 'playlist' ? row.playlist.artwork : row.artist.artwork,
+      seed: row.kind === 'playlist' ? row.playlist.urn : row.artist.urn,
+      size: tokens.size.artworkThumb,
+    }),
+    h(
+      'span',
+      { style: { minWidth: 0 } },
+      h(Text, {
+        numberOfLines: 1,
+        children: row.kind === 'playlist' ? row.playlist.name : row.artist.name,
+      }),
+      subtitle
+        ? h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1, children: subtitle })
+        : null,
+    ),
+  )
+}
 
 /* ── importing ──────────────────────────────────────────────────────────── */
 
@@ -985,6 +1287,7 @@ export const inject = ['ui', 'sources']
 export async function apply(ctx: Context) {
   return ctx.effect(function* () {
     yield ctx.ui.registerView(SOURCES_VIEWS.library, bound(ctx, LibraryScreen))
+    yield ctx.ui.registerView(SOURCES_VIEWS.search, bound(ctx, SearchScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.album, bound(ctx, AlbumScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceList, bound(ctx, SourcesListScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceImport, bound(ctx, ImportScreen))

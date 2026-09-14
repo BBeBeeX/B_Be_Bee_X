@@ -8,6 +8,14 @@
 export const SOURCES_VIEWS = {
   /** Tracks and albums. The app's home screen. */
   library: 'sources.library',
+  /**
+   * Search across the selected sources, one result section per source.
+   *
+   * Deliberately *not* merged into one list: a source that fails, is slow or
+   * answers nothing has to be visible, or "search is broken" is
+   * indistinguishable from "this source has no match" (docs/06 §4.1).
+   */
+  search: 'sources.search',
   /** One album with its tracks. */
   album: 'sources.album',
   /** The imported sources, in settings. */
@@ -26,6 +34,7 @@ export const SOURCES_VIEWS = {
 
 export const SOURCES_ROUTES = {
   library: 'sources.library',
+  search: 'sources.search',
   album: 'sources.album',
   sourceImport: 'sources.import',
   sourceTest: 'sources.test',

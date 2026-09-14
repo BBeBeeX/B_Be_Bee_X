@@ -16,7 +16,7 @@ Layer 4（feature）— `ctx.sources`：导入的源文档、provider 注册表�
 
 ## 源文件
 
-### `src/index.ts` — SourcesService（1051 行，最大文件）
+### `src/index.ts` — SourcesService（1091 行，最大文件）
 
 | 成员 | 作用 |
 |---|---|
@@ -25,7 +25,8 @@ Layer 4（feature）— `ctx.sources`：导入的源文档、provider 注册表�
 | `setEnabled(id, on)` | 启停。emit `source/changed`。 |
 | `register(provider) / unregister` | provider 注册表。emit `source/registered` / `source/unregistered`（disposer 做身份校验——防旧 disposer 拆掉新注册）。 |
 | `providers / forUrn(urn)` | 活 provider 列表 / 按 URN 找 provider。 |
-| `search / searchLocal` | 跨源搜索（FTS，合并各源结果）/ 单源搜索。一个 FTS 索引多个入口，而非多套分词配置。 |
+| `searchAll(q, opts)` | 跨源扇出：每个被问到的源（含失败、超时）各一条 entry，绝不合并、绝不整体失败——"三家答了、一家限流、一家要重导"必须能说出来。 |
+| `searchLocal(text, opts)` | 目录内 FTS5，离线即时；与 `searchAll` 回答的是不同问题。 |
 | `cache(providers, results)` | 把 provider 返回的搜索/browse 结果写入目录表（委托 `cache.ts`），随后 emit `library/changed(kind, urns)`——只对实际写入的 URN。 |
 | `getAlbum / getArtist / getTracks / tracksOf…` | 目录 hydrate（credits、封面、分页）。 |
 | `readVars / writeVar / clearVars` | `source_vars` 的读写门——runtime 的变量提前于注册加载，否则 `auth.status` 首帧错报 anonymous。 |
@@ -76,20 +77,27 @@ Layer 4（feature）— `ctx.sources`：导入的源文档、provider 注册表�
 | `useAlbum(ctx, urn?)` | `AlbumDetail`；`undefined` data = 无此专辑 |
 | `useSources(ctx)` / `useLiveSourceIds(ctx)` | 已导入的源 / 已导入+启用但未注册（"starting…" 状态）——两者刻意分开 |
 | `useSourceImport(ctx)` | 导入屏；**输入即预览**（parse 是本地纯计算）；rejected 进 issues 而非 throw（否则坏文档"看起来按钮没反应"） |
-| `useSourceEditor(ctx, sourceId?)` | 内联编辑；保存走 `import()`（按 sourceUrl 去重保 id）；`dirty = text !== base` |
 | `useSourceTrace(ctx, sourceId?)` | 步骤 tracer；事件**到达即追加**（对无响应服务器的诊断就是"一行 http 后面什么都没有"）；generation ref 防新旧 trace 交错 |
+| `useSetLoved(ctx)` | 收藏开关；写 `catalog.setLoved`，再 emit `library/changed`。 |
+| `useSearchSourceSelection(ctx)` | 搜索屏的源开关：`options`（`searchable` 由 provider 的派生能力决定）+ `selectedIds` + `toggle`/`toggleAll`。**以排除集存储**——后导入的源默认加入下一次搜索，而不是被静默漏掉。 |
+| `useSourceSearch(ctx)` | `searchAll` 的屏上形态：`status/text/data/run/reset`；generation ref 保证后发搜索不被先发结果覆盖。 |
+| `searchResultRows(result, nameOf)` | 把 `AggregatedSearch` 摊平成单条虚拟列表的行（header/track/album/artist/playlist）——每源的失败/超时/无结果都保留自己的 header；track 行携带本段队列，点击即播。两壳共用，杜绝各画各的 section。 |
 | `listAllTracks(ctx, query)` / `playFromList(ctx, urn, list)` | 非 hook 的共享播放逻辑：前者把 query **翻页取全**（"播放这个列表"指整个列表，不是已滚入的页）；后者解析被点行所属的列表（`urns` 在手或 `query` 现取）交给 `player.playFromContext`——队列已有该曲则跳转，没有则整列表换入队列；目录读失败仍播单曲 |
+
+### `src/capabilities.ts` — provider 能力判定
+
+`canSearchProvider(provider)`：`search` 方法存在且派生能力里至少一种搜索类型为真。服务与搜索屏共用这一份判定——两处若漂移，屏上画出的开关就会包含 `searchAll` 静默跳过的源，"没问到"和"没结果"长得一模一样。
 
 ### `src/views.ts` — 描述符 id 常量
 
 ```ts
-SOURCES_VIEWS = { library: 'sources.library', album: 'sources.album',
-                  sourceList: 'sources.settings', sourceImport: 'sources.import',
-                  sourceDebug: 'sources.debug' }
-SOURCES_ROUTES = { library, album, sourceImport, sourceDebug }   // 同值
+SOURCES_VIEWS = { library: 'sources.library', search: 'sources.search',
+                  album: 'sources.album', sourceList: 'sources.settings',
+                  sourceImport: 'sources.import', sourceTest: 'sources.test' }
+SOURCES_ROUTES = { library, search, album, sourceImport, sourceTest }   // 同值
 ```
 
-init 贡献 5 个 descriptor：route `/library`（tab-bar + sidebar，order 0）、route `/album/:urn`（无 placement——从库进入而非 chrome）、settings（section `'sources'`，"Music sources"）、route `/sources/import`、route `/sources/:id/debug`。debug 与 editor 刻意合一（docs/06 §10）。
+init 贡献 6 个 descriptor：route `/library`（tab-bar + sidebar，order 0）、route `/search`（tab-bar + sidebar，order 1）、route `/album/:urn`（无 placement——从库或搜索进入而非 chrome）、settings（section `'sources'`，"Music sources"）、route `/sources/import`、route `/sources/test`。Test 屏把某源的每个能力各给一个测试区，全部流进同一条 trace（docs/06 §10）。
 
 ## 事件
 
@@ -115,7 +123,9 @@ export { cacheEntities, MAX_PAYLOAD_BYTES }
 export { MERGE_CONFIDENCE, linkManually, linkTracks, linksFor, unlink, writeExternalIds }
 export { SourceStore }
 export { allowedHostsFor, changedFields, exportableDocument, parseSourceInput, sourceIdFor, validateDocument }
-// './hooks'：useTracks / useAlbums / useAlbum / useSources / useLiveSourceIds / useSourceImport / useSourceEditor / useSourceTrace / listAllTracks / playFromList
+// './hooks'：useTracks / useAlbums / useAlbum / useSources / useLiveSourceIds / useSourceImport /
+//              useSourceTrace / useSetLoved / useSearchSourceSelection / useSourceSearch /
+//              searchResultRows / listAllTracks / playFromList
 // './views'：SOURCES_VIEWS / SOURCES_ROUTES
 ```
 

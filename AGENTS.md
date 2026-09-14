@@ -679,7 +679,8 @@ Test conventions in this repo:
 - M2: `source-rules` (full rule engine with its own tests), `core-js-quickjs-node`, the runtime
   with search/explore/album/lyrics/login (`DocumentAuth`, single-flight re-auth), `ctx.secrets`
   on both targets with persistent per-source cookie jars, the import/review flow, the per-feature
-  test screen with its streaming trace (`plugin-sources-ui-*`), and the corpus suite over
+  test screen with its streaming trace, the cross-source search screen (one result section per
+  source, failures and timeouts kept visible) (`plugin-sources-ui-*`), and the corpus suite over
   `fixtures/sources/`
   (`direct-url.json`, `subsonic.json`, `podcast-json-feed.json`).
 - Also built: the three log transports (`plugin-log-{buffer,console,file}`), `plugin-ui`

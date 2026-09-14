@@ -16,10 +16,17 @@ import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
 import sourcesPlugin from '@BBeBee/plugin-sources'
-import type { AlbumDetail, Capabilities, MediaProvider } from '@BBeBee/protocol'
+import type {
+  AlbumDetail,
+  Capabilities,
+  MediaProvider,
+  SearchQuery,
+  SearchResult,
+  Track,
+} from '@BBeBee/protocol'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
-import { ImportScreen, LibraryScreen, TestScreen, inject } from './index.js'
+import { ImportScreen, LibraryScreen, SearchScreen, TestScreen, inject } from './index.js'
 
 // Testing Library auto-cleans only with vitest globals, which this repo does
 // not enable. Without this every render stacks up in one document and
@@ -414,6 +421,156 @@ describe('LibraryScreen', () => {
 
       // In local scope, Jóga is from 'local' source so it appears
       expect(view.container.textContent).toContain('Jóga')
+    })
+  })
+})
+
+describe('SearchScreen', () => {
+  const track = (sourceId: string, id: string, title: string): Track => ({
+    urn: `BBeBee:${sourceId}:track:${id}`,
+    title,
+    artists: [
+      { urn: `BBeBee:${sourceId}:artist:${id}`, name: 'Someone', role: 'main', ordinal: 0 },
+    ],
+  })
+
+  /** A provider whose only feature is search — the screen's one dependency. */
+  function searchingProvider(
+    sourceId: string,
+    search: (query: SearchQuery) => Promise<SearchResult>,
+  ): MediaProvider {
+    const base = providerWith(sourceId, {})
+    return {
+      ...base,
+      capabilities: {
+        ...base.capabilities,
+        search: { tracks: true, albums: false, artists: false, playlists: false, fullText: false },
+      },
+      search,
+    }
+  }
+
+  const DOCS = [
+    { sourceUrl: 'https://alpha.example', sourceName: 'Alpha', ruleStream: { url: '={{source.url}}/s' } },
+    { sourceUrl: 'https://beta.example', sourceName: 'Beta', ruleStream: { url: '={{source.url}}/s' } },
+  ]
+
+  async function withTwoSources(admin: Context): Promise<void> {
+    await admin.sources.import(JSON.stringify(DOCS))
+    await tick()
+  }
+
+  function registerHits(
+    admin: Context,
+    id: string,
+    title: string,
+  ): void {
+    admin.sources.register(
+      searchingProvider(id, async () => ({ tracks: { items: [track(id, '1', title)], hasMore: false } })),
+    )
+  }
+
+  it('shows the search box and the source toggles before anything is searched', async () => {
+    const { ctx, admin } = await harness()
+    await withTwoSources(admin)
+    const [alpha, beta] = admin.sources.sources.map((record) => record.id)
+
+    render(h(SearchScreen, { ctx }))
+
+    expect(screen.getByTestId('search-input')).toBeTruthy()
+    expect(screen.getByTestId(`search-source-${alpha}`)).toBeTruthy()
+    expect(screen.getByTestId(`search-source-${beta}`)).toBeTruthy()
+    // Nothing asked, nothing shown — and no empty-results screen either.
+    expect(screen.queryByLabelText('Search results')).toBeNull()
+  })
+
+  it('lists each selected source under its own heading', async () => {
+    const { ctx, admin } = await harness()
+    await withTwoSources(admin)
+    const [alpha, beta] = admin.sources.sources
+    registerHits(admin, alpha!.id, 'Alpha Song')
+    registerHits(admin, beta!.id, 'Beta Song')
+    await tick()
+
+    await withListLayout(async () => {
+      render(h(SearchScreen, { ctx }))
+      await act(async () => {
+        type('search-input', 'song')
+      })
+      await act(async () => {
+        screen.getByTestId('search-submit').click()
+        await tick()
+        await tick()
+      })
+
+      const shown = document.body.textContent ?? ''
+      expect(shown).toContain('Alpha')
+      expect(shown).toContain('Beta')
+      expect(shown).toContain('Alpha Song')
+      expect(shown).toContain('Beta Song')
+      expect(shown).toContain('1 track')
+    })
+  })
+
+  it('reports a failing source instead of dropping it, and still shows the rest', async () => {
+    /*
+     * The reason `searchAll` returns per-source entries and never merges: a
+     * backend that is down must be visible. A merged list would make "Alpha is
+     * broken" and "Alpha has no match" the same screen.
+     */
+    const { ctx, admin } = await harness()
+    await withTwoSources(admin)
+    const [alpha, beta] = admin.sources.sources
+    admin.sources.register(
+      searchingProvider(alpha!.id, async () => {
+        throw new Error('Alpha is down')
+      }),
+    )
+    registerHits(admin, beta!.id, 'Beta Song')
+    await tick()
+
+    await withListLayout(async () => {
+      render(h(SearchScreen, { ctx }))
+      await act(async () => {
+        type('search-input', 'song')
+      })
+      await act(async () => {
+        screen.getByTestId('search-submit').click()
+        await tick()
+        await tick()
+      })
+
+      const shown = document.body.textContent ?? ''
+      expect(shown).toContain('Alpha is down')
+      expect(shown).toContain('Beta Song')
+    })
+  })
+
+  it('only asks the sources the user left toggled on', async () => {
+    const { ctx, admin } = await harness()
+    await withTwoSources(admin)
+    const [alpha, beta] = admin.sources.sources
+    registerHits(admin, alpha!.id, 'Alpha Song')
+    registerHits(admin, beta!.id, 'Beta Song')
+    await tick()
+
+    await withListLayout(async () => {
+      render(h(SearchScreen, { ctx }))
+      await act(async () => {
+        screen.getByTestId(`search-source-${alpha!.id}`).click()
+      })
+      await act(async () => {
+        type('search-input', 'song')
+      })
+      await act(async () => {
+        screen.getByTestId('search-submit').click()
+        await tick()
+        await tick()
+      })
+
+      const shown = document.body.textContent ?? ''
+      expect(shown).toContain('Beta Song')
+      expect(shown, 'the toggled-off source was not asked').not.toContain('Alpha Song')
     })
   })
 })
