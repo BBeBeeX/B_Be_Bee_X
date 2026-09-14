@@ -476,7 +476,7 @@ async function resolveBiliStream(track, prefs) {
   }
 
   const signedIn = await biliSignedIn();
-  const wanted = QN_FOR_QUALITY[prefs?.quality] || (signedIn ? 80 : 64);
+  const wanted = signedIn ? QN_FOR_QUALITY[prefs?.quality] || 64 : 32;
   const capped = signedIn ? wanted : Math.min(wanted, QN_SIGNED_OUT_CAP);
   const start = Math.max(0, QN_LADDER.indexOf(capped));
   src.log('resolveBiliStream(' + bvid + ') → qn ' + capped + (signedIn ? ' (signed in)' : ' (signed out)') + ', quality=' + (prefs?.quality || 'default'));
