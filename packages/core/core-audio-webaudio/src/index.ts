@@ -43,6 +43,14 @@ import type {
  */
 export interface MediaElementLike {
   src: string
+  /**
+   * The CORS mode the element loads in.
+   *
+   * Load-bearing, not cosmetic: an element wrapped by
+   * `createMediaElementSource` and fetched cross-origin without CORS makes
+   * the node output silence, so a remote track "plays" with no sound.
+   */
+  crossOrigin?: string | null
   currentTime: number
   duration: number
   paused: boolean
@@ -381,6 +389,8 @@ export class AudioWebAudio extends Service implements AudioService {
     }
 
     const element = createElement()
+  
+    element.crossOrigin = 'anonymous'
     element.src = src
 
     const context = this.context as BaseAudioContext & {

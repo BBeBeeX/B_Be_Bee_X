@@ -16,6 +16,7 @@ import { type FakeAudioContext, createFakeAudioContext } from './fake-context.js
  */
 class FakeMediaElement {
   src = ''
+  crossOrigin: string | null = null
   currentTime = 0
   duration = 120
   paused = true
@@ -124,6 +125,9 @@ describe('core-audio-webaudio', () => {
 
     expect(elements).toHaveLength(1)
     expect(elements[0]!.src).toBe('https://example.org/a.mp3')
+    // CORS mode, or the wrapped element's node outputs silence — see
+    // `MediaElementLike.crossOrigin`.
+    expect(elements[0]!.crossOrigin).toBe('anonymous')
     expect(engine.mediaSources, 'the element is wrapped, not played on its own').toHaveLength(1)
     expect(source.node).toBe(engine.mediaSources[0]!.node)
   })
