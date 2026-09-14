@@ -2,7 +2,7 @@
 
 BBeBee 的 Bilibili 音乐源:把 B 站的视频、音频榜单、UP 主投稿、收藏夹与合集变成可搜索、可浏览、可播放的音源。遵循本仓库"音乐源是文档不是插件"的模型——`source.json` 声明规则,`source.js` 提供被规则调用的 JS 库,由 `plugin-source-runtime` 在 QuickJS 沙盒里解释执行,本目录没有任何宿主能力。
 
-接口全部对照 [bilibili-api-collect](https://github.com/bilibili-plugins/bilibili-api-collect) 实现,关键响应结构经直连实测核对(2026-09)。
+**调用流程对照 yt-dlp 的 Bilibili extractor(`yt_dlp/extractor/bilibili.py`)实现**:端点、请求参数、分页与错误码处理逐条对齐;接口字段参考 [bilibili-api-collect](https://github.com/bilibili-plugins/bilibili-api-collect),关键响应结构经直连实测核对(2026-09)。
 
 ---
 
@@ -40,14 +40,14 @@ node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources
 | 块 | 说明 |
 |---|---|
 | `header` | 顶层请求头规则(浏览器 UA + Referer),覆盖运行时自己发起的抓取(搜索/浏览) |
-| `searchUrl` | `{{@js:biliSearchUrl(key, page)}}` — 视频搜索(WBI 签名) |
-| `searchArtistUrl` | `{{@js:biliUserSearchUrl(key, page)}}` — 用户搜索(`search_type=bili_user`) |
+| `searchUrl` | `{{@js:biliSearchUrl(key, page)}}` — 视频搜索(`x/web-interface/search/type`,yt-dlp 参数集,随机 `buvid3` 引导) |
+| `searchArtistUrl` | `{{@js:biliUserSearchUrl(key, page)}}` — 用户搜索(同端点 `search_type=bili_user`) |
 | `ruleSearch` | 视频行:`trackId=$.bvid`,标题经 `cleanTitle`(去 `<em class="keyword">` 与实体),`parseDuration("3:33")` → 毫秒 |
 | `ruleSearchArtist` | 用户行:`trackId=$.mid`、`title=$.uname`、`artwork=item.upic`,由运行时映射为 `Artist{urn,name,artwork}` |
-| `exploreUrl` | `{{@js:biliExploreUrl()}}` — 生成 4 个 browse 栏目(见下) |
+| `exploreUrl` | `{{@js:biliExploreUrl()}}` — 生成 4 个 browse 栏目(见下;bilibili.py 没有对应流程,为本源自有的浏览面) |
 | `ruleExplore` | `trackList=@js:biliExploreRows(result)` — 同一规则处理两种榜单文档(期数列表 / 歌曲列表) |
-| `ruleStream` | `url=resolveBiliStream(track, prefs)`;`headers`=Referer+UA(CDN 必需,经桌面 IPC `stream:set-headers` 注册);`seekable=true`(跳过 HEAD 探测);`expiresAt`=2 小时 |
-| `ruleLyric` | `getBiliLyrics(track)` → LRC |
+| `ruleStream` | `url=resolveBiliStream(track, prefs)`;单次 playurl 取回全部音轨后按应用档位选择;`headers`=Referer+UA(CDN 必需,经桌面 IPC `stream:set-headers` 注册);`seekable=true`(跳过 HEAD 探测);`expiresAt`=2 小时 |
+| `ruleLyric` | `getBiliLyrics(track)` → LRC(无签名 `x/player/wbi/v2`) |
 | `ruleArtist` | `getBiliArtist(id)` |
 | `rulePlaylist` | `getBiliPlaylist(id, page)` |
 | `ruleLibrary` | `getBiliLibraryList(kind, page)` — 登录后返回自己的收藏夹(`bili_collect_*`) |
@@ -69,38 +69,34 @@ node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources
 
 | 函数 | 作用 |
 |---|---|
-| `ensureBuvid()` | 一次性风控引导:`x/frontend/finger/spi` 取 `b_3/b_4` 写入源 cookie jar(`.bilibili.com` 域,缓存 6h)。没有 buvid3,搜索返回 -412 |
-| `getWbiMixinKey()` | `x/web-interface/nav` 取 `wbi_img` 双 key,按固定置换表取前 32 位;缓存 1h,nav 失败时退回硬编码 key(仅应急) |
+| `ensureBuvid()` | 风控引导(yt-dlp `_search_results` 方式):jar 中无 `buvid3` 时写入随机 `uuid4 + infoc`。没有 buvid3,搜索返回 -412 |
+| `getWbiMixinKey()` | `x/web-interface/nav` 取 `wbi_img` 双 key,按固定置换表取前 32 位;缓存 1h,nav 失败直接报错(不再用硬编码 key 兜底) |
 | `signWbiQuery(params)` | WBI 签名:`wts`(秒)入参 → 按 key 排序 → **值过滤 `!'()*`** → `encodeURIComponent` → `w_rid=md5(query+mixinKey)`。漏掉值过滤,服务端复算必不匹配 |
-| `biliSearchUrl / biliUserSearchUrl` | 两个搜索端点的 URL 构造(均 WBI + buvid) |
+| `dmParams()` | yt-dlp `_dm_params`:空 `dm_img_list`、随机可打印字符 base64 的 `dm_img_str`/`dm_cover_img_str`、按厂商脚本算术生成的紧凑 `dm_img_inter`。playurl 与 arc/search 都携带 |
+| `biliSearchUrl / biliUserSearchUrl` | 两个搜索 URL 的构造:同一普通端点,yt-dlp 的完整参数集(`Search_key/keyword/page/context/duration/tids_2/__refresh__/search_type/tids/highlight`) |
 | `biliExploreUrl()` | 榜单栏目构造(抓两榜期数,算最新 `ID`;栏目缓存 10 分钟) |
 | `biliExploreRows(result)` | 期数/歌曲两种文档 → 统一 browse 行(`kind`、`childUrl`、`durationMs` 取 `creation_duration`) |
-| `trackBvid(track) / ensureCid(track)` | 从 `track.bvid || onlineId || id` 取 bvid;`x/player/pagelist` 取第一页 cid,按 bvid 缓存 1h |
+| `trackBvid(track) / ensureCid(track)` | 从 `track.bvid || onlineId || id` 取 bvid;`x/player/pagelist` 取第一页 cid(带 `jsonp=jsonp`,yt-dlp 同参),按 bvid 缓存 1h |
+| `fetchBiliPlayurl(bvid, cid, query)` | yt-dlp `_download_playinfo`:`x/player/wbi/playurl`,WBI 签名,`fnval=4048` + `dm_*`;未登录带 `try_look=1`,登录后剔除(与 yt-dlp 的 `params.pop('try_look', None)` 一致);错误码归一化为 `code * -1`,`-401/-352` 附 "please wait and try later" |
 | `resolveBiliStream(track, prefs)` | 取流,见下节 |
-| `getBiliLyrics(track)` | 签名调用 `x/player/wbi/v2` → 选字幕(人工中文 > AI 中文 > 第一条)→ JSON 转 LRC(真实换行) |
+| `getBiliLyrics(track)` | yt-dlp `_get_subtitles`:`x/player/wbi/v2` **不签名**,有 aid 用 `aid+cid`、否则 `bvid+cid`;`need_login_subtitle` 记日志;选字幕(人工中文 > AI 中文 > 第一条)→ JSON 转 LRC(真实换行) |
 | `getBiliQrCode / pollBiliQrCode` | 二维码登录:`passport …/qrcode/generate|poll`;轮询码 0=确认(Set-Cookie 自动入 jar)、86090=已扫、86038=过期、86101=未扫 |
 | `refreshBiliCookie()` | Cookie 刷新:`cookie/info`(timestamp)→ RSA-OAEP-SHA256(`refresh_<ts>`)hex → `correspond/1/<hex>` 页面抓 `refresh_csrf` → `cookie/refresh` → `confirm/refresh`;新 `refresh_token` 存入 `src.vars` |
-| `getBiliArtist(id)` | 用户卡片(`x/web-interface/card`)+ 合集/系列(`seasons_series_list`,id 编码 mid)+ **全部投稿**(`x/space/wbi/arc/search`,ps=50 翻页至短页,上限 40 页;失败回退 `recArchivesByKeywords`) |
+| `getBiliUploader(uid)` | yt-dlp `_get_uploader`:抓 `space.bilibili.com/<uid>` 的 `<title>…的个人空间-`;合集/系列响应缺 owner 时的兜底 |
+| `fetchBiliSpacePage(uid, pn)` | yt-dlp `BilibiliSpaceVideoIE.fetch_page`:`x/space/wbi/arc/search`,WBI 签名,参数 `keyword/mid/order/order_avoided/platform/pn/ps=30/tid/web_location/special_type/index + dm_*`,Referer/Origin/Accept-Language 齐备;HTTP 412 与 code -401/-352 单独报错 |
+| `getBiliArtist(id)` | 用户卡片(`x/web-interface/card`)+ 合集/系列(`seasons_series_list`,id 编码 mid)+ 全部投稿(`fetchBiliSpacePage` 按 `data.page.count` 翻页,上限 40 页);`meta.attribute == 156` 的隐藏合集映射为 album |
+| `extractInitialState / getBiliInitialState` | yt-dlp `_search_json(window.__INITIAL_STATE__)` 的等价物:平衡括号提取 + JSON.parse,按 URL 缓存 5 分钟 |
 | `parsePlaylistTarget(raw)` | 播放列表 id 归一化,见下节 |
-| `getBiliPlaylist(id, page)` | 收藏夹 / 合集 / 系列三分支,`hasMore`+`cursor` 分页 |
+| `fetchBiliMedialist(target, page)` | yt-dlp `BilibiliPlaylistIE`:`window.__INITIAL_STATE__` 判型(type/biz_id/tid/sort_field)后走 `x/v2/medialist/resource/list`,以最后一条的 `id` 作为下一页 `oid` 游标;`error/listError` 的 -400/-403/11010 单独报错 |
+| `getBiliPlaylist(id, page)` | 收藏夹 / 合集 / 系列 / 播放器页面(medialist)四分支,`hasMore`+`cursor` 分页 |
 | `getBiliLibraryList(kind)` | 登录后:`fav/folder/created/list-all` + `collected/list` → 自建与收藏的收藏夹 |
 | `cleanTitle / cleanPic / parseDuration / previewValue` | 文本/图片/时长工具与日志预览 |
 
 ## 音频流与音质
 
-`resolveBiliStream` 对 `x/player/wbi/playurl` 发 WBI 签名请求:**`fnval` 固定 4048**(标准 DASH 位图:4K/HDR/Dolby/AV1,`fourk=1`),不请求 Hi-Res 位 4096 —— 它是最常见的 `-400 请求错误` 来源,而拿不到的 FLAC 不如能播的 AAC;若响应里确实带了 30251(FLAC),音频阶梯仍会优先选它。
+`resolveBiliStream` 走 yt-dlp 的取流流程:`x/player/wbi/playurl` 单次请求(WBI 签名,**`fnval` 固定 4048**,WBI 位图不含 Hi-Res 位 4096——它是最常见的 `-400 请求错误` 来源),请求携带 `dm_*` 指纹参数;未登录时额外带 `try_look=1` 预览标志,登录后剔除。
 
-`qn` 由应用画质档位映射而来,**未登录时上限 64,登录后默认 80**:
-
-| 应用档位 | qn | B 站文案 | 备注 |
-|---|---|---|---|
-| `low` | 16 | 360P 流畅 | |
-| `normal` | 32 | 480P 清晰 | |
-| `high` | 64 | 720P 高清 | WEB 端默认;未登录即可取流 |
-| `lossless` | 80 | 1080P 高清 | TV/APP 端默认;需登录 |
-| `hi-res` | 127 | 8K 超高清 | 大会员 |
-
-播放器默认 `lossless` → 登录后 80、未登录被压回 64,因此"默认 64/未登录、80/已登录"自然成立;74/100/112/116/120/125/126/129 这些更高档位只有用户显式选择更高应用档位时才会间接请求,不会自动上探。请求被拒(非 0 code)时按 `QN_LADDER` **向下**重试:`127→120→116→112→100→80→74→64→32→16`(125/126 HDR/杜比视界与相邻档同分辨率、属视频轨,跳过)。
+**现代(DASH)视频一次响应就带回全部音轨**(30216/30232/30280,权益够时还有 30250/30251),因此不再按 `qn` 逐档请求:`qn` 与 `QN_SIGNED_OUT_CAP` 只用于下面的 legacy 路径。yt-dlp 把整张 format 列表交给自己的 selector,`ruleStream` 只能返回一个 URL,所以最后一步按应用档位阶梯挑一条,这不改变请求流程。
 
 DASH 音频 id → 应用 `StreamQuality` 档位(对齐 B 站网页播放器给每档的文案,勿凭带宽猜测):
 
@@ -112,21 +108,26 @@ DASH 音频 id → 应用 `StreamQuality` 档位(对齐 B 站网页播放器给�
 | 30250 | 杜比全景声 | `lossless`(永不选) | E-AC-3 — Chromium 解不了,按带宽排序它会赢,所以用 `undecodable` 标记显式剔除 |
 | 30251 | Hi-Res 无损 | `hi-res` | FLAC |
 
-选择按 `prefs.quality` 走档位阶梯(播放器默认 `lossless` → 优先 30251,没有就退到最好的 AAC),再过一遍 `prefs.acceptFormats`(桌面 codec 支持表无 dolby,天然兜底);每档内按带宽取最高。未登录时接口只发 30216/30232,阶梯自然落到底。
+选择按 `prefs.quality` 走档位阶梯(播放器默认 `lossless` → 优先 30251,没有就退到最好的 AAC),再过一遍 `prefs.acceptFormats`;每档内按带宽取最高。未登录时接口只发 30216/30232,阶梯自然落到底。
 
-**回传实际档位**:所选结果的档位与实际 `bandwidth` 由 `resolveBiliStream` 写进 `src.cache`(与签名 URL 同为 2 小时窗口),`ruleStream.quality` / `ruleStream.bitrateKbps` 在 `url` 之后读取这份缓存回传应用——应用因此知道"请求的是无损,拿到的是 192K",而不是再发一次 playurl。缓存缺失时返回空串,运行时视为字段缺席。
+**Legacy(无 dash)视频**:响应只有 `durl` + `accept_quality` —— yt-dlp 会为每个缺席的 `qn` 重发一次 playurl;本源只发一次,取应用档位映射的 `qn`(`low/normal/high/lossless/hi-res` → `16/32/64/80/127`,未登录上限 64),不在 `accept_quality` 里时取不超过它的最高档。单段 `durl` 直接作为流;多段 `durl` 是 yt-dlp 会拆成多个 entry 的 flv 分片,一个 `ruleStream` URL 无法表达,故报错而不是只播第一段。
+
+**回传实际档位**:所选结果的档位与实际 `bandwidth`(legacy 则由 `durl.size/length` 估算)由 `resolveBiliStream` 写进 `src.cache`(与签名 URL 同为 2 小时窗口),`ruleStream.quality` / `ruleStream.bitrateKbps` 在 `url` 之后读取这份缓存回传应用——应用因此知道"请求的是无损,拿到的是 192K",而不是再发一次 playurl。缓存缺失时返回空串,运行时视为字段缺席。
 
 ## 标识与 URN 约定
 
 - 视频 trackId = `bvid`;榜单行同(mv/creation bvid)。URN:`BBeBee:<sourceId>:track:<bvid>`。
-- 传给 stream/lyric 规则的 `track` = 存库 payload(原始行 + 规则求值字段)+ `id`(URN id 段),所以 `track.bvid`、`track.cid`(收藏夹行)都在。
-- 播放列表 id 接受的输入(`parsePlaylistTarget`):
+- 传给 stream/lyric 规则的 `track` = 存库 payload(原始行 + 规则求值字段)+ `id`(URN id 段),所以 `track.bvid`、`track.aid`(搜索行)、`track.cid`(收藏夹行)都在;歌词请求因此能按 yt-dlp 的规则优先用 `aid+cid`。
+- 播放列表 id 接受的输入(`parsePlaylistTarget`,URL 形态对齐 yt-dlp 四个列表 extractor 的 `_VALID_URL`):
 
 | 输入 | 归一化为 |
 |---|---|
-| `bili_collect_<mlid>` / 裸数字 / `space.bilibili.com/<mid>/favlist?fid=<mlid>` | 收藏夹(`x/v3/fav/resource/list`) |
-| `bili_season_<mid>_<sid>` / `space.bilibili.com/<mid>/channel/collectiondetail?sid=<sid>` | 合集(`seasons_archives_list`,**mid 必需**,实测错 mid 返回 -404) |
-| `bili_series_<mid>_<sid>` / `…/seriesdetail?sid=<sid>` | 系列(`x/series/archives`) |
+| `bili_collect_<mlid>` / 裸数字 / `space.bilibili.com/<mid>/favlist?fid=<mlid>` | 收藏夹(`x/v3/fav/resource/list` + `x/v3/fav/resource/ids`) |
+| `bili_season_<mid>_<sid>` / `space.bilibili.com/<mid>/channel/collectiondetail?sid=<sid>` / `…/lists/<sid>`(无 `type=series`) | 合集(`seasons_archives_list`,**mid 必需**,实测错 mid 返回 -404) |
+| `bili_series_<mid>_<sid>` / `…/channel/seriesdetail?sid=<sid>` / `…/lists/<sid>?type=series` | 系列(`x/series/series` 元数据 + `x/series/archives`) |
+| `bilibili.com/list/<mid>?sid=<sid>` / `…/list/ml<id>` / `…/list/watchlater` / `…/medialist/play/<id>` | 播放器页面(yt-dlp `BilibiliPlaylistIE`):抓页面 `window.__INITIAL_STATE__` 判型,再走 `x/v2/medialist/resource/list`,以 `oid` 游标分页 |
+
+收藏夹分支采用 yt-dlp 的两段式:`resource/ids` 一次拿全部条目与总数(缓存 10 分钟,分页在本地切),`resource/list` 取当前页的标题等元数据;`ids` 不可用时退回 `resource/list` 自身的分页。`ids` 不带标题,单纯用它会得到没有标题的行,所以两个接口都要。
 
 ## 登录与凭据
 
@@ -134,35 +135,39 @@ DASH 音频 id → 应用 `StreamQuality` 档位(对齐 B 站网页播放器给�
 
 ## 风控要点
 
-1. **buvid3 必需**——搜索等 web 接口对无该 cookie 的客户端直接 -412;`ensureBuvid` 在每次搜索/浏览前确保就位。
+1. **buvid3 必需**——搜索等 web 接口对无该 cookie 的客户端直接 -412;`ensureBuvid` 按 yt-dlp 的方式在缺失时写入随机 `uuid4+infoc`。
 2. **浏览器 UA + Referer**——jsLib 每个请求显式带 `BROWSER_HEADERS`;文档顶层 `header` 覆盖运行时自发起的抓取。
-3. **WBI 签名三步缺一不可**——wts、排序、值过滤 `!'()*`;签名正确性由语料测试用文档示例密钥独立复算 `w_rid` 钉死。
-4. `concurrentRate: "5/1000"` 声明限速;搜索一次会发 1–2 个请求(视频 + 用户,后者失败可降级)。
+3. **dm_* 指纹**——playurl 与 arc/search 都带 `dm_img_*`;缺了它们被 -412 的概率明显上升(yt-dlp 专门为此合成)。
+4. **WBI 签名三步缺一不可**——wts、排序、值过滤 `!'()*`;签名正确性由语料测试用文档示例密钥独立复算 `w_rid` 钉死。搜索与字幕接口按 yt-dlp 不签名,签名只用于 playurl 与 arc/search。
+5. `concurrentRate: "5/1000"` 声明限速;搜索一次会发 1–2 个请求(视频 + 用户,后者失败可降级)。
 
 ## 已知限制
 
 - **榜单纯音频行不可播**:榜单条目的 `music_id`(MA…)不是旧 auid,`music-service-c` 音频接口对它返回 4511001(实测);这类行(无 mv/creation bvid)被跳过。
+- **Legacy 多段 durl 不可播**:B 站旧式 flv 分片(如 `BV1ms411Q7vw`)在 yt-dlp 里是多个 entry,本源一个 URL 表达不了,会报 "legacy Bilibili stream is split into N flv fragments"。
 - `load({strategy:'stream'})` 无移动端实现——长视频流播放目前仅桌面可用(仓库级 M2 缺口)。
 - Hi-Res/杜比实际下发取决于账号权益;未登录音质上限 132K AAC。
 - 用户搜索一次最多返回一页 20 条(接口行为);视频/用户各自分页正常。
 - 合集 id 离不开 mid:旧格式 `bili_season_<sid>` 无法换算,会报带指引的错误。
+- 隐藏合集(`attribute 156`)在 UP 主页作为 album 出现,专辑 id 由 `meta.id` 与 mid 拼出。
+- UP 主投稿一次物化(上限 40 页 × 30 条),yt-dlp 是懒分页;条目极多的 UP 主需要调大 `MAX_ARTIST_PAGES`。
 
-## 使用的接口清单(对照 bilibili-api-collect)
+## 使用的接口清单(对照 yt-dlp bilibili.py / bilibili-api-collect)
 
-| 接口 | 用途 | 文档 |
+| 接口 | 用途 | yt-dlp 对应 |
 |---|---|---|
-| `x/frontend/finger/spi` | buvid3/buvid4 | `docs/misc/buvid.md` |
-| `x/web-interface/nav` | WBI keys、登录态 | `docs/misc/sign/wbi.md` |
-| `x/web-interface/wbi/search/type` | 视频 / 用户搜索(WBI) | `docs/search/search_request.md` |
-| `x/copyright-music-publicity/toplist/all_period` | 榜单每期列表 | `docs/audio/rank.md` |
-| `x/copyright-music-publicity/toplist/music_list` | 榜单单期内容 | `docs/audio/rank.md` |
-| `x/player/pagelist` | 分页 cid | `docs/video/…` |
-| `x/player/wbi/playurl` | DASH 音频流(WBI) | `docs/video/videostreamurl.md` |
-| `x/player/wbi/v2` | 字幕列表(WBI) | `docs/video/subtitle.md` |
-| `x/web-interface/card` | 用户数据(头像/名称/id) | `docs/personal_space/…` |
-| `x/space/wbi/arc/search` | UP 主全部投稿(WBI) | `docs/personal_space/…` |
-| `x/series/recArchivesByKeywords` | 投稿列表回退 | `docs/…` |
-| `x/polymer/web-space/seasons_series_list` / `seasons_archives_list` | 合集列表 / 合集内容 | `docs/…` |
-| `x/series/archives` | 系列内容 | `docs/…` |
-| `x/v3/fav/resource/list`、`fav/folder/created/list-all`、`fav/folder/collected/list` | 收藏夹内容与列表 | `docs/fav/…` |
-| `passport …/qrcode/generate|poll`、`cookie/info|refresh`、`confirm/refresh` | 登录与 Cookie 刷新 | `docs/login/…` |
+| `x/web-interface/search/type` | 视频 / 用户搜索(不签名) | `BiliBiliSearchIE` |
+| `x/web-interface/nav` | WBI keys、登录态 | `BilibiliBaseIE._get_wbi_key` |
+| `x/player/pagelist` | 分页 cid | `BiliBiliIE._real_extract` |
+| `x/player/wbi/playurl` | DASH 音频流(WBI + dm_* + try_look) | `BilibiliBaseIE._download_playinfo` |
+| `x/player/wbi/v2` | 字幕列表(不签名) | `BilibiliBaseIE._get_subtitles` |
+| `x/space/wbi/arc/search` | UP 主全部投稿(WBI + dm_*) | `BilibiliSpaceVideoIE.fetch_page` |
+| `x/polymer/web-space/seasons_series_list` | UP 主合集/系列列表 | `BilibiliCollectionListIE` 等 |
+| `x/polymer/web-space/seasons_archives_list` | 合集内容 | `BilibiliCollectionListIE` |
+| `x/series/series` / `x/series/archives` | 系列元数据 / 内容 | `BilibiliSeriesListIE` |
+| `x/v3/fav/resource/list`、`x/v3/fav/resource/ids` | 收藏夹元数据+分页 / 全量条目 | `BilibiliFavoritesListIE` |
+| `www.bilibili.com/list/*`(HTML `__INITIAL_STATE__`)、`x/v2/medialist/resource/list` | 播放器页面播放列表(oid 游标分页) | `BilibiliPlaylistIE` |
+| `x/v3/fav/folder/created/list-all`、`collected/list` | 登录后收藏夹列表 | (本源自有,bilibili.py 无) |
+| `x/web-interface/card` | 用户数据(头像/名称) | (本源自有) |
+| `x/copyright-music-publicity/toplist/*` | 音频榜单 browse | (本源自有,bilibili.py 无) |
+| `passport …/qrcode/generate|poll`、`cookie/info|refresh`、`confirm/refresh` | 登录与 Cookie 刷新 | (bilibili.py 为密码登录) |
