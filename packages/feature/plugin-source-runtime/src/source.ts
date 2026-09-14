@@ -51,10 +51,11 @@ import type {
   Lyrics,
   LyricsFormat,
   StreamPrefs,
+  StreamQuality,
   Track,
   TraceEvent,
 } from '@BBeBee/protocol'
-import { formatUrn } from '@BBeBee/protocol'
+import { formatUrn, STREAM_QUALITIES } from '@BBeBee/protocol'
 import {
   engineAvailable,
   evaluate,
@@ -2169,6 +2170,7 @@ export class DocumentSource {
       numberOr(await this.renderOptional('byteLength', rules.byteLength, scope)) ?? probe?.byteLength
     const expiresAt = numberOr(await this.renderOptional('expiresAt', rules.expiresAt, scope))
     const bitrateKbps = numberOr(await this.renderOptional('bitrateKbps', rules.bitrateKbps, scope))
+    const quality = await this.streamQuality(rules.quality, scope)
     const headers = parseHeaders(await this.renderOptional('headers', rules.headers, scope))
 
     this.seekable = declaredSeekable ?? probe?.seekable ?? this.seekable ?? true
@@ -2181,8 +2183,36 @@ export class DocumentSource {
       ...(byteLength ? { byteLength } : {}),
       ...(bitrateKbps ? { bitrateKbps } : {}),
       ...(expiresAt ? { expiresAt } : {}),
+      // What actually got served, in the app's vocabulary — so the player can
+      // say "you asked for lossless; this is the 192K stream".
+      ...(quality ? { quality } : {}),
       ...(headers ? { headers } : {}),
     }
+  }
+
+  /**
+   * The served tier, as the app names tiers.
+   *
+   * A value outside `StreamQuality` is a document bug rather than a
+   * preference to ignore: the UI would label the stream with something that
+   * is not a tier, and nothing downstream can compare it. Absent or empty
+   * means the document does not report one, which is fine; unknown is not.
+   */
+  private async streamQuality(
+    rule: string | undefined,
+    scope: TemplateScope,
+  ): Promise<StreamQuality | undefined> {
+    const rendered = await this.renderOptional('quality', rule, scope)
+    if (rendered === undefined || rendered.trim() === '') return undefined
+    const value = rendered.trim()
+    if (!(STREAM_QUALITIES as readonly string[]).includes(value)) {
+      throw new RuleError(
+        `ruleStream.quality produced ${JSON.stringify(rendered)}, which is not a quality tier`,
+        { block: 'ruleStream', field: 'quality' },
+        this.record.id,
+      )
+    }
+    return value as StreamQuality
   }
 
   /**

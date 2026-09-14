@@ -489,6 +489,10 @@ describe('the shipped Bilibili document', () => {
     expect(handle.kind).toBe('remote')
     // The ladder still prefers a FLAC the API chose to include.
     expect(handle.target).toContain('30251.m4s')
+    // 30251 is the app's `hi-res` tier; the reported bitrate is the chosen
+    // stream's own bandwidth, not the tier's nominal number.
+    expect(handle.quality).toBe('hi-res')
+    expect(handle.bitrateKbps).toBe(1200)
     const playurl = requests.find((r) => r.url.includes('/x/player/wbi/playurl'))!
     // 4048 is the default ask; bit 4096 is what made Bilibili answer -400.
     expect(playurl.url).toContain('fnval=4048')
@@ -520,6 +524,7 @@ describe('the shipped Bilibili document', () => {
       acceptFormats: [],
     })
     expect(handle.target).toContain('30232.m4s')
+    expect(handle.quality).toBe('normal')
     const fnvals = requests
       .filter((r) => r.url.includes('/x/player/wbi/playurl'))
       .map((r) => new URL(r.url).searchParams.get('fnval'))
@@ -534,6 +539,10 @@ describe('the shipped Bilibili document', () => {
       acceptFormats: [],
     })
     expect(handle.target).toContain('30232.m4s')
+    // 30232 is the app's `normal` (标准) tier — the quality the app is told
+    // it got, not the one it asked for.
+    expect(handle.quality).toBe('normal')
+    expect(handle.bitrateKbps).toBe(132)
   })
 
   it('never hands back the Dolby track, even when it is the only one', async () => {

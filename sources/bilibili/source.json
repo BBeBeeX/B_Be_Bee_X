@@ -45,6 +45,8 @@
   },
   "ruleStream": {
     "url": "={{@js:resolveBiliStream(track, prefs)}}",
+    "quality": "={{@js:biliStreamQuality(track)}}",
+    "bitrateKbps": "={{@js:biliStreamBitrate(track)}}",
     "headers": "={\"Referer\": \"https://www.bilibili.com/\", \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36\"}",
     "seekable": "=true",
     "expiresAt": "={{@js:src.time.now() + 7200000}}",

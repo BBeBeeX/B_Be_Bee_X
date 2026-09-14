@@ -29,16 +29,26 @@ const WBI_ENC_TAB = [
   36, 20, 34, 44, 52
 ];
 
-// DASH audio ids, per docs/video/videostreamurl.md. 30250 is Dolby Atmos
-// (E-AC-3) — Chromium cannot decode it, so it is named but never chosen; the
-// ladder walks a decoded tier list instead of raw bandwidth, because by
-// bandwidth Dolby wins every sort and produces a track that cannot play.
+// DASH audio ids → the app's `StreamQuality` tiers, per the label Bilibili's
+// own player shows for each id:
+//
+//   id     web label       app tier
+//   30216  流畅 64K         low
+//   30232  标准 132K        normal
+//   30280  高品质 192K       high
+//   30250  杜比全景声        lossless
+//   30251  Hi-Res 无损      hi-res
+//
+// 30250 is Dolby Atmos (E-AC-3) — Chromium cannot decode it, so it is mapped
+// for reporting but never chosen; the ladder walks a decoded tier list
+// instead of raw bandwidth, because by bandwidth Dolby wins every sort and
+// produces a track that cannot play.
 const AUDIO_TIERS = {
-  30216: 'low',     // 64K AAC
-  30232: 'normal',  // 132K AAC
-  30280: 'high',    // 192K AAC
-  30250: 'dolby',   // Dolby Atmos, E-AC-3
-  30251: 'hi-res',  // Hi-Res FLAC
+  30216: 'low',
+  30232: 'normal',
+  30280: 'high',
+  30250: 'lossless',
+  30251: 'hi-res',
 };
 
 const AUDIO_LADDER = {
@@ -441,18 +451,20 @@ async function resolveBiliStream(track, prefs) {
 
   const dash = data?.data?.dash || {};
   const audios = [];
-  const push = (a, fallbackTier) => {
+  const push = (a, fallbackTier, undecodable) => {
     if (!a) return;
     const id = a.id || a.new_id;
     const codecs = String(a.codecs || '').toLowerCase();
     const format = codecs.includes('flac') ? 'flac' : codecs.includes('ec-3') || codecs.includes('eac3') ? 'eac3' : 'm4a';
-    audios.push({ ...a, format, qTier: AUDIO_TIERS[id] || fallbackTier || 'normal' });
+    audios.push({ ...a, format, qTier: AUDIO_TIERS[id] || fallbackTier || 'normal', undecodable: undecodable === true });
   };
   push(dash.flac?.audio, 'hi-res');
-  for (const a of dash.dolby?.audio || []) push(a, 'dolby');
+  // Dolby maps to the app's premium tier but stays out of selection — see
+  // AUDIO_TIERS. The flag is what excludes it, not its tier name.
+  for (const a of dash.dolby?.audio || []) push(a, 'lossless', true);
   for (const a of dash.audio || []) push(a);
 
-  let candidates = audios.filter(a => a.qTier !== 'dolby');
+  let candidates = audios.filter(a => !a.undecodable);
   if (Array.isArray(prefs?.acceptFormats) && prefs.acceptFormats.length > 0) {
     const accepted = candidates.filter(a => prefs.acceptFormats.some(fmt => a.format === String(fmt).toLowerCase()));
     if (accepted.length > 0) candidates = accepted;
@@ -475,8 +487,45 @@ async function resolveBiliStream(track, prefs) {
     src.log('resolveBiliStream(' + bvid + ', qn=' + (prefs?.quality || 'best') + ') → no audio stream in response (' + audios.length + ' candidates) — throwing');
     throw new Error('No playable audio stream returned from Bilibili');
   }
+  // What the app gets to see: the tier this resolve served and its nominal
+  // bitrate. Kept in the realm's cache because `ruleStream.quality` and
+  // `.bitrateKbps` are rendered as separate rules after the URL, and
+  // answering them by re-running playurl would be a second round trip per
+  // playback. Same window as the signed URL itself.
+  src.cache.put('bili_stream_' + bvid, JSON.stringify({
+    quality: chosen.qTier,
+    bitrateKbps: Math.round((chosen.bandwidth || 0) / 1000),
+  }), 7200000);
   src.log('resolveBiliStream(' + bvid + ') → ' + previewValue(url) + ' [' + (chosen.qTier || '?') + '/' + (chosen.format || '?') + ']');
   return url;
+}
+
+/**
+ * The tier and bitrate the last resolve chose for a track.
+ *
+ * `ruleStream.quality` / `.bitrateKbps` are rendered after `ruleStream.url`
+ * and cannot re-derive the choice without a second playurl request, so the URL
+ * rule leaves its answer in `src.cache`. Empty string means "not resolved in
+ * this realm", which the runtime reads as the field being absent.
+ */
+function lastBiliStream(track) {
+  const raw = src.cache.get('bili_stream_' + trackBvid(track));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function biliStreamQuality(track) {
+  const last = lastBiliStream(track);
+  return last && last.quality ? String(last.quality) : '';
+}
+
+function biliStreamBitrate(track) {
+  const last = lastBiliStream(track);
+  return last && last.bitrateKbps ? String(last.bitrateKbps) : '';
 }
 
 async function getBiliLyrics(track) {

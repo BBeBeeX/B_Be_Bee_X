@@ -315,6 +315,17 @@ export interface StreamRule {
   seekable?: string               // truthy string; default probed with a HEAD
   /** Epoch ms. Its presence is what sets `capabilities.streaming.urlExpiry`. */
   expiresAt?: string
+  /**
+   * The tier this resolve actually served, in the app's vocabulary.
+   *
+   * Distinct from `qualities`: that is the capability list a quality selector
+   * reads before anything resolves; this is what one track got, which is how
+   * the player can say "you asked for lossless, this is the 192K stream".
+   * Optional — a source that cannot know omits it — but a value outside
+   * `StreamQuality` is a `RuleError`, because nothing downstream can compare
+   * a tier that is not a tier.
+   */
+  quality?: string
   /** Explicit quality tiers supported by this stream rule ('low' | 'normal' | 'high' | 'lossless' | 'hi-res'). */
   qualities?: StreamQuality[]
 }
@@ -917,10 +928,17 @@ export interface StreamHandle {
   headers?: Record<string, string>
   /** Epoch ms. The player re-resolves before this, and on 403. */
   expiresAt?: number
+  /** What the provider actually served, which may be below what was asked. */
+  quality?: StreamQuality
   /** Reserved. Nothing implements this — see 01, non-goals. */
   drm?: { system: string; licenseUrl: string }
 }
 ```
+
+`ruleStream.quality` is what turns a document's own tier language into that field. A source whose
+backend names tiers differently maps them itself — the Bilibili document maps `30216 流畅 → low`,
+`30232 标准 → normal`, `30280 高品质 → high`, `30250 杜比全景声 → lossless`, `30251 Hi-Res 无损 →
+hi-res` — so the app compares and displays tiers it knows, never backend ids.
 
 Handling of the awkward cases:
 

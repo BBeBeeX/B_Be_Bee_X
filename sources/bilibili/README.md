@@ -90,17 +90,19 @@ node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources
 
 `resolveBiliStream` 对 `x/player/wbi/playurl` 发 WBI 签名请求,参数 `qn=127, fourk=1`,**fnval 默认 4048,被拒(-400)则回退 16**。4048 是标准 DASH 位图(4K/HDR/Dolby/AV1);B 站对携带视频没有的档位的请求直接答 `-400 请求错误`(而不是忽略多余位),**不再请求 Hi-Res 位 4096** —— 它是最常见的 -400 来源,而拿不到的 FLAC 不如能播的 AAC。若响应里确实带了 30251(FLAC),阶梯仍会优先选它。
 
-DASH 音频 id → 档位(文档口径,勿凭带宽猜测):
+DASH 音频 id → 应用 `StreamQuality` 档位(对齐 B 站网页播放器给每档的文案,勿凭带宽猜测):
 
-| id | 档位 | 编码 |
-|---|---|---|
-| 30216 | low | AAC 64K |
-| 30232 | normal | AAC 132K |
-| 30280 | high | AAC 192K |
-| 30250 | dolby(永不选) | E-AC-3 — Chromium 解不了,按带宽排序它会赢,所以显式剔除 |
-| 30251 | hi-res | FLAC |
+| id | B 站文案 | 应用档位 | 编码 |
+|---|---|---|---|
+| 30216 | 流畅 64K | `low` | AAC |
+| 30232 | 标准 132K | `normal` | AAC |
+| 30280 | 高品质 192K | `high` | AAC |
+| 30250 | 杜比全景声 | `lossless`(永不选) | E-AC-3 — Chromium 解不了,按带宽排序它会赢,所以用 `undecodable` 标记显式剔除 |
+| 30251 | Hi-Res 无损 | `hi-res` | FLAC |
 
 选择按 `prefs.quality` 走档位阶梯(播放器默认 `lossless` → 优先 30251,没有就退到最好的 AAC),再过一遍 `prefs.acceptFormats`(桌面 codec 支持表无 dolby,天然兜底);每档内按带宽取最高。未登录时接口只发 30216/30232,阶梯自然落到底。
+
+**回传实际档位**:所选结果的档位与实际 `bandwidth` 由 `resolveBiliStream` 写进 `src.cache`(与签名 URL 同为 2 小时窗口),`ruleStream.quality` / `ruleStream.bitrateKbps` 在 `url` 之后读取这份缓存回传应用——应用因此知道"请求的是无损,拿到的是 192K",而不是再发一次 playurl。缓存缺失时返回空串,运行时视为字段缺席。
 
 ## 标识与 URN 约定
 

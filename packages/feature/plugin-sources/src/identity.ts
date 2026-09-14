@@ -164,7 +164,7 @@ const RULE_FIELDS: Record<string, readonly string[]> = {
   ruleTrackList: LIST_FIELDS,
   ruleAlbum: ['title', 'artist', 'artwork', 'year', 'description', 'trackCount', 'trackListUrl'],
   ruleStream: ['url', 'headers', 'mimeType', 'codec', 'bitrateKbps', 'sampleRate', 'byteLength',
-    'seekable', 'expiresAt', 'qualities'],
+    'seekable', 'expiresAt', 'quality', 'qualities'],
   ruleLyric: ['lyric', 'format', 'offsetMs'],
   ruleLibrary: ['list', 'setSaved', 'createPlaylist', 'addToPlaylist', 'removeFromPlaylist',
     'deletePlaylist'],

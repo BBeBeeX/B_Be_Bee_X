@@ -228,6 +228,35 @@ describe('resolution', () => {
       code: 'rule',
     })
   })
+
+  it('reports the tier the document actually served', async () => {
+    // `ruleStream.quality` is how a source says "you asked for lossless, this
+    // is the 192K stream it had" — distinct from `qualities`, which is the
+    // capability list a selector reads before anything is resolved.
+    const { ctx } = await harness([
+      radio('/t.mp3', { ruleStream: { url: '={{source.url}}', quality: '=high' } }),
+    ])
+    const handle = await ctx.sources.providers[0]!.resolveStream('t1', prefs)
+    expect(handle.quality).toBe('high')
+  })
+
+  it('leaves quality absent when the document does not report one', async () => {
+    const { ctx } = await harness([radio()])
+    const handle = await ctx.sources.providers[0]!.resolveStream('t1', prefs)
+    expect(handle.quality).toBeUndefined()
+  })
+
+  it('refuses a quality that is not a tier, naming the rule', async () => {
+    // Not a preference to ignore: nothing downstream can compare "ultra", and
+    // the UI would label the stream with something that is not a tier.
+    const { ctx } = await harness([
+      radio('/t.mp3', { ruleStream: { url: '={{source.url}}', quality: '=ultra' } }),
+    ])
+    await expect(ctx.sources.providers[0]!.resolveStream('t1', prefs)).rejects.toMatchObject({
+      code: 'rule',
+      rule: { block: 'ruleStream', field: 'quality' },
+    })
+  })
 })
 
 describe('egress and failure classification', () => {

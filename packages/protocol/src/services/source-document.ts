@@ -82,6 +82,10 @@ export interface StreamRule {
   seekable?: Rule
   /** Epoch ms. Its presence is what sets `capabilities.streaming.urlExpiry`. */
   expiresAt?: Rule
+  /**
+   * The tier **this resolve actually served**, in the app's vocabulary.
+   */
+  quality?: Rule
   /** Supported stream qualities. Overrides capability deduction. */
   qualities?: StreamQuality[]
 }
