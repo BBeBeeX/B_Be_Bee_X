@@ -85,6 +85,7 @@ function localProvider(overrides: Partial<MediaProvider> = {}): MediaProvider {
 /** What a lock screen was told, in order. */
 interface SessionLog {
   states: ('playing' | 'paused' | 'stopped')[]
+  updates: { title: string }[]
   cleared: number
 }
 
@@ -100,7 +101,9 @@ function mediaSessionStub(log: SessionLog) {
     constructor(ctx: Context) {
       super(ctx, 'mediaSession')
     }
-    update() {}
+    update(np: { title: string }) {
+      log.updates.push({ title: np.title })
+    }
     setPlaybackState(state: 'playing' | 'paused' | 'stopped') {
       log.states.push(state)
     }
@@ -196,7 +199,7 @@ async function harness(
 ): Promise<Harness> {
   const root = opts.root ?? (await tempDir('bbebee-player'))
   const audio = createMockAudio({ durationMs: 200_000 })
-  const session: SessionLog = { states: [], cleared: 0 }
+  const session: SessionLog = { states: [], updates: [], cleared: 0 }
   const wake = wakeLog()
 
   const ctx = new Context()
@@ -717,6 +720,22 @@ describe('stalls', () => {
     expect(session.states, 'a stall still publishes, it just publishes playing').not.toHaveLength(0)
   })
 
+  it('never publishes the track URN as the lock-screen title', async () => {
+    // The position tick runs once a second and used to send `trackUrn` as the
+    // title, overwriting whatever `publishNowPlaying` had set — so the OS
+    // surface showed a track's key instead of its name.
+    const { player, session } = await harness({ mediaSession: true })
+    await player.playNow([urn('a')])
+    session.updates.length = 0
+
+    await player.refresh()
+
+    expect(session.updates.length, 'a position tick published').toBeGreaterThan(0)
+    for (const update of session.updates) {
+      expect(update.title).not.toContain('BBeBee:')
+    }
+  })
+
   it('does not advance position while stalled', async () => {
     const { player, audio } = await harness()
     await player.playNow([urn('a')])
@@ -1120,7 +1139,7 @@ describe('lifecycle', () => {
     // the second pass.
     const root = await tempDir('bbebee-player-cycle')
     const audio = createMockAudio()
-    const session: SessionLog = { states: [], cleared: 0 }
+    const session: SessionLog = { states: [], updates: [], cleared: 0 }
     const ctx = new Context()
     await ctx.plugin(PathsNode, { root })
     await ctx.plugin(FsNode)

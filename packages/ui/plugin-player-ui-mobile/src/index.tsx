@@ -17,6 +17,7 @@ import type { QueueItem } from '@BBeBee/protocol'
 import { formatDuration } from '@BBeBee/toolkit'
 import { PLAYER_VIEWS } from '@BBeBee/plugin-player/views'
 import {
+  queueTrackFallback,
   usePosition,
   useDuration,
   useQueue,
@@ -158,8 +159,9 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
   const queue = useQueue(ctx)
   const state = useTransport(ctx)
   // Cover, title and artist come from the catalogue read the list does for
-  // itself; a URN nothing answers for — a removed source, a scan in flight —
-  // still shows as itself rather than as an empty row.
+  // itself. A row the read has not answered for yet — a write in flight, a
+  // removed source — never shows the URN: the playing item borrows the
+  // transport's metadata, the rest say they are loading.
   const tracks = useTracksByUrn(ctx, queue.map((item) => item.trackUrn))
 
   if (queue.length === 0) {
@@ -177,7 +179,9 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
     keyExtractor: (item) => item.id,
     renderItem: (item) =>
       h(TrackRow, {
-        track: tracks.get(item.trackUrn) ?? { urn: item.trackUrn, title: item.trackUrn, artists: [] },
+        track:
+          tracks.get(item.trackUrn) ??
+          queueTrackFallback(item, state.nowPlaying, item.id === state.currentItemId),
         active: item.id === state.currentItemId,
         // A row tap means "play that one", and the track is in the queue by
         // definition — so playFromContext jumps to it without touching the

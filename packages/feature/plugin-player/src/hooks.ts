@@ -56,8 +56,8 @@ export function useQueue(ctx: Context): readonly QueueItem[] {
  * Read through `serviceOf` rather than a property, deliberately: the
  * catalogue is an *enhancement* here, not a requirement. A context with no
  * sources service (or URNs it cannot answer — a removed source, a track still
- * being scanned) resolves to nothing, and the view falls back to the URN
- * rather than throwing or rendering an empty row.
+ * being scanned) resolves to nothing, and the view falls back to
+ * `queueTrackFallback` rather than throwing or rendering an empty row.
  */
 export function useTracksByUrn(ctx: Context, urns: readonly string[]): ReadonlyMap<string, Track> {
   const [cache, setCache] = useState<ReadonlyMap<string, Track>>(() => new Map())
@@ -100,6 +100,38 @@ export function useTracksByUrn(ctx: Context, urns: readonly string[]): ReadonlyM
   }, [ctx, key, generation])
 
   return cache
+}
+
+/**
+ * What a queue row shows before — or instead of — the catalogue's answer.
+ *
+ * **Never the URN.** A queue is a list of things to play, and a URN is an
+ * implementation detail the user never typed; showing it is what an
+ * unresolved row looks like when nobody decided what it should look like
+ * instead. The playing item borrows the transport's own metadata — the
+ * player resolves that for the lock screen, so it can arrive before the
+ * catalogue read does — and every other unresolved row says it is loading.
+ * A row that says "Loading…" forever is a caching bug to fix, not a URN to
+ * fall back to.
+ */
+export function queueTrackFallback(
+  item: QueueItem,
+  nowPlaying: NowPlayingMeta | undefined,
+  isCurrent: boolean,
+): Track {
+  if (isCurrent && nowPlaying) {
+    return {
+      urn: item.trackUrn,
+      title: nowPlaying.title,
+      // A display-only credit: the transport carries a name, not an entity,
+      // and TrackRow reads the names only.
+      artists: nowPlaying.artist
+        ? [{ urn: `${item.trackUrn}#artist`, name: nowPlaying.artist, role: 'main', ordinal: 0 }]
+        : [],
+      ...(nowPlaying.artwork ? { artwork: nowPlaying.artwork } : {}),
+    }
+  }
+  return { urn: item.trackUrn, title: 'Loading…', artists: [] }
 }
 
 /**

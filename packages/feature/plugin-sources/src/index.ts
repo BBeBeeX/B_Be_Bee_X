@@ -64,8 +64,8 @@ import type {
 import { artistKey } from '@BBeBee/toolkit'
 import { canSearchProvider } from './capabilities.js'
 import { Catalog } from './catalog.js'
-import { cacheEntities } from './cache.js'
-import { linkManually, linkTracks, linksFor, unlink } from './links.js'
+import { CacheWriter } from './cache.js'
+import { linkManually, linksFor, unlink } from './links.js'
 import {
   changedFields,
   docHashOf,
@@ -268,14 +268,18 @@ export class Sources extends Service implements SourcesService {
    * ⚠️ And a capture alone is not enough: a captured handle is itself a
    * tracked value, so reading it through the caller's context re-shadows it
    * with the caller again (`import()` once lost exactly this way — requested
-   * by the UI package, refused under the UI plugin's grants). New uses go
-   * through a plain holder — `Catalog`, `SourceStore` — which Cordis does
-   * not re-shadow; the direct uses below (`readVars`, `writeVar`, `linksFor`)
-   * survive only because their callers hold the grants themselves.
+   * by the UI package, refused under the UI plugin's grants; `cache()` lost
+   * the same way, which left search results in memory and the catalogue
+   * empty). New uses go through a plain holder — `Catalog`, `SourceStore`,
+   * `CacheWriter` — which Cordis does not re-shadow; the direct uses below
+   * (`readVars`, `writeVar`, `linksFor`) survive only because their callers
+   * hold the grants themselves.
    */
   private ownDb!: DbService
   private catalog!: Catalog
   private store!: SourceStore
+  /** The write half of the catalogue, holder-wrapped for the same reason. */
+  private cacheWriter!: CacheWriter
   /** Mirrors the `sources` table, so reads are synchronous for the UI. */
   private records: SourceRecord[] = []
 
@@ -290,6 +294,7 @@ export class Sources extends Service implements SourcesService {
     this.ownDb = this.ctx.db
     this.catalog = new Catalog(this.ownDb)
     this.store = new SourceStore(this.ownDb)
+    this.cacheWriter = new CacheWriter(this.ownDb)
     this.records = await this.store.all()
 
     // Descriptors, not components: the headless plugin says what exists and
@@ -887,7 +892,11 @@ export class Sources extends Service implements SourcesService {
     if (!tracks?.length && !albums?.length) return
 
     try {
-      const written = await cacheEntities(this.ownDb, sourceId, {
+      // Through the holder, never `this.ownDb`: this path is reached from the
+      // search screen, and the captured handle would be re-shadowed with the
+      // UI's (empty) grants — the write refused, the results in memory, the
+      // catalogue empty.
+      const written = await this.cacheWriter.write(sourceId, {
         ...(tracks ? { tracks } : {}),
         ...(albums ? { albums } : {}),
         ...(result.payloads ? { payloads: result.payloads } : {}),
@@ -912,7 +921,7 @@ export class Sources extends Service implements SourcesService {
          * found by search.
          */
         try {
-          const links = await linkTracks(this.ownDb, written.trackUrns)
+          const links = await this.cacheWriter.link(written.trackUrns)
           if (links > 0) {
             this.ctx.logger.debug(`sources: linked ${links} track(s) across sources`)
           }
@@ -1051,7 +1060,7 @@ async function* once(event: TraceEvent): AsyncIterable<TraceEvent> {
 }
 
 export { Catalog } from './catalog.js'
-export { cacheEntities, MAX_PAYLOAD_BYTES } from './cache.js'
+export { CacheWriter, cacheEntities, MAX_PAYLOAD_BYTES } from './cache.js'
 export {
   MERGE_CONFIDENCE,
   linkManually,

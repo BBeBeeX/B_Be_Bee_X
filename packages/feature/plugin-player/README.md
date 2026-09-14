@@ -71,7 +71,8 @@ Layer 4（feature）— `ctx.player`：transport（走带控制）、queue（队
 |---|---|
 | `useTransport(ctx)` | 订阅 `player/state-changed` + `player/track-changed` |
 | `useQueue(ctx)` | 订阅 `queue/changed`；逐元素比较，内容不变不触发 5000 行列表重渲染 |
-| `useTracksByUrn(ctx, urns)` | URN → 目录行的批量解析（`ctx.sources.getTracks`，一次分块读）。会话内缓存；`library/changed` 清缓存。经 `serviceOf` 读取——目录是**增强**而非依赖：无 sources 服务或目录答不出的 URN 落回 `undefined`，视图显示 URN 本身 |
+| `useTracksByUrn(ctx, urns)` | URN → 目录行的批量解析（`ctx.sources.getTracks`，一次分块读）。会话内缓存；`library/changed` 清缓存。经 `serviceOf` 读取——目录是**增强**而非依赖：无 sources 服务或目录答不出的 URN 返回空 map，视图交给 `queueTrackFallback` |
+| `queueTrackFallback(item, nowPlaying, isCurrent)` | 队列行在目录答案到来前/缺席时显示什么：**绝不显示 URN**——当前项借用 transport 的 nowPlaying（封面/标题/艺人，播放器本就为锁屏解析），其余显示 "Loading…"。永远 Loading… 是缓存 bug，不是回退成 URN 的理由 |
 | `usePosition(ctx)` | **rAF 插值 hook**：以 1 Hz 的 `player/position` 为锚点、`requestAnimationFrame` 补帧。每秒变约 60 次，只给进度条/时间标签用 |
 | `useTransportAvailability(ctx)` | `{ canPlay, canPause, canSeek, canNext, canPrevious }`——控件可用性判定只写一次 |
 | `useDuration(ctx)` | `durationMs > 0` 才返回，区分"未知"与直播流 |

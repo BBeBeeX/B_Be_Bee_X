@@ -658,6 +658,13 @@ the user's choices are stored as *exclusions*, so a source imported later still 
 search. `canSearchProvider` is the one predicate the service and the screen share, so the toggles
 cannot offer a source `searchAll` would silently skip ([08 §4](./08-ui-architecture.md#the-source-surfaces)).
 
+The cache write behind that fan-out is the **service's own**, not the caller's. `searchAll` is
+reached through the UI package's context, which holds no database grants, so the step runs on the
+handle captured at init (through `CacheWriter`, beside `Catalog` and `SourceStore`) rather than the
+caller's. Getting this backwards is invisible in the search results — they are returned from memory
+either way — and shows up much later as a queue that cannot resolve a cover or a title, because the
+rows never reached the catalogue.
+
 ### 4.2 The resolution pipeline
 
 ```mermaid

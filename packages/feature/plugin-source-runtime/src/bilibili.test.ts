@@ -476,7 +476,7 @@ describe('the shipped Bilibili document', () => {
     expect(Object.keys(result.payloads!)[0]).toBe(first!.urn)
   })
 
-  it('resolves the Hi-Res FLAC the player asks for — not the Dolby track bandwidth prefers', async () => {
+  it('resolves FLAC when the response carries it — not the Dolby track bandwidth prefers', async () => {
     const { source, requests, payloads } = await makeSource()
     payloads.current = (await source.search({ text: '极端天气' })).payloads!
 
@@ -487,10 +487,12 @@ describe('the shipped Bilibili document', () => {
     })
 
     expect(handle.kind).toBe('remote')
+    // The ladder still prefers a FLAC the API chose to include.
     expect(handle.target).toContain('30251.m4s')
-    // fnval bit 4096 is what makes the API offer Hi-Res at all.
     const playurl = requests.find((r) => r.url.includes('/x/player/wbi/playurl'))!
-    expect(playurl.url).toContain('fnval=8144')
+    // 4048 is the default ask; bit 4096 is what made Bilibili answer -400.
+    expect(playurl.url).toContain('fnval=4048')
+    expect(playurl.url).not.toContain('fnval=8144')
     expect(playurl.url).toContain('bvid=BV1GJ411x7h7')
     expect(playurl.url).toContain('cid=900001')
     expect(playurl.url, 'playurl is a WBI endpoint').toContain('w_rid=')
@@ -501,12 +503,12 @@ describe('the shipped Bilibili document', () => {
     expect(handle.expiresAt).toBeGreaterThan(Date.now())
   })
 
-  it('walks fnval down when the Hi-Res request is refused', async () => {
+  it('falls back to plain DASH when the standard bitmap is refused', async () => {
     /*
      * Bilibili answers -400 to a bitmap carrying tracks the video does not
-     * offer rather than ignoring the extra bits. Pinned at 8144, that made
-     * every video without a FLAC track unplayable; the walk-down lands on the
-     * same AAC the older pinned-but-tolerant API used to answer.
+     * offer rather than ignoring the extra bits. The walk-down from the
+     * standard DASH set to bare DASH is what turns that into a playable AAC
+     * instead of a failed resolve.
      */
     let calls = 0
     const { source, requests } = await makeSource({
@@ -521,7 +523,7 @@ describe('the shipped Bilibili document', () => {
     const fnvals = requests
       .filter((r) => r.url.includes('/x/player/wbi/playurl'))
       .map((r) => new URL(r.url).searchParams.get('fnval'))
-    expect(fnvals).toEqual(['8144', '4048'])
+    expect(fnvals).toEqual(['4048', '16'])
   })
 
   it('degrades to the best AAC when signed out offers nothing better', async () => {

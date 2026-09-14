@@ -45,8 +45,9 @@ const AUDIO_LADDER = {
   low: ['low', 'normal', 'high', 'hi-res'],
   normal: ['normal', 'high', 'low', 'hi-res'],
   high: ['high', 'normal', 'low', 'hi-res'],
-  // The player asks for 'lossless' by default; FLAC when signed in, the best
-  // AAC otherwise. Dolby is absent on purpose — see AUDIO_TIERS.
+  // The player asks for 'lossless' by default; FLAC when the response carries
+  // it (bit 4096 is no longer requested — see resolveBiliStream), the best AAC
+  // otherwise. Dolby is absent on purpose — see AUDIO_TIERS.
   lossless: ['hi-res', 'high', 'normal', 'low'],
   'hi-res': ['hi-res', 'high', 'normal', 'low'],
 };
@@ -380,10 +381,9 @@ function trackBvid(track) {
  * One playurl request, at one entitlement bitmap.
  *
  * `fnval` is what asks for the richer formats: 4048 is the standard DASH set
- * (4K, HDR, Dolby, Dolby Vision, AV1), and bit 4096 adds Hi-Res (30251),
- * which is the whole point of asking as a signed-in user. Bilibili now
- * answers -400 to a bitmap carrying tracks the video does not offer instead
- * of ignoring the extra bits, so the caller walks this down rather than
+ * (4K, HDR, Dolby, Dolby Vision, AV1) and the default this document asks for.
+ * Bilibili answers -400 to a bitmap carrying tracks the video does not offer
+ * instead of ignoring the extra bits, so the caller walks it down rather than
  * pinning one value.
  */
 async function fetchBiliPlayurl(bvid, cid, fnval) {
@@ -402,12 +402,15 @@ async function fetchBiliPlayurl(bvid, cid, fnval) {
 /**
  * The audio stream, per docs/video/videostreamurl.md.
  *
- * Hi-Res first (4096), then the standard DASH set, then DASH alone: a video
- * that offers no FLAC answers -400 to the richer request, and without the
- * walk-down it was a failed resolve rather than a 192K AAC stream. Quality is
- * picked by tier ladder from prefs.quality — the player sends 'lossless' —
- * with every step degrading to a decodable AAC rather than to the Dolby track
- * the bandwidth sort used to select.
+ * The standard DASH bitmap (4048) first, plain DASH (16) if it is refused:
+ * Bilibili answers -400 to a request carrying tracks the video does not offer
+ * rather than ignoring the extra bits, and without the walk-down that was a
+ * failed resolve rather than a playable AAC stream. Bit 4096 (Hi-Res) is
+ * deliberately not requested — it is the most common reason for that -400,
+ * and a FLAC nobody can fetch is worth less than the AAC that plays. Quality
+ * is still picked by tier ladder from prefs.quality — the player sends
+ * 'lossless' — with every step degrading to a decodable AAC rather than to
+ * the Dolby track the bandwidth sort used to select.
  */
 async function resolveBiliStream(track, prefs) {
   const bvid = trackBvid(track);
@@ -422,7 +425,6 @@ async function resolveBiliStream(track, prefs) {
   }
 
   const FNVAL_STEPS = [
-    [8144, 'dash+hi-res'],
     [4048, 'dash'],
     [16, 'dash-minimal'],
   ];

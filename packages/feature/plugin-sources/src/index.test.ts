@@ -213,6 +213,38 @@ describe('searchAll', () => {
     const { sources } = await withSources()
     await expect(sources.searchAll(query)).resolves.toEqual({ bySource: [] })
   })
+
+  it('caches results asked for through a gated caller with no db grants', async () => {
+    // The search screen runs on the UI package's context (docs/08 §2), which
+    // holds no db capabilities. The write belongs to this service, on the
+    // handle captured at init — through a holder, like `Catalog` and
+    // `SourceStore`. Reached directly, the captured handle was re-shadowed
+    // with the caller: the search returned results and the catalogue stayed
+    // empty, so the queue fell back to showing URNs and the player bar had no
+    // cover.
+    const { ctx, sources } = await withSources()
+    const report = await sources.import(
+      JSON.stringify({ sourceUrl: 'https://bili.test', sourceName: 'Bili', ruleStream: { url: '=x' } }),
+    )
+    const sourceId = report.added[0]!.id
+    const track = {
+      urn: `BBeBee:${sourceId}:track:1`,
+      title: '极端天气 MV',
+      artists: [],
+    } as Track
+    sources.register(
+      searchingProvider(sourceId, async () => ({ tracks: { items: [track], hasMore: false } })),
+    )
+
+    const ui = scopeContext(ctx, {
+      pluginId: '@BBeBee/plugin-sources-ui-desktop',
+      requested: [],
+    })
+    await (ui.sources as Sources).searchAll(query)
+
+    const cached = await sources.getTracks([track.urn])
+    expect(cached.map((t) => t.title)).toEqual(['极端天气 MV'])
+  })
 })
 
 describe('importing documents', () => {

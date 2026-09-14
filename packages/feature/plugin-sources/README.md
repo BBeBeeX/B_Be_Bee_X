@@ -27,7 +27,7 @@ Layer 4（feature）— `ctx.sources`：导入的源文档、provider 注册表�
 | `providers / forUrn(urn)` | 活 provider 列表 / 按 URN 找 provider。 |
 | `searchAll(q, opts)` | 跨源扇出：每个被问到的源（含失败、超时）各一条 entry，绝不合并、绝不整体失败——"三家答了、一家限流、一家要重导"必须能说出来。 |
 | `searchLocal(text, opts)` | 目录内 FTS5，离线即时；与 `searchAll` 回答的是不同问题。 |
-| `cache(providers, results)` | 把 provider 返回的搜索/browse 结果写入目录表（委托 `cache.ts`），随后 emit `library/changed(kind, urns)`——只对实际写入的 URN。 |
+| `cache(providers, results)` | 把 provider 返回的搜索/browse 结果写入目录表（经 `CacheWriter` holder 委托 `cache.ts`——见下），随后 emit `library/changed(kind, urns)`——只对实际写入的 URN。 |
 | `getAlbum / getArtist / getTracks / tracksOf…` | 目录 hydrate（credits、封面、分页）。 |
 | `readVars / writeVar / clearVars` | `source_vars` 的读写门——runtime 的变量提前于注册加载，否则 `auth.status` 首帧错报 anonymous。 |
 | `debug(sourceId, step)` | 委托给对应 provider 的 `debug()`——规则追踪。 |
@@ -42,6 +42,8 @@ Layer 4（feature）— `ctx.sources`：导入的源文档、provider 注册表�
 ### `src/cache.ts` — 缓存写入
 
 `cacheEntities`：把 provider 返回的纯数据 upsert 进 `tracks`/`albums`/`artists`/`track_artists`/`artworks`/`external_ids`。**payload 存进 `tracks.raw_json`/`albums.raw_json`**——这是 `ruleStream` 能在几小时后、甚至离线于当初搜索的情况下工作的原因（不重跑搜索，直接读当初存的原始 payload）。`MAX_PAYLOAD_BYTES` 封顶单个 payload。
+
+`CacheWriter`：持有 init 时捕获的 db handle 的**普通 holder**（与 `Catalog`、`SourceStore` 同理），`Sources.cache()` 经它写入/链接。⚠️ 不能直接用 `Sources.ownDb`：`searchAll` 是从 UI 包的服务代理进来的，方法在**调用方的 context**（无 db 授权）下执行，捕获的 handle 会被重新 shadow 成调用方——写被拒、`cache()` 捕获后只 warn，于是搜索有结果但目录始终为空，队列只能回退显示 URN、播放条没有封面。
 
 ### `src/identity.ts` — 源文档的身份、校验与导入
 
@@ -119,7 +121,7 @@ export interface SourcesConfig { searchTimeoutMs?: number }
 export const name = 'plugin-sources'
 export function apply(ctx, config?)
 export { Catalog, ftsQuery, SEARCHABLE_KINDS }
-export { cacheEntities, MAX_PAYLOAD_BYTES }
+export { CacheWriter, cacheEntities, MAX_PAYLOAD_BYTES }
 export { MERGE_CONFIDENCE, linkManually, linkTracks, linksFor, unlink, writeExternalIds }
 export { SourceStore }
 export { allowedHostsFor, changedFields, exportableDocument, parseSourceInput, sourceIdFor, validateDocument }

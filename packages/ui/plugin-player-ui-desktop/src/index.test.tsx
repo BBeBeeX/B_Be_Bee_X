@@ -213,6 +213,31 @@ describe('QueueScreen', () => {
     expect(calls).not.toContain('playNow:BBeBee:local:track:a')
   })
 
+  it('never shows the URN before the catalogue answers', async () => {
+    // The queue resolves through the catalogue, and a URN is not a title. The
+    // playing item borrows the transport's metadata — the player resolves it
+    // for the lock screen whether or not the catalogue read has landed — and
+    // a row still waiting says so rather than showing its key.
+    const { ctx } = await harness(
+      {
+        status: 'playing',
+        currentItemId: 'a',
+        trackUrn: 'BBeBee:bili:track:1',
+        nowPlaying: { title: '极端天气 MV', artist: 'UP主甲' },
+      },
+      [
+        { id: 'a', trackUrn: 'BBeBee:bili:track:1', addedBy: 'user' },
+        { id: 'b', trackUrn: 'BBeBee:bili:track:2', addedBy: 'user' },
+      ],
+    )
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+
+    expect(container.textContent).toContain('极端天气 MV')
+    expect(container.textContent).toContain('UP主甲')
+    expect(container.textContent).toContain('Loading…')
+    expect(container.textContent, 'no raw URN in the queue, ever').not.toContain('BBeBee:bili:')
+  })
+
   it('shows title and artist from the catalogue rather than the URN', async () => {
     // The rows resolve themselves through one catalogue read; a URN nothing
     // answers for falls back to showing itself (the neighbouring test pins

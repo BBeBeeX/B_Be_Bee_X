@@ -234,7 +234,10 @@ describe('QueueScreen on mobile', () => {
       ],
     )
     const { container } = render(h(QueueScreen, { ctx }))
-    expect(container.textContent).toContain('BBeBee:local:track:1')
+    // No catalogue answer and no transport metadata: the row waits instead of
+    // showing its URN.
+    expect(container.textContent).toContain('Loading…')
+    expect(container.textContent).not.toContain('BBeBee:local:track:1')
 
     const row = container.querySelector('[role="listitem"] [data-host]') as HTMLElement
     expect(row, 'the queue row is tappable').toBeTruthy()
@@ -244,9 +247,25 @@ describe('QueueScreen on mobile', () => {
     expect(calls).toContain('jump:BBeBee:local:track:1')
   })
 
+  it('borrows the transport metadata for the playing item before the catalogue answers', async () => {
+    const { ctx } = await harness(
+      {
+        status: 'playing',
+        currentItemId: 'q-1',
+        trackUrn: 'BBeBee:bili:track:1',
+        nowPlaying: { title: '极端天气 MV', artist: 'UP主甲' },
+      },
+      [{ id: 'q-1', trackUrn: 'BBeBee:bili:track:1', addedBy: 'user' }],
+    )
+    const { container } = render(h(QueueScreen, { ctx }))
+    expect(container.textContent).toContain('极端天气 MV')
+    expect(container.textContent).toContain('UP主甲')
+    expect(container.textContent, 'no raw URN in the queue, ever').not.toContain('BBeBee:bili:')
+  })
+
   it('shows title and artist from the catalogue rather than the URN', async () => {
-    // The rows resolve themselves through one catalogue read; the URN is only
-    // the fallback for a URN nothing answers for (the previous test's path).
+    // The rows resolve themselves through one catalogue read; the fallback for
+    // a URN nothing answers for is `queueTrackFallback`, never the URN itself.
     const { ctx } = await harness(
       { currentItemId: 'q-1' },
       [{ id: 'q-1', trackUrn: 'BBeBee:local:track:1', addedBy: 'user' }],

@@ -1333,7 +1333,9 @@ export class Player extends Service implements PlayerService {
         }
         if (session) {
           session.update({
-            title: meta?.title ?? urn,
+            // Never the URN: a lock screen showing a track's key is a bug
+            // report, not metadata. An unresolved row says it is loading.
+            title: meta?.title ?? 'Loading…',
             ...(meta?.artist ? { artist: meta.artist } : {}),
             ...(meta?.album ? { album: meta.album } : {}),
             ...(meta?.artworkUri ? { artworkUri: meta.artworkUri } : {}),
@@ -1358,8 +1360,17 @@ export class Player extends Service implements PlayerService {
   }
 
   private publishPosition(positionMs: number): void {
-    this.mediaCtx?.mediaSession.update({
-      title: this.transport.trackUrn ?? '',
+    const session = this.mediaCtx?.mediaSession
+    if (!session) return
+    // The metadata comes from the last resolution, never from the URN: this
+    // tick used to overwrite the lock screen's title with the track's key
+    // once a second, for every remote track.
+    const meta = this.transport.nowPlaying
+    session.update({
+      title: meta?.title ?? 'Loading…',
+      ...(meta?.artist ? { artist: meta.artist } : {}),
+      ...(meta?.album ? { album: meta.album } : {}),
+      ...(meta?.artworkUri ? { artworkUri: meta.artworkUri } : {}),
       durationMs: this.transport.durationMs,
       positionMs,
     })

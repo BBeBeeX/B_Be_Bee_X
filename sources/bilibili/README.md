@@ -88,7 +88,7 @@ node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources
 
 ## 音频流与音质
 
-`resolveBiliStream` 对 `x/player/wbi/playurl` 发 WBI 签名请求,参数 `qn=127, fourk=1`,**fnval 按 8144 → 4048 → 16 逐级回退**。含 4096 位的 8144 才会让 Hi-Res(30251)出现在响应里,但 B 站现在对没有该档位的视频直接答 `-400 请求错误`(而不是忽略多余位);固定在 8144 会让这类视频整个解析失败,所以第一级被拒后自动请求标准 DASH 位图,再退到纯 DASH。
+`resolveBiliStream` 对 `x/player/wbi/playurl` 发 WBI 签名请求,参数 `qn=127, fourk=1`,**fnval 默认 4048,被拒(-400)则回退 16**。4048 是标准 DASH 位图(4K/HDR/Dolby/AV1);B 站对携带视频没有的档位的请求直接答 `-400 请求错误`(而不是忽略多余位),**不再请求 Hi-Res 位 4096** —— 它是最常见的 -400 来源,而拿不到的 FLAC 不如能播的 AAC。若响应里确实带了 30251(FLAC),阶梯仍会优先选它。
 
 DASH 音频 id → 档位(文档口径,勿凭带宽猜测):
 

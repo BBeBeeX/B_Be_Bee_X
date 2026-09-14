@@ -23,7 +23,7 @@
  */
 
 import { formatUrn, sortKey, tryParseUrn } from '@BBeBee/protocol'
-import { writeExternalIds } from './links.js'
+import { linkTracks, writeExternalIds } from './links.js'
 import type { Album, ArtworkRef, DbService, Track } from '@BBeBee/protocol'
 
 export interface CacheInput {
@@ -50,6 +50,31 @@ export interface CacheResult {
  * at a point that has no way to explain itself.
  */
 export const MAX_PAYLOAD_BYTES = 64 * 1024
+
+/**
+ * The write side, holding the handle the way `Catalog` does.
+ *
+ * ⚠️ A holder, not `sources.ownDb`. `searchAll` is reached through the service
+ * proxy from the search screen — a UI package with no db grants — and a method
+ * reached that way runs under the *caller's* context. Reading the captured
+ * handle there re-shadows it with the caller, so the write is refused,
+ * `cache()` catches and warns, and the search "works" while nothing reaches
+ * the catalogue: a queue that shows URNs and a player bar with no cover.
+ * `Catalog` and `SourceStore` exist for exactly this reason.
+ */
+export class CacheWriter {
+  constructor(private readonly db: DbService) {}
+
+  /** What was written, for `library/changed` and the FTS index. */
+  write(sourceId: string, input: CacheInput, now?: number): Promise<CacheResult> {
+    return cacheEntities(this.db, sourceId, input, now)
+  }
+
+  /** Link what was just written — never the whole library (see `linkTracks`). */
+  link(trackUrns: readonly string[]): Promise<number> {
+    return linkTracks(this.db, trackUrns)
+  }
+}
 
 /**
  * Write tracks and albums into the catalogue.
