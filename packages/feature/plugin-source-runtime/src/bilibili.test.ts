@@ -407,6 +407,12 @@ async function makeSource(
   return { source, requests, jar, payloads, doc }
 }
 
+/** The `qn` of the first playurl request — pagelist and nav calls come first. */
+function firstPlayurlQn(requests: readonly { url: string }[]): string | null {
+  const playurl = requests.find((r) => r.url.includes('/x/player/wbi/playurl'))
+  return playurl ? new URL(playurl.url).searchParams.get('qn') : null
+}
+
 describe('the shipped Bilibili document', () => {
   it('is searchable, browsable, and its login flow is the QR one', async () => {
     const { source } = await makeSource()
@@ -494,9 +500,11 @@ describe('the shipped Bilibili document', () => {
     expect(handle.quality).toBe('hi-res')
     expect(handle.bitrateKbps).toBe(1200)
     const playurl = requests.find((r) => r.url.includes('/x/player/wbi/playurl'))!
-    // 4048 is the default ask; bit 4096 is what made Bilibili answer -400.
+    // 4048 is the only bitmap asked; bit 4096 is what made Bilibili answer -400.
     expect(playurl.url).toContain('fnval=4048')
     expect(playurl.url).not.toContain('fnval=8144')
+    // Signed out, the ask for `lossless` is capped at 64 (720P).
+    expect(playurl.url).toContain('qn=64')
     expect(playurl.url).toContain('bvid=BV1GJ411x7h7')
     expect(playurl.url).toContain('cid=900001')
     expect(playurl.url, 'playurl is a WBI endpoint').toContain('w_rid=')
@@ -507,12 +515,12 @@ describe('the shipped Bilibili document', () => {
     expect(handle.expiresAt).toBeGreaterThan(Date.now())
   })
 
-  it('falls back to plain DASH when the standard bitmap is refused', async () => {
+  it('walks qn down when the ask is refused, keeping fnval fixed', async () => {
     /*
-     * Bilibili answers -400 to a bitmap carrying tracks the video does not
-     * offer rather than ignoring the extra bits. The walk-down from the
-     * standard DASH set to bare DASH is what turns that into a playable AAC
-     * instead of a failed resolve.
+     * Bilibili answers non-zero codes to a `qn` the account or the video does
+     * not have. The walk-down is what turns that into a playable stream
+     * instead of a failed resolve; the bitmap never changes, because bit 4096
+     * is what made the API answer -400 in the first place.
      */
     let calls = 0
     const { source, requests } = await makeSource({
@@ -525,10 +533,51 @@ describe('the shipped Bilibili document', () => {
     })
     expect(handle.target).toContain('30232.m4s')
     expect(handle.quality).toBe('normal')
-    const fnvals = requests
-      .filter((r) => r.url.includes('/x/player/wbi/playurl'))
-      .map((r) => new URL(r.url).searchParams.get('fnval'))
-    expect(fnvals).toEqual(['4048', '16'])
+    const playurls = requests.filter((r) => r.url.includes('/x/player/wbi/playurl'))
+    expect(playurls.map((r) => new URL(r.url).searchParams.get('qn'))).toEqual(['64', '32'])
+    expect(playurls.map((r) => new URL(r.url).searchParams.get('fnval'))).toEqual(['4048', '4048'])
+  })
+
+  it('caps the ask at 64 when signed out and 80 when signed in', async () => {
+    const signedOut = await makeSource({ playurl: () => PLAYURL_LOGGED_OUT })
+    await signedOut.source.resolveStream('BV1GJ411x7h7', {
+      quality: 'lossless',
+      saveData: false,
+      acceptFormats: [],
+    })
+    expect(firstPlayurlQn(signedOut.requests)).toBe('64')
+
+    // The same ask with a session cookie: 1080P is the signed-in default.
+    const signedIn = await makeSource({ playurl: () => PLAYURL_SIGNED_IN })
+    signedIn.jar.store.set('SESSDATA', 'session-token')
+    await signedIn.source.resolveStream('BV1GJ411x7h7', {
+      quality: 'lossless',
+      saveData: false,
+      acceptFormats: [],
+    })
+    expect(firstPlayurlQn(signedIn.requests)).toBe('80')
+  })
+
+  it('lets an explicit user choice ask above the defaults', async () => {
+    // `hi-res` is a choice, not a default: signed in it asks for 8K's qn, and
+    // the fallback ladder still applies if the account cannot have it.
+    const signedIn = await makeSource({ playurl: () => PLAYURL_SIGNED_IN })
+    signedIn.jar.store.set('SESSDATA', 'session-token')
+    await signedIn.source.resolveStream('BV1GJ411x7h7', {
+      quality: 'hi-res',
+      saveData: false,
+      acceptFormats: [],
+    })
+    expect(firstPlayurlQn(signedIn.requests)).toBe('127')
+
+    // Signed out it is capped where the anonymous API stops: 720P.
+    const signedOut = await makeSource({ playurl: () => PLAYURL_LOGGED_OUT })
+    await signedOut.source.resolveStream('BV1GJ411x7h7', {
+      quality: 'hi-res',
+      saveData: false,
+      acceptFormats: [],
+    })
+    expect(firstPlayurlQn(signedOut.requests)).toBe('64')
   })
 
   it('degrades to the best AAC when signed out offers nothing better', async () => {

@@ -88,7 +88,19 @@ node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources
 
 ## 音频流与音质
 
-`resolveBiliStream` 对 `x/player/wbi/playurl` 发 WBI 签名请求,参数 `qn=127, fourk=1`,**fnval 默认 4048,被拒(-400)则回退 16**。4048 是标准 DASH 位图(4K/HDR/Dolby/AV1);B 站对携带视频没有的档位的请求直接答 `-400 请求错误`(而不是忽略多余位),**不再请求 Hi-Res 位 4096** —— 它是最常见的 -400 来源,而拿不到的 FLAC 不如能播的 AAC。若响应里确实带了 30251(FLAC),阶梯仍会优先选它。
+`resolveBiliStream` 对 `x/player/wbi/playurl` 发 WBI 签名请求:**`fnval` 固定 4048**(标准 DASH 位图:4K/HDR/Dolby/AV1,`fourk=1`),不请求 Hi-Res 位 4096 —— 它是最常见的 `-400 请求错误` 来源,而拿不到的 FLAC 不如能播的 AAC;若响应里确实带了 30251(FLAC),音频阶梯仍会优先选它。
+
+`qn` 由应用画质档位映射而来,**未登录时上限 64,登录后默认 80**:
+
+| 应用档位 | qn | B 站文案 | 备注 |
+|---|---|---|---|
+| `low` | 16 | 360P 流畅 | |
+| `normal` | 32 | 480P 清晰 | |
+| `high` | 64 | 720P 高清 | WEB 端默认;未登录即可取流 |
+| `lossless` | 80 | 1080P 高清 | TV/APP 端默认;需登录 |
+| `hi-res` | 127 | 8K 超高清 | 大会员 |
+
+播放器默认 `lossless` → 登录后 80、未登录被压回 64,因此"默认 64/未登录、80/已登录"自然成立;74/100/112/116/120/125/126/129 这些更高档位只有用户显式选择更高应用档位时才会间接请求,不会自动上探。请求被拒(非 0 code)时按 `QN_LADDER` **向下**重试:`127→120→116→112→100→80→74→64→32→16`(125/126 HDR/杜比视界与相邻档同分辨率、属视频轨,跳过)。
 
 DASH 音频 id → 应用 `StreamQuality` 档位(对齐 B 站网页播放器给每档的文案,勿凭带宽猜测):
 

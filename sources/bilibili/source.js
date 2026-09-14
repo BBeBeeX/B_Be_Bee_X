@@ -62,6 +62,35 @@ const AUDIO_LADDER = {
   'hi-res': ['hi-res', 'high', 'normal', 'low'],
 };
 
+// `qn` is playurl's quality hint. It decides what the account is offered, so
+// each app quality asks for the qn that matches it:
+//
+//   app tier   qn   label
+//   low        16   360P 流畅
+//   normal     32   480P 清晰
+//   high       64   720P 高清   (WEB default; works signed out)
+//   lossless   80   1080P 高清  (TV/APP default; requires login)
+//   hi-res     127  8K 超高清   (requires membership)
+//
+// Signed out nothing above 64 is served, so the ask is capped there: the
+// effective default is 64 signed out and 80 signed in — which is exactly what
+// the player's default `lossless` resolves to — and anything above those is
+// only ever requested because the user chose it.
+const QN_FOR_QUALITY = {
+  low: 16,
+  normal: 32,
+  high: 64,
+  lossless: 80,
+  'hi-res': 127,
+};
+const QN_SIGNED_OUT_CAP = 64;
+
+// The fallback order when playurl refuses an ask, highest first. HDR and
+// Dolby Vision (125/126) sit at the same resolution as the level below them
+// and exist for the video track, so a refused audio resolve steps over them
+// rather than re-asking at the same size.
+const QN_LADDER = [127, 120, 116, 112, 100, 80, 74, 64, 32, 16];
+
 // One-line preview of a return value, for src.log. Long strings and objects
 // are clipped so a search page full of rows does not flood the log buffer.
 function previewValue(v, limit) {
@@ -388,20 +417,21 @@ function trackBvid(track) {
 }
 
 /**
- * One playurl request, at one entitlement bitmap.
+ * One playurl request at one `qn`.
  *
- * `fnval` is what asks for the richer formats: 4048 is the standard DASH set
- * (4K, HDR, Dolby, Dolby Vision, AV1) and the default this document asks for.
- * Bilibili answers -400 to a bitmap carrying tracks the video does not offer
- * instead of ignoring the extra bits, so the caller walks it down rather than
- * pinning one value.
+ * `fnval` is pinned at 4048 — the standard DASH set (4K, HDR, Dolby, Dolby
+ * Vision, AV1) — on purpose. Bit 4096 (Hi-Res) is what most often makes
+ * Bilibili answer `-400 请求错误`, and a FLAC nobody can fetch is worth less
+ * than the AAC that plays; the richer video bits (HDR/Dolby/8K) are on the
+ * bitmap because they are what a `qn` above 4K needs, and the API ignores
+ * the ones a video does not offer *when* qn and bitmap agree.
  */
-async function fetchBiliPlayurl(bvid, cid, fnval) {
+async function fetchBiliPlayurl(bvid, cid, qn) {
   const query = await signWbiQuery({
     bvid: bvid,
     cid: cid,
-    qn: 127,
-    fnval: fnval,
+    qn: qn,
+    fnval: 4048,
     fourk: 1,
     platform: 'pc',
   });
@@ -409,18 +439,29 @@ async function fetchBiliPlayurl(bvid, cid, fnval) {
   return src.parse.json(res.body);
 }
 
+/** Whether this realm holds a session — what the qn cap turns on. */
+async function biliSignedIn() {
+  try {
+    const sess = await src.cookie.get('SESSDATA');
+    return !!(sess && String(sess).trim());
+  } catch (e) {
+    return false;
+  }
+}
+
 /**
  * The audio stream, per docs/video/videostreamurl.md.
  *
- * The standard DASH bitmap (4048) first, plain DASH (16) if it is refused:
- * Bilibili answers -400 to a request carrying tracks the video does not offer
- * rather than ignoring the extra bits, and without the walk-down that was a
- * failed resolve rather than a playable AAC stream. Bit 4096 (Hi-Res) is
- * deliberately not requested — it is the most common reason for that -400,
- * and a FLAC nobody can fetch is worth less than the AAC that plays. Quality
- * is still picked by tier ladder from prefs.quality — the player sends
- * 'lossless' — with every step degrading to a decodable AAC rather than to
- * the Dolby track the bandwidth sort used to select.
+ * `qn` starts at what `prefs.quality` asks for, capped at 64 when signed out
+ * (`QN_FOR_QUALITY`): the effective default is 64 signed out and 80 signed in,
+ * and only an explicit user choice ever asks above those. A refused ask walks
+ * *down* the quality ladder rather than failing the resolve — Bilibili
+ * answers non-zero codes to requests for tiers an account or a video does not
+ * have, and the next tier down is usually fine. `fnval` stays 4048.
+ *
+ * The audio track itself is then picked by tier ladder from prefs.quality —
+ * the player sends 'lossless' — with every step degrading to a decodable AAC
+ * rather than to the Dolby track the bandwidth sort used to select.
  */
 async function resolveBiliStream(track, prefs) {
   const bvid = trackBvid(track);
@@ -434,15 +475,18 @@ async function resolveBiliStream(track, prefs) {
     throw new Error('cannot resolve cid for bvid ' + bvid);
   }
 
-  const FNVAL_STEPS = [
-    [4048, 'dash'],
-    [16, 'dash-minimal'],
-  ];
+  const signedIn = await biliSignedIn();
+  const wanted = QN_FOR_QUALITY[prefs?.quality] || (signedIn ? 80 : 64);
+  const capped = signedIn ? wanted : Math.min(wanted, QN_SIGNED_OUT_CAP);
+  const start = Math.max(0, QN_LADDER.indexOf(capped));
+  src.log('resolveBiliStream(' + bvid + ') → qn ' + capped + (signedIn ? ' (signed in)' : ' (signed out)') + ', quality=' + (prefs?.quality || 'default'));
+
   let data;
-  for (const step of FNVAL_STEPS) {
-    data = await fetchBiliPlayurl(bvid, cid, step[0]);
+  for (let i = start; i < QN_LADDER.length; i++) {
+    const qn = QN_LADDER[i];
+    data = await fetchBiliPlayurl(bvid, cid, qn);
     if (!data?.code || data.code === 0) break;
-    src.log('resolveBiliStream(' + bvid + ') → fnval ' + step[0] + ' (' + step[1] + ') refused: code ' + data.code + ' ' + previewValue(data.message));
+    src.log('resolveBiliStream(' + bvid + ') → qn ' + qn + ' refused: code ' + data.code + ' ' + previewValue(data.message) + ', trying lower');
   }
   if (data?.code && data.code !== 0) {
     src.log('resolveBiliStream(' + bvid + ') → playurl code ' + data.code + ': ' + previewValue(data.message));
