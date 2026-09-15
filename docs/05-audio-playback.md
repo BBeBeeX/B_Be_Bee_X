@@ -210,18 +210,26 @@ sequenceDiagram
     participant Q as ctx.player
     participant W as waterfall player/before-resolve
     participant DL as plugin-download
+    participant C as plugin-cache
     participant SRC as ctx.sources
     participant A as ctx.audio
 
     Q->>W: resolve(trackUrn, prefs)
     W->>DL: next()
-    alt a media_binding exists for this URN
+    alt a kept download exists for this URN
         DL-->>Q: { kind: 'local', uri, format }
         Note over DL: The player never learns downloads exist.
-    else no local copy
-        DL->>SRC: next()
-        SRC->>SRC: source.resolveStream(ref, prefs)
-        SRC-->>Q: StreamHandle { url, headers, expiresAt }
+    else not downloaded
+        DL->>C: next()
+        alt a cached stream exists for this URN
+            C-->>Q: { kind: 'local', uri }
+            Note over C: No provider request, no URL to expire.
+        else no cached copy
+            C->>SRC: next()
+            SRC->>SRC: source.resolveStream(ref, prefs)
+            SRC-->>Q: StreamHandle { url, headers, expiresAt }
+            Note over C: The bytes are written beside the cache while they play.
+        end
     end
     Q->>A: load(target, { strategy })
     A-->>Q: AudioSourceHandle
@@ -235,10 +243,19 @@ a `RuleError` from a source whose rules have rotted
 ([07 §4.4](./07-data-model.md#44-identity-linking)) for the same recording on another source, and
 only when that yields nothing does the player enter `error`.
 
-`plugin-download` is the waterfall's resident listener, and its policy is a **playback cache**: a
-remote handle is fetched with the stream's own headers and written to `ctx.paths.cache` while it
-plays, recorded as a `media_bindings` row with `origin: 'download'`; every later resolve answers
-`kind: 'local'` and never reaches the provider.
+**`plugin-download`** is the first listener: it answers with the file the user downloaded, or
+passes through. **`plugin-cache`** is the second, and it is the automatic cache: a remote handle
+is fetched with the stream's own headers and written to `ctx.paths.cache/stream` while it plays,
+recorded in `cache_entries` under the key `stream:<urn>`; every later resolve answers
+`kind: 'local'` and never reaches the provider. A miss returns the remote handle immediately, so
+the cache never delays the play it is caching. Entries are evicted least-recently-used within the
+`stream` class, and with the plugin disabled the same track simply streams — which is the control
+arm of the regression test at [09 §6](./09-project-structure.md#6-testing-strategy).
+
+Covers take the same path through the same plugin: `ctx.cache.artwork(ref)` returns the cached
+file, fetching and writing it only on a miss, and fills in `artworks.local_uri` so every other
+reader — including the lock screen — sees a local `Uri` on the next catalogue read. The render
+side is the `useResolvedArtwork` hook ([08 §4](./08-ui-architecture.md#4-the-screens)).
 
 The work itself is a row in `download_tasks` driven by one worker, exposed as **`ctx.downloads`**
 (queued → running → done, with paused/canceled/failed): `bytes_done` is checkpointed per second so
@@ -248,11 +265,12 @@ pause/resume/cancel/retry/remove/clear move the row and the file together. A Dow
 page in both shells renders that list — progress, sizes, and the controls each state allows — plus
 the two policy switches.
 
-**Two destinations.** A track the user downloads explicitly is *kept* in
-`ctx.paths.downloads/BBeBee/` and is never evicted; the automatic playback cache lives in
-`ctx.paths.cache/media` and is evicted oldest-played-first once a byte budget is exceeded. Both are
-the same `media_bindings` row, so the player cannot tell them apart, and a kept download outranks
-the cache when both exist.
+**One destination, and the cache beside it.** A track the user downloads is kept in
+`ctx.paths.downloads/BBeBee/` and is never evicted; the automatic cache lives in
+`ctx.paths.cache/stream` and is evicted by `plugin-cache` under a per-class budget. A kept
+download outranks the cache because `plugin-download`'s listener runs first, and the two stores
+are different tables (`media_bindings` vs `cache_entries`), so "what did the user download?" and
+"what did we happen to play?" stay separable.
 
 **The policy is a row, not a constant.** `download_policies` holds `wifi_only` and
 `charging_only`; the worker holds queued tasks and pauses running ones when the device state stops
@@ -469,8 +487,9 @@ Audio is hard to test, so the strategy is layered rather than end-to-end:
    notices the EQ sounds different.
 2. **Transport state machine** — pure unit tests against a mock `AudioService`. Every transition
    in the §2 diagram has a test, including interruption-during-load and queue-change-during-prefetch.
-3. **Resolution pipeline** — the `player/before-resolve` waterfall tested with and without
-   `plugin-download` loaded, asserting the player behaves identically apart from the chosen target.
+3. **Resolution pipeline** — the `player/before-resolve` waterfall tested with each of
+   `plugin-download` and `plugin-cache` loaded and with neither, asserting the player behaves
+   identically apart from the chosen target.
 4. **Device smoke tests** — a manual matrix per release: lock screen, Bluetooth, headphone unplug,
    incoming call, gapless boundary, background survival. Not automatable at reasonable cost, and
    honest about that.

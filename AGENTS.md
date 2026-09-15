@@ -446,12 +446,13 @@ of the contract.** Waterfalls are the horizontal composition mechanism:
 
 | Hook | Purpose |
 |---|---|
-| `player/before-resolve` | `plugin-download` substitutes a local file; failover retries a linked URN |
-| `http/request` | The source runtime injects headers/cookies; cache, rate limit, retry |
+| `player/before-resolve` | `plugin-download` substitutes a file the user downloaded; `plugin-cache` a cached stream; failover retries a linked URN |
+| `http/request` | The source runtime injects headers/cookies; a response cache, rate limit and retry hook here in a later milestone |
 | `dsp/build-chain` | Each effect inserts its segment at its configured position |
 
-The payoff: **the player has no concept of downloads.** Uninstall `plugin-download` and playback
-keeps working, streaming instead — nothing in `plugin-player` changes or even knows.
+The payoff: **the player has no concept of downloads or caches.** Uninstall `plugin-download` or
+`plugin-cache` and playback keeps working, streaming instead — nothing in `plugin-player` changes
+or even knows.
 
 > ⚠️ **A waterfall's `next` takes no arguments.** Cordis closes it over the *original* argument
 > list, so `next(somethingElse)` is silently identical to `next()`. A listener either **mutates
@@ -539,7 +540,7 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
   - Seek scrubbers and volume sliders use a subtle grey track that fills with green (`#1DB954`) and reveals a circular thumb on hover/drag.
 - **Artwork & atmospheric theming**:
   - Square artwork for tracks and albums; circular avatars for artists.
-  - Artwork renders `blurhash` first, with fallback to `artworks.dominant_color` to prevent grey flashes or layout shifts. With no cover at all, `Artwork` generates a GitHub-identicon-style square from the entity URN (`identicon()` in `ui-core`; a `seed` prop on both kits); real data always outranks generated — image > `dominant_color` > identicon > plain colour.
+  - Artwork renders `blurhash` first, with fallback to `artworks.dominant_color` to prevent grey flashes or layout shifts. With no cover at all, `Artwork` generates a GitHub-identicon-style square from the entity URN (`identicon()` in `ui-core`; a `seed` prop on both kits); real data always outranks generated — image > `dominant_color` > identicon > plain colour. Covers resolve through `ctx.cache` before render (`useResolvedArtwork` in `@BBeBee/plugin-cache/hooks`, via a local `CachedArtwork`/`CachedTrackRow` in each view package): the hook suppresses the remote URL while the cache fetches, then renders the local file, and only falls back to remote when the cache is absent or failed.
   - Playlist and album detail hero banners extract `artworks.dominant_color` to generate a dynamic atmospheric vertical gradient fading into the `#121212` base canvas.
 - **Layout paradigm**:
   - Desktop: 3-pane layout — sunken `#000000` sidebar/rail, rounded `#121212` content card with dynamic hero header gradient, and full-width persistent sunken `#000000` / `#181818` bottom transport bar.
@@ -684,18 +685,25 @@ Test conventions in this repo:
   `fixtures/sources/`
   (`direct-url.json`, `subsonic.json`, `podcast-json-feed.json`).
 - Also built: the three log transports (`plugin-log-{buffer,console,file}`), `plugin-ui`
-  (`ctx.ui`), `plugin-inspector` (`ctx.inspector`), `core-desktop-bridge`, `core-store-fs`, and
-  `plugin-download` — the `media_bindings` playback cache plus a managed `download_tasks` queue
-  (`ctx.downloads`) with a kept-downloads directory, `If-Range`-validated resume, the
-  Wi-Fi/charging policy, pause/resume/cancel/retry/delete/clear, a ⬇ control on track rows, and a
-  Downloads page on both shells (docs/05 §2, docs/07 §4.8).
+  (`ctx.ui`), `plugin-inspector` (`ctx.inspector`), `core-desktop-bridge`, `core-store-fs`,
+  `plugin-cache` — `ctx.cache` serves covers and remote streams from `ctx.paths.cache`
+  (`cache_entries`, LRU per class), fetching only on a miss; streams are cached while they play on
+  the `player/before-resolve` waterfall, and the UI's `useResolvedArtwork`
+  (`@BBeBee/plugin-cache/hooks`) resolves every cover before it renders; and `plugin-download` —
+  a managed `download_tasks` queue (`ctx.downloads`) with a kept-downloads directory,
+  `If-Range`-validated resume, the Wi-Fi/charging policy, pause/resume/cancel/retry/delete/clear, a
+  ⬇ control on track rows, and a Downloads page on both shells (docs/05 §2, docs/07 §4.8).
 
 Known gaps, so they are not rediscovered as bugs:
 
-- **`plugin-download`'s policy has no scopes.** One `download_policies` row governs both the cache
-  and explicit downloads (`scope_json` is written empty), so "keep the cache on cellular but only
-  download on Wi-Fi" is not expressible yet; per-policy scopes are the remaining M3 item
-  (docs/10 §M3).
+- **`plugin-download`'s policy has no scopes.** One `download_policies` row governs every task
+  (`scope_json` is written empty), so "download on Wi-Fi only, but cache on cellular" is not
+  expressible yet; per-policy scopes are the remaining M3 item (docs/10 §M3). The cache half of
+  that question now belongs to `plugin-cache`, which currently has no network policy at all — it
+  caches on any connection.
+- **`plugin-cache` does not cache generic HTTP responses yet.** The `http/request` waterfall is
+  still listener-free in production; only media (covers and streams) is cached, and the `http`
+  class in `cache_entries` is reserved.
 - **The Stage 0 audio spike has not been run on hardware** — no iOS device, no Android device, no
   Electron. ADR-4's verdict is still a hypothesis, as is the device smoke matrix.
 - **`load({ strategy: 'stream' })` has no mobile implementation.** React Native has no

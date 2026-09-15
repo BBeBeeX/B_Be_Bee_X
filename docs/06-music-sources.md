@@ -772,10 +772,13 @@ the rules. `"3/1000"` is three requests per second; `"1/2000"` is one every two 
 with no `concurrentRate` gets a conservative default, because the failure mode of guessing high is
 someone's server banning the user's IP.
 
-**Caching** has two layers, and the distinction matters when a source misbehaves: HTTP responses
-go through `plugin-cache` on the `http/request` waterfall and honour the backend's headers;
-`src.cache` is the source's own scratch space with an explicit TTL. Clearing one does not clear the
-other, and the settings screen offers both separately.
+**Caching** has two layers, and the distinction matters when a source misbehaves: `plugin-cache`
+caches the **media** a source answers with — covers via `ctx.cache.artwork()`, and the audio
+streams themselves on `player/before-resolve`, keyed by track URN and evicted LRU within a byte
+budget — while `src.cache` is the source's own scratch space for rule results, with an explicit
+TTL. Clearing one does not clear the other, and the settings screen offers both separately.
+Generic HTTP response caching on the `http/request` waterfall is not implemented yet; when it
+lands it will honour the backend's headers.
 
 ---
 

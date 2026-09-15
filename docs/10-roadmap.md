@@ -154,13 +154,13 @@ rule language is too weak, because every document written after M2 is one someon
 > **Shipped.** `ctx.downloads` is built ([05 §2](./05-audio-playback.md#resolution-pipeline)):
 > `download_tasks` is a real queue driven by one worker (queued → running → done, with paused,
 > canceled and failed), `bytes_done` is checkpointed and resumed with `If-Range: <etag>` so a
-> changed remote file restarts instead of splicing, explicitly requested downloads are kept in
-> `ctx.paths.downloads/BBeBee/` and excluded from the cache budget while the automatic playback
-> cache is evicted oldest-played-first, `wifi_only`/`charging_only` hold queued tasks and pause
-> running ones against real `ctx.device` state, and a Downloads settings page in both shells drives
-> pause/resume/cancel/retry/delete/clear. What is still open: per-policy *scopes*
-> (`scope_json` is written empty — one policy governs everything) and a per-track download action
-> for playlists, where no track row is rendered today.
+> changed remote file restarts instead of splicing, downloads are kept in
+> `ctx.paths.downloads/BBeBee/` and never evicted, `wifi_only`/`charging_only` hold queued tasks
+> and pause running ones against real `ctx.device` state, and a Downloads settings page in both
+> shells drives pause/resume/cancel/retry/delete/clear. The automatic playback cache that used to
+> live here moved to `plugin-cache`, which owns covers and streams in `cache_entries`. What is
+> still open: per-policy *scopes* (`scope_json` is written empty — one policy governs everything)
+> and a per-track download action for playlists, where no track row is rendered today.
 
 **Exit criteria**
 - Kill the app mid-download; on relaunch it resumes from `bytes_done`, and a changed `etag`

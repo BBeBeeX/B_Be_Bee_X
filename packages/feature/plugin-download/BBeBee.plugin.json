@@ -2,7 +2,7 @@
   "id": "@BBeBee/plugin-download",
   "version": "0.0.0",
   "displayName": "Downloads",
-  "description": "ctx.downloads — the managed download queue and the playback cache.",
+  "description": "ctx.downloads — the managed download queue.",
   "engines": {
     "BBeBee": "^0.1.0"
   },

@@ -35,9 +35,32 @@ import {
   Text,
   TrackRow,
 } from '@BBeBee/ui-kit-desktop'
+import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
+import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
+
+/**
+ * `<Artwork>`, with the cover resolved through `ctx.cache` first.
+ *
+ * A component rather than a bare hook call at each site because list rows
+ * render from callbacks: the hook suppresses the remote URL while the cache
+ * fetches, so the fallback paints instead of a second request.
+ */
+function CachedArtwork({ ctx, ...props }: ArtworkProps & { ctx: Context }): ReactElement {
+  const artwork = useResolvedArtwork(ctx, props.artwork)
+  return h(Artwork, { ...props, artwork })
+}
+
+/** `TrackRow` renders its own `Artwork`; this is the same resolution for its track. */
+function CachedTrackRow({ ctx, ...props }: TrackRowProps & { ctx: Context }): ReactElement {
+  const artwork = useResolvedArtwork(ctx, props.track.artwork)
+  return h(TrackRow, {
+    ...props,
+    track: artwork ? { ...props.track, artwork } : props.track,
+  })
+}
 
 export interface NowPlayingBarProps {
   ctx: Context
@@ -110,7 +133,7 @@ export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): Re
             flexShrink: 0,
           },
         },
-        h(Artwork, {
+        h(CachedArtwork, { ctx,
           artwork: state.nowPlaying?.artwork,
           seed: state.trackUrn,
           size: tokens.size.artworkThumb,
@@ -312,7 +335,7 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
     estimatedItemSize: tokens.size.row,
     keyExtractor: (item) => item.id,
     renderItem: (item) =>
-      h(TrackRow, {
+      h(CachedTrackRow, { ctx,
         track:
           tracks.get(item.trackUrn) ??
           queueTrackFallback(item, state.nowPlaying, item.id === state.currentItemId),
@@ -406,7 +429,7 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
         h('polyline', { points: '6 9 12 15 18 9' }),
       ),
     ),
-    h(Artwork, {
+    h(CachedArtwork, { ctx,
       artwork: state.nowPlaying?.artwork,
       seed: state.trackUrn,
       size: 280,

@@ -9,6 +9,7 @@ import coreDeviceExpo from '@BBeBee/core-device-expo'
 import coreHttpRn from '@BBeBee/core-http-rn'
 import coreMediaSessionRn from '@BBeBee/core-media-session-rn'
 import coreSecretsExpo from '@BBeBee/core-secrets-expo'
+import pluginCache from '@BBeBee/plugin-cache'
 import pluginDownload from '@BBeBee/plugin-download'
 import pluginDownloadUi from '@BBeBee/plugin-download-ui-mobile'
 import pluginInspector from '@BBeBee/plugin-inspector'
@@ -61,14 +62,19 @@ export const bundled: PluginRegistry = {
     manifest: {"id":"@BBeBee/core-secrets-expo","platforms":["mobile"],"version":"0.0.0","displayName":"Secrets","description":"ctx.secrets for iOS and Android, over expo-secure-store.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["secrets"]}},
     builtin: true,
   },
+  "@BBeBee/plugin-cache": {
+    plugin: pluginCache,
+    manifest: {"id":"@BBeBee/plugin-cache","version":"0.0.0","displayName":"Cache","description":"ctx.cache — covers and remote audio streams are served from disk, and fetched only on a miss.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","db:read:core","db:write:core"],"contributes":{"services":["cache"]}},
+    builtin: true,
+  },
   "@BBeBee/plugin-download": {
     plugin: pluginDownload,
-    manifest: {"id":"@BBeBee/plugin-download","version":"0.0.0","displayName":"Downloads","description":"ctx.downloads — the managed download queue and the playback cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","fs:read:downloads","fs:write:downloads","db:read:core","db:write:core"],"contributes":{"services":["downloads"]}},
+    manifest: {"id":"@BBeBee/plugin-download","version":"0.0.0","displayName":"Downloads","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","fs:read:downloads","fs:write:downloads","db:read:core","db:write:core"],"contributes":{"services":["downloads"]}},
     builtin: true,
   },
   "@BBeBee/plugin-download-ui-mobile": {
     plugin: pluginDownloadUi,
-    manifest: {"id":"@BBeBee/plugin-download-ui-mobile","version":"0.0.0","displayName":"Downloads (mobile views)","description":"ctx.downloads — the managed download queue and the playback cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["downloads"]}},
+    manifest: {"id":"@BBeBee/plugin-download-ui-mobile","version":"0.0.0","displayName":"Downloads (mobile views)","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["downloads"]}},
     builtin: true,
   },
   "@BBeBee/plugin-inspector": {

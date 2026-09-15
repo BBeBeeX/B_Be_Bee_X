@@ -1,26 +1,24 @@
 /**
- * `plugin-download` — the managed download queue, and the cache that plays
- * from it.
+ * `plugin-download` — the managed download queue.
  *
  * The mechanism is the one docs/05 §2 draws and docs/07 §4.5 and §4.8 name:
  * a downloaded stream is a **`media_bindings` row** (`origin: 'download'`),
  * the work is a **`download_tasks` row** driven by one worker, and the player
  * learns about the result through the `player/before-resolve` waterfall. A hit
  * answers with `kind: 'local'` and the audio engine opens a file instead of a
- * socket; a miss calls the rest of the chain and queues a download **while the
- * user listens**.
+ * socket; a miss calls the rest of the chain.
  *
- * Four properties are the design:
+ * Only files the user asked to keep live here. The automatic media cache —
+ * covers and streams played once — is `plugin-cache`'s, in `cache_entries`,
+ * and it is evictable. Separating them is what keeps this plugin's one
+ * question answerable: *what did the user download?*
+ *
+ * Three properties are the design:
  *
  *  - **The player never learns this exists.** It already knows how to play a
  *    local file — that is how the scanner's tracks work — so disabling this
  *    plugin leaves playback streaming exactly as before, and no branch
- *    anywhere says "is this cached?" (docs/06 §12).
- *  - **Two destinations, one meaning.** A track the user explicitly downloads
- *    is *kept* in `ctx.paths.downloads/BBeBee/` and never evicted; the
- *    playback cache lives in `ctx.paths.cache/media` and is evicted
- *    oldest-played-first under a byte budget. Both are the same binding, so
- *    the player cannot tell them apart.
+ *    anywhere says "is this downloaded?" (docs/06 §12).
  *  - **A task is checkpointed per chunk, and resumed conditionally.** The
  *    partial file plus `bytes_done` resume with a `Range` request carrying
  *    `If-Range: <etag>` — so a remote file that changed since the partial was
@@ -59,12 +57,6 @@ export interface DownloadsConfig {
    * "stop downloading" is not "forget what I have".
    */
   enabled?: boolean
-  /**
-   * How many bytes the **cache** may occupy before the least recently played
-   * entries are evicted. `0` disables eviction entirely; explicitly kept
-   * downloads are never counted.
-   */
-  maxCacheBytes?: number
   /** Quality asked of the source when the task does not name one. */
   quality?: StreamQuality
   /**
@@ -79,9 +71,6 @@ export interface DownloadsConfig {
 
 const DEFAULTS: Required<DownloadsConfig> = {
   enabled: true,
-  // ~1 GiB: enough for a long offline session, small enough to be a cache
-  // rather than a library.
-  maxCacheBytes: 1024 * 1024 * 1024,
   quality: 'lossless',
   gateRecheckMs: 30_000,
 }
@@ -90,14 +79,11 @@ const DEFAULTS: Required<DownloadsConfig> = {
 const POLICY_ID = 'dp_default'
 
 /**
- * How long after serving a file a `player/error` still counts as "this cache
- * entry is broken". A decode failure arrives in seconds; an unrelated error
- * arriving minutes later is not about the file.
+ * How long after serving a file a `player/error` still counts as "this
+ * download is broken". A decode failure arrives in seconds; an unrelated
+ * error arriving minutes later is not about the file.
  */
 const INVALIDATION_WINDOW_MS = 120_000
-
-/** A stashed stream URL is a signed URL; after this it is re-resolved. */
-const STASH_TTL_MS = 60_000
 
 /** Progress reaches the event bus at this rate, not once per chunk. */
 const PROGRESS_EMIT_MS = 200
@@ -176,18 +162,8 @@ export class Downloads extends Service implements DownloadsService {
     string,
     { controller: AbortController; intent: 'pause' | 'cancel'; lastEmit: number }
   >()
-  /**
-   * The stream a resolve just produced, waiting to be downloaded.
-   *
-   * A `before-resolve` miss already fetched the signed URL; re-resolving in
-   * the worker would be a second playurl request and might produce a different
-   * one. Keyed by URN because the task may not exist yet when the resolve
-   * lands, and bounded by `STASH_TTL_MS` because signed URLs expire.
-   */
-  private readonly stashed = new Map<string, { handle: StreamHandle; at: number }>()
   private running?: string
-  private cacheDir!: Uri
-  /** Where explicitly kept downloads land. Never evicted, never swept. */
+  /** Where downloads land. Never evicted, never swept. */
   private keptDir!: Uri
   private policyValue: DownloadPolicy = {
     id: POLICY_ID,
@@ -218,7 +194,6 @@ export class Downloads extends Service implements DownloadsService {
     this.ownCtx = ctx
     this.config = {
       enabled: config.enabled ?? DEFAULTS.enabled,
-      maxCacheBytes: config.maxCacheBytes ?? DEFAULTS.maxCacheBytes,
       quality: config.quality ?? DEFAULTS.quality,
       gateRecheckMs: config.gateRecheckMs ?? DEFAULTS.gateRecheckMs,
     }
@@ -226,18 +201,14 @@ export class Downloads extends Service implements DownloadsService {
   }
 
   async [Service.init]() {
-    this.cacheDir = this.ownCtx.fs.join(this.ownCtx.paths.cache, 'media')
     this.keptDir = this.ownCtx.fs.join(this.ownCtx.paths.downloads, 'BBeBee')
     try {
-      await this.ownCtx.fs.mkdir(this.cacheDir, { recursive: true })
-      await this.sweep()
-    } catch (error) {
-      // Existing downloads still play; caching simply has nowhere to land,
-      // which the per-task error path then reports.
-      this.ownCtx.logger.warn(`download: could not prepare the cache directory: ${String(error)}`)
-    }
-    try {
       await this.ownCtx.fs.mkdir(this.keptDir, { recursive: true })
+      // A build before `plugin-cache` wrote playback copies into the cache
+      // directory and registered them here. That is no longer this plugin's
+      // job, so those rows and files are dropped: the next play streams and
+      // `plugin-cache` caches it, with its own eviction policy.
+      await this.forgetLegacyCache()
     } catch (error) {
       this.ownCtx.logger.warn(`download: could not prepare the downloads directory: ${String(error)}`)
     }
@@ -268,8 +239,8 @@ export class Downloads extends Service implements DownloadsService {
       }
     })
 
-    // Prepended: a cache hit is a local file read, and there is no reason to
-    // run a network-oriented listener (failover, a future re-auth) before it.
+    // Prepended: a download hit is a local file read, and there is no reason
+    // to run a network-oriented listener (failover, a future re-auth) before it.
     const offResolve = this.ownCtx.on(
       'player/before-resolve',
       (urn: string, prefs: StreamPrefs, next: () => Promise<StreamHandle>) =>
@@ -451,7 +422,7 @@ export class Downloads extends Service implements DownloadsService {
   ): Promise<readonly DownloadTask[]> {
     const queued: DownloadTask[] = []
     for (const urn of urns) {
-      const task = await this.enqueueOne(urn, opts.quality, true)
+      const task = await this.enqueueOne(urn, opts.quality)
       if (task) queued.push(task)
     }
     void this.refreshGate()
@@ -462,27 +433,25 @@ export class Downloads extends Service implements DownloadsService {
    * Queue one task, or return the active one.
    *
    * The partial unique index (`state != 'done'`) is the authority on "already
-   * downloading this": two resolves in quick succession, or a press on a
-   * screen for a track already queued, must not produce two writers on one
-   * path.
+   * downloading this": two presses on a screen for a track already queued, or
+   * an enqueue racing a retry, must not produce two writers on one path.
    */
   private async enqueueOne(
     urn: string,
     quality: StreamQuality | undefined,
-    kept: boolean,
   ): Promise<DownloadTask | undefined> {
     const existing = this.list.find((task) => task.trackUrn === urn && task.state !== 'done')
     if (existing) return existing
 
     const id = `dl_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`
-    const target = this.fileFor(urn, kept)
+    const target = this.fileFor(urn)
     const now = Date.now()
     try {
       await this.ownCtx.db.exec(
         `INSERT INTO download_tasks (id, track_urn, target_uri, state, quality, bytes_done,
                                      priority, attempts, policy_id, created_at, updated_at)
-         VALUES (?, ?, ?, 'queued', ?, 0, ?, 0, ?, ?, ?)`,
-        [id, urn, target, quality ?? this.policyValue.quality, kept ? 1 : 0, POLICY_ID, now, now],
+         VALUES (?, ?, ?, 'queued', ?, 0, 1, 0, ?, ?, ?)`,
+        [id, urn, target, quality ?? this.policyValue.quality, POLICY_ID, now, now],
       )
     } catch (error) {
       // Lost a race against another enqueue for the same track. The task that
@@ -496,7 +465,7 @@ export class Downloads extends Service implements DownloadsService {
 
     await this.refresh()
     this.targets.set(id, target)
-    this.ownCtx.logger.info(`download: queued ${urn} (${kept ? 'kept' : 'cache'})`)
+    this.ownCtx.logger.info(`download: queued ${urn}`)
     this.safeEmit(() => this.ownCtx.emit('download/queued', id))
     return this.byId(id)
   }
@@ -598,10 +567,9 @@ export class Downloads extends Service implements DownloadsService {
 
   async clearFinished(): Promise<void> {
     for (const task of [...this.list]) {
-      // Cache entries and dead tasks go; a kept download is the user's file,
-      // and only its own 🗑 deletes it.
-      const cacheEntry = task.state === 'done' && !task.kept
-      if (task.state === 'canceled' || cacheEntry) await this.remove(task.id)
+      // A canceled task is dead bookkeeping and goes. A finished download is
+      // the user's file: only its own 🗑 deletes it.
+      if (task.state === 'canceled') await this.remove(task.id)
     }
   }
 
@@ -611,45 +579,32 @@ export class Downloads extends Service implements DownloadsService {
    * The `player/before-resolve` listener.
    *
    * A hit short-circuits: the waterfall's whole purpose is that the player
-   * accepts either answer without knowing which one it got.
+   * accepts either answer without knowing which one it got. A miss changes
+   * nothing — `plugin-cache`, if it is loaded, is the next listener.
    */
   async resolve(
     urn: string,
-    prefs: StreamPrefs,
+    _prefs: StreamPrefs,
     next: () => Promise<StreamHandle>,
   ): Promise<StreamHandle> {
     const cached = await this.cachedHandle(urn)
     if (cached) return cached
-
-    const handle = await next()
-    // Only a remote resolution is worth downloading: `kind: 'local'` already
-    // is a file, whether the scanner put it there or a previous cache did.
-    if (this.config.enabled && handle.kind === 'remote') {
-      this.stashed.set(urn, { handle, at: Date.now() })
-      // Fire-and-forget: queueing must never delay the play it is caching,
-      // and a queue write that fails costs the cache, not the playback.
-      void this.enqueueOne(urn, prefs.quality, false)
-        .then(() => void this.refreshGate())
-        .catch((error: unknown) => {
-          this.ownCtx.logger.warn(`download: could not queue ${urn}: ${String(error)}`)
-        })
-    }
-    return handle
+    return next()
   }
 
   /**
-   * Drop a binding this cache served, after the player failed to play it.
+   * Drop a download this plugin served, after the player failed to play it.
    *
    * Only the most recently served track is considered, and only for a short
    * window: a `player/error` for an unrelated track — or the same track hours
-   * later, streaming again — must not evict a good file.
+   * later, streaming again — must not delete a good file.
    */
   invalidateServed(urn: string): void {
     const served = this.lastServed
     if (!served || served.urn !== urn) return
     if (Date.now() - served.at > INVALIDATION_WINDOW_MS) return
     this.lastServed = undefined
-    this.ownCtx.logger.warn(`download: cached copy of ${urn} failed to play; dropping it`)
+    this.ownCtx.logger.warn(`download: downloaded copy of ${urn} failed to play; dropping it`)
     const task = this.list.find((entry) => entry.trackUrn === urn && entry.bindingId)
     if (task) {
       void this.remove(task.id).catch((error: unknown) => {
@@ -664,9 +619,15 @@ export class Downloads extends Service implements DownloadsService {
       .catch(() => undefined)
   }
 
-  /* ── reading the cache ─────────────────────────────────────────────── */
+  /* ── reading the downloads ─────────────────────────────────────────── */
 
-  /** The local file for `urn`, or nothing when there is no usable binding. */
+  /**
+   * The local file for `urn`, or nothing when there is no kept download.
+   *
+   * Only `kept` bindings — the ones under `ctx.paths.downloads` — count. Any
+   * other `origin: 'download'` row is the playback cache an older build wrote,
+   * which `plugin-cache` owns now.
+   */
   async cachedHandle(urn: string): Promise<StreamHandle | undefined> {
     let rows:
       | {
@@ -689,15 +650,13 @@ export class Downloads extends Service implements DownloadsService {
         [urn],
       )
     } catch (error) {
-      // A cache read that fails must not take playback down with it: the
-      // caller still gets the remote stream, which is the pre-cache status quo.
-      this.ownCtx.logger.warn(`download: could not read the cache for ${urn}: ${String(error)}`)
+      // A read that fails must not take playback down with it: the caller
+      // still gets the remote stream, which is the pre-download status quo.
+      this.ownCtx.logger.warn(`download: could not read the downloads for ${urn}: ${String(error)}`)
       return undefined
     }
-    if (!rows || rows.length === 0) return undefined
-    // A kept download outranks the cache: it is the copy the user asked for,
-    // and it is the one eviction will never take away.
-    const row = rows.find((entry) => this.isKept(entry.uri)) ?? rows[0]!
+    const row = rows?.find((entry) => this.isKept(entry.uri))
+    if (!row) return undefined
 
     if (!(await this.ownCtx.fs.exists(row.uri).catch(() => false))) {
       // docs/07 §4.5: a binding whose file is missing is deleted rather than
@@ -710,7 +669,8 @@ export class Downloads extends Service implements DownloadsService {
       return undefined
     }
 
-    // The clock LRU eviction reads. A play is the strongest "still wanted".
+    // A play is the strongest "still wanted", and the Downloads screen reads
+    // this back as the date the row was last verified.
     await this.ownCtx.db
       .exec('UPDATE media_bindings SET verified_at = ? WHERE id = ?', [Date.now(), row.id])
       .catch(() => undefined)
@@ -753,12 +713,7 @@ export class Downloads extends Service implements DownloadsService {
     await this.setState(id, 'running')
 
     try {
-      const stashed = this.stashed.get(task.trackUrn)
-      this.stashed.delete(task.trackUrn)
-      const handle =
-        stashed && Date.now() - stashed.at < STASH_TTL_MS
-          ? stashed.handle
-          : await this.resolveFor(task)
+      const handle = await this.resolveFor(task)
 
       if (handle.kind === 'local') {
         // Already a file: nothing to fetch, and nothing to bind.
@@ -767,7 +722,7 @@ export class Downloads extends Service implements DownloadsService {
       }
 
       const target = this.targetFor(id)
-      await this.ownCtx.fs.mkdir(this.dirFor(id), { recursive: true })
+      await this.ownCtx.fs.mkdir(this.keptDir, { recursive: true })
 
       /*
        * A resume is conditional on the remote file not having changed.
@@ -884,7 +839,7 @@ export class Downloads extends Service implements DownloadsService {
         if (row.uri !== target) await this.ownCtx.fs.remove(row.uri).catch(() => undefined)
       }
       this.ownCtx.logger.info(
-        `download: ${task.kept ? 'saved' : 'cached'} ${task.trackUrn} (${bytes} byte(s)${format ? ` as ${format}` : ''})`,
+        `download: saved ${task.trackUrn} (${bytes} byte(s)${format ? ` as ${format}` : ''})`,
       )
     }
 
@@ -896,7 +851,6 @@ export class Downloads extends Service implements DownloadsService {
       ...(bindingId ? { bindingId } : {}),
     })
     if (bindingId) this.safeEmit(() => this.ownCtx.emit('download/completed', id, bindingId))
-    await this.evict()
   }
 
   private async fail(id: string, error: unknown): Promise<void> {
@@ -946,84 +900,46 @@ export class Downloads extends Service implements DownloadsService {
   }
 
   /**
-   * Delete cache files no binding or open task names.
+   * Drop the playback cache a build before `plugin-cache` wrote.
    *
-   * A binding is what "this file is a track's downloaded audio" means, and it
-   * can disappear without this plugin being told: removing a source cascades
-   * its tracks and their bindings away in SQL, and the files stay. Without
-   * this sweep those bytes are invisible to eviction — it walks rows — and a
-   * removed source leaves its library in the cache for ever.
+   * Those copies live under `ctx.paths.cache/media` and were registered here
+   * as ordinary `origin: 'download'` bindings, with a `download_tasks` row
+   * each. Keeping them would shadow `plugin-cache`'s listener for ever — the
+   * prepended download hit answers first — so they are removed once, with
+   * their tasks and files. A user's kept downloads (under the downloads
+   * directory) are never touched.
    *
-   * ⚠️ An **open task's target** is kept even though no binding names it yet.
-   * A partial file is resume state, not garbage; deleting it here made every
-   * interrupted download start over, which is exactly what checkpointing
-   * `bytes_done` exists to prevent.
-   *
-   * The downloads directory is deliberately **not** swept: it is shared with
-   * the user, and a file there that no binding names is the user's, not
-   * garbage.
+   * The played files are not re-downloaded: the next resolve streams, and
+   * `plugin-cache` caches it again under its own roof.
    */
-  private async sweep(): Promise<void> {
-    const files = await this.ownCtx.fs.list(this.cacheDir)
-    if (files.length === 0) return
-    const [bindings, open] = await Promise.all([
-      this.ownCtx.db.query<{ uri: Uri }>(
-        `SELECT uri FROM media_bindings WHERE origin = 'download'`,
+  private async forgetLegacyCache(): Promise<void> {
+    const [bindings, tasks] = await Promise.all([
+      this.ownCtx.db.query<{ id: string; uri: Uri }>(
+        `SELECT id, uri FROM media_bindings WHERE origin = 'download'`,
       ),
-      this.ownCtx.db.query<{ target_uri: Uri }>(`SELECT target_uri FROM download_tasks`),
+      this.ownCtx.db.query<{ id: string; target_uri: Uri }>(
+        `SELECT id, target_uri FROM download_tasks`,
+      ),
     ])
-    const named = new Set([
-      ...bindings.map((row) => this.ownCtx.fs.basename(row.uri)),
-      ...open.map((row) => this.ownCtx.fs.basename(row.target_uri)),
-    ])
-    for (const file of files) {
-      if (file.isDirectory || named.has(file.name)) continue
-      this.ownCtx.logger.info(`download: removing an orphaned cache file (${file.name})`)
-      await this.ownCtx.fs.remove(file.uri).catch(() => undefined)
-    }
-  }
+    const legacyTasks = tasks.filter((row) => !this.isKept(row.target_uri))
+    const legacyBindings = bindings.filter((row) => !this.isKept(row.uri))
+    if (legacyTasks.length === 0 && legacyBindings.length === 0) return
 
-  /**
-   * Keep the cache inside its budget, oldest first.
-   *
-   * Ordered by `verified_at`, which `cachedHandle` refreshes on every play, so
-   * this is least-recently-*played* rather than least-recently-downloaded —
-   * the file a user keeps returning to is the last one to go. **Kept downloads
-   * are never candidates**: the user asked for them, and a cache budget has no
-   * business deleting a file that is not cache. The task row goes with the
-   * binding, so the Downloads screen does not show a download the cache has
-   * already deleted.
-   */
-  private async evict(): Promise<void> {
-    const budget = this.config.maxCacheBytes
-    if (budget <= 0) return
-    const rows = await this.ownCtx.db.query<{ id: string; uri: Uri; size_bytes: number | null }>(
-      `SELECT id, uri, size_bytes FROM media_bindings
-        WHERE origin = 'download'
-        ORDER BY COALESCE(verified_at, created_at) ASC`,
+    await this.ownCtx.db.transaction(async (tx) => {
+      for (const row of legacyTasks) await tx.exec('DELETE FROM download_tasks WHERE id = ?', [row.id])
+      for (const row of legacyBindings) {
+        await tx.exec('DELETE FROM media_bindings WHERE id = ?', [row.id])
+      }
+    })
+    for (const uri of [
+      ...legacyBindings.map((row) => row.uri),
+      ...legacyTasks.map((row) => row.target_uri),
+    ]) {
+      await this.ownCtx.fs.remove(uri).catch(() => undefined)
+    }
+    this.ownCtx.logger.info(
+      `download: dropped ${legacyBindings.length} legacy cache entr(ies); plugin-cache owns playback copies now`,
     )
-    const cache = rows.filter((row) => !this.isKept(row.uri))
-    let total = cache.reduce((sum, row) => sum + (row.size_bytes ?? 0), 0)
-    let removed = 0
-
-    for (const row of cache) {
-      if (total <= budget) break
-      await this.ownCtx.fs.remove(row.uri).catch(() => undefined)
-      await this.ownCtx.db
-        .transaction(async (tx) => {
-          await tx.exec('DELETE FROM download_tasks WHERE binding_id = ?', [row.id])
-          await tx.exec('DELETE FROM media_bindings WHERE id = ?', [row.id])
-        })
-        .catch(() => undefined)
-      total -= row.size_bytes ?? 0
-      removed++
-      this.ownCtx.logger.info(`download: evicted ${row.id} to stay within the cache budget`)
-    }
-
-    if (removed > 0) {
-      await this.refresh()
-      this.emitChanged()
-    }
   }
 
   /* ── internals ─────────────────────────────────────────────────────── */
@@ -1052,24 +968,19 @@ export class Downloads extends Service implements DownloadsService {
   }
 
   private targetFor(id: string): Uri {
-    return this.targets.get(id) ?? this.ownCtx.fs.join(this.cacheDir, id)
-  }
-
-  /** The directory a task's file lives in — kept downloads and cache differ. */
-  private dirFor(id: string): Uri {
-    return this.isKept(this.targetFor(id)) ? this.keptDir : this.cacheDir
+    return this.targets.get(id) ?? this.ownCtx.fs.join(this.keptDir, id)
   }
 
   private isKept(uri: Uri): boolean {
     return uriContains(this.keptDir, uri)
   }
 
-  private fileFor(urn: string, kept: boolean): Uri {
+  private fileFor(urn: string): Uri {
     // Extensionless deliberately: the container is recorded in the binding's
     // `format`, and the decoder sniffs content on the buffer path. A name that
     // changes when a re-resolve picks a different container would otherwise
     // leave a stale file behind on every format change.
-    return this.ownCtx.fs.join(kept ? this.keptDir : this.cacheDir, bindingIdOf(urn))
+    return this.ownCtx.fs.join(this.keptDir, bindingIdOf(urn))
   }
 
   /** The partial file's actual size, which is what a resume must start from. */

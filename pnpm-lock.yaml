@@ -72,6 +72,9 @@ importers:
       '@BBeBee/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@BBeBee/plugin-cache':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-cache
       '@BBeBee/plugin-download':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-download
@@ -190,6 +193,9 @@ importers:
       '@BBeBee/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@BBeBee/plugin-cache':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-cache
       '@BBeBee/plugin-download':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-download
@@ -700,6 +706,49 @@ importers:
         specifier: workspace:*
         version: link:../core-paths-node
 
+  packages/feature/plugin-cache:
+    dependencies:
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@BBeBee/toolkit':
+        specifier: workspace:*
+        version: link:../toolkit
+      '@BBeBee/ui-core':
+        specifier: workspace:*
+        version: link:../../ui/ui-core
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    devDependencies:
+      '@BBeBee/core-db-node':
+        specifier: workspace:*
+        version: link:../../core/core-db-node
+      '@BBeBee/core-fs-node':
+        specifier: workspace:*
+        version: link:../../core/core-fs-node
+      '@BBeBee/core-paths-node':
+        specifier: workspace:*
+        version: link:../../core/core-paths-node
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.2.7(@types/react@19.2.18)
+      react-dom:
+        specifier: 19.2.3
+        version: 19.2.3(react@19.2.3)
+
   packages/feature/plugin-download:
     dependencies:
       '@BBeBee/protocol':
@@ -727,6 +776,9 @@ importers:
       '@BBeBee/kernel':
         specifier: workspace:*
         version: link:../../kernel
+      '@BBeBee/plugin-cache':
+        specifier: workspace:*
+        version: link:../plugin-cache
 
   packages/feature/plugin-inspector:
     dependencies:
@@ -1312,6 +1364,9 @@ importers:
 
   packages/ui/plugin-player-ui-desktop:
     dependencies:
+      '@BBeBee/plugin-cache':
+        specifier: workspace:*
+        version: link:../../feature/plugin-cache
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -1355,6 +1410,9 @@ importers:
 
   packages/ui/plugin-player-ui-mobile:
     dependencies:
+      '@BBeBee/plugin-cache':
+        specifier: workspace:*
+        version: link:../../feature/plugin-cache
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -1389,6 +1447,9 @@ importers:
 
   packages/ui/plugin-sources-ui-desktop:
     dependencies:
+      '@BBeBee/plugin-cache':
+        specifier: workspace:*
+        version: link:../../feature/plugin-cache
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -1441,6 +1502,9 @@ importers:
 
   packages/ui/plugin-sources-ui-mobile:
     dependencies:
+      '@BBeBee/plugin-cache':
+        specifier: workspace:*
+        version: link:../../feature/plugin-cache
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol

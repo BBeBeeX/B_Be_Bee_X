@@ -41,9 +41,32 @@ import {
   nativePrimitives,
 } from '@BBeBee/ui-kit-mobile'
 import { serviceOf } from '@BBeBee/ui-core'
+import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
+import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
+
+/**
+ * `<Artwork>`, with the cover resolved through `ctx.cache` first.
+ *
+ * A component rather than a bare hook call at each site because list rows
+ * render from callbacks: the hook suppresses the remote URL while the cache
+ * fetches, so the fallback paints instead of a second request.
+ */
+function CachedArtwork({ ctx, ...props }: ArtworkProps & { ctx: Context }): ReactElement {
+  const artwork = useResolvedArtwork(ctx, props.artwork)
+  return h(Artwork, { ...props, artwork })
+}
+
+/** `TrackRow` renders its own `Artwork`; this is the same resolution for its track. */
+function CachedTrackRow({ ctx, ...props }: TrackRowProps & { ctx: Context }): ReactElement {
+  const artwork = useResolvedArtwork(ctx, props.track.artwork)
+  return h(TrackRow, {
+    ...props,
+    track: artwork ? { ...props.track, artwork } : props.track,
+  })
+}
 
 function Pending({ label }: { label: string }): ReactElement {
   return h(EmptyState, { title: label, accessibilityLabel: label })
@@ -186,7 +209,7 @@ export function LibraryScreen({
               onEndReached: tracks.loadMore,
               empty: trackEmpty,
               renderItem: (track) =>
-                h(TrackRow, {
+                h(CachedTrackRow, { ctx,
                   track,
                   showAlbum: true,
                   // A tap plays the track in the list it was tapped in: jump
@@ -221,7 +244,7 @@ export function LibraryScreen({
                       padding: tokens.space[2],
                     },
                   },
-                  h(Artwork, {
+                  h(CachedArtwork, { ctx,
                     artwork: album.artwork,
                     seed: album.urn,
                     size: tokens.size.artworkThumb,
@@ -302,7 +325,7 @@ export function AlbumScreen({
     h(
       native.View as never,
       { style: { alignItems: 'center', gap: tokens.space[2], padding: tokens.space[4] } },
-      h(Artwork, { artwork: detail.artwork, seed: detail.urn, size: 200, radius: tokens.radius.md }),
+      h(CachedArtwork, { ctx, artwork: detail.artwork, seed: detail.urn, size: 200, radius: tokens.radius.md }),
       h(Text, { variant: 'xl', numberOfLines: 2, children: detail.title }),
       h(Text, {
         tone: 'muted',
@@ -322,7 +345,7 @@ export function AlbumScreen({
       keyExtractor: (track) => track.urn,
       empty: h(EmptyState, { title: 'This album has no tracks' }),
       renderItem: (track) =>
-        h(TrackRow, {
+        h(CachedTrackRow, { ctx,
           track,
           showArtwork: false,
           // A tap plays the track in the list it was tapped in: jump if the
@@ -517,7 +540,7 @@ export function SearchScreen({
                         ),
                       )
                     : row.kind === 'track'
-                      ? h(TrackRow, {
+                      ? h(CachedTrackRow, { ctx,
                           track: row.track,
                           showAlbum: true,
                           onPress: () =>
@@ -541,7 +564,7 @@ export function SearchScreen({
                                 padding: tokens.space[2],
                               },
                             },
-                            h(Artwork, {
+                            h(CachedArtwork, { ctx,
                               artwork: row.album.artwork,
                               seed: row.album.urn,
                               size: tokens.size.artworkThumb,
@@ -558,7 +581,7 @@ export function SearchScreen({
                               }),
                             ),
                           )
-                        : h(ResultLine, { row }),
+                        : h(ResultLine, { ctx, row }),
               }),
             ),
   )
@@ -628,8 +651,10 @@ function SourceChip({
  * artist screen exists yet, so the row does not pretend to be pressable.
  */
 function ResultLine({
+  ctx,
   row,
 }: {
+  ctx: Context
   row: Extract<SearchResultRow, { kind: 'artist' | 'playlist' }>
 }): ReactElement {
   const native = nativePrimitives()
@@ -644,7 +669,7 @@ function ResultLine({
         padding: tokens.space[2],
       },
     },
-    h(Artwork, {
+    h(CachedArtwork, { ctx,
       artwork: row.kind === 'playlist' ? row.playlist.artwork : row.artist.artwork,
       seed: row.kind === 'playlist' ? row.playlist.urn : row.artist.urn,
       size: tokens.size.artworkThumb,

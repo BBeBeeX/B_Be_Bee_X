@@ -753,7 +753,7 @@ CREATE TABLE lyrics (
 );
 
 CREATE TABLE cache_entries (
-  key            TEXT PRIMARY KEY,            -- 'artwork:<id>@512', 'http:<sha256>'
+  key            TEXT PRIMARY KEY,            -- 'artwork:<id>', 'stream:<urn>', 'http:<sha256>'
   class          TEXT NOT NULL,               -- artwork|http|stream|codec
   uri            TEXT NOT NULL,
   size_bytes     INTEGER NOT NULL,
@@ -764,11 +764,17 @@ CREATE TABLE cache_entries (
 CREATE INDEX idx_cache_evict ON cache_entries(class, last_access_at);
 ```
 
+`plugin-cache` owns this table (`ctx.cache`; docs/05 §2). One row per cached file: an artwork key
+is the `ArtworkRef.id`, a stream key is its track URN — so a re-signed URL is the same cache entry
+— and `uri` is the file under `ctx.paths.cache/{artwork,stream}`. A resolved stream or a rendered
+cover updates `last_access_at`, which is the LRU clock.
+
 Eviction is LRU **within a class**, each with its own quota, because the classes have very
-different value: evicting artwork costs a re-fetch and a visible flicker; evicting a partially
-downloaded stream costs the user their place. Defaults — artwork 512 MB desktop / 128 MB mobile,
-HTTP 64 MB, stream cache 1 GB / 256 MB — all user-adjustable. A sweep runs on boot and hourly, and
-`cache_entries` rows whose file is gone are pruned in the same pass.
+different value: evicting artwork costs a re-fetch and a visible flicker; evicting a stream costs
+the user a re-download. Defaults — artwork 512 MB desktop / 128 MB mobile, HTTP 64 MB, stream
+cache 1 GB / 256 MB — all configurable. A sweep runs on boot and hourly, and in the same pass
+files no row names are deleted and `cache_entries` rows whose file is gone are pruned. A file the
+user downloaded is a `media_bindings` row instead (docs/07 §4.5) and is never evicted.
 
 ### 4.12 Legacy: providers
 

@@ -1,0 +1,24 @@
+{
+  "id": "@BBeBee/plugin-cache",
+  "version": "0.0.0",
+  "displayName": "Cache",
+  "description": "ctx.cache — covers and remote audio streams are served from disk, and fetched only on a miss.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "net:host/*",
+    "fs:read:cache",
+    "fs:write:cache",
+    "db:read:core",
+    "db:write:core"
+  ],
+  "contributes": {
+    "services": [
+      "cache"
+    ]
+  }
+}

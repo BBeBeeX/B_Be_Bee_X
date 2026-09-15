@@ -35,9 +35,32 @@ import {
   TrackRow,
   nativePrimitives,
 } from '@BBeBee/ui-kit-mobile'
+import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
+import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
+
+/**
+ * `<Artwork>`, with the cover resolved through `ctx.cache` first.
+ *
+ * A component rather than a bare hook call at each site because list rows
+ * render from callbacks: the hook suppresses the remote URL while the cache
+ * fetches, so the fallback paints instead of a second request.
+ */
+function CachedArtwork({ ctx, ...props }: ArtworkProps & { ctx: Context }): ReactElement {
+  const artwork = useResolvedArtwork(ctx, props.artwork)
+  return h(Artwork, { ...props, artwork })
+}
+
+/** `TrackRow` renders its own `Artwork`; this is the same resolution for its track. */
+function CachedTrackRow({ ctx, ...props }: TrackRowProps & { ctx: Context }): ReactElement {
+  const artwork = useResolvedArtwork(ctx, props.track.artwork)
+  return h(TrackRow, {
+    ...props,
+    track: artwork ? { ...props.track, artwork } : props.track,
+  })
+}
 
 export interface NowPlayingScreenProps {
   ctx: Context
@@ -85,7 +108,7 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
       : null,
     // Artwork first and large: on a phone this screen is mostly the artwork,
     // which is the one thing a bottom bar cannot do.
-    h(Artwork, {
+    h(CachedArtwork, { ctx,
       artwork: state.nowPlaying?.artwork,
       seed: state.trackUrn,
       size: 280,
@@ -178,7 +201,7 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
     estimatedItemSize: tokens.size.row,
     keyExtractor: (item) => item.id,
     renderItem: (item) =>
-      h(TrackRow, {
+      h(CachedTrackRow, { ctx,
         track:
           tracks.get(item.trackUrn) ??
           queueTrackFallback(item, state.nowPlaying, item.id === state.currentItemId),
@@ -240,7 +263,7 @@ export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): Re
           marginRight: tokens.space[2],
         },
       },
-      h(Artwork, {
+      h(CachedArtwork, { ctx,
         artwork: state.nowPlaying?.artwork,
         seed: state.trackUrn,
         size: tokens.size.artworkThumb,

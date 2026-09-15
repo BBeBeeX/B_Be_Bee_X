@@ -471,14 +471,14 @@ The three load-bearing waterfalls:
 
 | Hook | Purpose | Who hooks it |
 |---|---|---|
-| `player/before-resolve` | Given a track URN, decide what actually gets played | `plugin-download` substitutes a local file when a binding exists; `plugin-failover` retries a linked URN on another source when one is unavailable or its rules have rotted |
-| `http/request` | Wrap every outbound request | The source runtime injects each source's headers and cookies and refreshes an expired session; `plugin-cache` serves and stores responses; a rate limiter delays; a retry policy backs off |
+| `player/before-resolve` | Given a track URN, decide what actually gets played | `plugin-download` substitutes a file the user downloaded; `plugin-cache` substitutes a cached stream; `plugin-failover` retries a linked URN on another source when one is unavailable or its rules have rotted |
+| `http/request` | Wrap every outbound request | The source runtime injects each source's headers and cookies and refreshes an expired session; a response cache, rate limiter and retry policy hook here in a later milestone |
 | `dsp/build-chain` | Assemble the audio node chain | Each effect plugin inserts its own segment at its configured position |
 
-The payoff is concrete: **the player has no concept of downloads.** It asks for a playable
-handle, and the download plugin — if loaded — quietly answers with a file path instead of a URL.
-Uninstall the download plugin and playback keeps working, streaming instead. Nothing in
-`plugin-player` changes, or even knows.
+The payoff is concrete: **the player has no concept of downloads or caches.** It asks for a
+playable handle, and whichever plugin is loaded quietly answers with a file path instead of a URL.
+Uninstall them and playback keeps working, streaming instead. Nothing in `plugin-player` changes,
+or even knows.
 
 Full dispatch semantics for every event, including which of `emit` / `parallel` / `serial` /
 `bail` / `waterfall` each uses, are tabulated in

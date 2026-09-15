@@ -44,9 +44,32 @@ import {
   TrackRow,
 } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
+import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
+import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
+
+/**
+ * `<Artwork>`, with the cover resolved through `ctx.cache` first.
+ *
+ * A component rather than a bare hook call at each site because list rows
+ * render from callbacks: the hook suppresses the remote URL while the cache
+ * fetches, so the fallback paints instead of a second request.
+ */
+function CachedArtwork({ ctx, ...props }: ArtworkProps & { ctx: Context }): ReactElement {
+  const artwork = useResolvedArtwork(ctx, props.artwork)
+  return h(Artwork, { ...props, artwork })
+}
+
+/** `TrackRow` renders its own `Artwork`; this is the same resolution for its track. */
+function CachedTrackRow({ ctx, ...props }: TrackRowProps & { ctx: Context }): ReactElement {
+  const artwork = useResolvedArtwork(ctx, props.track.artwork)
+  return h(TrackRow, {
+    ...props,
+    track: artwork ? { ...props.track, artwork } : props.track,
+  })
+}
 
 /** What a screen shows while it does not yet have an answer. */
 function Pending({ label }: { label: string }): ReactElement {
@@ -171,6 +194,7 @@ export function LibraryScreen({
               onEndReached: tracks.loadMore,
             })
           : h(AlbumGrid, {
+              ctx,
               albums: albums.items,
               scope,
               onOpenAlbum: handleOpenAlbum,
@@ -222,7 +246,7 @@ function TrackList({
     onEndReached,
     empty,
     renderItem: (track) =>
-      h(TrackRow, {
+      h(CachedTrackRow, { ctx,
         track,
         showAlbum: true,
         // A tap plays the track in the list it was tapped in: jump if the
@@ -239,11 +263,13 @@ function TrackList({
 }
 
 function AlbumGrid({
+  ctx,
   albums,
   scope,
   onOpenAlbum,
   onEndReached,
 }: {
+  ctx: Context
   albums: readonly Album[]
   scope: LibraryScope
   onOpenAlbum?: (urn: string) => void
@@ -282,7 +308,7 @@ function AlbumGrid({
             color: p().text.primary,
           },
         },
-        h(Artwork, { artwork: album.artwork, seed: album.urn, size: tokens.size.artworkThumb }),
+        h(CachedArtwork, { ctx, artwork: album.artwork, seed: album.urn, size: tokens.size.artworkThumb }),
         h(
           'span',
           { style: { textAlign: 'left', minWidth: 0 } },
@@ -324,7 +350,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           alignItems: 'flex-end',
         },
       },
-      h(Artwork, { artwork: detail.artwork, seed: detail.urn, size: 160, radius: tokens.radius.md }),
+      h(CachedArtwork, { ctx, artwork: detail.artwork, seed: detail.urn, size: 160, radius: tokens.radius.md }),
       h(
         'div',
         null,
@@ -350,7 +376,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       keyExtractor: (track) => track.urn,
       empty: h(EmptyState, { title: 'This album has no tracks' }),
       renderItem: (track) =>
-        h(TrackRow, {
+        h(CachedTrackRow, { ctx,
           track,
           showArtwork: false,
           // A tap plays the track in the list it was tapped in: jump if the
@@ -565,7 +591,7 @@ export function SearchScreen({
                         ),
                       )
                     : row.kind === 'track'
-                      ? h(TrackRow, {
+                      ? h(CachedTrackRow, { ctx,
                           track: row.track,
                           showAlbum: true,
                           onPress: () =>
@@ -594,7 +620,7 @@ export function SearchScreen({
                                 color: scheme.text.primary,
                               },
                             },
-                            h(Artwork, {
+                            h(CachedArtwork, { ctx,
                               artwork: row.album.artwork,
                               seed: row.album.urn,
                               size: tokens.size.artworkThumb,
@@ -611,7 +637,7 @@ export function SearchScreen({
                               }),
                             ),
                           )
-                        : h(ResultLine, { row }),
+                        : h(ResultLine, { ctx, row }),
               }),
             ),
   )
@@ -687,8 +713,10 @@ function SourceChip({
  * one that plainly is not.
  */
 function ResultLine({
+  ctx,
   row,
 }: {
+  ctx: Context
   row: Extract<SearchResultRow, { kind: 'artist' | 'playlist' }>
 }): ReactElement {
   const subtitle = row.kind === 'playlist' ? row.playlist.owner : undefined
@@ -702,7 +730,7 @@ function ResultLine({
         padding: tokens.space[2],
       },
     },
-    h(Artwork, {
+    h(CachedArtwork, { ctx,
       artwork: row.kind === 'playlist' ? row.playlist.artwork : row.artist.artwork,
       seed: row.kind === 'playlist' ? row.playlist.urn : row.artist.urn,
       size: tokens.size.artworkThumb,

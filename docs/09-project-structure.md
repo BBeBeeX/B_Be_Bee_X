@@ -176,12 +176,14 @@ B_Be_Bee/
 │   │   ├── plugin-dsp/                       ctx.dsp — the effect chain (05 §3)
 │   │   ├── plugin-effect-eq10/               one DSP effect, as a plugin
 │   │   ├── plugin-download/        ✅        ctx.downloads — the task queue, the kept-downloads
-│   │   │                                       directory vs the evictable cache, If-Range resume,
-│   │   │                                       the Wi-Fi/charging policy, and the
-│   │   │                                       before-resolve substitution (05 §2, 07 §4.8)
+│   │   │                                       directory, If-Range resume, the Wi-Fi/charging
+│   │   │                                       policy, and the before-resolve substitution for
+│   │   │                                       files the user downloaded (05 §2, 07 §4.8)
 │   │   ├── plugin-library/                   playlists, favourites, smart lists
 │   │   ├── plugin-lyrics/                    lyric providers
-│   │   ├── plugin-cache/                     the http/request cache layer
+│   │   ├── plugin-cache/           ✅        ctx.cache — covers and remote streams served from
+│   │   │                                       ctx.paths.cache, fetched only on a miss, LRU per
+│   │   │                                       class (05 §2, 07 §4.11)
 │   │   └── plugin-…
 │   │
 │   ├── ui/                          🔹 LAYER 5 — views and UI infrastructure
@@ -735,7 +737,7 @@ it('leaves nothing behind when disabled', async () => {
   expect(snapshotContext(ctx)).toEqual(before)
 })
 
-// Claim: the player does not know downloads exist. (02 §5, 05 §2)
+// Claim: the player does not know downloads or caches exist. (02 §5, 05 §2)
 it('plays the same track with and without plugin-download', async () => {
   const withoutDl = await resolveVia(ctxWithout, urn)
   const withDl    = await resolveVia(ctxWith, urn)

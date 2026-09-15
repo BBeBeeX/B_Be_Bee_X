@@ -63,9 +63,18 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-local-scanner-ui-mobile': {},
   '@BBeBee/plugin-source-local': {},
   '@BBeBee/plugin-source-runtime': {},
-  // Hooks `player/before-resolve`: a remote track is streamed once and kept as
-  // a `media_bindings` row, and every later play opens the file. Disabling it
-  // leaves playback streaming, with no branch in the player either way.
+  // Covers and remote streams are served from disk, fetched only on a miss.
+  // The budgets are the mobile half of docs/07 §4.11's defaults: a phone
+  // should hold 128 MB of artwork and 256 MB of streams, not a desktop's.
+  '@BBeBee/plugin-cache': {
+    config: {
+      maxArtworkBytes: 128 * 1024 * 1024,
+      maxStreamBytes: 256 * 1024 * 1024,
+    },
+  },
+  // Hooks `player/before-resolve`: a file the user downloads is kept under
+  // `ctx.paths.downloads`, and every later play opens it. Disabling it leaves
+  // playback streaming, with no branch in the player either way.
   '@BBeBee/plugin-download': {},
   '@BBeBee/plugin-download-ui-mobile': {},
   '@BBeBee/plugin-player': {},

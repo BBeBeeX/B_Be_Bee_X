@@ -2,10 +2,12 @@
  * The download manager, against real SQL and a real filesystem.
  *
  * What is worth pinning is the contract a downloads screen and the player
- * depend on: a remote resolve is queued and downloaded while it plays, the
- * next resolve answers `kind: 'local'` without asking anything downstream,
- * every verb moves the row and the file together, and a failure degrades to
- * streaming rather than to an error.
+ * depend on: a file the user downloads is kept and plays locally without
+ * asking anything downstream, every verb moves the row and the file together,
+ * and a failure degrades to streaming rather than to an error.
+ *
+ * The automatic media cache is deliberately absent here — a resolve no longer
+ * queues anything — because that is `plugin-cache`'s job.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -23,6 +25,7 @@ import type {
   Uri,
 } from '@BBeBee/protocol'
 import plugin, { formatFor, type Downloads } from './index.js'
+import cachePlugin from '@BBeBee/plugin-cache'
 
 const URN = 'BBeBee:demo:track:1'
 const URN2 = 'BBeBee:demo:track:2'
@@ -165,8 +168,8 @@ function provider(resolveStream: () => Promise<StreamHandle>): MediaProvider {
 }
 
 async function harness(
-  config: { enabled?: boolean; maxCacheBytes?: number; gateRecheckMs?: number } = {},
-  options: { device?: boolean } = {},
+  config: { enabled?: boolean; gateRecheckMs?: number } = {},
+  options: { device?: boolean; cache?: boolean } = {},
 ) {
   const ctx = new Context()
   await ctx.plugin(PathsNode, { root: await tempDir('bbebee-downloads') })
@@ -175,6 +178,12 @@ async function harness(
   await ctx.plugin(HttpStub)
   await ctx.plugin(SourcesStub)
   if (options.device) await ctx.plugin(DeviceStub)
+  // Loaded *before* plugin-download deliberately, so the ordering test proves
+  // the prepend rather than the registration order.
+  if (options.cache) {
+    await ctx.plugin(cachePlugin, {})
+    await tick()
+  }
   const fiber = await ctx.plugin(plugin, config)
   await tick()
 
@@ -200,6 +209,7 @@ async function harness(
   sources.provider = provider(async () => REMOTE)
   const downloads = ctx.downloads as unknown as Downloads
   const device = options.device ? (ctx.device as unknown as DeviceStub) : undefined
+  const keptDir = ctx.fs.join(ctx.paths.downloads, 'BBeBee')
 
   return {
     ctx,
@@ -207,10 +217,13 @@ async function harness(
     http,
     downloads,
     device,
+    keptDir,
     bindings: () =>
       ctx.db.query<{ uri: Uri; format: string | null; size_bytes: number | null }>(
         'SELECT uri, format, size_bytes FROM media_bindings',
       ),
+    cacheEntries: () =>
+      ctx.db.query<{ key: string; uri: Uri }>('SELECT key, uri FROM cache_entries'),
   }
 }
 
@@ -223,55 +236,18 @@ async function until(check: () => boolean | Promise<boolean>): Promise<void> {
   throw new Error('timed out waiting for the download state')
 }
 
-function resolve(ctx: Context, terminal: () => Promise<StreamHandle> = async () => REMOTE) {
-  return ctx.waterfall('player/before-resolve', URN, PREFS, terminal)
-}
-
-/** A resolve for a specific track, for tests that need two cache entries. */
-function resolveUrn(ctx: Context, urn: string, terminal: () => Promise<StreamHandle> = async () => REMOTE) {
+function resolve(ctx: Context, urn = URN, terminal: () => Promise<StreamHandle> = async () => REMOTE) {
   return ctx.waterfall('player/before-resolve', urn, PREFS, terminal)
 }
 
-/** Queue one download through the waterfall and wait until it is done. */
-async function downloadOnce(h: Awaited<ReturnType<typeof harness>>): Promise<string> {
-  await resolve(h.ctx)
-  await until(() => h.downloads.tasks.length === 1)
-  const id = h.downloads.tasks[0]!.id
-  await until(() => h.downloads.task(id)?.state === 'done')
-  return id
+/** Enqueue one download and wait until it is done. */
+async function downloadOnce(h: Awaited<ReturnType<typeof harness>>, urn = URN): Promise<string> {
+  const task = (await h.ctx.downloads.enqueue([urn]))[0]!
+  await until(() => h.downloads.task(task.id)?.state === 'done')
+  return task.id
 }
 
 describe('plugin-download', () => {
-  it('queues a download while the track plays, and plays the file next time', async () => {
-    const h = await harness()
-
-    const firstHandle = await resolve(h.ctx, async () => REMOTE)
-    expect(firstHandle).toEqual(REMOTE)
-
-    await until(() => h.downloads.tasks.length === 1)
-    const id = h.downloads.tasks[0]!.id
-    await until(() => h.downloads.task(id)?.state === 'done')
-    expect(h.http.calls[0], 'fetched with the stream’s own headers').toMatchObject({
-      url: REMOTE.target,
-    })
-
-    const written = await h.bindings()
-    expect(written).toHaveLength(1)
-    expect(written[0]!.format).toBe('m4a')
-    expect(written[0]!.size_bytes).toBe(4)
-    expect(await h.ctx.fs.exists(written[0]!.uri)).toBe(true)
-
-    // The second resolve short-circuits: nothing downstream is asked.
-    let asked = false
-    const second = await resolve(h.ctx, async () => {
-      asked = true
-      return REMOTE
-    })
-    expect(second.kind).toBe('local')
-    expect(second.target).toBe(written[0]!.uri)
-    expect(asked, 'a cache hit must not reach the provider').toBe(false)
-  })
-
   it('downloads a track queued without a play, resolving it on the way', async () => {
     const h = await harness()
     const task = (await h.ctx.downloads.enqueue([URN2]))[0]!
@@ -282,11 +258,57 @@ describe('plugin-download', () => {
     expect(done.title).toBe('Second')
     expect(done.bytesDone).toBe(4)
     expect(done.bindingId).toBeTruthy()
-    // An explicit download is kept: it lands in the downloads directory, not
-    // in the evictable cache.
     expect(done.kept).toBe(true)
     const rows = await h.bindings()
     expect(rows[0]!.uri.startsWith(h.ctx.paths.downloads)).toBe(true)
+    expect(h.http.calls[0], 'fetched with the stream’s own headers').toMatchObject({
+      url: REMOTE.target,
+    })
+  })
+
+  it('plays a kept download back without touching the provider', async () => {
+    const h = await harness()
+    await downloadOnce(h)
+    const written = await h.bindings()
+    expect(written).toHaveLength(1)
+    expect(written[0]!.format).toBe('m4a')
+    expect(written[0]!.size_bytes).toBe(4)
+    expect(await h.ctx.fs.exists(written[0]!.uri)).toBe(true)
+
+    // A resolve short-circuits on the binding: nothing downstream is asked.
+    let asked = false
+    const handle = await resolve(h.ctx, URN, async () => {
+      asked = true
+      return REMOTE
+    })
+    expect(handle.kind).toBe('local')
+    expect(handle.target).toBe(written[0]!.uri)
+    expect(asked, 'a download hit must not reach the provider').toBe(false)
+  })
+
+  it('never queues anything on resolve, and still answers with a kept file', async () => {
+    const h = await harness({ enabled: false })
+    const remote = await resolve(h.ctx)
+    expect(remote).toEqual(REMOTE)
+
+    await tick()
+    await tick()
+    expect(h.downloads.tasks, 'resolve does not download').toHaveLength(0)
+    expect(h.http.calls).toHaveLength(0)
+
+    // A binding written by an earlier session is still a hit.
+    await h.ctx.fs.mkdir(h.keptDir, { recursive: true })
+    const uri = h.ctx.fs.join(h.keptDir, 'bd_old')
+    await h.ctx.fs.writeFile(uri, new Uint8Array([9, 9]))
+    await h.ctx.db.exec(
+      `INSERT INTO media_bindings (id, track_urn, uri, format, size_bytes, origin, verified_at, created_at)
+       VALUES ('bd_old', ?, ?, 'm4a', 2, 'download', 0, 0)`,
+      [URN, uri],
+    )
+
+    const hit = await resolve(h.ctx)
+    expect(hit.kind).toBe('local')
+    expect(hit.target).toBe(uri)
   })
 
   it('pauses mid-transfer and resumes from the bytes that landed', async () => {
@@ -298,17 +320,15 @@ describe('plugin-download', () => {
       await h.ctx.downloads.pause(h.downloads.tasks[0]!.id)
     }
 
-    await resolve(h.ctx)
-    await until(() => h.downloads.tasks.length === 1)
-    const id = h.downloads.tasks[0]!.id
-    await until(() => h.downloads.task(id)?.state === 'paused')
+    const task = (await h.ctx.downloads.enqueue([URN]))[0]!
+    await until(() => h.downloads.task(task.id)?.state === 'paused')
 
-    const atPause = h.downloads.task(id)!
+    const atPause = h.downloads.task(task.id)!
     expect(atPause.bytesDone, 'the bytes on disk are the checkpoint').toBeGreaterThan(0)
     expect(atPause.bytesDone).toBeLessThan(4)
 
-    await h.ctx.downloads.resume(id)
-    await until(() => h.downloads.task(id)?.state === 'done')
+    await h.ctx.downloads.resume(task.id)
+    await until(() => h.downloads.task(task.id)?.state === 'done')
 
     // The second attempt asked for the rest, not the whole file — and it
     // told the server which version the partial bytes belong to.
@@ -325,22 +345,20 @@ describe('plugin-download', () => {
       await h.ctx.downloads.pause(h.downloads.tasks[0]!.id)
     }
 
-    await resolve(h.ctx)
-    await until(() => h.downloads.tasks.length === 1)
-    const id = h.downloads.tasks[0]!.id
-    await until(() => h.downloads.task(id)?.state === 'paused')
-    const partial = h.downloads.task(id)!.bytesDone
+    const task = (await h.ctx.downloads.enqueue([URN]))[0]!
+    await until(() => h.downloads.task(task.id)?.state === 'paused')
+    const partial = h.downloads.task(task.id)!.bytesDone
     expect(partial).toBeGreaterThan(0)
 
     // The remote was re-encoded between attempts. `If-Range` with the stored
     // validator makes a conforming server answer with the whole file, and the
     // plugin rewrites from zero rather than appending new bytes to old ones.
     h.http.etag = '"v2"'
-    await h.ctx.downloads.resume(id)
-    await until(() => h.downloads.task(id)?.state === 'done')
+    await h.ctx.downloads.resume(task.id)
+    await until(() => h.downloads.task(task.id)?.state === 'done')
 
     expect(h.http.calls[1]!.headers?.['if-range']).toBe('"v1"')
-    expect(h.downloads.task(id)!.bytesDone).toBe(h.http.body.byteLength)
+    expect(h.downloads.task(task.id)!.bytesDone).toBe(h.http.body.byteLength)
     expect(await h.ctx.fs.readBytes(h.http.calls[0]!.to)).toEqual(h.http.body)
   })
 
@@ -353,10 +371,8 @@ describe('plugin-download', () => {
       await h.ctx.downloads.cancel(h.downloads.tasks[0]!.id)
     }
 
-    await resolve(h.ctx)
-    await until(() => h.downloads.tasks.length === 1)
-    const id = h.downloads.tasks[0]!.id
-    await until(() => h.downloads.task(id)?.state === 'canceled')
+    const task = (await h.ctx.downloads.enqueue([URN]))[0]!
+    await until(() => h.downloads.task(task.id)?.state === 'canceled')
     await until(async () => (await h.ctx.fs.exists(h.http.calls[0]!.to)) === false)
     expect(await h.bindings()).toHaveLength(0)
   })
@@ -365,15 +381,13 @@ describe('plugin-download', () => {
     const h = await harness()
     h.http.failure = new Error('connection reset')
 
-    await resolve(h.ctx)
-    await until(() => h.downloads.tasks.length === 1)
-    const id = h.downloads.tasks[0]!.id
-    await until(() => h.downloads.task(id)?.state === 'failed')
-    expect(h.downloads.task(id)!.error).toContain('connection reset')
+    const task = (await h.ctx.downloads.enqueue([URN]))[0]!
+    await until(() => h.downloads.task(task.id)?.state === 'failed')
+    expect(h.downloads.task(task.id)!.error).toContain('connection reset')
 
     h.http.failure = undefined
-    await h.ctx.downloads.retry(id)
-    await until(() => h.downloads.task(id)?.state === 'done')
+    await h.ctx.downloads.retry(task.id)
+    await until(() => h.downloads.task(task.id)?.state === 'done')
   })
 
   it('removes a finished download, binding and file together', async () => {
@@ -388,106 +402,33 @@ describe('plugin-download', () => {
     expect(await h.ctx.fs.exists(uri)).toBe(false)
   })
 
-  it('clears finished cache entries but never a kept download', async () => {
+  it('never clears a finished download', async () => {
     const h = await harness()
     await downloadOnce(h)
-    const kept = (await h.ctx.downloads.enqueue([URN2]))[0]!
-    await until(() => h.downloads.task(kept.id)?.state === 'done')
-    expect(h.downloads.tasks).toHaveLength(2)
 
     await h.ctx.downloads.clearFinished()
 
-    // The cache entry is gone; the file the user explicitly downloaded is not.
-    expect(h.downloads.tasks.map((task) => task.trackUrn)).toEqual([URN2])
+    expect(h.downloads.tasks).toHaveLength(1)
     const rows = await h.bindings()
     expect(rows).toHaveLength(1)
     expect(await h.ctx.fs.exists(rows[0]!.uri)).toBe(true)
   })
 
-  it('evicts the least recently played file once the budget is exceeded', async () => {
-    const h = await harness({ maxCacheBytes: 6 })
-    await downloadOnce(h)
-    // Older than the one about to land, so the LRU order is deterministic.
-    await h.ctx.db.exec('UPDATE media_bindings SET verified_at = 1')
-    // A second *cache* download (a play), not an explicit one: kept downloads
-    // are never candidates for eviction.
-    await resolveUrn(h.ctx, URN2)
-    // The waterfall queues in the background: wait for the task to exist
-    // before waiting for it to finish.
-    await until(() => h.downloads.tasks.some((task) => task.trackUrn === URN2))
-
-    // The second download finishing is what pushes the total over budget, so
-    // wait for it to be done rather than for the list to shrink mid-transfer.
-    await until(
-      () => h.downloads.tasks.length === 1 && h.downloads.tasks[0]!.state === 'done',
-    )
-    expect(h.downloads.tasks.map((task) => task.trackUrn)).toEqual([URN2])
-    expect(await h.bindings()).toHaveLength(1)
-  })
-
-  it('keeps an explicit download out of the cache budget', async () => {
-    const h = await harness({ maxCacheBytes: 1 })
-    const kept = (await h.ctx.downloads.enqueue([URN2]))[0]!
-    await until(() => h.downloads.task(kept.id)?.state === 'done')
-    const keptUri = (await h.bindings())[0]!.uri
-    expect(keptUri.startsWith(h.ctx.paths.downloads)).toBe(true)
-
-    // A cache download over the (tiny) budget evicts the cache — and must not
-    // touch the file the user explicitly asked to keep.
-    await resolveUrn(h.ctx, URN)
-    await until(() => h.downloads.tasks.length === 1)
-
-    expect(h.downloads.tasks[0]!.trackUrn).toBe(URN2)
-    expect(await h.ctx.fs.exists(keptUri), 'the kept download survives').toBe(true)
-  })
-
-  it('replaces a cached copy with an explicitly kept one', async () => {
+  it('replaces an older binding when the same track is downloaded again', async () => {
     const h = await harness()
     await downloadOnce(h)
-    const cachedUri = (await h.bindings())[0]!.uri
-
     const kept = (await h.ctx.downloads.enqueue([URN]))[0]!
     await until(() => h.downloads.task(kept.id)?.state === 'done')
 
     const rows = await h.bindings()
     expect(rows).toHaveLength(1)
     expect(rows[0]!.uri.startsWith(h.ctx.paths.downloads)).toBe(true)
-    expect(await h.ctx.fs.exists(cachedUri), 'the older cache file is gone').toBe(false)
-
-    // And the player gets the kept copy from then on.
-    const handle = await resolve(h.ctx)
-    expect(handle.target).toBe(rows[0]!.uri)
-  })
-
-  it('writes nothing when caching is off, but still answers from the cache', async () => {
-    const h = await harness({ enabled: false })
-    const handle = await resolve(h.ctx)
-    expect(handle.kind).toBe('remote')
-
-    await tick()
-    await tick()
-    expect(h.downloads.tasks).toHaveLength(0)
-    expect(h.http.calls).toHaveLength(0)
-
-    // A binding written by an earlier session is still a hit.
-    const uri = h.ctx.fs.join(h.ctx.paths.cache, 'media', 'bd_old')
-    await h.ctx.fs.mkdir(h.ctx.fs.join(h.ctx.paths.cache, 'media'), { recursive: true })
-    await h.ctx.fs.writeFile(uri, new Uint8Array([9, 9]))
-    await h.ctx.db.exec(
-      `INSERT INTO media_bindings (id, track_urn, uri, format, size_bytes, origin, verified_at, created_at)
-       VALUES ('bd_old', ?, ?, 'm4a', 2, 'download', 0, 0)`,
-      [URN, uri],
-    )
-
-    const hit = await resolve(h.ctx)
-    expect(hit.kind).toBe('local')
-    expect(hit.target).toBe(uri)
   })
 
   it('drops a binding whose file is gone and streams instead', async () => {
     const h = await harness({ enabled: false })
-    const uri = h.ctx.fs.join(h.ctx.paths.cache, 'media', 'bd_gone')
-    await h.ctx.fs.mkdir(h.ctx.fs.join(h.ctx.paths.cache, 'media'), { recursive: true })
+    await h.ctx.fs.mkdir(h.keptDir, { recursive: true })
+    const uri = h.ctx.fs.join(h.keptDir, 'bd_gone')
     await h.ctx.fs.writeFile(uri, new Uint8Array([9]))
     await h.ctx.db.exec(
       `INSERT INTO media_bindings (id, track_urn, uri, format, size_bytes, origin, verified_at, created_at)
@@ -497,7 +438,7 @@ describe('plugin-download', () => {
     await h.ctx.fs.remove(uri)
 
     let asked = false
-    const handle = await resolve(h.ctx, async () => {
+    const handle = await resolve(h.ctx, URN, async () => {
       asked = true
       return REMOTE
     })
@@ -507,7 +448,7 @@ describe('plugin-download', () => {
     await until(async () => (await h.bindings()).length === 0)
   })
 
-  it('forgets a cached copy the player could not play', async () => {
+  it('forgets a download the player could not play', async () => {
     const h = await harness()
     const id = await downloadOnce(h)
     const uri = (await h.bindings())[0]!.uri
@@ -519,13 +460,44 @@ describe('plugin-download', () => {
     expect(await h.ctx.fs.exists(uri)).toBe(false)
   })
 
+  it('drops the playback cache an older build wrote, but not a kept file', async () => {
+    const h = await harness({ enabled: false })
+    const legacyDir = h.ctx.fs.join(h.ctx.paths.cache, 'media')
+    await h.ctx.fs.mkdir(legacyDir, { recursive: true })
+    const legacy = h.ctx.fs.join(legacyDir, 'bd_legacy')
+    await h.ctx.fs.writeFile(legacy, new Uint8Array([1, 2]))
+    await h.ctx.db.exec(
+      `INSERT INTO media_bindings (id, track_urn, uri, format, size_bytes, origin, verified_at, created_at)
+       VALUES ('bd_legacy', ?, ?, 'm4a', 2, 'download', 0, 0)`,
+      [URN, legacy],
+    )
+    await h.ctx.fs.mkdir(h.keptDir, { recursive: true })
+    const keptUri = h.ctx.fs.join(h.keptDir, 'bd_kept')
+    await h.ctx.fs.writeFile(keptUri, new Uint8Array([3, 4]))
+    await h.ctx.db.exec(
+      `INSERT INTO media_bindings (id, track_urn, uri, format, size_bytes, origin, verified_at, created_at)
+       VALUES ('bd_kept', ?, ?, 'm4a', 2, 'download', 0, 0)`,
+      [URN2, keptUri],
+    )
+
+    // Reload over the same database and filesystem, which is the upgrade.
+    await h.fiber.dispose()
+    await tick()
+    await h.ctx.plugin(plugin, { enabled: false })
+    await tick()
+
+    expect(await h.ctx.fs.exists(legacy), 'the old playback copy is gone').toBe(false)
+    expect(await h.ctx.fs.exists(keptUri), 'the kept download survives').toBe(true)
+    const rows = await h.bindings()
+    expect(rows.map((row) => row.uri)).toEqual([keptUri])
+  })
+
   it('resets what a kill left behind, and keeps real partial bytes', async () => {
     const h = await harness({ enabled: false })
-    const cacheDir = h.ctx.fs.join(h.ctx.paths.cache, 'media')
-    await h.ctx.fs.mkdir(cacheDir, { recursive: true })
-    const withBytes = h.ctx.fs.join(cacheDir, 'bd_partial')
+    const withBytes = h.ctx.fs.join(h.keptDir, 'bd_partial')
+    await h.ctx.fs.mkdir(h.keptDir, { recursive: true })
     await h.ctx.fs.writeFile(withBytes, new Uint8Array(2))
-    const withoutBytes = h.ctx.fs.join(cacheDir, 'bd_vanished')
+    const withoutBytes = h.ctx.fs.join(h.keptDir, 'bd_vanished')
 
     // A `running` row is a queued one after a restart (docs/07 §4.8), and a
     // counter whose file is gone must be zeroed: resuming from it would append
@@ -557,19 +529,17 @@ describe('plugin-download', () => {
     h.device!.metered = true
     await h.ctx.downloads.setPolicy({ wifiOnly: true })
 
-    await resolve(h.ctx)
-    await until(() => h.downloads.tasks.length === 1)
-    const id = h.downloads.tasks[0]!.id
+    const task = (await h.ctx.downloads.enqueue([URN]))[0]!
     await tick()
-    expect(h.downloads.task(id)!.state).toBe('queued')
-    expect(h.downloads.task(id)!.blocked).toBe('wifi')
+    expect(h.downloads.task(task.id)!.state).toBe('queued')
+    expect(h.downloads.task(task.id)!.blocked).toBe('wifi')
     expect(h.http.calls, 'nothing left the device').toHaveLength(0)
 
     // The network changing is what releases it — no timer needed for this one.
     h.device!.metered = false
     h.device!.emitNetwork()
-    await until(() => h.downloads.task(id)?.state === 'done')
-    expect(h.downloads.task(id)!.blocked).toBeUndefined()
+    await until(() => h.downloads.task(task.id)?.state === 'done')
+    expect(h.downloads.task(task.id)!.blocked).toBeUndefined()
   })
 
   it('holds on battery with charging-only, and re-checks the charger', async () => {
@@ -601,18 +571,16 @@ describe('plugin-download', () => {
       await until(() => h.downloads.tasks[0]?.state === 'paused')
     }
 
-    await resolve(h.ctx)
-    await until(() => h.downloads.tasks.length === 1)
-    const id = h.downloads.tasks[0]!.id
-    await until(() => h.downloads.task(id)?.state === 'paused')
-    expect(h.downloads.task(id)!.blocked).toBe('wifi')
-    const atPause = h.downloads.task(id)!.bytesDone
+    const task = (await h.ctx.downloads.enqueue([URN]))[0]!
+    await until(() => h.downloads.task(task.id)?.state === 'paused')
+    expect(h.downloads.task(task.id)!.blocked).toBe('wifi')
+    const atPause = h.downloads.task(task.id)!.bytesDone
 
     // And Wi-Fi coming back resumes what the *policy* paused — without the
     // user pressing anything.
     h.device!.metered = false
     h.device!.emitNetwork()
-    await until(() => h.downloads.task(id)?.state === 'done')
+    await until(() => h.downloads.task(task.id)?.state === 'done')
     expect(h.http.calls[1]!.resumeFrom).toBe(atPause)
   })
 
@@ -633,6 +601,26 @@ describe('plugin-download', () => {
     await tick()
     expect(h.ctx.downloads.policy.wifiOnly).toBe(true)
     expect(h.ctx.downloads.policy.chargingOnly).toBe(true)
+  })
+
+  it('keeps a downloaded file ahead of a cached stream for the same track', async () => {
+    const h = await harness({}, { cache: true })
+
+    // Both plugins are loaded, and the cache is allowed to hold the track
+    // first — plugin-cache is registered before plugin-download, so only the
+    // prepend makes the download the answer.
+    const streamed = await resolve(h.ctx, URN, async () => REMOTE)
+    expect(streamed.kind).toBe('remote')
+    await until(async () => (await h.cacheEntries()).length === 1)
+
+    const task = (await h.ctx.downloads.enqueue([URN]))[0]!
+    await until(() => h.downloads.task(task.id)?.state === 'done')
+    const kept = (await h.bindings())[0]!.uri
+    expect(kept.startsWith(h.ctx.paths.downloads)).toBe(true)
+
+    const handle = await resolve(h.ctx, URN, async () => REMOTE)
+    expect(handle.kind).toBe('local')
+    expect(handle.target, 'the kept download outranks the cache').toBe(kept)
   })
 
   it('says which container a stream is, and nothing when it cannot', () => {
