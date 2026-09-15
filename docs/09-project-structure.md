@@ -174,6 +174,7 @@ B_Be_Bee/
 │   │   ├── plugin-player/          ✅        ctx.player — transport, queue, history (05 §2)
 │   │   ├── plugin-now-playing/     ✅        the "what is playing" surfaces: the full-screen
 │   │   │                                       player and the bar that opens it (05 §4, 08 §4)
+│   │   ├── plugin-queue/           ✅        the up-next list, a view of ctx.player's queue
 │   │   ├── plugin-ui/              ✅        the ctx.ui contribution registry — descriptors
 │   │   │                                       only, so it holds no React (08 §2)
 │   │   ├── plugin-inspector/       ✅        fiber tree + labelled effects (M0 exit criterion)
@@ -203,8 +204,8 @@ B_Be_Bee/
 │   │   │                                       kits meet it (08 §6)
 │   │   ├── ui-kit-mobile/          ✅        React Native components
 │   │   ├── ui-kit-desktop/         ✅        React DOM components
-│   │   ├── plugin-player-ui-desktop/ ✅      ┐ the up-next queue
-│   │   ├── plugin-player-ui-mobile/  ✅      ┘
+│   │   ├── plugin-queue-ui-desktop/  ✅      ┐ the up-next queue
+│   │   ├── plugin-queue-ui-mobile/   ✅      ┘
 │   │   ├── plugin-now-playing-ui-desktop/ ✅ ┐ full-screen player + bar / mini-player
 │   │   ├── plugin-now-playing-ui-mobile/  ✅ ┘
 │   │   ├── plugin-sources-ui-desktop/ ✅     ┐ library, search, source list,

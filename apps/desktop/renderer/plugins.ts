@@ -78,9 +78,11 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-library': {},
   '@BBeBee/plugin-library-ui-desktop': {},
   '@BBeBee/plugin-player': {},
-  '@BBeBee/plugin-player-ui-desktop': {},
-  // The "what is playing" surfaces, extracted from `plugin-player`: the
-  // full-screen player and the persistent bottom bar that opens it.
+  // The "what is playing" surfaces and the up-next list, extracted from
+  // `plugin-player`: the full-screen player, the bar that opens it, and the
+  // queue screen. `plugin-player` itself is headless now — commands only.
   '@BBeBee/plugin-now-playing': {},
   '@BBeBee/plugin-now-playing-ui-desktop': {},
+  '@BBeBee/plugin-queue': {},
+  '@BBeBee/plugin-queue-ui-desktop': {},
 }

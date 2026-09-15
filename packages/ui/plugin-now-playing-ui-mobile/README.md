@@ -4,7 +4,7 @@ Layer 5（ui）— `plugin-now-playing`（headless）的移动视图包：`plugi
 
 ## 概述
 
-同样的 hooks、同样的两块面——整屏播放器与迷你播放条（mini-player），只有元素与形状不同。从 `plugin-player-ui-mobile` 整体迁入。`ctx.player` 经 `inject`；对 headless 包是运行时依赖。
+同样的 hooks、同样的两块面——整屏播放器与迷你播放条（mini-player），只有元素与形状不同。从 `plugin-player` 的移动视图包整体迁入。`ctx.player` 经 `inject`；对 headless 包是运行时依赖。
 
 ## 源文件
 
@@ -41,5 +41,5 @@ DOM host 组件（`configureNative`）：迷你条渲染标题/艺人与 play/pa
 
 - `packages/ui/plugin-now-playing-ui-desktop/README.md`：孪生半边
 - `packages/feature/plugin-now-playing/README.md`：headless 侧
-- `packages/ui/plugin-player-ui-mobile/README.md`：队列页（留在 player）
+- `packages/ui/plugin-queue-ui-mobile/README.md`：队列页（`plugin-queue`）
 - `apps/mobile/`：`configureNative` 与路由挂载点

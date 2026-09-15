@@ -4,7 +4,7 @@ Layer 5（ui）— `plugin-now-playing`（headless）的桌面视图包："正�
 
 ## 概述
 
-把 `now-playing.bar` 与 `now-playing.view` 绑到桌面 kit 上，从 `plugin-player-ui-desktop` 整体迁入。领域状态全部来自 `@BBeBee/plugin-player/hooks`；`ctx.player` 经 `inject` 访问。对 headless 包是运行时依赖（hooks 与 view id）。
+把 `now-playing.bar` 与 `now-playing.view` 绑到桌面 kit 上，从 `plugin-player` 的桌面视图包整体迁入。领域状态全部来自 `@BBeBee/plugin-player/hooks`；`ctx.player` 经 `inject` 访问。对 headless 包是运行时依赖（hooks 与 view id）。
 
 **平台形状的差异**：桌面上的"正在播放"面是一个**常驻底部走带条**（bar），整屏播放页由它打开——这是真正由平台决定的差异，也正是 ADR-2 接受把视图写两遍的原因。
 
@@ -43,4 +43,4 @@ export default { name, inject, apply }
 
 - `packages/feature/plugin-now-playing/README.md`：headless 侧与 view id
 - `packages/ui/plugin-now-playing-ui-mobile/README.md`：孪生半边
-- `packages/ui/plugin-player-ui-desktop/README.md`：队列页（留在 player）
+- `packages/ui/plugin-queue-ui-desktop/README.md`：队列页（`plugin-queue`）

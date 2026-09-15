@@ -13,7 +13,7 @@
  * contract — the route the shells navigate to and the bar's view id — so the
  * two view packages cannot disagree about what the page is called.
  *
- * The queue screen stayed in `plugin-player-ui-*`: up-next is a different
+ * The queue screen is its own plugin (`plugin-queue`): up-next is a different
  * question from what is playing now, and the queue model is the player's.
  */
 

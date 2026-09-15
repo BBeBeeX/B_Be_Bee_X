@@ -22,7 +22,8 @@ import pluginLocalScannerUi from '@BBeBee/plugin-local-scanner-ui-mobile'
 import pluginNowPlaying from '@BBeBee/plugin-now-playing'
 import pluginNowPlayingUi from '@BBeBee/plugin-now-playing-ui-mobile'
 import pluginPlayer from '@BBeBee/plugin-player'
-import pluginPlayerUi from '@BBeBee/plugin-player-ui-mobile'
+import pluginQueue from '@BBeBee/plugin-queue'
+import pluginQueueUi from '@BBeBee/plugin-queue-ui-mobile'
 import pluginSourceLocal from '@BBeBee/plugin-source-local'
 import pluginSourceRuntime from '@BBeBee/plugin-source-runtime'
 import pluginSources from '@BBeBee/plugin-sources'
@@ -130,12 +131,17 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-player": {
     plugin: pluginPlayer,
-    manifest: {"id":"@BBeBee/plugin-player","version":"0.0.0","displayName":"Player","description":"ctx.player — transport, queue, resolution, history.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["audio","mediaSession","background","db:read:core","db:write:core"],"contributes":{"services":["player"]}},
+    manifest: {"id":"@BBeBee/plugin-player","version":"0.0.0","displayName":"Player","description":"ctx.player — transport, queue, resolution, history.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio","mediaSession","background","db:read:core","db:write:core"],"contributes":{"services":["player"]}},
     builtin: true,
   },
-  "@BBeBee/plugin-player-ui-mobile": {
-    plugin: pluginPlayerUi,
-    manifest: {"id":"@BBeBee/plugin-player-ui-mobile","version":"0.0.0","displayName":"Player (mobile views)","description":"ctx.player — transport, queue, resolution, history.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["player"]}},
+  "@BBeBee/plugin-queue": {
+    plugin: pluginQueue,
+    manifest: {"id":"@BBeBee/plugin-queue","version":"0.0.0","displayName":"Queue","description":"The up-next list — a view of the queue ctx.player owns.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[]},
+    builtin: true,
+  },
+  "@BBeBee/plugin-queue-ui-mobile": {
+    plugin: pluginQueueUi,
+    manifest: {"id":"@BBeBee/plugin-queue-ui-mobile","version":"0.0.0","displayName":"Queue (mobile views)","description":"The up-next list — a view of the queue ctx.player owns.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-source-local": {

@@ -33,7 +33,7 @@ import type {
 } from '@BBeBee/protocol'
 import { QueueModel, type QueueEntry } from './queue.js'
 import { PlayerStore } from './store.js'
-import { PLAYER_COMMANDS, PLAYER_ROUTES } from './views.js'
+import { PLAYER_COMMANDS } from './contributions.js'
 
 export type Transition = 'gapless' | 'crossfade' | 'neither'
 
@@ -309,10 +309,10 @@ export class Player extends Service implements PlayerService {
       }
     })
 
-    // Descriptors, not components: the headless plugin says *what* exists and
-    // where it belongs, and whichever view package was loaded for this target
-    // binds a component to the same id (docs/08 §2). A target with no view
-    // still gets the route listed and the commands working.
+    // Commands only now: the surfaces that were once contributed here — the
+    // now-playing page and bar, the queue — moved to `plugin-now-playing` and
+    // `plugin-queue`, and their view ids moved with them. The transport's own
+    // verbs need no view: the palette and the more-menu are enough (docs/08 §3).
     // Arrow functions, so `this` is captured lexically: a generator passed to
     // `ctx.effect` is called without a receiver, and aliasing `this` into a
     // local would work but says less about why.
@@ -322,15 +322,6 @@ export class Player extends Service implements PlayerService {
 
     this.ownCtx.inject(['ui'], (scoped) =>
       scoped.effect(function* () {
-        yield scoped.ui.contribute({
-          kind: 'route',
-          id: PLAYER_ROUTES.queue,
-          path: '/queue',
-          title: 'Queue',
-          icon: 'list',
-          placement: ['tab-bar', 'sidebar'],
-          order: 20,
-        })
         // Commands work with no view at all: they reach the command palette on
         // desktop and the more-menu on mobile, which is the cheapest way to
         // make a feature reachable on both targets (docs/08 §3).
@@ -1555,4 +1546,4 @@ export default { name, apply }
 export { QueueModel } from './queue.js'
 export { permute } from '@BBeBee/toolkit'
 export { PlayerStore } from './store.js'
-export { PLAYER_COMMANDS, PLAYER_ROUTES, PLAYER_VIEWS } from './views.js'
+export { PLAYER_COMMANDS } from './contributions.js'

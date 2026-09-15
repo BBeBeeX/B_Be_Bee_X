@@ -1,0 +1,17 @@
+{
+  "id": "@BBeBee/plugin-queue",
+  "version": "0.0.0",
+  "displayName": "Queue",
+  "description": "The up-next list — a view of the queue ctx.player owns.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js",
+    "ui": {
+      "desktop": "./dist/index.js",
+      "mobile": "./dist/index.js"
+    }
+  },
+  "capabilities": []
+}

@@ -8,7 +8,7 @@ Layer 4（feature）— **"正在播放"的两块面**：整屏播放器与常�
 
 - 拥有 route `now-playing.view`（`/now-playing`，tab-bar，order 10）与 `now-playing.bar` 的 **view id**；
 - **不声明服务键**——transport 状态与队列属于 `ctx.player`；读它们的 hooks（`useTransport`/`usePosition`/`useDuration`/`useTransportAvailability`）留在 `plugin-player/hooks`，随服务走；
-- 队列页（`player.queue`）留在 `plugin-player-ui-*`：待播列表与"现在播什么"是两个问题，而队列模型是 player 的。
+- 队列页（`queue.view`）在 `plugin-queue`：待播列表与"现在播什么"是两个问题，而队列模型是 player 的。
 
 拆分的收益：`plugin-player` 不必因为一块屏幕改动而改动；播放页可以做自己的演进（可视化、歌词、封面主题），而不触碰传输状态机。
 
