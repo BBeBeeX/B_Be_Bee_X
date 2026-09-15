@@ -87,6 +87,8 @@ export class MediaSessionElectron extends Service implements MediaSessionService
   private nowPlaying?: NowPlaying
   private playbackState: 'playing' | 'paused' | 'stopped' = 'stopped'
   private supported: TransportCommand['type'][] = ['play', 'pause', 'next', 'previous']
+  /** The metadata currently published, so a position tick does not rebuild it. */
+  private metadataKey?: string
 
   constructor(ctx: Context, config: MediaSessionElectronConfig = {}) {
     super(ctx, 'mediaSession')
@@ -116,13 +118,28 @@ export class MediaSessionElectron extends Service implements MediaSessionService
   update(np: NowPlaying): void {
     this.nowPlaying = np
 
-    if (this.session && this.metadataFactory) {
+    /*
+     * ⚠️ The metadata is rebuilt only when it actually changed.
+     *
+     * `plugin-player` republishes on its 1 Hz position tick, and a fresh
+     * `MediaMetadata` per tick is not merely wasteful: Chromium tries to load
+     * the artwork on every assignment, so a cached `file:` cover produced one
+     * "MediaImage src can only be of http/https/data/blob scheme" warning every
+     * second, forever. Position is separate from metadata in the browser API
+     * precisely so a scrubber can move without republishing the track.
+     */
+    const key = metadataKey(np)
+    const changed = key !== this.metadataKey
+    this.metadataKey = key
+
+    if (changed && this.session && this.metadataFactory) {
       this.session.metadata = this.metadataFactory({
         title: np.title,
         artist: np.artist ?? '',
         album: np.album ?? '',
         // Chromium wants a sized list; one entry is enough and the OS scales.
-        artwork: np.artworkUri ? [{ src: np.artworkUri }] : [],
+        // Only a scheme it accepts — a local file is dropped, never attempted.
+        artwork: artworkFor(np),
       })
     }
     // Position is separate from metadata in the browser API, and it is what
@@ -136,6 +153,7 @@ export class MediaSessionElectron extends Service implements MediaSessionService
       })
     }
 
+    if (!changed) return
     void this.bridge?.call('system', 'publishNowPlaying', [np]).catch(() => {
       // No MPRIS daemon, or an older host. The renderer surface still works,
       // and a missing OS integration must not fail a track change.
@@ -163,6 +181,7 @@ export class MediaSessionElectron extends Service implements MediaSessionService
   clear(): void {
     this.nowPlaying = undefined
     this.playbackState = 'stopped'
+    this.metadataKey = undefined
     if (this.session) {
       this.session.metadata = null
       this.session.playbackState = 'none'
@@ -220,6 +239,31 @@ export class MediaSessionElectron extends Service implements MediaSessionService
       }
     }
   }
+}
+
+/** The schemes Chromium's `MediaMetadata` accepts, per its own error message. */
+const BROWSER_ARTWORK = /^(https?:|data:|blob:)/i
+
+/**
+ * The artwork Chromium may load, if any.
+ *
+ * A `file:` or `content:` cover is dropped rather than passed: the browser
+ * cannot render it in a media session and warns for every assignment. The
+ * renderer's in-app views render the same local file through `<img>`, which
+ * is not subject to this restriction.
+ */
+function artworkFor(np: NowPlaying): { src: string }[] {
+  const src =
+    np.artworkUrl ??
+    (np.artworkUri && BROWSER_ARTWORK.test(np.artworkUri) ? np.artworkUri : undefined)
+  return src ? [{ src }] : []
+}
+
+/** What `update` compares to decide whether the OS metadata must be rebuilt. */
+function metadataKey(np: NowPlaying): string {
+  return [np.title, np.artist ?? '', np.album ?? '', np.artworkUrl ?? '', np.artworkUri ?? ''].join(
+    '\u0000',
+  )
 }
 
 /** A duration a scrubber can actually use. */

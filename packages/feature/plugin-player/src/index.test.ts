@@ -18,6 +18,7 @@ import type {
   Capabilities,
   DbService,
   MediaProvider,
+  NowPlaying,
   StreamHandle,
   Track,
 } from '@BBeBee/protocol'
@@ -85,7 +86,7 @@ function localProvider(overrides: Partial<MediaProvider> = {}): MediaProvider {
 /** What a lock screen was told, in order. */
 interface SessionLog {
   states: ('playing' | 'paused' | 'stopped')[]
-  updates: { title: string }[]
+  updates: NowPlaying[]
   cleared: number
 }
 
@@ -101,8 +102,8 @@ function mediaSessionStub(log: SessionLog) {
     constructor(ctx: Context) {
       super(ctx, 'mediaSession')
     }
-    update(np: { title: string }) {
-      log.updates.push({ title: np.title })
+    update(np: NowPlaying) {
+      log.updates.push(np)
     }
     setPlaybackState(state: 'playing' | 'paused' | 'stopped') {
       log.states.push(state)
@@ -771,6 +772,39 @@ describe('stalls', () => {
     for (const update of session.updates) {
       expect(update.title).not.toContain('BBeBee:')
     }
+  })
+
+  it('hands over a network cover URL, and the local one separately', async () => {
+    /*
+     * The two OS surfaces need different things: Chromium's `MediaMetadata`
+     * refuses `file:` and warns on every assignment, while an Android
+     * notification can only read a local file. Both are published; each
+     * media-session implementation renders the one it can (docs/04 §7).
+     */
+    const { player, session, db } = await harness({ mediaSession: true })
+    await db.exec(
+      `INSERT INTO sources (id, source_url, name, doc_json, doc_hash, imported_at, updated_at)
+       VALUES (?, ?, 'p', '{}', 'h', 0, 0)`,
+      [SOURCE, `bbebee://local/${SOURCE}`],
+    )
+    await db.exec(
+      `INSERT INTO artworks (id, source_url, local_uri, fetched_at)
+       VALUES ('aw1', 'https://cdn.test/a.jpg', 'file:///C:/artwork/a.jpg', 0)`,
+    )
+    await db.exec(
+      `INSERT INTO tracks (urn, source_id, remote_id, title, artwork_id, fetched_at)
+       VALUES (?, ?, 'a', 'A', 'aw1', 0)`,
+      [urn('a'), SOURCE],
+    )
+
+    await player.playNow([urn('a')])
+    await tick()
+
+    const update = session.updates.at(-1)
+    expect(update?.artworkUrl, 'what a browser can load').toBe('https://cdn.test/a.jpg')
+    expect(update?.artworkUri, 'what a phone notification can read').toBe(
+      'file:///C:/artwork/a.jpg',
+    )
   })
 
   it('does not advance position while stalled', async () => {

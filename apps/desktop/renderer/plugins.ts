@@ -68,6 +68,11 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   // playback streaming, with no branch in the player either way.
   '@BBeBee/plugin-download': {},
   '@BBeBee/plugin-download-ui-desktop': {},
+  // Curation: playlists, favourites, collections and smart playlists. Its
+  // routes put Playlists and Favourites in the sidebar; the playlist detail
+  // screen is reached from the list, so it has no placement (docs/08 §3).
+  '@BBeBee/plugin-library': {},
+  '@BBeBee/plugin-library-ui-desktop': {},
   '@BBeBee/plugin-player': {},
   '@BBeBee/plugin-player-ui-desktop': {},
 }

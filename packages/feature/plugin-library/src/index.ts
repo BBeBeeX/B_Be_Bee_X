@@ -103,7 +103,11 @@ export class Library extends Service implements LibraryService {
           path: '/playlist/:urn',
           title: 'Playlist',
           // Reached from the playlists screen rather than from the chrome:
-          // a tab for one playlist is a tab for every playlist.
+          // a tab for one playlist is a tab for every playlist. The empty
+          // placement is deliberate — the desktop sidebar treats an *absent*
+          // placement as `sidebar`, so omitting it would put a bare "Playlist"
+          // entry beside the real one (docs/08 §3).
+          placement: [],
           order: 0,
         })
         yield scoped.ui.contribute({

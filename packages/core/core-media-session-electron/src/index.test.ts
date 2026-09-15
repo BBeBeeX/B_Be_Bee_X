@@ -96,6 +96,40 @@ describe('the Chromium surface', () => {
     expect(session.positions.at(-1)).toMatchObject({ duration: 300, position: 30 })
   })
 
+  it('drops a local cover, which Chromium would refuse with a warning', async () => {
+    // `file:` makes `MediaMetadata` log "src can only be of http/https/data/blob
+    // scheme" on every assignment — once per position tick, when the player
+    // republished. It is dropped here, not attempted.
+    const { service, session } = await harness()
+    service.update({ title: 'Jóga', artworkUri: 'file:///C:/artwork/aw.jpg' })
+    expect((session.metadata as { artwork?: unknown[] }).artwork).toEqual([])
+  })
+
+  it('prefers the network cover URL a browser can actually load', async () => {
+    const { service, session } = await harness()
+    service.update({
+      title: 'Jóga',
+      artworkUri: 'file:///C:/artwork/aw.jpg',
+      artworkUrl: 'https://cdn.test/joga.jpg',
+    })
+    expect((session.metadata as { artwork?: unknown[] }).artwork).toEqual([
+      { src: 'https://cdn.test/joga.jpg' },
+    ])
+  })
+
+  it('moves the scrubber without rebuilding the metadata', async () => {
+    // The 1 Hz reference tick must not republish the track: a new
+    // `MediaMetadata` per second is a re-render of the lock screen, and the
+    // art load Chromium retries with it.
+    const { service, session } = await harness()
+    service.update({ title: 'Jóga', durationMs: 300_000, positionMs: 0 })
+    const published = session.metadata
+    service.update({ title: 'Jóga', durationMs: 300_000, positionMs: 1000 })
+
+    expect(session.metadata, 'the same metadata object').toBe(published)
+    expect(session.positions.at(-1)).toMatchObject({ position: 1 })
+  })
+
   it('does not publish a position without a usable duration', async () => {
     // `setPositionState` throws on NaN or a position past the end, which would
     // take down a track change over a cosmetic feature.
@@ -165,6 +199,26 @@ describe('the main-process surface', () => {
     const methods = bridge.calls.map((c) => c.method)
     expect(methods).toContain('publishNowPlaying')
     expect(methods).toContain('publishPlaybackState')
+  })
+
+  it('publishes once per track, not once per position tick', async () => {
+    const { service, bridge } = await harness()
+    service.update({ title: 'Jóga', durationMs: 300_000, positionMs: 0 })
+    service.update({ title: 'Jóga', durationMs: 300_000, positionMs: 1000 })
+    service.update({ title: 'Jóga', durationMs: 300_000, positionMs: 2000 })
+
+    const publishes = bridge.calls.filter((c) => c.method === 'publishNowPlaying')
+    expect(publishes).toHaveLength(1)
+  })
+
+  it('re-publishes after a clear, which dropped the surface', async () => {
+    const { service, bridge } = await harness()
+    service.update({ title: 'Jóga' })
+    service.clear()
+    service.update({ title: 'Jóga' })
+
+    const publishes = bridge.calls.filter((c) => c.method === 'publishNowPlaying')
+    expect(publishes).toHaveLength(2)
   })
 
   it('accepts a press from MPRIS as if it were a lock-screen press', async () => {

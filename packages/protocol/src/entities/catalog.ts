@@ -118,7 +118,11 @@ export interface Playlist {
   durationMs?: number
   /**
    * True when the tracks come from a rule tree rather than stored items.
-   * /
+   *
+   * A smart playlist's items are read-only: `addTracks`, `removeItems` and
+   * `moveItem` refuse, because there is no row a reorder could move. Its
+   * definition is editable through `ctx.library.setSmartQuery`.
+   */
   isSmart?: boolean
 }
 

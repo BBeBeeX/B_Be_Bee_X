@@ -20,6 +20,7 @@ import { NetworkError, NotFoundError, ProviderError, SourceError } from '@BBeBee
 import type {
   AudioSourceHandle,
   Disposable,
+  NowPlayingMeta,
   PlayNowOptions,
   PlayRecord,
   PlayerService,
@@ -1352,6 +1353,21 @@ export class Player extends Service implements PlayerService {
 
   /* ── media session ─────────────────────────────────────────────────── */
 
+  /**
+   * The cover URL a browser media session can render.
+   *
+   * Chromium's `MediaMetadata` refuses `file:` outright and logs a warning on
+   * every assignment, so a cached local cover must never be handed to it —
+   * least of all once a second from the position tick. `artworkUri` still
+   * carries the local file for the surfaces that need one (an Android
+   * notification), and each media-session implementation picks what it can
+   * render (docs/04 §7).
+   */
+  private sessionArtworkUrl(meta: NowPlayingMeta | undefined): string | undefined {
+    const url = meta?.artwork?.sourceUrl
+    return url && /^(https?:|data:|blob:)/i.test(url) ? url : undefined
+  }
+
   private publishNowPlaying(): void {
     const urn = this.transport.trackUrn
     const session = this.mediaCtx?.mediaSession
@@ -1370,6 +1386,7 @@ export class Player extends Service implements PlayerService {
           this.set({ nowPlaying: meta })
         }
         if (session) {
+          const artworkUrl = this.sessionArtworkUrl(meta)
           session.update({
             // Never the URN: a lock screen showing a track's key is a bug
             // report, not metadata. An unresolved row says it is loading.
@@ -1377,6 +1394,7 @@ export class Player extends Service implements PlayerService {
             ...(meta?.artist ? { artist: meta.artist } : {}),
             ...(meta?.album ? { album: meta.album } : {}),
             ...(meta?.artworkUri ? { artworkUri: meta.artworkUri } : {}),
+            ...(artworkUrl ? { artworkUrl } : {}),
             durationMs: this.transport.durationMs,
             positionMs: this.transport.positionMs,
           })
@@ -1404,11 +1422,13 @@ export class Player extends Service implements PlayerService {
     // tick used to overwrite the lock screen's title with the track's key
     // once a second, for every remote track.
     const meta = this.transport.nowPlaying
+    const artworkUrl = this.sessionArtworkUrl(meta)
     session.update({
       title: meta?.title ?? 'Loading…',
       ...(meta?.artist ? { artist: meta.artist } : {}),
       ...(meta?.album ? { album: meta.album } : {}),
       ...(meta?.artworkUri ? { artworkUri: meta.artworkUri } : {}),
+      ...(artworkUrl ? { artworkUrl } : {}),
       durationMs: this.transport.durationMs,
       positionMs,
     })

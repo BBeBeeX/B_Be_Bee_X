@@ -430,7 +430,10 @@ export interface NowPlaying {
   title: string
   artist?: string
   album?: string
+  /** A local Uri — what an Android notification can render; remote covers are cached first. */
   artworkUri?: Uri
+  /** http(s)/data/blob — what Chromium's `MediaMetadata` accepts. `file:` is refused. */
+  artworkUrl?: string
   durationMs?: number
   positionMs?: number
   playbackRate?: number
@@ -456,7 +459,20 @@ export interface MediaSessionService {
 | | Electron (`core-media-session-electron`) | Expo (`core-media-session-rn`) |
 |---|---|---|
 | Backing | Chromium's `navigator.mediaSession`, plus MPRIS (Linux), SMTC (Windows), and the macOS Now Playing centre via `main` | `react-native-audio-api`'s notification/lock-screen controls |
-| Lock screen artwork | ✅ | ✅ — must be a local `Uri`; remote artwork is cached first |
+| Lock screen artwork | `artworkUrl` only | `artworkUri` only — remote artwork is cached first |
+
+**Artwork is two fields because the two surfaces can render different things.** Chromium's
+`MediaMetadata` accepts `http(s)`, `data:` and `blob:` and refuses `file:` outright — with a
+warning on every assignment, so a cached local cover republished by the 1 Hz position tick is a
+warning a second, forever. An Android notification is the reverse: it can read a local file and
+cannot reach a URL that only the renderer holds. A caller publishes whichever it has, each
+implementation renders the one it can and ignores the other, and the protocol keeps `artworkUri`
+documented as "must be local" so neither side starts guessing.
+
+The service also **republishes metadata only when it changed**: `plugin-player` calls
+`update()` on the position tick, and rebuilding `MediaMetadata` per second is a lock-screen
+re-render plus an artwork retry. Position moves through `setPositionState`, which is separate in
+the browser API for exactly this reason.
 
 ---
 

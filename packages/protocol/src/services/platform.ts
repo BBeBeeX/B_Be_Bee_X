@@ -190,6 +190,18 @@ export interface NowPlaying {
   album?: string
   /** Must be a local Uri on mobile; remote artwork is cached first. */
   artworkUri?: Uri
+  /**
+   * A cover URL a browser media session can render: `http(s)`, `data:` or
+   * `blob:` only.
+   *
+   * The counterpart to `artworkUri`, because the two OS surfaces need
+   * different things. An Android notification can read a local file and
+   * cannot reach a URL only the renderer holds; Chromium's `MediaMetadata`
+   * refuses every other scheme — `file:` included — and logs a warning on
+   * each assignment. A caller publishes whichever it has; each implementation
+   * renders the one it can and ignores the other.
+   */
+  artworkUrl?: string
   durationMs?: number
   positionMs?: number
   playbackRate?: number
