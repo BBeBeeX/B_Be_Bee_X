@@ -23,9 +23,11 @@ import type {
   ArtworkProps,
   ButtonProps,
   ButtonVariant,
+  ContextMenuProps,
   EmptyStateProps,
   IconButtonProps,
   ListProps,
+  MenuItemSpec,
   SheetProps,
   SliderProps,
   TextFieldProps,
@@ -383,9 +385,12 @@ export function TrackRow(props: TrackRowProps) {
       onClick: props.onPress,
       // Right-click is the desktop half of `onMore`; mobile uses a long press.
       onContextMenu: props.onMore
-        ? (event: { preventDefault(): void }) => {
+        ? (event: { preventDefault(): void; clientX?: number; clientY?: number }) => {
             event.preventDefault()
-            props.onMore?.()
+            props.onMore?.({
+              x: event.clientX ?? 0,
+              y: event.clientY ?? 0,
+            })
           }
         : undefined,
       onKeyDown: (event: { key: string }) => {
@@ -570,6 +575,231 @@ export function Sheet(props: SheetProps) {
  * currently rendered — the one thing windowing breaks if it is not said out
  * loud.
  */
+
+/** Width of the popover. One number so the viewport clamp can be exact. */
+const MENU_WIDTH = 248
+
+/**
+ * A right-click / overflow menu.
+ *
+ * A popover, not a dialog: it opens at the pointer, closes on a click outside,
+ * and Escape closes it. A submenu **replaces the panel's contents** rather
+ * than stacking a second surface — the back row is the way out, which is what
+ * a phone has trained everyone to expect and which costs the desktop nothing
+ * to match (docs/08 §6).
+ *
+ * Kit-side, the menu is dumb: it renders `MenuItemSpec`s and reports presses.
+ * Which actions exist, and what they do, is built once by `@BBeBee/ui-menus`.
+ */
+export function ContextMenu(props: ContextMenuProps): ReactElement | null {
+  const [submenuId, setSubmenuId] = useState<string | undefined>(undefined)
+  const [filter, setFilter] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState('')
+  const p = c()
+
+  // Every close resets the depth, so the next open never starts mid-submenu.
+  useEffect(() => {
+    if (props.open) return
+    setSubmenuId(undefined)
+    setFilter('')
+    setCreating(false)
+    setDraft('')
+  }, [props.open])
+
+  if (!props.open) return null
+
+  const submenu = props.items.find((item) => item.id === submenuId)?.submenu
+  const needle = filter.trim().toLowerCase()
+  const visible = submenu
+    ? submenu.items.filter((item) => item.label.toLowerCase().includes(needle))
+    : []
+
+  const close = () => props.onClose()
+  const activate = (item: MenuItemSpec) => {
+    if (item.disabled) return
+    if (item.submenu) {
+      setSubmenuId(item.id)
+      setFilter('')
+      setCreating(false)
+      setDraft('')
+      return
+    }
+    void item.onSelect?.()
+    close()
+  }
+
+  const width = MENU_WIDTH
+  const viewportWidth = typeof window === 'undefined' ? 1024 : window.innerWidth
+  const viewportHeight = typeof window === 'undefined' ? 768 : window.innerHeight
+  const left = Math.max(8, Math.min(props.x, viewportWidth - width - 8))
+  const top = Math.max(8, Math.min(props.y, Math.max(8, viewportHeight - 240)))
+
+  return h(
+    'div',
+    {
+      role: 'presentation',
+      onClick: close,
+      // A second right-click lands on the backdrop and closes rather than
+      // opening a second menu on top of this one.
+      onContextMenu: (event: { preventDefault(): void }) => {
+        event.preventDefault()
+        close()
+      },
+      style: { position: 'fixed', inset: 0, zIndex: tokens.z.overlay },
+    },
+    h(
+      'div',
+      {
+        role: 'menu',
+        ...common(props),
+        'aria-label': props.accessibilityLabel ?? props.title ?? 'Actions',
+        onClick: (event: { stopPropagation(): void }) => event.stopPropagation(),
+        onKeyDown: (event: { key: string }) => {
+          if (event.key === 'Escape') close()
+        },
+        style: {
+          position: 'fixed',
+          left,
+          top,
+          width,
+          maxHeight: '70vh',
+          overflowY: 'auto',
+          padding: tokens.space[1],
+          borderRadius: tokens.radius.md,
+          border: `1px solid ${p.border.subtle}`,
+          background: p.bg.overlay,
+          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)',
+        },
+      },
+      props.title
+        ? h(
+            'div',
+            { style: { padding: `${tokens.space[2]}px ${tokens.space[3]}px` } },
+            h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1, children: props.title }),
+          )
+        : null,
+      submenu
+        ? h(
+            'div',
+            { style: { display: 'flex', flexDirection: 'column' } },
+            h(MenuRow, {
+              item: { id: '__back', label: `\u2039 ${submenu.title ?? 'Back'}`, icon: undefined },
+              onActivate: () => {
+                setSubmenuId(undefined)
+                setFilter('')
+                setCreating(false)
+                setDraft('')
+              },
+            }),
+            submenu.searchPlaceholder
+              ? h(
+                  'div',
+                  { style: { padding: `0 ${tokens.space[2]}px ${tokens.space[2]}px` } },
+                  h(TextField, {
+                    value: filter,
+                    onChange: setFilter,
+                    placeholder: submenu.searchPlaceholder,
+                    testID: 'context-menu-filter',
+                  }),
+                )
+              : null,
+            submenu.create
+              ? creating
+                ? h(
+                    'div',
+                    {
+                      style: {
+                        display: 'flex',
+                        gap: tokens.space[2],
+                        padding: `${tokens.space[1]}px ${tokens.space[2]}px`,
+                      },
+                    },
+                    h(
+                      'div',
+                      { style: { flex: 1, minWidth: 0 } },
+                      h(TextField, {
+                        value: draft,
+                        onChange: setDraft,
+                        placeholder: submenu.create.placeholder,
+                        testID: 'context-menu-create-name',
+                      }),
+                    ),
+                    h(Button, {
+                      onPress: () => {
+                        const name = draft.trim()
+                        if (!name) return
+                        void submenu.create?.onSelect(name)
+                        close()
+                      },
+                      disabled: draft.trim().length === 0,
+                      testID: 'context-menu-create-confirm',
+                      children: 'OK',
+                    }),
+                  )
+                : h(MenuRow, {
+                    item: { id: '__create', label: submenu.create.label, icon: '\uff0b' },
+                    onActivate: () => setCreating(true),
+                  })
+              : null,
+            visible.length === 0
+              ? h(
+                  'div',
+                  { style: { padding: tokens.space[3] } },
+                  h(Text, { variant: 'sm', tone: 'muted', children: submenu.emptyLabel ?? 'No matches' }),
+                )
+              : visible.map((item) => h(MenuRow, { key: item.id, item, onActivate: activate })),
+          )
+        : props.items.map((item) => h(MenuRow, { key: item.id, item, onActivate: activate })),
+    ),
+  )
+}
+
+/** One `role="menuitem"` row, shared by the root menu and every submenu. */
+function MenuRow({
+  item,
+  onActivate,
+}: {
+  item: MenuItemSpec
+  onActivate: (item: MenuItemSpec) => void
+}): ReactElement {
+  const p = c()
+  const [hovered, hoverProps] = useHover()
+  const danger = item.tone === 'danger'
+  return h(
+    'button',
+    {
+      type: 'button',
+      role: 'menuitem',
+      disabled: item.disabled,
+      'aria-haspopup': item.submenu ? 'menu' : undefined,
+      onClick: () => onActivate(item),
+      ...hoverProps,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: tokens.space[2],
+        width: '100%',
+        minHeight: tokens.size.touchTarget,
+        padding: `0 ${tokens.space[3]}px`,
+        border: 'none',
+        borderRadius: tokens.radius.sm,
+        textAlign: 'left',
+        cursor: item.disabled ? 'default' : 'pointer',
+        opacity: item.disabled ? 0.45 : 1,
+        background: hovered && !item.disabled ? p.bg.raised : 'transparent',
+        color: danger ? p.state.error : p.text.primary,
+        font: 'inherit',
+      },
+    },
+    item.icon
+      ? h('span', { 'aria-hidden': true, style: { width: 18, textAlign: 'center' } }, item.icon)
+      : h('span', { 'aria-hidden': true, style: { width: 18 } }),
+    h('span', { style: { flex: 1, minWidth: 0 } }, item.label),
+    item.submenu ? h(Text, { tone: 'muted', children: '\u203a' }) : null,
+  )
+}
+
 export function List<T>(props: ListProps<T>) {
   const scroller = useRef<HTMLDivElement | null>(null)
   const count = props.items.length

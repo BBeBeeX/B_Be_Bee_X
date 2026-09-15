@@ -126,6 +126,21 @@ export const COMPONENT_CONTRACT: ComponentSpec[] = [
     ],
   },
   {
+    name: 'ContextMenu',
+    purpose:
+      'A right-click / long-press menu. A popover at the pointer on desktop, a bottom sheet ' +
+      'on mobile; both replace their contents for a submenu.',
+    props: [
+      { name: 'open', required: true },
+      { name: 'onClose', required: true },
+      { name: 'items', required: true, note: 'Menu rows, built once by @BBeBee/ui-menus.' },
+      { name: 'x', note: 'Pointer anchor. Desktop clamps it on screen; mobile ignores it.' },
+      { name: 'y' },
+      { name: 'title', note: 'The entity name; the sheet has no other context.' },
+      ...UNIVERSAL,
+    ],
+  },
+  {
     name: 'List',
     purpose: 'A virtualised list. FlashList on mobile, react-virtual on desktop.',
     props: [

@@ -16,6 +16,7 @@ import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import type { Collection, Playlist } from '@BBeBee/protocol'
+import { tryParseUrn } from '@BBeBee/protocol'
 import { LIBRARY_VIEWS } from '@BBeBee/plugin-library/views'
 import {
   summariseLibrary,
@@ -25,9 +26,11 @@ import {
   useSaved,
 } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
-import { Button, EmptyState, IconButton, List, Text, TextField, TrackRow, nativePrimitives } from '@BBeBee/ui-kit-mobile'
+import { Button, ContextMenu, EmptyState, IconButton, List, Text, TextField, TrackRow, nativePrimitives } from '@BBeBee/ui-kit-mobile'
 import { serviceOf } from '@BBeBee/ui-core'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
+import { useCollectionMenu, usePlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
+import type { MenuAnchor } from '@BBeBee/ui-core'
 
 const p = () => palettes.dark
 
@@ -47,6 +50,8 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
   const [collectionDraft, setCollectionDraft] = useState('')
   const [error, setError] = useState<string | undefined>(undefined)
   const summary = summariseLibrary(playlists.data ?? [], collections.data ?? [], [])
+  const playlistMenu = usePlaylistMenu(ctx)
+  const collectionMenu = useCollectionMenu(ctx)
 
   const fail = (what: string) => (cause: unknown) =>
     setError(`${what}: ${cause instanceof Error ? cause.message : String(cause)}`)
@@ -65,6 +70,32 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
     setCollectionDraft('')
     setError(undefined)
     void ctx.library.createCollection(name).catch(fail('could not create the collection'))
+  }
+
+  // List actions need the tracks, which a row does not carry — resolve them
+  // before opening, so the menu never offers an action against an empty list.
+  const openPlaylistMenu = (playlist: Playlist, anchor?: MenuAnchor) => {
+    void ctx.library
+      .getPlaylist(playlist.urn)
+      .then((detail) =>
+        playlistMenu.open(playlist, detail?.items.map((item) => item.trackUrn) ?? [], anchor),
+      )
+      .catch(() => playlistMenu.open(playlist, [], anchor))
+  }
+
+  const openCollectionMenu = (collection: Collection, anchor?: MenuAnchor) => {
+    void ctx.library
+      .listCollectionItems(collection.id)
+      .then((page) =>
+        collectionMenu.open(
+          collection.name,
+          page.items
+            .map((item) => item.urn)
+            .filter((entryUrn) => tryParseUrn(entryUrn)?.kind === 'track'),
+          anchor,
+        ),
+      )
+      .catch(() => collectionMenu.open(collection.name, [], anchor))
   }
 
   const rows: PlaylistsRow[] = [
@@ -173,6 +204,7 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
                 void ctx.library
                   .deletePlaylist(row.playlist.urn)
                   .catch(fail('could not delete the playlist')),
+              onMore: (anchor) => openPlaylistMenu(row.playlist, anchor),
             })
           }
           return h(CollectionRow, {
@@ -181,10 +213,13 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
               void ctx.library
                 .deleteCollection(row.collection.id)
                 .catch(fail('could not delete the collection')),
+            onMore: (anchor) => openCollectionMenu(row.collection, anchor),
           })
         },
       }),
     ),
+    h(ContextMenu, playlistMenu.menuProps),
+    h(ContextMenu, collectionMenu.menuProps),
   )
 }
 
@@ -192,15 +227,18 @@ function PlaylistRow({
   playlist,
   onOpen,
   onDelete,
+  onMore,
 }: {
   playlist: Playlist
   onOpen: () => void
   onDelete: () => void
+  onMore: (anchor?: MenuAnchor) => void
 }): ReactElement {
   const native = nativePrimitives()
   return h(
-    native.View as never,
+    native.Pressable as never,
     {
+      onLongPress: () => onMore(),
       style: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -220,6 +258,12 @@ function PlaylistRow({
     ),
     h(Button, { variant: 'ghost', onPress: onOpen, children: 'Open' }),
     h(IconButton, {
+      icon: '⋯',
+      accessibilityLabel: `More actions for ${playlist.name}`,
+      variant: 'ghost',
+      onPress: () => onMore(),
+    }),
+    h(IconButton, {
       icon: '🗑',
       accessibilityLabel: `Delete ${playlist.name}`,
       variant: 'ghost',
@@ -231,14 +275,17 @@ function PlaylistRow({
 function CollectionRow({
   collection,
   onDelete,
+  onMore,
 }: {
   collection: Collection
   onDelete: () => void
+  onMore: (anchor?: MenuAnchor) => void
 }): ReactElement {
   const native = nativePrimitives()
   return h(
-    native.View as never,
+    native.Pressable as never,
     {
+      onLongPress: () => onMore(),
       style: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -252,6 +299,12 @@ function CollectionRow({
       h(Text, { numberOfLines: 1 }, collection.name),
       h(Text, { variant: 'sm', tone: 'muted' }, `${collection.itemCount ?? 0} items`),
     ),
+    h(IconButton, {
+      icon: '⋯',
+      accessibilityLabel: `More actions for ${collection.name}`,
+      variant: 'ghost',
+      onPress: () => onMore(),
+    }),
     h(IconButton, {
       icon: '🗑',
       accessibilityLabel: `Delete ${collection.name}`,
@@ -270,6 +323,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   const urns = detail?.items.map((item) => item.trackUrn) ?? []
   const tracks = useTracksByUrn(ctx, urns)
   const [error, setError] = useState<string | undefined>(undefined)
+  const menu = useTrackMenu(ctx, { fromPlaylistUrn: urn })
 
   const play = (trackUrn: string) => {
     if (!detail) return
@@ -333,7 +387,12 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             h(
               native.View as never,
               { style: { flex: 1, minWidth: 0 } },
-              h(TrackRow, { track, onPress: () => play(trackUrn) }),
+              h(TrackRow, {
+                track,
+                onPress: () => play(trackUrn),
+                onMore: (anchor) =>
+                  menu.open({ track, playlistItemId: detail.items[index]?.id }, anchor),
+              }),
             ),
             detail.isSmart
               ? null
@@ -357,6 +416,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
         },
       }),
     ),
+    h(ContextMenu, menu.menuProps),
   )
 }
 
@@ -373,6 +433,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
     'player',
   )
   const [error, setError] = useState<string | undefined>(undefined)
+  const menu = useTrackMenu(ctx)
 
   return h(
     native.View as never,
@@ -414,7 +475,11 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
             h(
               native.View as never,
               { style: { flex: 1, minWidth: 0 } },
-              h(TrackRow, { track, onPress: () => player?.playFromContext(entryUrn, urns) }),
+              h(TrackRow, {
+                track,
+                onPress: () => player?.playFromContext(entryUrn, urns),
+                onMore: (anchor) => menu.open({ track }, anchor),
+              }),
             ),
             h(IconButton, {
               icon: '♥',
@@ -433,6 +498,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
         },
       }),
     ),
+    h(ContextMenu, menu.menuProps),
   )
 }
 

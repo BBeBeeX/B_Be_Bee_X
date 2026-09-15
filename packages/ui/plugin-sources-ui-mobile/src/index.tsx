@@ -6,7 +6,7 @@
  * a single-column list rather than a grid, because a phone has one column.
  */
 
-import { createElement as h, useMemo, useState } from 'react'
+import { createElement as h, Fragment, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
@@ -29,6 +29,7 @@ import {
 } from '@BBeBee/plugin-sources/hooks'
 import {
   Artwork,
+  ContextMenu,
   Button,
   EmptyState,
   IconButton,
@@ -43,6 +44,7 @@ import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { useToggleFavorite } from '@BBeBee/plugin-library/hooks'
+import { useTrackMenu } from '@BBeBee/ui-menus'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
@@ -104,6 +106,7 @@ export function LibraryScreen({
   // One heart, two stores: `track_stats.loved` draws it, the library shelf
   // lists it. See `useToggleFavorite` in `@BBeBee/plugin-library/hooks`.
   const toggleFavorite = useToggleFavorite(ctx)
+  const menu = useTrackMenu(ctx)
 
   const query = useMemo<CatalogQuery>(() => {
     const base: CatalogQuery = { sort: 'title' }
@@ -152,6 +155,9 @@ export function LibraryScreen({
         : h(EmptyState, { icon: '💿', title: 'No albums yet' })
 
   return h(
+    Fragment,
+    null,
+    h(
     native.View as never,
     { style: { flex: 1, backgroundColor: p().bg.base } },
     h(
@@ -223,6 +229,7 @@ export function LibraryScreen({
                   // Left absent when no downloads service is loaded: a button
                   // that does nothing is worse than one that is not there.
                   onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,
+                  onMore: (anchor) => menu.open({ track }, anchor),
                 }),
             })
           : h(List<Album>, {
@@ -261,6 +268,8 @@ export function LibraryScreen({
                   ),
                 ),
             }),
+    ),
+    h(ContextMenu, menu.menuProps),
   )
 }
 
@@ -285,6 +294,7 @@ export function SearchScreen({
   const selection = useSearchSourceSelection(ctx)
   const search = useSourceSearch(ctx)
   const [text, setText] = useState(query ?? '')
+  const menu = useTrackMenu(ctx)
 
   const submitted = search.status !== 'idle'
   const busy = search.status === 'loading'
@@ -313,6 +323,9 @@ export function SearchScreen({
   }
 
   return h(
+    Fragment,
+    null,
+    h(
     native.View as never,
     {
       accessibilityLabel: 'Search',
@@ -448,6 +461,7 @@ export function SearchScreen({
                               context: { kind: 'search', label: search.text },
                             }),
                           onDownload: downloads ? () => void downloads.enqueue([row.track.urn]) : undefined,
+                          onMore: (anchor) => menu.open({ track: row.track }, anchor),
                         })
                       : row.kind === 'album'
                         ? h(
@@ -483,6 +497,8 @@ export function SearchScreen({
                         : h(ResultLine, { ctx, row }),
               }),
             ),
+    ),
+    h(ContextMenu, menu.menuProps),
   )
 }
 

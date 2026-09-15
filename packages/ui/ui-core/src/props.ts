@@ -47,11 +47,78 @@ export interface IconButtonProps extends CommonProps {
   size?: number
 }
 
+/** Where a context menu should appear. Desktop anchors to the pointer; mobile ignores it. */
+export interface MenuAnchor {
+  x: number
+  y: number
+}
+
+/**
+ * What an overflow handler receives.
+ *
+ * The anchor is optional because the two ways in are not the same gesture: a
+ * right-click and a long-press carry a pointer position, a `⋯` button pressed
+ * by keyboard carries none. A menu that got no anchor centres itself.
+ */
+export type MoreHandler = (anchor?: MenuAnchor) => void
+
+/**
+ * One row of a context menu.
+ *
+ * Deliberately serialisable and kit-shaped rather than a component: both kits
+ * render the same list, and the *model* (which actions exist for this entity)
+ * is built once, per shell, by `@BBeBee/ui-menus`.
+ */
+export interface MenuItemSpec {
+  id: string
+  label: string
+  /** A leading glyph. The label is the accessible name. */
+  icon?: string
+  disabled?: boolean
+  /** Destructive actions render in the error tone and sort last. */
+  tone?: 'default' | 'danger'
+  onSelect?: () => void | Promise<void>
+  /** Opens a submenu instead of acting. */
+  submenu?: SubmenuSpec
+}
+
+export interface SubmenuSpec {
+  title?: string
+  /** A filter field above the rows. Absent means the list is short enough. */
+  searchPlaceholder?: string
+  /**
+   * A pinned row above the list that reveals an inline name field — "new
+   * playlist". `onSelect` receives the trimmed name.
+   */
+  create?: {
+    label: string
+    placeholder: string
+    onSelect: (name: string) => void | Promise<void>
+  }
+  items: readonly MenuItemSpec[]
+  /** Shown when the filter matches nothing. Owned by the model, not the kit. */
+  emptyLabel?: string
+}
+
+export interface ContextMenuProps extends CommonProps {
+  open: boolean
+  onClose: () => void
+  /** Pointer position. The mobile sheet ignores it; desktop clamps it on screen. */
+  x: number
+  y: number
+  items: readonly MenuItemSpec[]
+  /**
+   * A heading — the entity's name. Without it a stack of open menus is
+   * indistinguishable, and on mobile the sheet has no other context.
+   */
+  title?: string
+}
+
 export interface TrackRowProps extends CommonProps {
   track: Track
   onPress?: () => void
   /** Overflow. Desktop also binds right-click; mobile a long-press. */
-  onMore?: () => void
+  onMore?: MoreHandler
   /** Toggle loved/favorite status. */
   onToggleLoved?: () => void
   /**

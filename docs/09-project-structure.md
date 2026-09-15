@@ -201,6 +201,8 @@ B_Be_Bee/
 │   │   │                                      subpaths only (types, hooks, view ids).
 │   │   ├── ui-tokens/              ✅        design tokens as data + the WCAG AA gate (08 §8)
 │   │   ├── ui-core/                ✅        framework-agnostic hooks + shared prop types
+│   │   ├── ui-menus/               ✅        context-menu models shared by both shells: the
+│   │   │                                       actions for a track, playlist and collection
 │   │   ├── ui-parity/              ✅        the component contract, and the check that both
 │   │   │                                       kits meet it (08 §6)
 │   │   ├── ui-kit-mobile/          ✅        React Native components

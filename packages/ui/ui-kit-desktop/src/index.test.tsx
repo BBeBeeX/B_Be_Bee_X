@@ -13,13 +13,14 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { act, render } from '@testing-library/react'
+import { act, fireEvent, render } from '@testing-library/react'
 import { TEST_ROW_HEIGHT as ROW, withListLayout as withLayout } from './testing.js'
 import { createElement as h } from 'react'
 import type { Track } from '@BBeBee/protocol'
 import {
   Artwork,
   Button,
+  ContextMenu,
   EmptyState,
   IconButton,
   JsonTree,
@@ -462,5 +463,85 @@ describe('JsonTree', () => {
       clipped.click()
     })
     expect(view.container.textContent?.includes('(+100)')).toBe(false)
+  })
+})
+
+
+describe('ContextMenu', () => {
+  const items = [
+    {
+      id: 'add',
+      label: '加入歌单',
+      submenu: {
+        title: '加入歌单',
+        searchPlaceholder: '查找歌单',
+        create: { label: '新建歌单', placeholder: '歌单名称', onSelect: vi.fn() },
+        items: [
+          { id: 'p1', label: 'Road trip', onSelect: vi.fn() },
+          { id: 'p2', label: 'Late night', onSelect: vi.fn() },
+        ],
+        emptyLabel: '没有匹配的歌单',
+      },
+    },
+    { id: 'queue', label: '加入播放列表', onSelect: vi.fn() },
+    { id: 'remove', label: '从最喜欢的歌曲中删除', tone: 'danger' as const, onSelect: vi.fn() },
+  ]
+
+  it('renders nothing while closed', () => {
+    const { container } = render(h(ContextMenu, { open: false, onClose: () => {}, x: 0, y: 0, items }))
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('renders rows and reports a press, then closes', () => {
+    const onSelect = vi.fn()
+    const onClose = vi.fn()
+    const { container } = render(
+      h(ContextMenu, {
+        open: true,
+        onClose,
+        x: 10,
+        y: 10,
+        title: 'Jóga',
+        items: [{ id: 'queue', label: '加入播放列表', onSelect }],
+      }),
+    )
+    const row = Array.from(container.querySelectorAll('[role="menuitem"]')).find(
+      (node) => node.textContent === '加入播放列表',
+    ) as HTMLElement
+    expect(row).toBeTruthy()
+    fireEvent.click(row)
+    expect(onSelect).toHaveBeenCalledOnce()
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('opens a submenu with a filter, a create row and the list', () => {
+    const { container } = render(h(ContextMenu, { open: true, onClose: () => {}, x: 0, y: 0, items }))
+    const add = Array.from(container.querySelectorAll('[role="menuitem"]')).find(
+      (node) => node.textContent?.startsWith('加入歌单'),
+    ) as HTMLElement
+    fireEvent.click(add)
+
+    expect(container.textContent).toContain('新建歌单')
+    expect(container.textContent).toContain('Road trip')
+    expect(container.querySelector('[data-testid="context-menu-filter"]')).toBeTruthy()
+  })
+
+  it('filters the submenu rows as the user types', () => {
+    const { container } = render(h(ContextMenu, { open: true, onClose: () => {}, x: 0, y: 0, items }))
+    fireEvent.click(
+      Array.from(container.querySelectorAll('[role="menuitem"]')).find((node) =>
+        node.textContent?.startsWith('加入歌单'),
+      ) as HTMLElement,
+    )
+
+    const field = container.querySelector('[data-testid="context-menu-filter"]') as HTMLInputElement
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    act(() => {
+      setter.call(field, 'late')
+      field.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    expect(container.textContent).toContain('Late night')
+    expect(container.textContent).not.toContain('Road trip')
   })
 })

@@ -91,10 +91,10 @@ describe('the gate', () => {
   it('catches a component only one kit has', () => {
     // The dangerous direction: a plugin author finds it, uses it, and the
     // feature is silently desktop-only.
-    const desktop = { ...completeKit(), ContextMenu: () => null }
+    const desktop = { ...completeKit(), Carousel: () => null }
     const problems = checkParity({ desktop, mobile: completeKit() })
     expect(problems.map((p) => p.kind)).toEqual(['extra'])
-    expect(problems[0]!.detail).toContain('ContextMenu')
+    expect(problems[0]!.detail).toContain('Carousel')
   })
 
   it('ignores non-component exports', () => {

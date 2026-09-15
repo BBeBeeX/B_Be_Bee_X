@@ -25,6 +25,7 @@ export const COMPONENT_PROPS: KitPropMap = {
   ],
   Slider: ['value', 'max', 'onChange', 'onCommit', 'disabled', 'testID', 'accessibilityLabel'],
   Sheet: ['open', 'onClose', 'title', 'children', 'testID', 'accessibilityLabel'],
+  ContextMenu: ['open', 'onClose', 'items', 'x', 'y', 'title', 'testID', 'accessibilityLabel'],
   List: [
     'items', 'renderItem', 'keyExtractor', 'estimatedItemSize', 'onEndReached', 'empty',
     'testID', 'accessibilityLabel',

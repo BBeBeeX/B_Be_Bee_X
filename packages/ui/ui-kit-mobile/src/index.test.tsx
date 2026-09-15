@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The mobile kit, off device.
  *
@@ -9,7 +10,8 @@
  * only pixels to the device smoke matrix.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { tokens } from '@BBeBee/ui-tokens'
 import { createElement as h, isValidElement } from 'react'
 import type { ReactElement } from 'react'
@@ -25,9 +27,48 @@ import {
   TextField,
   Toast,
   TrackRow,
+  ContextMenu,
   configureNative,
   nativePrimitives,
 } from './index.js'
+
+afterEach(cleanup)
+
+function domHost(name: string) {
+  return function Host(props: Record<string, unknown> & { children?: unknown }) {
+    const { children, accessibilityLabel, onPress, testID, onChangeText, value, placeholder } = props
+    if (name === 'TextInput') {
+      return h('input', {
+        'data-testid': typeof testID === 'string' ? testID : undefined,
+        value: value as string,
+        placeholder: placeholder as string,
+        onChange: (event: { target: { value: string } }) =>
+          (onChangeText as ((v: string) => void) | undefined)?.(event.target.value),
+      })
+    }
+    return h(
+      'div',
+      {
+        'data-host': name,
+        'data-label': typeof accessibilityLabel === 'string' ? accessibilityLabel : undefined,
+        'data-testid': typeof testID === 'string' ? testID : undefined,
+        onClick: typeof onPress === 'function' ? (onPress as () => void) : undefined,
+      },
+      children as never,
+    )
+  }
+}
+
+const NATIVE_DOM = {
+  View: domHost('View'),
+  Text: domHost('Text'),
+  Pressable: domHost('Pressable'),
+  Image: domHost('Image'),
+  Modal: domHost('Modal'),
+  FlashList: domHost('FlashList'),
+  ActivityIndicator: domHost('ActivityIndicator'),
+  TextInput: domHost('TextInput'),
+}
 
 const NATIVE = {
   View: 'RNView',
@@ -129,10 +170,12 @@ describe('IconButton', () => {
 })
 
 describe('TrackRow', () => {
-  it('binds the overflow to a long press, the mobile half of onMore', () => {
+  it('binds the overflow to a long press and hands over the pointer anchor', () => {
     const onMore = vi.fn()
     const node = find(h(TrackRow, { track, onMore }), 'RNPressable')
-    expect((node!.props as { onLongPress?: () => void }).onLongPress).toBe(onMore)
+    const onLongPress = (node!.props as { onLongPress: (e: unknown) => void }).onLongPress
+    onLongPress({ nativeEvent: { pageX: 12, pageY: 34 } })
+    expect(onMore).toHaveBeenCalledWith({ x: 12, y: 34 })
   })
 
   it('shows the album only when asked', () => {
@@ -343,5 +386,61 @@ describe('TextField', () => {
       }),
     )
     expect(JSON.stringify(nodes.map((n) => n.props))).toContain('sourceUrl: must be a string')
+  })
+})
+
+
+
+describe('ContextMenu on mobile', () => {
+  // DOM hosts: a submenu is a state change, and an element tree is static.
+
+  const items = [
+    {
+      id: 'add',
+      label: '加入歌单',
+      submenu: {
+        title: '加入歌单',
+        searchPlaceholder: '查找歌单',
+        create: { label: '新建歌单', placeholder: '歌单名称', onSelect: vi.fn() },
+        items: [{ id: 'p1', label: 'Road trip', onSelect: vi.fn() }],
+        emptyLabel: '没有匹配的歌单',
+      },
+    },
+    { id: 'queue', label: '加入播放列表', onSelect: vi.fn() },
+    { id: 'remove', label: '从\u201c最喜欢的歌曲\u201d中删除', tone: 'danger' as const, onSelect: vi.fn() },
+  ]
+
+  it('renders rows and reports a press, then closes', () => {
+    configureNative({ ...NATIVE_DOM })
+    const onSelect = vi.fn()
+    const onClose = vi.fn()
+    const { container } = render(
+      h(ContextMenu, {
+        open: true,
+        onClose,
+        x: 0,
+        y: 0,
+        title: 'Jóga',
+        items: [{ id: 'queue', label: '加入播放列表', onSelect }],
+      }),
+    )
+    const row = container.querySelector('[data-label="加入播放列表"]') as HTMLElement | null
+    expect(row, 'the row is rendered').toBeTruthy()
+    row!.click()
+    expect(onSelect).toHaveBeenCalledOnce()
+    // The DOM host bubbles the press to the backdrop, which closes too; React
+    // Native's responder system does not, so "once" is not the assertion here.
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('replaces its contents for a submenu, with a filter and a create row', () => {
+    configureNative({ ...NATIVE_DOM })
+    const { container } = render(h(ContextMenu, { open: true, onClose: vi.fn(), x: 0, y: 0, items }))
+    fireEvent.click(container.querySelector('[data-label="加入歌单"]') as HTMLElement)
+
+    expect(container.textContent).toContain('\u2039 加入歌单')
+    expect(container.querySelector('[data-testid="context-menu-filter"]')).toBeTruthy()
+    expect(container.textContent).toContain('新建歌单')
+    expect(container.textContent).toContain('Road trip')
   })
 })

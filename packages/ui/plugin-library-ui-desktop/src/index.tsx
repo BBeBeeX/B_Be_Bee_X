@@ -17,6 +17,7 @@ import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import type { Collection, Playlist } from '@BBeBee/protocol'
+import { tryParseUrn } from '@BBeBee/protocol'
 import { LIBRARY_VIEWS } from '@BBeBee/plugin-library/views'
 import {
   summariseLibrary,
@@ -26,9 +27,11 @@ import {
   useSaved,
 } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
-import { Button, EmptyState, IconButton, List, Text, TextField, TrackRow } from '@BBeBee/ui-kit-desktop'
+import { Button, ContextMenu, EmptyState, IconButton, List, Text, TextField, TrackRow } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
+import { useCollectionMenu, usePlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
+import type { MenuAnchor } from '@BBeBee/ui-core'
 
 /* ── playlists ─────────────────────────────────────────────────────────── */
 
@@ -39,6 +42,8 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
   const [collectionDraft, setCollectionDraft] = useState('')
   const [error, setError] = useState<string | undefined>(undefined)
   const summary = summariseLibrary(playlists.data ?? [], collections.data ?? [], [])
+  const playlistMenu = usePlaylistMenu(ctx)
+  const collectionMenu = useCollectionMenu(ctx)
 
   const fail = (what: string) => (cause: unknown) =>
     setError(`${what}: ${cause instanceof Error ? cause.message : String(cause)}`)
@@ -57,6 +62,33 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
     setCollectionDraft('')
     setError(undefined)
     void ctx.library.createCollection(name).catch(fail('could not create the collection'))
+  }
+
+  // The menu's list actions need the playlist's tracks, which the row does not
+  // carry — resolve them before opening rather than showing actions that would
+  // act on an empty list.
+  const openPlaylistMenu = (playlist: Playlist, anchor?: MenuAnchor) => {
+    void ctx.library
+      .getPlaylist(playlist.urn)
+      .then((detail) =>
+        playlistMenu.open(playlist, detail?.items.map((item) => item.trackUrn) ?? [], anchor),
+      )
+      .catch(() => playlistMenu.open(playlist, [], anchor))
+  }
+
+  const openCollectionMenu = (collection: Collection, anchor?: MenuAnchor) => {
+    void ctx.library
+      .listCollectionItems(collection.id)
+      .then((page) =>
+        collectionMenu.open(
+          collection.name,
+          page.items
+            .map((item) => item.urn)
+            .filter((entryUrn) => tryParseUrn(entryUrn)?.kind === 'track'),
+          anchor,
+        ),
+      )
+      .catch(() => collectionMenu.open(collection.name, [], anchor))
   }
 
   return h(
@@ -123,6 +155,7 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
               onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.playlist, { urn: playlist.urn }),
               onDelete: () =>
                 void ctx.library.deletePlaylist(playlist.urn).catch(fail('could not delete the playlist')),
+              onMore: (anchor) => openPlaylistMenu(playlist, anchor),
             }),
         }),
 
@@ -161,10 +194,13 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
             collection,
             onDelete: () =>
               void ctx.library.deleteCollection(collection.id).catch(fail('could not delete the collection')),
+            onMore: (anchor) => openCollectionMenu(collection, anchor),
           }),
         ),
       ),
     ),
+    h(ContextMenu, playlistMenu.menuProps),
+    h(ContextMenu, collectionMenu.menuProps),
   )
 }
 
@@ -172,14 +208,20 @@ function PlaylistRow({
   playlist,
   onOpen,
   onDelete,
+  onMore,
 }: {
   playlist: Playlist
   onOpen: () => void
   onDelete: () => void
+  onMore: (anchor?: MenuAnchor) => void
 }): ReactElement {
   return h(
     'div',
     {
+      onContextMenu: (event: { preventDefault(): void; clientX?: number; clientY?: number }) => {
+        event.preventDefault()
+        onMore({ x: event.clientX ?? 0, y: event.clientY ?? 0 })
+      },
       style: {
         display: 'flex',
         alignItems: 'center',
@@ -203,6 +245,12 @@ function PlaylistRow({
     ),
     h(Button, { variant: 'ghost', onPress: onOpen, children: 'Open' }),
     h(IconButton, {
+      icon: '⋯',
+      accessibilityLabel: `More actions for ${playlist.name}`,
+      variant: 'ghost',
+      onPress: () => onMore(),
+    }),
+    h(IconButton, {
       icon: '🗑',
       accessibilityLabel: `Delete ${playlist.name}`,
       variant: 'ghost',
@@ -214,13 +262,19 @@ function PlaylistRow({
 function CollectionRow({
   collection,
   onDelete,
+  onMore,
 }: {
   collection: Collection
   onDelete: () => void
+  onMore: (anchor?: MenuAnchor) => void
 }): ReactElement {
   return h(
     'div',
     {
+      onContextMenu: (event: { preventDefault(): void; clientX?: number; clientY?: number }) => {
+        event.preventDefault()
+        onMore({ x: event.clientX ?? 0, y: event.clientY ?? 0 })
+      },
       style: {
         display: 'flex',
         alignItems: 'center',
@@ -235,6 +289,12 @@ function CollectionRow({
       h(Text, { numberOfLines: 1 }, collection.name),
       h(Text, { variant: 'sm', tone: 'muted' }, `${collection.itemCount ?? 0} items`),
     ),
+    h(IconButton, {
+      icon: '⋯',
+      accessibilityLabel: `More actions for ${collection.name}`,
+      variant: 'ghost',
+      onPress: () => onMore(),
+    }),
     h(IconButton, {
       icon: '🗑',
       accessibilityLabel: `Delete ${collection.name}`,
@@ -252,6 +312,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   const urns = detail?.items.map((item) => item.trackUrn) ?? []
   const tracks = useTracksByUrn(ctx, urns)
   const [error, setError] = useState<string | undefined>(undefined)
+  const menu = useTrackMenu(ctx, { fromPlaylistUrn: urn })
 
   const play = (trackUrn: string) => {
     if (!detail) return
@@ -317,7 +378,15 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
           return h(
             'div',
             { style: { display: 'flex', alignItems: 'center' } },
-            h('div', { style: { flex: 1, minWidth: 0 } }, h(TrackRow, { track, onPress: () => play(trackUrn) })),
+            h(
+              'div',
+              { style: { flex: 1, minWidth: 0 } },
+              h(TrackRow, {
+                track,
+                onPress: () => play(trackUrn),
+                onMore: (anchor) => menu.open({ track, playlistItemId: item.id }, anchor),
+              }),
+            ),
             detail.isSmart
               ? null
               : h(IconButton, {
@@ -335,6 +404,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
         },
       }),
     ),
+    h(ContextMenu, menu.menuProps),
   )
 }
 
@@ -350,6 +420,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
     'player',
   )
   const [error, setError] = useState<string | undefined>(undefined)
+  const menu = useTrackMenu(ctx)
 
   return h(
     'section',
@@ -398,6 +469,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
               h(TrackRow, {
                 track,
                 onPress: () => player?.playFromContext(entryUrn, urns),
+                onMore: (anchor) => menu.open({ track }, anchor),
               }),
             ),
             h(IconButton, {
@@ -415,6 +487,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
         },
       }),
     ),
+    h(ContextMenu, menu.menuProps),
   )
 }
 

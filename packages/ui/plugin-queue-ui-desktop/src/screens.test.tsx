@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { createElement as h } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { act, render } from '@testing-library/react'
+import { act, fireEvent, render } from '@testing-library/react'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
 import { Context, Service } from 'cordis'
 import type { QueueItem, Track, TransportState } from '@BBeBee/protocol'
@@ -153,5 +153,30 @@ describe('QueueScreen', () => {
     expect(container.textContent, 'the raw URN is gone once resolved').not.toContain(
       'BBeBee:local:track:a',
     )
+  })
+})
+
+
+describe('the queue row menu', () => {
+  it('opens on right-click with the actions the loaded services allow', async () => {
+    const { ctx } = await harness({ status: 'playing' }, [
+      { id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' },
+    ])
+    withListLayout(() => {
+      const { container } = render(h(QueueScreen, { ctx }))
+      const row = container.querySelector('[role="row"]') as HTMLElement
+      expect(row, 'the row is on screen').toBeTruthy()
+
+      act(() => {
+        fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+      })
+
+      // `ctx.player` is loaded, so "add to the play queue" is offered; no
+      // library and no downloads here, so their items are absent instead of
+      // present and throwing.
+      expect(container.textContent).toContain('加入播放列表')
+      expect(container.textContent).not.toContain('下载')
+      expect(container.querySelector('[role="menu"]')).toBeTruthy()
+    })
   })
 })

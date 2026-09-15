@@ -12,12 +12,13 @@
  * blank pane and tells the user nothing about which one they are looking at.
  */
 
-import { createElement as h, useEffect, useMemo, useState } from 'react'
+import { createElement as h, Fragment, useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import type { Album, CatalogQuery, DownloadsService, ImportReport, ScanSpecifiedDir, ScannerService, StreamQuality, Track, TraceEvent, UiService } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
+import { useTrackMenu } from '@BBeBee/ui-menus'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
   isLocalSource,
@@ -36,6 +37,7 @@ import {
 import {
   Artwork,
   Button,
+  ContextMenu,
   EmptyState,
   IconButton,
   JsonTree,
@@ -223,6 +225,7 @@ function TrackList({
   onEndReached: () => void
 }): ReactElement {
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
+  const menu = useTrackMenu(ctx)
   const empty =
     scope === 'favorites'
       ? h(EmptyState, {
@@ -242,7 +245,10 @@ function TrackList({
             description: 'Add a folder in Settings and it will appear here as it is scanned.',
           })
 
-  return h(List<Track>, {
+  return h(
+    Fragment,
+    null,
+    h(List<Track>, {
     items: tracks,
     accessibilityLabel: 'Tracks',
     estimatedItemSize: tokens.size.row,
@@ -262,8 +268,11 @@ function TrackList({
         // Left absent when no downloads service is loaded: a button that does
         // nothing is worse than one that is not there (docs/08 §3).
         onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,
+        onMore: (anchor) => menu.open({ track }, anchor),
       }),
-  })
+    }),
+    h(ContextMenu, menu.menuProps),
+  )
 }
 
 function AlbumGrid({
@@ -350,6 +359,7 @@ export function SearchScreen({
   const selection = useSearchSourceSelection(ctx)
   const search = useSourceSearch(ctx)
   const [text, setText] = useState(query ?? '')
+  const menu = useTrackMenu(ctx)
 
   const submitted = search.status !== 'idle'
   const busy = search.status === 'loading'
@@ -378,6 +388,9 @@ export function SearchScreen({
   }
 
   return h(
+    Fragment,
+    null,
+    h(
     'section',
     {
       'aria-label': 'Search',
@@ -529,6 +542,7 @@ export function SearchScreen({
                               context: { kind: 'search', label: search.text },
                             }),
                           onDownload: downloads ? () => void downloads.enqueue([row.track.urn]) : undefined,
+                          onMore: (anchor) => menu.open({ track: row.track }, anchor),
                         })
                       : row.kind === 'album'
                         ? h(
@@ -569,6 +583,8 @@ export function SearchScreen({
                         : h(ResultLine, { ctx, row }),
               }),
             ),
+    ),
+    h(ContextMenu, menu.menuProps),
   )
 }
 

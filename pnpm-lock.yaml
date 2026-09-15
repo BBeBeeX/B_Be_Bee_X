@@ -1247,6 +1247,9 @@ importers:
       '@BBeBee/ui-kit-desktop':
         specifier: workspace:*
         version: link:../ui-kit-desktop
+      '@BBeBee/ui-menus':
+        specifier: workspace:*
+        version: link:../ui-menus
       '@BBeBee/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
@@ -1296,6 +1299,9 @@ importers:
       '@BBeBee/ui-kit-mobile':
         specifier: workspace:*
         version: link:../ui-kit-mobile
+      '@BBeBee/ui-menus':
+        specifier: workspace:*
+        version: link:../ui-menus
       '@BBeBee/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
@@ -1486,6 +1492,9 @@ importers:
       '@BBeBee/ui-kit-desktop':
         specifier: workspace:*
         version: link:../ui-kit-desktop
+      '@BBeBee/ui-menus':
+        specifier: workspace:*
+        version: link:../ui-menus
       '@BBeBee/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
@@ -1532,6 +1541,9 @@ importers:
       '@BBeBee/ui-kit-mobile':
         specifier: workspace:*
         version: link:../ui-kit-mobile
+      '@BBeBee/ui-menus':
+        specifier: workspace:*
+        version: link:../ui-menus
       '@BBeBee/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
@@ -1798,6 +1810,9 @@ importers:
       '@BBeBee/ui-kit-desktop':
         specifier: workspace:*
         version: link:../ui-kit-desktop
+      '@BBeBee/ui-menus':
+        specifier: workspace:*
+        version: link:../ui-menus
       '@BBeBee/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
@@ -1847,6 +1862,9 @@ importers:
       '@BBeBee/ui-kit-mobile':
         specifier: workspace:*
         version: link:../ui-kit-mobile
+      '@BBeBee/ui-menus':
+        specifier: workspace:*
+        version: link:../ui-menus
       '@BBeBee/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
@@ -1896,6 +1914,9 @@ importers:
       '@BBeBee/ui-kit-desktop':
         specifier: workspace:*
         version: link:../ui-kit-desktop
+      '@BBeBee/ui-menus':
+        specifier: workspace:*
+        version: link:../ui-menus
       '@BBeBee/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
@@ -1957,6 +1978,9 @@ importers:
       '@BBeBee/ui-kit-mobile':
         specifier: workspace:*
         version: link:../ui-kit-mobile
+      '@BBeBee/ui-menus':
+        specifier: workspace:*
+        version: link:../ui-menus
       '@BBeBee/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
@@ -2093,6 +2117,34 @@ importers:
       react-native:
         specifier: 0.86.3
         version: 0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1)
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.1)(jsdom@30.0.1)(vite@7.3.6(@types/node@22.20.1)(lightningcss@1.33.0)(terser@5.51.2)(yaml@2.9.0))
+
+  packages/ui/ui-menus:
+    dependencies:
+      '@BBeBee/plugin-album':
+        specifier: workspace:*
+        version: link:../../feature/plugin-album
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@BBeBee/ui-core':
+        specifier: workspace:*
+        version: link:../ui-core
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    devDependencies:
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@22.20.1)(jsdom@30.0.1)(vite@7.3.6(@types/node@22.20.1)(lightningcss@1.33.0)(terser@5.51.2)(yaml@2.9.0))

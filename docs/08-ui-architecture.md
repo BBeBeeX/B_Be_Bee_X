@@ -288,6 +288,21 @@ which events invalidate which state — are written once. Only the JSX is writte
 
 ---
 
+### Context menus
+
+Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore` hands the pointer
+anchor to the screen; the screen holds a controller from `@BBeBee/ui-menus` and renders the
+kit's `ContextMenu`. The **model** — which actions exist for a track, a playlist, a collection,
+and what each one calls — is written once; the kits know how to draw menu rows and nothing about
+playlists or queues, which is what keeps the two shells' menus identical down to the order of
+the items.
+
+The "add to playlist" submenu is the part with a structure: a filter field, a **new playlist**
+row, then the user's playlists. Smart playlists are disabled there — their tracks come from
+rules, so there is no row an add could write — and list actions resolve their tracks *before*
+the menu opens, so an item that would act on an empty list is absent rather than broken
+([09 §1](./09-project-structure.md)).
+
 ### The source surfaces
 
 Four screens carry the whole string model, and they are worth naming because they are the part of

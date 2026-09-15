@@ -15,7 +15,8 @@ import type { DownloadsService, PlayerService, Track } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
-import { Artwork, Button, EmptyState, List, Text, TrackRow, nativePrimitives } from '@BBeBee/ui-kit-mobile'
+import { useTrackMenu } from '@BBeBee/ui-menus'
+import { Artwork, Button, ContextMenu, EmptyState, List, Text, TrackRow, nativePrimitives } from '@BBeBee/ui-kit-mobile'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
@@ -60,6 +61,7 @@ export function AlbumScreen({
   const native = nativePrimitives()
   const album = useAlbum(ctx, urn)
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
+  const menu = useTrackMenu(ctx)
 
   const handleBack = () => {
     // The shell's own back handler when it passed one; otherwise the library,
@@ -149,8 +151,10 @@ export function AlbumScreen({
             })
           },
           onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,
+          onMore: (anchor) => menu.open({ track }, anchor),
         }),
     }),
+    h(ContextMenu, menu.menuProps),
   )
 }
 

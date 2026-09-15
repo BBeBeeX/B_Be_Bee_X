@@ -25,7 +25,8 @@ import type { DownloadsService, PlayerService, Track } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
-import { Artwork, Button, EmptyState, List, Text, TrackRow } from '@BBeBee/ui-kit-desktop'
+import { useTrackMenu } from '@BBeBee/ui-menus'
+import { Artwork, Button, ContextMenu, EmptyState, List, Text, TrackRow } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -59,6 +60,7 @@ function Pending({ label }: { label: string }): ReactElement {
 export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): ReactElement {
   const album = useAlbum(ctx, urn)
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
+  const menu = useTrackMenu(ctx)
 
   if (album.status === 'loading' || album.status === 'idle') {
     return h(Pending, { label: 'Loading album…' })
@@ -127,8 +129,10 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             })
           },
           onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,
+          onMore: (anchor) => menu.open({ track }, anchor),
         }),
     }),
+    h(ContextMenu, menu.menuProps),
   )
 }
 

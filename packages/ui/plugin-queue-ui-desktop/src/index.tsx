@@ -7,15 +7,16 @@
  * only (docs/08 §1).
  */
 
-import { createElement as h } from 'react'
+import { createElement as h, Fragment } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import type { QueueItem } from '@BBeBee/protocol'
 import { QUEUE_VIEWS } from '@BBeBee/plugin-queue/views'
 import { queueTrackFallback, useQueue, useTracksByUrn, useTransport } from '@BBeBee/plugin-player/hooks'
-import { EmptyState, List, TrackRow } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, TrackRow } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
+import { useTrackMenu } from '@BBeBee/ui-menus'
 import type { TrackRowProps } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
 
@@ -38,6 +39,7 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
   // removed source — never shows the URN: the playing item borrows the
   // transport's metadata, the rest say they are loading.
   const tracks = useTracksByUrn(ctx, queue.map((item) => item.trackUrn))
+  const menu = useTrackMenu(ctx)
 
   if (queue.length === 0) {
     return h(EmptyState, {
@@ -47,23 +49,32 @@ export function QueueScreen({ ctx }: { ctx: Context }): ReactElement {
     })
   }
 
-  return h(List<QueueItem>, {
-    items: queue,
-    accessibilityLabel: 'Queue',
-    estimatedItemSize: tokens.size.row,
-    keyExtractor: (item) => item.id,
-    renderItem: (item) =>
-      h(CachedTrackRow, { ctx,
-        track:
+  return h(
+    Fragment,
+    null,
+    h(List<QueueItem>, {
+      items: queue,
+      accessibilityLabel: 'Queue',
+      estimatedItemSize: tokens.size.row,
+      keyExtractor: (item) => item.id,
+      renderItem: (item) => {
+        const track =
           tracks.get(item.trackUrn) ??
-          queueTrackFallback(item, state.nowPlaying, item.id === state.currentItemId),
-        active: item.id === state.currentItemId,
-        // A row tap means "play that one", and the track is in the queue by
-        // definition — so playFromContext jumps to it without touching the
-        // queue the user already has.
-        onPress: () => void ctx.player.playFromContext(item.trackUrn),
-      }),
-  })
+          queueTrackFallback(item, state.nowPlaying, item.id === state.currentItemId)
+        return h(CachedTrackRow, {
+          ctx,
+          track,
+          active: item.id === state.currentItemId,
+          // A row tap means "play that one", and the track is in the queue by
+          // definition — so playFromContext jumps to it without touching the
+          // queue the user already has.
+          onPress: () => void ctx.player.playFromContext(item.trackUrn),
+          onMore: (anchor) => menu.open({ track }, anchor),
+        })
+      },
+    }),
+    h(ContextMenu, menu.menuProps),
+  )
 }
 
 /* ── the plugin entry ──────────────────────────────────────────────────── */

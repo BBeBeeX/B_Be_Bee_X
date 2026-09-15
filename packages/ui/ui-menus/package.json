@@ -1,15 +1,25 @@
 {
-  "name": "@BBeBee/plugin-library-ui-mobile",
+  "name": "@BBeBee/ui-menus",
   "version": "0.0.0",
-  "description": "React Native views for @BBeBee/plugin-library.",
+  "description": "Context-menu models shared by both shells: which actions exist for a track, a playlist, a collection.",
   "type": "module",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.tsx",
+    ".": "./src/index.ts",
     "./package.json": "./package.json"
   },
-  "main": "./src/index.tsx",
-  "types": "./src/index.tsx",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts"
+  },
   "files": [
     "dist"
   ],
@@ -18,22 +28,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@BBeBee/plugin-library": "workspace:*",
-    "@BBeBee/plugin-player": "workspace:*",
+    "@BBeBee/plugin-album": "workspace:*",
     "@BBeBee/protocol": "workspace:*",
     "@BBeBee/ui-core": "workspace:*",
-    "@BBeBee/ui-kit-mobile": "workspace:*",
-    "@BBeBee/ui-menus": "workspace:*",
-    "@BBeBee/ui-tokens": "workspace:*",
     "cordis": "4.0.0-rc.9",
     "react": "19.2.3"
   },
   "devDependencies": {
-    "@BBeBee/kernel": "workspace:*",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.2.0",
-    "@types/react-dom": "^19.2.0",
-    "react-dom": "19.2.3",
     "vitest": "^4.1.11"
   }
 }
