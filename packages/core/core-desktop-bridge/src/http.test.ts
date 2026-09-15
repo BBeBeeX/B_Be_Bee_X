@@ -134,6 +134,35 @@ describe('a request crossing to main', () => {
     expect(h.seen[0]!.init.headers['cookie']).toBe('session=abc')
   })
 
+  it('marks a request with an explicit Referer as unsafe-url', async () => {
+    /*
+     * `net.fetch` maps the header onto Chromium's *referrer* and validates it
+     * against the request's referrer policy. The default,
+     * `strict-origin-when-cross-origin`, cancels a cross-origin referrer with a
+     * path (`ERR_BLOCKED_BY_CLIENT`, "with invalid referrer") — which is the
+     * video-page URL a streaming CDN checks, so the request never left the
+     * browser.
+     */
+    const h = await harness(() => new Response('ok'))
+    disposeAll.push(() => h.mainHost.dispose())
+
+    await h.fetch('https://cdn.example.test/audio.m4s', {
+      headers: { Referer: 'https://www.bilibili.com/video/BV1Hc411G7bA' },
+    })
+
+    expect(h.seen[0]!.init.headers['referer']).toBe(
+      'https://www.bilibili.com/video/BV1Hc411G7bA',
+    )
+    expect(h.seen[0]!.init.referrerPolicy).toBe('unsafe-url')
+  })
+
+  it('leaves the referrer policy alone when nothing set a referrer', async () => {
+    const h = await harness(() => new Response('ok'))
+    disposeAll.push(() => h.mainHost.dispose())
+    await h.fetch('https://music.example/a')
+    expect(h.seen[0]!.init.referrerPolicy).toBeUndefined()
+  })
+
   it('derives a Content-Type for a body that needs one', async () => {
     const h = await harness(() => new Response('ok'))
     disposeAll.push(() => h.mainHost.dispose())

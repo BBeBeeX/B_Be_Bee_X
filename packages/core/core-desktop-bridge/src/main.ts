@@ -115,6 +115,17 @@ export interface HostOptions {
   pickDirectory?: (sender?: unknown) => Promise<string | undefined>
 }
 
+/** The referrer policies Electron's `ClientRequest` accepts. */
+export type HttpReferrerPolicy =
+  | 'no-referrer'
+  | 'no-referrer-when-downgrade'
+  | 'origin'
+  | 'origin-when-cross-origin'
+  | 'unsafe-url'
+  | 'same-origin'
+  | 'strict-origin'
+  | 'strict-origin-when-cross-origin'
+
 /** The slice of `RequestInit` the host forwards. Structural, like `IpcHost`. */
 export interface HttpFetchInit {
   method: string
@@ -126,6 +137,16 @@ export interface HttpFetchInit {
   credentials?: 'omit'
   /** Electron's non-standard opt-out from the app's own protocol handlers. */
   bypassCustomProtocolHandlers?: boolean
+  /**
+   * How Chromium treats a `Referer` header on this request.
+   *
+   * Not cosmetic: `net.fetch` maps the header onto the URLRequest's *referrer*,
+   * and Chromium validates it against this policy before sending. The default,
+   * `strict-origin-when-cross-origin`, cancels a cross-origin referrer that
+   * carries a path with `ERR_BLOCKED_BY_CLIENT` — which is exactly the
+   * video-page referrer a streaming CDN checks. See `httpOpen`.
+   */
+  referrerPolicy?: HttpReferrerPolicy
 }
 
 /** The slice of `Response` the host reads. */
@@ -457,6 +478,25 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
         ...(request.redirect ? { redirect: request.redirect } : {}),
         signal: abort.signal,
         /*
+         * A source that writes `Referer` means it — and Chromium otherwise
+         * refuses to send it.
+         *
+         * Electron's `net.fetch` turns that header into the URLRequest's
+         * *referrer*, then validates it against the request's referrer policy
+         * before sending. A main-process request has no document to take a
+         * policy from, so it defaults to `strict-origin-when-cross-origin`,
+         * which for a cross-origin destination computes the origin alone — and
+         * when that differs from the header the request is cancelled outright
+         * (`ERR_BLOCKED_BY_CLIENT`, "with invalid referrer"). Bilibili's CDN
+         * checks the video-page referrer, so the download of a stream URL died
+         * there while playback, whose referrer comes from the renderer's own
+         * policy, worked.
+         *
+         * `unsafe-url` is the policy that allows exactly what was written; it
+         * is set only when there is a referrer to send, so nothing else changes.
+         */
+        ...(hasHeader(request.headers, 'referer') ? { referrerPolicy: 'unsafe-url' as const } : {}),
+        /*
          * Defence in depth for an un-gated egress point.
          *
          * Electron's `net.fetch` reaches `file:` and any registered custom
@@ -638,6 +678,18 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
       transactions.clear()
     },
   }
+}
+
+/**
+ * Whether a header is present, whatever its casing.
+ *
+ * `Headers` would normalise this, but the bridge carries plain records on
+ * purpose (see `bridgeFetch`) and a source document may spell `Referer` any
+ * way it likes.
+ */
+function hasHeader(headers: Record<string, string> | undefined, name: string): boolean {
+  if (!headers) return false
+  return Object.keys(headers).some((key) => key.toLowerCase() === name)
 }
 
 /**

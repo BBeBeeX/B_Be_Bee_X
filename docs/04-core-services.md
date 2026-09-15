@@ -176,6 +176,16 @@ export interface HttpService {
 and response caching are all plugins hooking `http/request` rather than features baked into the
 client ([02 §5](./02-architecture.md#5-composition-how-features-reach-each-other)).
 
+**A `Referer` header is Chromium's referrer, not an ordinary header.** Electron's `net.fetch` maps
+it onto the URLRequest's referrer and validates it against the request's referrer policy before
+sending. A main-process request has no document to take that policy from, so the default
+`strict-origin-when-cross-origin` computes the origin alone for a cross-origin destination — and
+cancels the request outright (`ERR_BLOCKED_BY_CLIENT`, *"with invalid referrer"*) when the header
+says more, which is exactly the video-page URL a streaming CDN's hotlink check wants. The desktop
+bridge therefore sets `referrerPolicy: 'unsafe-url'` on every bridged request that carries an
+explicit `Referer`, so a source sends what it wrote
+(`core-desktop-bridge/src/main.ts`).
+
 ### 2.1 Cookie jars
 
 A signed-in music source must stay signed in across restarts
