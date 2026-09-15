@@ -109,6 +109,12 @@ describe('TrackRow', () => {
     expect(html(h(TrackRow, { track }))).not.toContain('aria-label="More"')
     expect(html(h(TrackRow, { track, onMore: () => {} }))).toContain('aria-label="More"')
   })
+
+  it('offers a download control only where a downloads service is loaded', () => {
+    // A button that does nothing would be worse than one that is not there.
+    expect(html(h(TrackRow, { track }))).not.toContain('aria-label="Download"')
+    expect(html(h(TrackRow, { track, onDownload: () => {} }))).toContain('aria-label="Download"')
+  })
 })
 
 describe('Slider', () => {

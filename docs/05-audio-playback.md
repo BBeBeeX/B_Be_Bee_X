@@ -238,12 +238,34 @@ only when that yields nothing does the player enter `error`.
 `plugin-download` is the waterfall's resident listener, and its policy is a **playback cache**: a
 remote handle is fetched with the stream's own headers and written to `ctx.paths.cache` while it
 plays, recorded as a `media_bindings` row with `origin: 'download'`; every later resolve answers
-`kind: 'local'` and never reaches the provider. A binding whose file is gone is deleted rather than
-left to fail, files orphaned when a source removal cascaded their binding away are swept when the
-plugin starts, eviction is oldest-played-first once a byte budget is exceeded, and with the plugin
-disabled the same track simply streams — which is the control arm of the regression test at
-[09 §6](./09-project-structure.md#6-testing-strategy). Explicit user-initiated downloads, a
-resumable task queue and `wifi_only`/`charging_only` policies remain M3 ([10 §M3](./10-roadmap.md#m3--offline)).
+`kind: 'local'` and never reaches the provider.
+
+The work itself is a row in `download_tasks` driven by one worker, exposed as **`ctx.downloads`**
+(queued → running → done, with paused/canceled/failed): `bytes_done` is checkpointed per second so
+a pause or an interruption resumes with a `Range` request instead of starting over, `enqueue`
+queues a track without a play (the ⬇ control on a track row calls it), and
+pause/resume/cancel/retry/remove/clear move the row and the file together. A Downloads settings
+page in both shells renders that list — progress, sizes, and the controls each state allows — plus
+the two policy switches.
+
+**Two destinations.** A track the user downloads explicitly is *kept* in
+`ctx.paths.downloads/BBeBee/` and is never evicted; the automatic playback cache lives in
+`ctx.paths.cache/media` and is evicted oldest-played-first once a byte budget is exceeded. Both are
+the same `media_bindings` row, so the player cannot tell them apart, and a kept download outranks
+the cache when both exist.
+
+**The policy is a row, not a constant.** `download_policies` holds `wifi_only` and
+`charging_only`; the worker holds queued tasks and pauses running ones when the device state stops
+satisfying them, re-checking on `ctx.device.onNetworkChange` and on a timer while a charger is the
+only thing missing. A task this plugin paused resumes by itself when the constraint lifts; one the
+user paused does not.
+
+A binding whose file is gone is deleted rather than left to fail, files orphaned when a source
+removal cascaded their binding away are swept when the plugin starts, and resuming sends
+`If-Range: <etag>` so a remote file that changed since the partial was written is restarted rather
+than spliced. With the plugin's `enabled` set to false the same track simply streams — which is the
+control arm of the regression test at
+[09 §6](./09-project-structure.md#6-testing-strategy).
 
 ### Gapless and crossfade
 

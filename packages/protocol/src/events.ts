@@ -112,6 +112,14 @@ declare module 'cordis' {
     'download/progress'(taskId: string, done: number, total?: number): void
     'download/completed'(taskId: string, bindingId: string): void
     'download/failed'(taskId: string, error: Error): void
+    /**
+     * The task list changed in a way the four above do not describe.
+     *
+     * Pause, resume, cancel, retry, remove and clear are all state transitions,
+     * and a screen subscribed only to progress/completed would keep rendering
+     * the old row. Screens re-read `ctx.downloads.tasks` on this.
+     */
+    'download/changed'(): void
 
     /* ── library & scanning ─────────────────────────── emit ── */
     'library/changed'(kind: UrnKind, urns: string[]): void
@@ -171,6 +179,7 @@ export const DISPATCH_MODES = {
   'download/progress': 'emit',
   'download/completed': 'emit',
   'download/failed': 'emit',
+  'download/changed': 'emit',
   'library/changed': 'emit',
   'scan/specified-dirs-changed': 'emit',
   'scan/started': 'emit',

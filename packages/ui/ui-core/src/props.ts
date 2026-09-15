@@ -54,6 +54,13 @@ export interface TrackRowProps extends CommonProps {
   onMore?: () => void
   /** Toggle loved/favorite status. */
   onToggleLoved?: () => void
+  /**
+   * Queue this track for download.
+   *
+   * Absent when the build has no `ctx.downloads`, which is a normal state —
+   * the button is simply not drawn rather than drawn and failing.
+   */
+  onDownload?: () => void
   /** This is the *playing* track, which is not the same as selected. */
   active?: boolean
   showArtwork?: boolean

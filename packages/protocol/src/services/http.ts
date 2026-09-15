@@ -84,6 +84,24 @@ export interface CookieJarService {
   list(): Promise<string[]>
 }
 
+/**
+ * A transfer to a local file.
+ *
+ * `onResponse` is what a resuming caller needs and nothing else gives it: the
+ * `etag` identifies the remote version *now*, before the body is streamed, so
+ * a changed file can be restarted rather than spliced. A caller that resumes
+ * with the stored `etag` as `If-Range` gets correctness from the server side;
+ * one that wants to decide itself reads it here.
+ */
+export interface DownloadRequest extends HttpRequest {
+  /** The local file the body is written to. */
+  to: Uri
+  /** Byte offset to append from, sent as a `Range` header. */
+  resumeFrom?: number
+  /** Called once the headers arrive, before any body byte is written. */
+  onResponse?: (info: { etag?: string; total?: number }) => void
+}
+
 export interface HttpService {
   (req: HttpRequest): Promise<HttpResponse>
   get<T>(url: string, init?: Omit<HttpRequest, 'url' | 'method'>): Promise<T>
@@ -93,9 +111,7 @@ export interface HttpService {
     init?: Omit<HttpRequest, 'url' | 'method' | 'body'>,
   ): Promise<T>
   /** Download to a Uri with resume support. Used by `plugin-download`. */
-  download(
-    req: HttpRequest & { to: Uri; resumeFrom?: number },
-  ): Promise<{ bytes: number; etag?: string }>
+  download(req: DownloadRequest): Promise<{ bytes: number; etag?: string }>
   readonly cookies: CookieJarService
 }
 

@@ -20,8 +20,8 @@ export const COMPONENT_PROPS: KitPropMap = {
   Button: ['children', 'onPress', 'variant', 'disabled', 'loading', 'testID', 'accessibilityLabel'],
   IconButton: ['icon', 'onPress', 'accessibilityLabel', 'variant', 'disabled', 'size', 'testID'],
   TrackRow: [
-    'track', 'onPress', 'onMore', 'active', 'showArtwork', 'showAlbum',
-    'testID', 'accessibilityLabel',
+    'track', 'onPress', 'onMore', 'onToggleLoved', 'onDownload', 'active', 'showArtwork',
+    'showAlbum', 'testID', 'accessibilityLabel',
   ],
   Slider: ['value', 'max', 'onChange', 'onCommit', 'disabled', 'testID', 'accessibilityLabel'],
   Sheet: ['open', 'onClose', 'title', 'children', 'testID', 'accessibilityLabel'],

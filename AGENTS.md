@@ -684,15 +684,18 @@ Test conventions in this repo:
   `fixtures/sources/`
   (`direct-url.json`, `subsonic.json`, `podcast-json-feed.json`).
 - Also built: the three log transports (`plugin-log-{buffer,console,file}`), `plugin-ui`
-  (`ctx.ui`), `plugin-inspector` (`ctx.inspector`), `core-desktop-bridge`, `core-store-fs`, and the
-  playback-cache half of `plugin-download` (a remote stream is cached as a `media_bindings` row and
-  the local copy is preferred on the next play; docs/05 §2).
+  (`ctx.ui`), `plugin-inspector` (`ctx.inspector`), `core-desktop-bridge`, `core-store-fs`, and
+  `plugin-download` — the `media_bindings` playback cache plus a managed `download_tasks` queue
+  (`ctx.downloads`) with a kept-downloads directory, `If-Range`-validated resume, the
+  Wi-Fi/charging policy, pause/resume/cancel/retry/delete/clear, a ⬇ control on track rows, and a
+  Downloads page on both shells (docs/05 §2, docs/07 §4.8).
 
 Known gaps, so they are not rediscovered as bugs:
 
-- **`plugin-download` is a cache, not a download manager.** There is no task queue, no resume from
-  a partial file, no `wifi_only`/`charging_only` policy acceptance and no download UI — a kill
-  mid-write costs the partial file, and the next play starts over (docs/10 §M3).
+- **`plugin-download`'s policy has no scopes.** One `download_policies` row governs both the cache
+  and explicit downloads (`scope_json` is written empty), so "keep the cache on cellular but only
+  download on Wi-Fi" is not expressible yet; per-policy scopes are the remaining M3 item
+  (docs/10 §M3).
 - **The Stage 0 audio spike has not been run on hardware** — no iOS device, no Android device, no
   Electron. ADR-4's verdict is still a hypothesis, as is the device smoke matrix.
 - **`load({ strategy: 'stream' })` has no mobile implementation.** React Native has no

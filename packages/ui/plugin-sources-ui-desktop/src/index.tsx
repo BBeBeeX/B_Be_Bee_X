@@ -14,7 +14,7 @@ import { createElement as h, useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Album, CatalogQuery, ImportReport, PlayerService, ScanSpecifiedDir, ScannerService, StreamQuality, Track, TraceEvent, UiService } from '@BBeBee/protocol'
+import type { Album, CatalogQuery, DownloadsService, ImportReport, PlayerService, ScanSpecifiedDir, ScannerService, StreamQuality, Track, TraceEvent, UiService } from '@BBeBee/protocol'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
   isLocalSource,
@@ -194,6 +194,7 @@ function TrackList({
   onToggleLoved: (urn: string, loved: boolean) => void
   onEndReached: () => void
 }): ReactElement {
+  const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
   const empty =
     scope === 'favorites'
       ? h(EmptyState, {
@@ -230,6 +231,9 @@ function TrackList({
         // Playback announces itself in the transport bar; no navigation.
         onPress: () => void playFromList(ctx, track.urn, { query }),
         onToggleLoved: () => onToggleLoved(track.urn, !track.loved),
+        // Left absent when no downloads service is loaded: a button that does
+        // nothing is worse than one that is not there (docs/08 §3).
+        onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,
       }),
   })
 }
@@ -293,6 +297,7 @@ function AlbumGrid({
 
 export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): ReactElement {
   const album = useAlbum(ctx, urn)
+  const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
 
   if (album.status === 'loading' || album.status === 'idle') {
     return h(Pending, { label: 'Loading album…' })
@@ -358,6 +363,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
               context: { kind: 'album', urn: detail.urn, label: detail.title },
             })
           },
+          onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,
         }),
     }),
   )
@@ -385,6 +391,7 @@ export function SearchScreen({
   onOpenAlbum?: (urn: string) => void
 }): ReactElement {
   const scheme = p()
+  const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
   const selection = useSearchSourceSelection(ctx)
   const search = useSourceSearch(ctx)
   const [text, setText] = useState(query ?? '')
@@ -566,6 +573,7 @@ export function SearchScreen({
                               urns: row.queue,
                               context: { kind: 'search', label: search.text },
                             }),
+                          onDownload: downloads ? () => void downloads.enqueue([row.track.urn]) : undefined,
                         })
                       : row.kind === 'album'
                         ? h(

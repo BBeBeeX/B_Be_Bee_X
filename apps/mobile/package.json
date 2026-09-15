@@ -26,6 +26,7 @@
     "@BBeBee/core-store-fs": "workspace:*",
     "@BBeBee/kernel": "workspace:*",
     "@BBeBee/plugin-download": "workspace:*",
+    "@BBeBee/plugin-download-ui-mobile": "workspace:*",
     "@BBeBee/plugin-inspector": "workspace:*",
     "@BBeBee/plugin-local-scanner": "workspace:*",
     "@BBeBee/plugin-local-scanner-ui-mobile": "workspace:*",

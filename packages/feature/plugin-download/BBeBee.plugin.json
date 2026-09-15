@@ -1,19 +1,30 @@
 {
   "id": "@BBeBee/plugin-download",
   "version": "0.0.0",
-  "displayName": "Playback cache",
-  "description": "Caches remote streams as media_bindings and plays the local copy next time.",
+  "displayName": "Downloads",
+  "description": "ctx.downloads — the managed download queue and the playback cache.",
   "engines": {
     "BBeBee": "^0.1.0"
   },
   "entry": {
-    "main": "./dist/index.js"
+    "main": "./dist/index.js",
+    "ui": {
+      "desktop": "./dist/index.js",
+      "mobile": "./dist/index.js"
+    }
   },
   "capabilities": [
     "net:host/*",
     "fs:read:cache",
     "fs:write:cache",
+    "fs:read:downloads",
+    "fs:write:downloads",
     "db:read:core",
     "db:write:core"
-  ]
+  ],
+  "contributes": {
+    "services": [
+      "downloads"
+    ]
+  }
 }

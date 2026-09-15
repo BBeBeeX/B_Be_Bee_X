@@ -659,8 +659,11 @@ CREATE TABLE download_policies (
 `bytes_done` and `resume_token` are written after **every chunk**, not at completion — this is what
 makes the mobile suspension model in
 [02 §4](./02-architecture.md#4-what-background-means) survivable. On boot, tasks left in `running`
-are reset to `queued`; they resume from `bytes_done` with a `Range` request, validating `etag`
-first so a changed remote file restarts cleanly rather than producing a corrupt splice.
+are reset to `queued`; they resume from `bytes_done` with a `Range` request carrying
+`If-Range: <etag>`, so a remote file that changed since the partial was written answers with the
+whole file and is restarted cleanly rather than producing a corrupt splice. The `etag` is recorded
+when the response headers arrive — before any body byte — so even a first attempt that was
+interrupted knows which remote version its partial belongs to.
 
 The partial unique index enforces one active task per track without blocking re-downloads later.
 
@@ -836,6 +839,8 @@ declare module 'cordis' {
     'download/progress'(taskId: string, done: number, total?: number): void
     'download/completed'(taskId: string, bindingId: string): void
     'download/failed'(taskId: string, error: Error): void
+    /** The task list changed in a way the four above do not describe. */
+    'download/changed'(): void
 
     // library / scanning
     'library/changed'(kind: 'track' | 'album' | 'artist' | 'playlist', urns: string[]): void

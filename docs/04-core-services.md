@@ -158,9 +158,16 @@ export interface HttpService {
   get<T>(url: string, init?: Omit<HttpRequest, 'url' | 'method'>): Promise<T>
   post<T>(url: string, body: unknown, init?: Omit<HttpRequest, 'url' | 'method' | 'body'>): Promise<T>
   /** Download to a Uri with resume support. Used by plugin-download. */
-  download(req: HttpRequest & { to: Uri; resumeFrom?: number }): Promise<{ bytes: number; etag?: string }>
+  download(req: DownloadRequest): Promise<{ bytes: number; etag?: string }>
   /** Persistent per-instance cookie jars. See §2.1. */
   readonly cookies: CookieJarService
+}
+
+export interface DownloadRequest extends HttpRequest {
+  to: Uri
+  resumeFrom?: number                    // sent as `Range`
+  /** Fires once the headers arrive, before any body byte is written. */
+  onResponse?: (info: { etag?: string; total?: number }) => void
 }
 ```
 

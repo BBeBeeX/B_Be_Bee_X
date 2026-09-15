@@ -29,6 +29,7 @@ import type {
   Cookie,
   CookieJar,
   CookieJarService,
+  DownloadRequest,
   FsService,
   HttpRequest,
   HttpResponse,
@@ -178,9 +179,7 @@ export class HttpNode extends Service {
    * queue, the checkpoints, `wifi_only` — is M3's and lives in
    * `plugin-download`.
    */
-  async download(
-    req: HttpRequest & { to: Uri; resumeFrom?: number },
-  ): Promise<{ bytes: number; etag?: string }> {
+  async download(req: DownloadRequest): Promise<{ bytes: number; etag?: string }> {
     const headers = { ...req.headers }
     if (req.resumeFrom) headers['range'] = `bytes=${req.resumeFrom}-`
 
@@ -190,6 +189,15 @@ export class HttpNode extends Service {
     }
 
     const append = Boolean(req.resumeFrom) && response.status === 206
+    const total = contentLengthOf(response, append ? (req.resumeFrom ?? 0) : 0)
+    // Before a byte is written: the resume path uses the etag to decide
+    // whether these bytes are even the same file, and discovering that after
+    // the append is how a corrupt splice happens.
+    req.onResponse?.({
+      ...(response.headers['etag'] ? { etag: response.headers['etag'] } : {}),
+      ...(total !== undefined ? { total } : {}),
+    })
+
     const writer = this.ctx.fs.createWriteStream(req.to, { append }).getWriter()
     const reader = response.stream().getReader()
     let bytes = req.resumeFrom && append ? req.resumeFrom : 0
@@ -204,7 +212,7 @@ export class HttpNode extends Service {
         if (done) break
         await writer.write(value)
         bytes += value.byteLength
-        req.onProgress?.(bytes, contentLengthOf(response, append ? (req.resumeFrom ?? 0) : 0))
+        req.onProgress?.(bytes, total)
       }
       await writer.close()
     } catch (error) {

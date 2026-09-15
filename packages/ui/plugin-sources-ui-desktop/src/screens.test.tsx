@@ -381,6 +381,38 @@ describe('LibraryScreen', () => {
     })
   })
 
+  it('queues a library track for download, through the service', async () => {
+    const { ctx, admin } = await harness()
+    await withTrack(admin)
+    const queued: string[] = []
+    class DownloadsStub extends Service {
+      constructor(c: Context) {
+        super(c, 'downloads')
+      }
+      async enqueue(urns: string[]) {
+        queued.push(...urns)
+        return []
+      }
+    }
+    await admin.plugin(DownloadsStub)
+    await tick()
+
+    await withListLayout(async () => {
+      const view = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      const button = view.container.querySelector('[aria-label="Download"]') as HTMLElement | null
+      expect(button, 'the row offers a download control').toBeTruthy()
+      await act(async () => {
+        button!.click()
+        await tick()
+      })
+      expect(queued).toEqual(['BBeBee:local:track:1'])
+    })
+  })
+
   it('switches between all, local, and favorites scopes', async () => {
     const { ctx, admin } = await harness()
     await withTrack(admin)

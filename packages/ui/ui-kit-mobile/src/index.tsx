@@ -423,6 +423,9 @@ export function TrackRow(props: TrackRowProps): ReactElement {
           onPress: props.onToggleLoved,
         })
       : null,
+    props.onDownload
+      ? h(IconButton, { icon: '⬇', accessibilityLabel: 'Download', onPress: props.onDownload })
+      : null,
     props.onMore
       ? h(IconButton, { icon: '⋯', accessibilityLabel: 'More', onPress: props.onMore })
       : null,

@@ -433,6 +433,28 @@ describe('download', () => {
     expect(await readFile(join(root, 'partial.bin'))).toEqual(PAYLOAD)
     expect(seen.at(-1)!.headers.range).toBe('bytes=2000-')
   })
+
+  it('reports the etag and the full length before the body is written', async () => {
+    // The resumer needs both *before* appending: a changed etag means the
+    // bytes on disk are not the bytes that are coming, and discovering that
+    // after the append is how a corrupt splice happens.
+    const { ctx, root } = await harness()
+    const to = pathToFileURL(join(root, 'partial.bin')).href
+    await ctx.fs.writeFile(to, PAYLOAD.subarray(0, 2000))
+    const headers: { etag?: string; total?: number }[] = []
+
+    const result = await ctx.http.download({
+      url: `${origin}/bytes`,
+      to,
+      resumeFrom: 2000,
+      onResponse: (info) => void headers.push(info),
+    })
+
+    // `total` is the whole file, not the 3000 bytes this response carries —
+    // a progress bar that showed the remainder would restart at 60%.
+    expect(headers).toEqual([{ etag: '"v1"', total: PAYLOAD.length }])
+    expect(result.bytes).toBe(PAYLOAD.length)
+  })
 })
 
 describe('cookies', () => {

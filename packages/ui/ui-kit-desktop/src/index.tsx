@@ -436,6 +436,17 @@ export function TrackRow(props: TrackRowProps) {
           }),
         )
       : null,
+    props.onDownload
+      ? h(
+          'span',
+          { onClick: (e: { stopPropagation: () => void }) => e.stopPropagation() },
+          h(IconButton, {
+            icon: '⬇',
+            accessibilityLabel: 'Download',
+            onPress: props.onDownload,
+          }),
+        )
+      : null,
     props.onMore
       ? h(
           'span',

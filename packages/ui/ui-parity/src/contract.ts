@@ -83,6 +83,14 @@ export const COMPONENT_CONTRACT: ComponentSpec[] = [
       { name: 'track', required: true },
       { name: 'onPress' },
       { name: 'onMore', note: 'Overflow. Desktop also binds right-click; mobile long-press.' },
+      {
+        name: 'onToggleLoved',
+        note: 'Toggle loved/favorite. Absent where the catalogue has no favourites.',
+      },
+      {
+        name: 'onDownload',
+        note: 'Queue for download. Absent where no downloads service is loaded.',
+      },
       { name: 'active', note: 'This is the playing track, which is not the same as selected.' },
       { name: 'showArtwork' },
       { name: 'showAlbum' },

@@ -1,4 +1,5 @@
 export * from './audio.js'
+export * from './downloads.js'
 export * from './fs.js'
 export * from './http.js'
 export * from './js.js'

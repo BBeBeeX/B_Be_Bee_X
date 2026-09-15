@@ -17,4 +17,5 @@ export {
 } from './id.js'
 export { splitArtists } from './text.js'
 export { formatDuration } from './time.js'
+export { formatBytes } from './bytes.js'
 export { permute } from './shuffle.js'

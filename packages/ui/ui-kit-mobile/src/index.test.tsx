@@ -141,6 +141,13 @@ describe('TrackRow', () => {
     const without = tree(h(TrackRow, { track }))
     expect(JSON.stringify(without.map((n) => n.props))).not.toContain('Homogenic')
   })
+
+  it('offers a download control only where a downloads service is loaded', () => {
+    const offered = JSON.stringify(tree(h(TrackRow, { track, onDownload: () => {} })))
+    expect(offered).toContain('Download')
+    const absent = JSON.stringify(tree(h(TrackRow, { track })))
+    expect(absent).not.toContain('Download')
+  })
 })
 
 // `Slider` holds drag state, so it needs a renderer rather than a call.

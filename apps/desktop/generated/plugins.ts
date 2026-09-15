@@ -11,6 +11,7 @@ import coreJsQuickjsNode from '@BBeBee/core-js-quickjs-node'
 import coreMediaSessionElectron from '@BBeBee/core-media-session-electron'
 import coreSecretsNode from '@BBeBee/core-secrets-node'
 import pluginDownload from '@BBeBee/plugin-download'
+import pluginDownloadUi from '@BBeBee/plugin-download-ui-desktop'
 import pluginInspector from '@BBeBee/plugin-inspector'
 import pluginInspectorUi from '@BBeBee/plugin-inspector-ui-desktop'
 import pluginLocalScanner from '@BBeBee/plugin-local-scanner'
@@ -69,7 +70,12 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-download": {
     plugin: pluginDownload,
-    manifest: {"id":"@BBeBee/plugin-download","version":"0.0.0","displayName":"Playback cache","description":"Caches remote streams as media_bindings and plays the local copy next time.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","db:read:core","db:write:core"]},
+    manifest: {"id":"@BBeBee/plugin-download","version":"0.0.0","displayName":"Downloads","description":"ctx.downloads — the managed download queue and the playback cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","fs:read:downloads","fs:write:downloads","db:read:core","db:write:core"],"contributes":{"services":["downloads"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-download-ui-desktop": {
+    plugin: pluginDownloadUi,
+    manifest: {"id":"@BBeBee/plugin-download-ui-desktop","version":"0.0.0","displayName":"Downloads (desktop views)","description":"ctx.downloads — the managed download queue and the playback cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["downloads"]}},
     builtin: true,
   },
   "@BBeBee/plugin-inspector": {

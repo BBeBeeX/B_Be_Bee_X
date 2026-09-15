@@ -67,6 +67,7 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   // a `media_bindings` row, and every later play opens the file. Disabling it
   // leaves playback streaming, with no branch in the player either way.
   '@BBeBee/plugin-download': {},
+  '@BBeBee/plugin-download-ui-mobile': {},
   '@BBeBee/plugin-player': {},
   '@BBeBee/plugin-player-ui-mobile': {},
 }

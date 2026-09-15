@@ -175,9 +175,10 @@ B_Be_Bee/
 │   │   ├── plugin-inspector/       ✅        fiber tree + labelled effects (M0 exit criterion)
 │   │   ├── plugin-dsp/                       ctx.dsp — the effect chain (05 §3)
 │   │   ├── plugin-effect-eq10/               one DSP effect, as a plugin
-│   │   ├── plugin-download/        ✅        media_bindings + before-resolve substitution;
-│   │   │                                       the automatic playback cache (05 §2). The task
-│   │   │                                       queue, policies and download UI are M3 (10 §M3)
+│   │   ├── plugin-download/        ✅        ctx.downloads — the task queue, the kept-downloads
+│   │   │                                       directory vs the evictable cache, If-Range resume,
+│   │   │                                       the Wi-Fi/charging policy, and the
+│   │   │                                       before-resolve substitution (05 §2, 07 §4.8)
 │   │   ├── plugin-library/                   playlists, favourites, smart lists
 │   │   ├── plugin-lyrics/                    lyric providers
 │   │   ├── plugin-cache/                     the http/request cache layer
@@ -199,6 +200,8 @@ B_Be_Bee/
 │   │   ├── plugin-player-ui-mobile/  ✅      ┘
 │   │   ├── plugin-sources-ui-desktop/ ✅     ┐ library, album detail, search, source list,
 │   │   ├── plugin-sources-ui-mobile/  ✅     ┘ import review, test screen (08 §4)
+│   │   ├── plugin-download-ui-desktop/ ✅    ┐ the download queue and cache (08 §4)
+│   │   ├── plugin-download-ui-mobile/  ✅    ┘
 │   │   ├── plugin-local-scanner-ui-desktop/ ✅ ┐ settings: scan roots
 │   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
 │   │   └── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered
