@@ -55,7 +55,11 @@ and control playback. Media session integration.
 conformance suite running against a real byte-serving socket, `ctx.device`, `ctx.background` and
 `ctx.mediaSession` on both targets, the scanner, the catalogue, the player with gapless, crossfade,
 prefetch and the interruption table, both UI kits with the parity check, and the five screens on
-both shells. Both shells load the **generated** registry, so a package is bundled by declaring a
+both shells — since split so a screen can evolve without touching a service: the library, search,
+source-list, import and test screens stay in `plugin-sources-ui-*`, the album page is
+`plugin-album-ui-*`, the player and its bar are `plugin-now-playing-ui-*`, the up-next list is
+`plugin-queue-ui-*`, and `plugin-player` itself is headless with commands only. Both shells load
+the **generated** registry, so a package is bundled by declaring a
 manifest rather than by being added to two hand-written lists that can disagree. Criterion 1 is
 checked at the size it names: a generated 5,000-file corpus, read by the real codec, through an
 instrumented `ctx.fs` that asserts the second pass opens no file.

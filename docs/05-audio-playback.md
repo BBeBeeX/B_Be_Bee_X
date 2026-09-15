@@ -255,7 +255,7 @@ arm of the regression test at [09 §6](./09-project-structure.md#6-testing-strat
 Covers take the same path through the same plugin: `ctx.cache.artwork(ref)` returns the cached
 file, fetching and writing it only on a miss, and fills in `artworks.local_uri` so every other
 reader — including the lock screen — sees a local `Uri` on the next catalogue read. The render
-side is the `useResolvedArtwork` hook ([08 §4](./08-ui-architecture.md#4-the-screens)).
+side is the `useResolvedArtwork` hook ([08 §4](./08-ui-architecture.md#4-binding-services-to-react)).
 
 The work itself is a row in `download_tasks` driven by one worker, exposed as **`ctx.downloads`**
 (queued → running → done, with paused/canceled/failed): `bytes_done` is checkpointed per second so

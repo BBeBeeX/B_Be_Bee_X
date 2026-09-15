@@ -4,8 +4,9 @@
 > dependencies, how its lifetime is managed, how it is discovered and loaded on each platform,
 > and what containment it is (and is not) subject to.
 
-Plugins are Layers 2 and 3 of [02 §1](./02-architecture.md#1-the-layer-model). The mechanics here
-are identical for both — same manifest, same lifecycle, same loader — and the *only* thing that
+Plugins are Layers 2 through 4 of [02 §1](./02-architecture.md#1-the-layer-model): core services,
+log transports and features. The mechanics here are identical for all of them — same manifest,
+same lifecycle, same loader — and the *only* thing that
 distinguishes a core plugin from a feature plugin is what it is allowed to import: a core plugin
 may reach the platform SDK and the kernel's bootstrap surface, a feature plugin may not. That is
 worth stating early, because everything below reads as if there were one kind of plugin, and

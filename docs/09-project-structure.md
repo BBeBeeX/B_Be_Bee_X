@@ -197,7 +197,8 @@ B_Be_Bee/
 │   │   │                                      orchestration that turns one user intent into a
 │   │   │                                      sequence of feature calls. Anything you would
 │   │   │                                      otherwise write twice belongs in the headless
-│   │   │                                      sibling, which views import for TYPES only.
+│   │   │                                      sibling, which views import through its public
+│   │   │                                      subpaths only (types, hooks, view ids).
 │   │   ├── ui-tokens/              ✅        design tokens as data + the WCAG AA gate (08 §8)
 │   │   ├── ui-core/                ✅        framework-agnostic hooks + shared prop types
 │   │   ├── ui-parity/              ✅        the component contract, and the check that both
@@ -284,8 +285,8 @@ still says what kind of thing it is, and the two agree by construction — a `co
 | `protocol/` | 0 | `protocol` — the contracts. One package, no runtime |
 | `kernel/` | 1 | `kernel` — one package |
 | `core/` | 2 | `core-<service>-<platform>` — one platform implementation of a core service |
-| `feature/` | 3 | `plugin-<feature>` headless, `plugin-effect-<id>` for a DSP effect, and `source-rules` · `toolkit`, pure-logic libraries beneath the plugins rather than plugins themselves |
-| `ui/` | 4 | `plugin-<feature>-ui-<target>` for views, `ui-*` for the infrastructure both kits share |
+| `feature/` | 4 | `plugin-<feature>` headless, `plugin-effect-<id>` for a DSP effect, and `source-rules` · `toolkit`, pure-logic libraries beneath the plugins rather than plugins themselves |
+| `ui/` | 5 | `plugin-<feature>-ui-<target>` for views, `ui-*` for the infrastructure both kits share |
 | `tooling/` | — | `tooling-*`. Outside the layer model, because nothing here ships |
 
 There is deliberately **no `plugin-source-<protocol>` prefix any more**. A music backend is a
@@ -318,7 +319,7 @@ flowchart TD
     uikit --> uicore
     uikit --> tokens["ui-tokens — L5"]
     uicore --> protocol["@BBeBee/protocol — L0"]
-    pluginui -.->|types only| headless["plugin-* (headless) — L4"]
+    pluginui -.->|public subpaths| headless["plugin-* (headless) — L4"]
     headless --> protocol
     logs["plugin-log-* — L3"] --> protocol
     core["core-* — L2"] --> protocol
@@ -554,7 +555,7 @@ Read as a matrix, that is the layer model with nothing left implicit:
 | **Layer 2** may import | ✅ | ✅ **all of it** | own package | ❌ | ❌ | ❌ | ✅ **only here** | ❌ |
 | **Layer 3** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | a sibling transport | ❌ | ❌ | ❌ | ✅ **only here** |
 | **Layer 4** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | ❌ *(`ctx.logger`)* | types only, of a sibling | ❌ | ❌ | ❌ |
-| **Layer 5** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | ❌ *(`ctx.logger`)* | ⚠️ types only | ✅ | ⚠️ view library in `ui/*`; platform chrome in `apps/*` | ❌ |
+| **Layer 5** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys instead)* | ❌ *(`ctx.logger`)* | ⚠️ public subpaths only — a view package imports its headless sibling's types, hooks and view ids, never its internals | ✅ | ⚠️ view library in `ui/*`; platform chrome in `apps/*` | ❌ |
 | **Composition root** may import | ✅ | ✅ | ✅ | ✅ (as bootstrap entries) | ✅ (as registry data) | ✅ | ✅ | ✅ |
 
 Three checks deliberately live in **tests** rather than ESLint, because a lint rule whose selector
@@ -573,11 +574,13 @@ and two copies of one list drift. With it in place, adding an export to `@BBeBee
 deliberate answer to "which surface is this?" — put it in the re-export block and every layer may
 call it, put it below and only Layer 2 may.
 
-Still to add: a check that no `plugin-*-ui-*` package imports a *value* from its headless sibling,
-only types — the `⚠️ types only` cell above is currently convention rather than enforcement.
-`eslint-plugin-import`'s `no-restricted-paths` with a type-only exception covers it. The
-scaffolder already emits the right shape — the headless package is a `devDependency` of its view
-packages — but nothing yet enforces it.
+Still to add: a check that a `plugin-*-ui-*` package reaches its headless sibling only through
+its **declared subpaths** (`@BBeBee/plugin-x/hooks`, `/views`) and never a deep path into
+`src/*`. The public-subpath rule is convention rather than enforcement today;
+`eslint-plugin-import`'s `no-restricted-paths` is the tool for it. View packages import *values*
+from those subpaths — the hooks and the view-id constants are runtime imports by design
+([08 §4](./08-ui-architecture.md#4-binding-services-to-react)) — so a blanket "types only" check
+would be wrong: the boundary is the package's public surface, not the import kind.
 
 ---
 

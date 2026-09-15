@@ -48,7 +48,7 @@ Read `01` and `02` first — they establish the vocabulary everything else uses.
 | 08 | `docs/08-ui-architecture.md` | One plugin, two shells: descriptors, hooks, tokens, and visual design |
 | 09 | `docs/09-project-structure.md` | Layout, dependency rules, build pipelines, testing, workflow |
 | 10 | `docs/10-roadmap.md` | Milestones with exit criteria, and the risk register |
-| 11 | `docs/11-roadmap-M1.md` | The current milestone in detail |
+| 11 | `docs/11-roadmap-M1.md` | The M1 execution plan, as executed (historical — current package layout is 09, current status is 10) |
 
 ---
 
@@ -136,7 +136,7 @@ to break the architecture while appearing to follow it.
 | **L2** may import | ✅ | ✅ all of it | own package | ❌ | ❌ | ❌ | ✅ **only here** |
 | **L3** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys)* | a sibling transport | ❌ | ❌ | ❌ |
 | **L4** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys)* | ❌ *(`ctx.logger`)* | types only, of a sibling | ❌ | ❌ |
-| **L5** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys)* | ❌ *(`ctx.logger`)* | ⚠️ types only | ✅ | ⚠️ view lib in `ui/*`; chrome in `apps/*` |
+| **L5** may import | ✅ | ⚠️ plugin surface only | ❌ *(service keys)* | ❌ *(`ctx.logger`)* | ⚠️ public subpaths only (types, hooks, view ids) | ✅ | ⚠️ view lib in `ui/*`; chrome in `apps/*` |
 | **Composition root** | ✅ | ✅ | ✅ | ✅ | ✅ (as data) | ✅ | ✅ |
 
 `console.*` is an error everywhere above Layer 3, and available inside it: writing to the console
@@ -483,8 +483,9 @@ shells); plugin config → the kernel. **React holds no domain state** — only 
 > **A UI package contains no logic that would need to be written twice.**
 
 If you are about to write the same `if` in both UI packages, it belongs in the headless one.
-View packages import the headless package for **types only**. In practice they end up thin:
-layout, gestures, event wiring.
+View packages reach the headless package through its **public subpaths only** — its types, the
+shared hooks (`@BBeBee/plugin-scrobble/hooks`) and the view ids (`/views`) — never a deep path
+into `src/*`. In practice they end up thin: layout, gestures, event wiring.
 
 ### Descriptors, not components
 
@@ -676,14 +677,21 @@ Test conventions in this repo:
   against a real byte-serving socket, `ctx.device`, `ctx.background` and `ctx.mediaSession` on
   both targets, the scanner, the catalogue, the player (gapless, crossfade, prefetch, the
   interruption table), both UI kits with the parity check, and five screens on both shells.
-  Both shells load the **generated** registry.
+  Those screens have since been split into surface plugins so a screen can evolve without touching
+  a service: `plugin-album-ui-*` (album), `plugin-now-playing-ui-*` (player + bar),
+  `plugin-queue-ui-*` (up-next), with the catalogue screens in `plugin-sources-ui-*`;
+  `plugin-player` itself is headless with commands only. Both shells load the **generated**
+  registry.
 - M2: `source-rules` (full rule engine with its own tests), `core-js-quickjs-node`, the runtime
   with search/explore/album/lyrics/login (`DocumentAuth`, single-flight re-auth), `ctx.secrets`
   on both targets with persistent per-source cookie jars, the import/review flow, the per-feature
   test screen with its streaming trace, the cross-source search screen (one result section per
   source, failures and timeouts kept visible) (`plugin-sources-ui-*`), and the corpus suite over
   `fixtures/sources/`
-  (`direct-url.json`, `subsonic.json`, `podcast-json-feed.json`).
+  (`direct-url.json`, `subsonic.json`, `podcast-json-feed.json`). The curation half that MD-3
+  deferred from M1 is in as well: `plugin-library` / `ctx.library` — playlists, favourites,
+  collections, and smart playlists whose rule tree compiles to parameterised SQL
+  (docs/07 §4.6) — with screens on both shells.
 - Also built: the three log transports (`plugin-log-{buffer,console,file}`), `plugin-ui`
   (`ctx.ui`), `plugin-inspector` (`ctx.inspector`), `core-desktop-bridge`, `core-store-fs`,
   `plugin-cache` — `ctx.cache` serves covers and remote streams from `ctx.paths.cache`

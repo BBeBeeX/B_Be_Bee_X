@@ -4,6 +4,13 @@
 > how every exit criterion in [10 §M1](./10-roadmap.md#m1--it-plays-music) is actually verified.
 > [10](./10-roadmap.md) says *what* the milestones are; this says *how* this one gets built.
 
+> ⚠️ **Historical record.** The package names below are the ones that existed during M1. The
+> screens have since been split into surface plugins — `plugin-album` (the album page),
+> `plugin-now-playing` (the full-screen player and the bar that opens it), `plugin-queue` (the
+> up-next list) — and `plugin-library` owns playlists, favourites and collections. For the
+> current package layout see [09 §1](./09-project-structure.md#1-repository-layout), and for the
+> current state of each milestone see [10](./10-roadmap.md).
+
 M0 proved the kernel: one plugin graph, two platforms, total unload, conformant core services. It
 proved nothing about the application, because nothing in M0 makes a sound.
 
@@ -701,7 +708,7 @@ one capability rather than a declared claim to one.
 
 ### 4.11 `ui-tokens` · `ui-core` · `ui-kit-mobile` · `ui-kit-desktop`
 
-Tokens are plain data ([08 §6](./08-ui-architecture.md#6-design-tokens)); `ui-core` is the shared
+Tokens are plain data ([08 §6](./08-ui-architecture.md#6-visual-design-language--design-tokens)); `ui-core` is the shared
 hook layer over `useSyncExternalStore`; the kits export the same component names with the same
 props — `Button`, `IconButton`, `TrackRow`, `Slider`, `Sheet`/`Dialog`, `List`, `EmptyState`,
 `Toast`.

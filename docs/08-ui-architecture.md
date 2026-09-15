@@ -1,6 +1,6 @@
 # 08 — UI Architecture
 
-> **What this answers.** **Layer 4** of [02 §1](./02-architecture.md#1-the-layer-model): how a
+> **What this answers.** **Layer 5** of [02 §1](./02-architecture.md#1-the-layer-model): how a
 > single plugin contributes user interface to two shells that share no component code, how views
 > find their data without owning it, and where the boundary between "logic" and "view" is drawn.
 
@@ -23,9 +23,9 @@ keeps ADR-2 from doubling the *whole* feature instead of just its pixels.
 
 | Package | Layer | Contains | May import |
 |---|---|---|---|
-| headless | 3 | The Cordis plugin, all logic, all state, all DB access, all networking | `@BBeBee/protocol` only |
-| `-ui-mobile` | 4 | Components and the descriptors that name them | `react`, `react-native`, `@BBeBee/ui-kit-mobile`, the headless package's **types** |
-| `-ui-desktop` | 4 | Components and the descriptors that name them | `react`, `react-dom`, `@BBeBee/ui-kit-desktop`, the headless package's **types** |
+| headless | 4 | The Cordis plugin, all logic, all state, all DB access, all networking | `@BBeBee/protocol` only |
+| `-ui-mobile` | 5 | Components and the descriptors that name them | `react`, `react-native`, `@BBeBee/ui-kit-mobile`, and the headless package's **public subpaths** — its types plus the shared hooks and view ids (`/hooks`, `/views`) |
+| `-ui-desktop` | 5 | Components and the descriptors that name them | `react`, `react-dom`, `@BBeBee/ui-kit-desktop`, and the headless package's **public subpaths** — its types plus the shared hooks and view ids (`/hooks`, `/views`) |
 
 The split is the Layer 4/Layer 5 boundary made concrete. Layer 5 is where business *orchestration*
 lives — this button, then that confirmation, then this navigation — while the business *rule* it
@@ -308,8 +308,9 @@ A download starts from the **⬇ control on a track row** (`TrackRow.onDownload`
 
 The rule that keeps this affordable is [§1](#1-the-three-package-convention)'s: parsing,
 validating, diffing, tracing and redacting all live in the headless package. The view packages
-show a list, a text field, and a set of toggles. The library and album screens are conventional
-catalogue surfaces in the same packages; the four above are the ones the string model added.
+show a list, a text field, and a set of toggles. The library screen is a conventional catalogue
+surface in `plugin-sources-ui-*`, and the album screen — split out into `plugin-album-ui-*` —
+reads through `@BBeBee/plugin-album/hooks`; the four above are the ones the string model added.
 
 ---
 
