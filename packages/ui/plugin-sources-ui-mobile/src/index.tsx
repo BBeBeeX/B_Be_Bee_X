@@ -10,13 +10,13 @@ import { createElement as h, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Album, CatalogQuery, DownloadsService, ImportReport, PlayerService, ScanSpecifiedDir, ScannerService, Track, TraceEvent, UiService } from '@BBeBee/protocol'
+import type { Album, CatalogQuery, DownloadsService, ImportReport, ScanSpecifiedDir, ScannerService, Track, TraceEvent, UiService } from '@BBeBee/protocol'
+import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
   isLocalSource,
   playFromList,
   searchResultRows,
-  useAlbum,
   useAlbums,
   useLocalFolders,
   useSearchSourceSelection,
@@ -122,7 +122,7 @@ export function LibraryScreen({
 
   const handleOpenAlbum = (urn: string) => {
     onOpenAlbum?.(urn)
-    serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.album, { urn })
+    serviceOf<UiService>(ctx, 'ui')?.navigate(ALBUM_VIEWS.album, { urn })
   }
 
   const trackEmpty =
@@ -264,109 +264,6 @@ export function LibraryScreen({
   )
 }
 
-export function AlbumScreen({
-  ctx,
-  urn,
-  onBack,
-}: {
-  ctx: Context
-  urn?: string
-  onBack?: () => void
-}): ReactElement {
-  const native = nativePrimitives()
-  const album = useAlbum(ctx, urn)
-  const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
-
-  const handleBack = () => {
-    if (onBack) onBack()
-    else serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.library)
-  }
-
-  if (album.status === 'loading' || album.status === 'idle') {
-    return h(Pending, { label: 'Loading album…' })
-  }
-  if (album.status === 'error' || !album.data) {
-    return h(EmptyState, {
-      icon: '⚠',
-      title: 'Album unavailable',
-      description: album.error?.message,
-      action: h(Button, { onPress: handleBack, variant: 'secondary', children: 'Back to library' }),
-    })
-  }
-
-  const detail = album.data
-  return h(
-    native.View as never,
-    { style: { flex: 1, backgroundColor: p().bg.base } },
-    h(
-      native.View as never,
-      {
-        style: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: tokens.space[3],
-          paddingVertical: tokens.space[2],
-        },
-      },
-      h(
-        native.Pressable as never,
-        {
-          accessibilityRole: 'button',
-          accessibilityLabel: 'Back to library',
-          onPress: handleBack,
-          style: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingVertical: tokens.space[1],
-            paddingHorizontal: tokens.space[2],
-          },
-        },
-        h(Text, { variant: 'sm', tone: 'accent', children: '‹ Library' }),
-      ),
-    ),
-    h(
-      native.View as never,
-      { style: { alignItems: 'center', gap: tokens.space[2], padding: tokens.space[4] } },
-      h(CachedArtwork, { ctx, artwork: detail.artwork, seed: detail.urn, size: 200, radius: tokens.radius.md }),
-      h(Text, { variant: 'xl', numberOfLines: 2, children: detail.title }),
-      h(Text, {
-        tone: 'muted',
-        children: detail.artists?.map((a) => a.name).join(', ') ?? '',
-      }),
-      h(Button, {
-        // Playback announces itself in the mini-player; no navigation.
-        onPress: () => void serviceOf<PlayerService>(ctx, 'player')?.playNow(detail.tracks.map((t) => t.urn)),
-        children: 'Play album',
-        disabled: detail.tracks.length === 0,
-      }),
-    ),
-    h(List<Track>, {
-      items: detail.tracks,
-      accessibilityLabel: `Tracks on ${detail.title}`,
-      estimatedItemSize: tokens.size.row,
-      keyExtractor: (track) => track.urn,
-      empty: h(EmptyState, { title: 'This album has no tracks' }),
-      renderItem: (track) =>
-        h(CachedTrackRow, { ctx,
-          track,
-          showArtwork: false,
-          // A tap plays the track in the list it was tapped in: jump if the
-          // queue already holds it, otherwise the whole album becomes the
-          // queue, starting here. "Play album" above is the explicit
-          // from-the-top gesture, and replaces outright.
-          onPress: () => {
-            void playFromList(ctx, track.urn, {
-              urns: detail.tracks.map((t) => t.urn),
-              context: { kind: 'album', urn: detail.urn, label: detail.title },
-            })
-          },
-          onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,
-        }),
-    }),
-  )
-}
-
-
 /* ── search ────────────────────────────────────────────────────────────── */
 
 /**
@@ -412,7 +309,7 @@ export function SearchScreen({
 
   const openAlbum = (urn: string) => {
     onOpenAlbum?.(urn)
-    serviceOf<UiService>(ctx, 'ui')?.navigate(SOURCES_VIEWS.album, { urn })
+    serviceOf<UiService>(ctx, 'ui')?.navigate(ALBUM_VIEWS.album, { urn })
   }
 
   return h(
@@ -1337,7 +1234,6 @@ export async function apply(ctx: Context) {
   return ctx.effect(function* () {
     yield ctx.ui.registerView(SOURCES_VIEWS.library, bound(ctx, LibraryScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.search, bound(ctx, SearchScreen))
-    yield ctx.ui.registerView(SOURCES_VIEWS.album, bound(ctx, AlbumScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceList, bound(ctx, SourcesListScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceImport, bound(ctx, ImportScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceTest, bound(ctx, TestScreen))

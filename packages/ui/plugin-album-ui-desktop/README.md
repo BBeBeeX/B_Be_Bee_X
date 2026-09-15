@@ -1,0 +1,42 @@
+# @BBeBee/plugin-album-ui-desktop
+
+Layer 5（ui）— `plugin-album`（headless）的桌面视图包：专辑页的布局与事件接线。
+
+## 概述
+
+把 `album.view` 绑到桌面 kit 上。全部领域状态来自 `@BBeBee/plugin-album/hooks`；`ctx.sources` 经 `inject` 访问（读专辑必须），`player` / `downloads` 用 `serviceOf`（可选——没有就少一个控件，而不是整屏报错）。本包依赖 headless 的 `@BBeBee/plugin-album`（hooks 与 route id）。
+
+从 `plugin-sources-ui-desktop` 整体迁入（route/view/`useAlbum` 一起走），库与搜索屏现在只负责导航到 `ALBUM_VIEWS.album`。
+
+## 源文件
+
+### `src/index.tsx`
+
+**注册的视图**：`album.view` → `AlbumScreen`（generator effect，fiber 名 `'album-ui-desktop'`）。
+
+**`AlbumScreen({ urn })`** — `useAlbum` → 三态分支（`Pending` / "Album unavailable" + 原因 / 内容）：
+
+- **header**：横排 160px `Artwork`（经 `CachedArtwork` 走 `ctx.cache`，未命中先画 fallback，不把远端 URL 交给第二个请求）+ 标题 + 艺人 + "Play album"；
+- **曲目 `List`**：`showArtwork: false`，`estimatedItemSize: tokens.size.row`，空专辑显示 "This album has no tracks"；
+- **播放语义**（本屏存在的理由）：
+  - "Play album" → `player.playNow(全部曲目)`——**显式的"从头播这张"手势，直接替换队列**；`disabled: 无曲目`，禁用而非隐藏（"没有可播曲目的专辑"是真实状态，藏掉按钮就藏掉了原因）。
+  - 点单轨 → `player.playFromContext(track, 全部曲目, { context: { kind: 'album', urn, label } })`——队列已有该曲则跳转、队列不动；没有则整张专辑成为队列并从点击处起播。
+  - **播放不导航**：走带条自己宣布正在播放，用户停在原地。
+- **下载**：`onDownload` → `ctx.downloads.enqueue([urn])`；没有 `ctx.downloads` 的构建不画这个按钮。
+
+**`bound(ctx, Screen)`** — 绑定到本插件的 context（shell 渲染视图用的是 `app.ready(['ui'])` 的 context，读 `ctx.sources` 会抛 `cannot get property … without inject`）；`h(Screen, …)` 而非函数调用，否则子组件 hooks 会拼进父组件链表。
+
+## 测试（`src/screens.test.tsx`）
+
+jsdom + Testing Library，`withListLayout` 给虚拟列表量高；harness 注册 sources/player/downloads/ui 桩并从 `inject` 派生 scoped context。4 个用例：
+
+1. 画出专辑 + "Play album" → `playNow([A, B])`（逐字）；
+2. 点 "Jóga" → `playFromContext(B, [A, B], { kind: 'album', urn, label: 'Homogenic' })`；
+3. 下载按钮 → `downloads.enqueue([A])` 且**不触碰播放**；
+4. 缺失专辑 → "Album unavailable" + "no album"，而不是一张空页。
+
+## 相关文档
+
+- `packages/feature/plugin-album/README.md`：headless 侧与 route id
+- `packages/ui/plugin-album-ui-mobile/README.md`：孪生半边
+- `packages/ui/plugin-sources-ui-desktop/README.md`：库/搜索屏（导航入口）

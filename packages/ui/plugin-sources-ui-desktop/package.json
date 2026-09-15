@@ -18,6 +18,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@BBeBee/plugin-album": "workspace:*",
     "@BBeBee/plugin-cache": "workspace:*",
     "@BBeBee/plugin-library": "workspace:*",
     "@BBeBee/protocol": "workspace:*",

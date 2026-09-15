@@ -167,6 +167,8 @@ B_Be_Bee/
 │   │   │                                       source-rules — no Cordis, no I/O, no deps
 │   │   ├── plugin-source-runtime/  ✅        binds source-rules to ctx.http · ctx.js (06 §4)
 │   │   ├── plugin-sources/         ✅        the ctx.sources registry + catalogue (06 §4.1)
+│   │   ├── plugin-album/           ✅        the album page: route + view id, reads through
+│   │   │                                       ctx.sources (07 §4.3, 08 §2)
 │   │   ├── plugin-source-local/    ✅        the one provider that is not a string (06 §12)
 │   │   ├── plugin-local-scanner/   ✅        ctx.scanner — the ≥5,000-file corpus walk
 │   │   ├── plugin-player/          ✅        ctx.player — transport, queue, history (05 §2)
@@ -201,8 +203,10 @@ B_Be_Bee/
 │   │   ├── ui-kit-desktop/         ✅        React DOM components
 │   │   ├── plugin-player-ui-desktop/ ✅      ┐ now playing, transport, queue
 │   │   ├── plugin-player-ui-mobile/  ✅      ┘
-│   │   ├── plugin-sources-ui-desktop/ ✅     ┐ library, album detail, search, source list,
+│   │   ├── plugin-sources-ui-desktop/ ✅     ┐ library, search, source list,
 │   │   ├── plugin-sources-ui-mobile/  ✅     ┘ import review, test screen (08 §4)
+│   │   ├── plugin-album-ui-desktop/  ✅      ┐ one album: header, tracks, actions (08 §4)
+│   │   ├── plugin-album-ui-mobile/   ✅      ┘
 │   │   ├── plugin-download-ui-desktop/ ✅    ┐ the download queue and cache (08 §4)
 │   │   ├── plugin-download-ui-mobile/  ✅    ┘
 │   │   ├── plugin-library-ui-desktop/ ✅     ┐ playlists, one playlist, favourites (08 §4)

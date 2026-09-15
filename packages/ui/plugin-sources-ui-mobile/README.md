@@ -10,12 +10,12 @@ Layer 5（ui）— `plugin-sources`（headless）的移动视图包：`plugin-so
 
 ### `src/index.tsx`
 
-**注册的视图**（generator effect，fiber 名 `'sources-ui-mobile'`）：`sources.library` / `sources.search` / `sources.album` / `sources.settings` / `sources.import` / `sources.test`，六个与桌面同构。
+**注册的视图**（generator effect，fiber 名 `'sources-ui-mobile'`）：`sources.library` / `sources.search` / `sources.settings` / `sources.import` / `sources.test`，五个与桌面同构。专辑详情已拆到 `plugin-album-ui-mobile`（`album.view`）。
 
 **各屏幕**（行为与桌面一致，以下列移动端差异）：
 
 - **`LibraryScreen`** — Tracks/Albums 双 tab（`accessibilityRole: 'tablist'`）；专辑列表内联在屏内（`Pressable` + `accessibilityRole: 'button'`，无独立 `AlbumGrid`）；`List`（FlashList）+ `TrackRow`。点击播放/导航语义与桌面相同：单曲走 headless 的 `playFromList`（队列已有则跳转，否则当前 scope 的整个列表换入队列并从点击处播），专辑行交给路由。
-- **`AlbumScreen({ urn })`** — header 居中**竖排**（200px `Artwork`、标题 `numberOfLines: 2`），桌面为横排。"Play album" 禁用而非隐藏；单轨 `playFromList`（跳转优先，否则整张专辑成为队列并从点击处起播），语义与桌面逐字相同；**播放不导航**，mini-player 自己宣布正在播放。
+- **`AlbumScreen`** — 已迁至 `plugin-album-ui-mobile`（`album.view`）：居中竖排 header、200px 封面、返回库的兜底导航。库与搜索屏只负责导航到该 route id。
 - **`ImportScreen`** — 多行 `TextField` `rows: 10`（桌面 14）；placeholder 较短；报告文本 tone 恒 `'muted'`（桌面在 added/updated > 0 时用 `'accent'`）。预览、全部 issues、`summariseImport` 行为一致。
 - **`SearchScreen`** — 与桌面同一组 hooks 与同一套行模型：hero 态（搜索条 + 源开关居中）→ 提交后收缩到顶部、结果占满剩余高度；Clear 回 hero。差异只在布局：搜索框与 Search/Clear 按钮**竖排堆叠**（桌面横排），源开关横排 wrap，结果仍是一条 `List`（FlashList）承载每源 section，track 点击 `playFromList`，专辑行交给路由。
 - **`TestScreen({ sourceId })`** — 与桌面同构，差异全在控件：源选择器是 **Button + 展开的选项列表**（RN 没有原生 `<select>`），测试区与字段竖排堆叠，Stream 区没有质量输入框（走默认质量），trace 用 `View` + `borderLeftWidth/Color` + `Text variant: 'sm'`（无 aria-live 等价物）。文件注释补了一句：这屏在手机上最重要——从论坛贴的源就是在设备上坏的，而"源即字符串"模型的全部意义就是当场能修。

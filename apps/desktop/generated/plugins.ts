@@ -10,6 +10,8 @@ import coreHttpNode from '@BBeBee/core-http-node'
 import coreJsQuickjsNode from '@BBeBee/core-js-quickjs-node'
 import coreMediaSessionElectron from '@BBeBee/core-media-session-electron'
 import coreSecretsNode from '@BBeBee/core-secrets-node'
+import pluginAlbum from '@BBeBee/plugin-album'
+import pluginAlbumUi from '@BBeBee/plugin-album-ui-desktop'
 import pluginCache from '@BBeBee/plugin-cache'
 import pluginDownload from '@BBeBee/plugin-download'
 import pluginDownloadUi from '@BBeBee/plugin-download-ui-desktop'
@@ -69,6 +71,16 @@ export const bundled: PluginRegistry = {
   "@BBeBee/core-secrets-node": {
     plugin: coreSecretsNode,
     manifest: {"id":"@BBeBee/core-secrets-node","platforms":["desktop"],"version":"0.0.0","displayName":"Secrets","description":"ctx.secrets — credential storage for desktop and Node.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:own","fs:write:own"],"contributes":{"services":["secrets"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-album": {
+    plugin: pluginAlbum,
+    manifest: {"id":"@BBeBee/plugin-album","version":"0.0.0","displayName":"Album","description":"The album page — detail, tracks, and album-level actions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[]},
+    builtin: true,
+  },
+  "@BBeBee/plugin-album-ui-desktop": {
+    plugin: pluginAlbumUi,
+    manifest: {"id":"@BBeBee/plugin-album-ui-desktop","version":"0.0.0","displayName":"Album (desktop views)","description":"The album page — detail, tracks, and album-level actions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-cache": {

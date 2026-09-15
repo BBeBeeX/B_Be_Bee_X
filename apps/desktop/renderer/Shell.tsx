@@ -380,7 +380,7 @@ export function Shell({ ctx }: { ctx: Context }) {
         ...entries.map((entry, index) => {
           const isActive =
             currentId === entry.id ||
-            (currentId === 'sources.album' && entry.id === 'sources.library')
+            (currentId === 'album.view' && entry.id === 'sources.library')
           return h(
             'div',
             { key: entry.id },
@@ -457,7 +457,7 @@ export function Shell({ ctx }: { ctx: Context }) {
               h(View, {
                 ctx,
                 ...currentParams,
-                onOpenAlbum: (urn: string) => navigateTo('sources.album', { urn }),
+                onOpenAlbum: (urn: string) => navigateTo('album.view', { urn }),
               }),
             )
           : h(

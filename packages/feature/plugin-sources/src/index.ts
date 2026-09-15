@@ -323,15 +323,6 @@ export class Sources extends Service implements SourcesService {
           order: 1,
         })
         yield scoped.ui.contribute({
-          kind: 'route',
-          id: SOURCES_ROUTES.album,
-          path: '/album/:urn',
-          title: 'Album',
-          // Reached from the library rather than from the chrome, so it is a
-          // route with no placement rather than a tab nobody would press.
-          order: 0,
-        })
-        yield scoped.ui.contribute({
           kind: 'settings',
           id: SOURCES_VIEWS.sourceList,
           section: 'sources',

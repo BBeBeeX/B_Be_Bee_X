@@ -27,6 +27,8 @@
     "@BBeBee/kernel": "workspace:*",
     "@BBeBee/plugin-download": "workspace:*",
     "@BBeBee/plugin-download-ui-mobile": "workspace:*",
+    "@BBeBee/plugin-album": "workspace:*",
+    "@BBeBee/plugin-album-ui-mobile": "workspace:*",
     "@BBeBee/plugin-cache": "workspace:*",
     "@BBeBee/plugin-inspector": "workspace:*",
     "@BBeBee/plugin-library": "workspace:*",

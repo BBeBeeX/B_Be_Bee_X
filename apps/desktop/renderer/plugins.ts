@@ -57,6 +57,10 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   // wait for ctx.sources, and none of them is sequenced (docs/02 §3).
   '@BBeBee/plugin-sources': {},
   '@BBeBee/plugin-sources-ui-desktop': {},
+  // The album page, extracted from `plugin-sources`: route and view only, with
+  // the reads still on `ctx.sources` (MD-3).
+  '@BBeBee/plugin-album': {},
+  '@BBeBee/plugin-album-ui-desktop': {},
   '@BBeBee/plugin-local-scanner': {},
   '@BBeBee/plugin-local-scanner-ui-desktop': {},
   '@BBeBee/plugin-source-local': {},

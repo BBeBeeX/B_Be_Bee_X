@@ -16,8 +16,6 @@ export const SOURCES_VIEWS = {
    * indistinguishable from "this source has no match" (docs/06 §4.1).
    */
   search: 'sources.search',
-  /** One album with its tracks. */
-  album: 'sources.album',
   /** The imported sources, in settings. */
   sourceList: 'sources.settings',
   /** Paste a source string. */
@@ -35,7 +33,6 @@ export const SOURCES_VIEWS = {
 export const SOURCES_ROUTES = {
   library: 'sources.library',
   search: 'sources.search',
-  album: 'sources.album',
   sourceImport: 'sources.import',
   sourceTest: 'sources.test',
 } as const

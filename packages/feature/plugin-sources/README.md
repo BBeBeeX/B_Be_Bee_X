@@ -76,7 +76,6 @@ Layer 4（feature）— `ctx.sources`：导入的源文档、provider 注册表�
 | Hook | 说明 |
 |---|---|
 | `useTracks / useAlbums(ctx, query?)` | 分页目录读（`PagedState`）；内部用 **generation 计数**防快速滚动时两页响应 append 出重复页；监听 `library/changed` 触发 reload |
-| `useAlbum(ctx, urn?)` | `AlbumDetail`；`undefined` data = 无此专辑 |
 | `useSources(ctx)` / `useLiveSourceIds(ctx)` | 已导入的源 / 已导入+启用但未注册（"starting…" 状态）——两者刻意分开 |
 | `useSourceImport(ctx)` | 导入屏；**输入即预览**（parse 是本地纯计算）；rejected 进 issues 而非 throw（否则坏文档"看起来按钮没反应"） |
 | `useSourceTrace(ctx, sourceId?)` | 步骤 tracer；事件**到达即追加**（对无响应服务器的诊断就是"一行 http 后面什么都没有"）；generation ref 防新旧 trace 交错 |
@@ -94,12 +93,14 @@ Layer 4（feature）— `ctx.sources`：导入的源文档、provider 注册表�
 
 ```ts
 SOURCES_VIEWS = { library: 'sources.library', search: 'sources.search',
-                  album: 'sources.album', sourceList: 'sources.settings',
+                  sourceList: 'sources.settings',
                   sourceImport: 'sources.import', sourceTest: 'sources.test' }
-SOURCES_ROUTES = { library, search, album, sourceImport, sourceTest }   // 同值
+SOURCES_ROUTES = { library, search, sourceImport, sourceTest }   // 同值
 ```
 
-init 贡献 6 个 descriptor：route `/library`（tab-bar + sidebar，order 0）、route `/search`（tab-bar + sidebar，order 1）、route `/album/:urn`（无 placement——从库或搜索进入而非 chrome）、settings（section `'sources'`，"Music sources"）、route `/sources/import`、route `/sources/test`。Test 屏把某源的每个能力各给一个测试区，全部流进同一条 trace（docs/06 §10）。
+init 贡献 5 个 descriptor：route `/library`（tab-bar + sidebar，order 0）、route `/search`（tab-bar + sidebar，order 1）、settings（section `'sources'`，"Music sources"）、route `/sources/import`、route `/sources/test`。Test 屏把某源的每个能力各给一个测试区，全部流进同一条 trace（docs/06 §10）。
+
+> 专辑页已拆出为 `plugin-album`（`album.view`）：route/view 与 `useAlbum` 随屏幕一起搬走，目录读 `getAlbum / listAlbums` 仍在本包——读留在写旁边（MD-3）。库与搜索屏导航时从 `@BBeBee/plugin-album/views` 取 route id。
 
 ## 事件
 
@@ -125,7 +126,7 @@ export { CacheWriter, cacheEntities, MAX_PAYLOAD_BYTES }
 export { MERGE_CONFIDENCE, linkManually, linkTracks, linksFor, unlink, writeExternalIds }
 export { SourceStore }
 export { allowedHostsFor, changedFields, exportableDocument, parseSourceInput, sourceIdFor, validateDocument }
-// './hooks'：useTracks / useAlbums / useAlbum / useSources / useLiveSourceIds / useSourceImport /
+// './hooks'：useTracks / useAlbums / useSources / useLiveSourceIds / useSourceImport /
 //              useSourceTrace / useSetLoved / useSearchSourceSelection / useSourceSearch /
 //              searchResultRows / listAllTracks / playFromList
 // './views'：SOURCES_VIEWS / SOURCES_ROUTES

@@ -15,7 +15,7 @@ import type {
   AggregatedSearch,
   AggregatedSearchEntry,
   Album,
-  AlbumDetail,
+
   Artist,
   CatalogQuery,
   DebugStep,
@@ -129,40 +129,6 @@ export function useTracks(ctx: Context, query: CatalogQuery = {}): PagedState<Tr
 export function useAlbums(ctx: Context, query: CatalogQuery = {}): PagedState<Album> {
   const read = useCallback((q: CatalogQuery) => ctx.sources.listAlbums(q), [ctx])
   return usePagedRead(ctx, read, query, JSON.stringify(query))
-}
-
-/** One album with its tracks. `undefined` data means "no such album". */
-export function useAlbum(ctx: Context, urn: string | undefined): AsyncState<AlbumDetail> {
-  const [state, setState] = useState<AsyncState<AlbumDetail>>({ status: 'idle' })
-
-  useEffect(() => {
-    if (!urn) {
-      setState({ status: 'idle' })
-      return
-    }
-    let cancelled = false
-    setState({ status: 'loading' })
-    ctx.sources
-      .getAlbum(urn)
-      .then((album) => {
-        if (cancelled) return
-        setState(
-          album
-            ? { status: 'ready', data: album }
-            : { status: 'error', error: new Error(`no album ${urn}`) },
-        )
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return
-        setState({
-          status: 'error',
-          error: error instanceof Error ? error : new Error(String(error)),
-        })
-      })
-    return () => void (cancelled = true)
-  }, [ctx, urn])
-
-  return state
 }
 
 /** The imported sources, for the source list (docs/08 4). */

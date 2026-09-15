@@ -59,6 +59,10 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   // `inject`, never declared here (docs/02 §3).
   '@BBeBee/plugin-sources': {},
   '@BBeBee/plugin-sources-ui-mobile': {},
+  // The album page, extracted from `plugin-sources`: route and view only, with
+  // the reads still on `ctx.sources` (MD-3).
+  '@BBeBee/plugin-album': {},
+  '@BBeBee/plugin-album-ui-mobile': {},
   '@BBeBee/plugin-local-scanner': {},
   '@BBeBee/plugin-local-scanner-ui-mobile': {},
   '@BBeBee/plugin-source-local': {},

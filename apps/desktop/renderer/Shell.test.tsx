@@ -271,7 +271,7 @@ describe('the desktop shell', () => {
           ),
         ),
       )
-      ui.views.set('sources.album', ({ urn }: { urn?: string }) =>
+      ui.views.set('album.view', ({ urn }: { urn?: string }) =>
         h('div', { 'data-testid': 'album-screen' }, `Album Detail: ${urn}`),
       )
     })

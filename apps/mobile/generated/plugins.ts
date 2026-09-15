@@ -9,6 +9,8 @@ import coreDeviceExpo from '@BBeBee/core-device-expo'
 import coreHttpRn from '@BBeBee/core-http-rn'
 import coreMediaSessionRn from '@BBeBee/core-media-session-rn'
 import coreSecretsExpo from '@BBeBee/core-secrets-expo'
+import pluginAlbum from '@BBeBee/plugin-album'
+import pluginAlbumUi from '@BBeBee/plugin-album-ui-mobile'
 import pluginCache from '@BBeBee/plugin-cache'
 import pluginDownload from '@BBeBee/plugin-download'
 import pluginDownloadUi from '@BBeBee/plugin-download-ui-mobile'
@@ -62,6 +64,16 @@ export const bundled: PluginRegistry = {
   "@BBeBee/core-secrets-expo": {
     plugin: coreSecretsExpo,
     manifest: {"id":"@BBeBee/core-secrets-expo","platforms":["mobile"],"version":"0.0.0","displayName":"Secrets","description":"ctx.secrets for iOS and Android, over expo-secure-store.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["secrets"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-album": {
+    plugin: pluginAlbum,
+    manifest: {"id":"@BBeBee/plugin-album","version":"0.0.0","displayName":"Album","description":"The album page — detail, tracks, and album-level actions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[]},
+    builtin: true,
+  },
+  "@BBeBee/plugin-album-ui-mobile": {
+    plugin: pluginAlbumUi,
+    manifest: {"id":"@BBeBee/plugin-album-ui-mobile","version":"0.0.0","displayName":"Album (mobile views)","description":"The album page — detail, tracks, and album-level actions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-cache": {
