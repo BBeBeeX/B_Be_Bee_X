@@ -377,7 +377,7 @@ describe('LibraryScreen', () => {
       // (one track here) goes with it as the queue context — and the user
       // stays where they are; playback announces itself in the bar.
       expect(calls).toContain('play:BBeBee:local:track:1|context:BBeBee:local:track:1')
-      expect(calls, 'no navigation to the player').not.toContain('nav:player.now-playing')
+      expect(calls, 'no navigation to the player').not.toContain('nav:now-playing.view')
     })
   })
 

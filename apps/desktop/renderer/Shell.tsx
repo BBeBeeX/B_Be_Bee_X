@@ -109,7 +109,7 @@ interface HistoryItem {
 
 export function Shell({ ctx }: { ctx: Context }) {
   const { entries } = useEntries(ctx)
-  const defaultEntry = entries.find((e) => e.id !== 'player.now-playing') ?? entries[0]
+  const defaultEntry = entries.find((e) => e.id !== 'now-playing.view') ?? entries[0]
   const [isFullscreenNowPlaying, setIsFullscreenNowPlaying] = useState(false)
   const [isBottomBarHovered, setIsBottomBarHovered] = useState(false)
 
@@ -174,7 +174,7 @@ export function Shell({ ctx }: { ctx: Context }) {
 
   useEffect(() => {
     const off = ctx.on('ui/navigate', (routeId: string, params?: Record<string, unknown>) => {
-      if (routeId === 'player.now-playing') {
+      if (routeId === 'now-playing.view') {
         setIsFullscreenNowPlaying(true)
       } else {
         navigateTo(routeId, params)
@@ -200,12 +200,12 @@ export function Shell({ ctx }: { ctx: Context }) {
           }>
         | undefined)
     : undefined
-  const BottomBar = ctx.ui.viewFor('player.now-playing-bar') as
+  const BottomBar = ctx.ui.viewFor('now-playing.bar') as
     | ComponentType<{ ctx: Context; onOpenNowPlaying?: () => void }>
     | undefined
 
   if (isFullscreenNowPlaying) {
-    const NowPlayingView = ctx.ui.viewFor('player.now-playing') as
+    const NowPlayingView = ctx.ui.viewFor('now-playing.view') as
       | ComponentType<{ ctx: Context; onClose?: () => void }>
       | undefined
 
@@ -406,7 +406,7 @@ export function Shell({ ctx }: { ctx: Context }) {
               'button',
               {
                 onClick: () => {
-                  if (entry.id === 'player.now-playing') {
+                  if (entry.id === 'now-playing.view') {
                     setIsFullscreenNowPlaying(true)
                   } else {
                     navigateTo(entry.id)

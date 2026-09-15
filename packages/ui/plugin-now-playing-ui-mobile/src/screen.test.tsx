@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /**
- * The mobile player views.
+ * The mobile now-playing surfaces.
  *
- * Tests the mobile queue screen: empty state, rows, catalogue resolution.
- * The now-playing surfaces moved to `plugin-now-playing-ui-mobile` with their own tests.
+ * The full-screen player and the mini-player that opens it, rendered against
+ * DOM host components — the same seam `apps/mobile` uses to hand over the real
+ * `react-native`.
  */
 
 import { act, cleanup, render } from '@testing-library/react'
@@ -12,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from 'cordis'
 import type { QueueItem, Track, TransportState } from '@BBeBee/protocol'
 import { configureNative } from '@BBeBee/ui-kit-mobile'
-import { QueueScreen } from './index.js'
+import { NowPlayingBar, NowPlayingScreen } from './index.js'
 
 afterEach(cleanup)
 
@@ -126,74 +127,94 @@ async function harness(
   return { ctx, calls }
 }
 
-describe('QueueScreen on mobile', () => {
-  it('renders empty queue state when empty', async () => {
-    const { ctx } = await harness({}, [])
-    const { container } = render(h(QueueScreen, { ctx }))
-    expect(container.textContent).toContain('Nothing queued')
+describe('NowPlayingBar on mobile', () => {
+  it('renders track title, artist and play/pause control', async () => {
+    const { ctx } = await harness({
+      trackUrn: 'BBeBee:local:track:1',
+      nowPlaying: { title: 'Solar', artist: 'Miles Davis', album: 'Walkin' },
+      status: 'playing',
+    })
+    const { container } = render(h(NowPlayingBar, { ctx }))
+    expect(container.textContent).toContain('Solar')
+    expect(container.textContent).toContain('Miles Davis')
+
+    const pauseBtn = container.querySelector('[data-label="Pause"]') as HTMLElement | null
+    expect(pauseBtn).toBeTruthy()
   })
 
-  it('renders queue items and jumps to a tapped row instead of re-queueing it', async () => {
+  it('triggers togglePlay and onOpenNowPlaying callback', async () => {
+    let opened = false
+    const queue: QueueItem[] = [
+      { id: 'q-1', trackUrn: 'BBeBee:local:track:1', addedBy: 'user' },
+      { id: 'q-2', trackUrn: 'BBeBee:local:track:2', addedBy: 'user' },
+    ]
     const { ctx, calls } = await harness(
-      { currentItemId: 'q-1' },
-      [
-        { id: 'q-1', trackUrn: 'BBeBee:local:track:1', addedBy: 'user' },
-        { id: 'q-2', trackUrn: 'BBeBee:local:track:2', addedBy: 'user' },
-      ],
-    )
-    const { container } = render(h(QueueScreen, { ctx }))
-    // No catalogue answer and no transport metadata: the row waits instead of
-    // showing its URN.
-    expect(container.textContent).toContain('Loading…')
-    expect(container.textContent).not.toContain('BBeBee:local:track:1')
-
-    const row = container.querySelector('[role="listitem"] [data-host]') as HTMLElement
-    expect(row, 'the queue row is tappable').toBeTruthy()
-    await act(async () => {
-      row.click()
-    })
-    expect(calls).toContain('jump:BBeBee:local:track:1')
-  })
-
-  it('borrows the transport metadata for the playing item before the catalogue answers', async () => {
-    const { ctx } = await harness(
       {
-        status: 'playing',
+        trackUrn: 'BBeBee:local:track:1',
         currentItemId: 'q-1',
-        trackUrn: 'BBeBee:bili:track:1',
-        nowPlaying: { title: '极端天气 MV', artist: 'UP主甲' },
+        nowPlaying: { title: 'Solar', artist: 'Miles Davis' },
+        status: 'paused',
       },
-      [{ id: 'q-1', trackUrn: 'BBeBee:bili:track:1', addedBy: 'user' }],
+      queue,
     )
-    const { container } = render(h(QueueScreen, { ctx }))
-    expect(container.textContent).toContain('极端天气 MV')
-    expect(container.textContent).toContain('UP主甲')
-    expect(container.textContent, 'no raw URN in the queue, ever').not.toContain('BBeBee:bili:')
-  })
+    const { container } = render(
+      h(NowPlayingBar, { ctx, onOpenNowPlaying: () => { opened = true } }),
+    )
 
-  it('shows title and artist from the catalogue rather than the URN', async () => {
-    // The rows resolve themselves through one catalogue read; the fallback for
-    // a URN nothing answers for is `queueTrackFallback`, never the URN itself.
-    const { ctx } = await harness(
-      { currentItemId: 'q-1' },
-      [{ id: 'q-1', trackUrn: 'BBeBee:local:track:1', addedBy: 'user' }],
-      {
-        'BBeBee:local:track:1': {
-          urn: 'BBeBee:local:track:1',
-          title: 'Jóga',
-          artists: [{ urn: 'BBeBee:local:artist:bjork', name: 'Björk', role: 'main', ordinal: 0 }],
-        },
-      },
-    )
-    const { container } = render(h(QueueScreen, { ctx }))
+    const playBtn = container.querySelector('[data-label="Play"]') as HTMLElement
+    expect(playBtn).toBeTruthy()
     await act(async () => {
-      await Promise.resolve()
+      playBtn.click()
     })
+    expect(calls).toContain('togglePlay')
 
-    expect(container.textContent).toContain('Jóga')
-    expect(container.textContent).toContain('Björk')
-    expect(container.textContent, 'the raw URN is gone once resolved').not.toContain(
-      'BBeBee:local:track:1',
+    const bar = container.querySelector('[data-label="Open now playing"]') as HTMLElement
+    expect(bar).toBeTruthy()
+    await act(async () => {
+      bar.click()
+    })
+    expect(opened).toBe(true)
+    expect(calls).toContain('navigate:now-playing.view')
+  })
+})
+
+describe('NowPlayingScreen on mobile', () => {
+  it('renders full screen player details and transport buttons', async () => {
+    let closed = false
+    const queue: QueueItem[] = [
+      { id: 'q-1', trackUrn: 'BBeBee:local:track:1', addedBy: 'user' },
+      { id: 'q-2', trackUrn: 'BBeBee:local:track:2', addedBy: 'user' },
+    ]
+    const { ctx, calls } = await harness(
+      {
+        trackUrn: 'BBeBee:local:track:1',
+        currentItemId: 'q-1',
+        nowPlaying: { title: 'Solar', artist: 'Miles Davis', album: 'Walkin' },
+        status: 'playing',
+        durationMs: 180_000,
+      },
+      queue,
     )
+    const { container } = render(
+      h(NowPlayingScreen, { ctx, onClose: () => { closed = true } }),
+    )
+
+    expect(container.textContent).toContain('Solar')
+    expect(container.textContent).toContain('Miles Davis')
+    expect(container.textContent).toContain('Walkin')
+
+    const closeBtn = container.querySelector('[data-label="Close player"]') as HTMLElement
+    expect(closeBtn).toBeTruthy()
+    await act(async () => {
+      closeBtn.click()
+    })
+    expect(closed).toBe(true)
+
+    const nextBtn = container.querySelector('[data-label="Next track"]') as HTMLElement
+    expect(nextBtn).toBeTruthy()
+    await act(async () => {
+      nextBtn.click()
+    })
+    expect(calls).toContain('next')
   })
 })

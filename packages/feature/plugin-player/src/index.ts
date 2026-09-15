@@ -324,15 +324,6 @@ export class Player extends Service implements PlayerService {
       scoped.effect(function* () {
         yield scoped.ui.contribute({
           kind: 'route',
-          id: PLAYER_ROUTES.nowPlaying,
-          path: '/now-playing',
-          title: 'Now playing',
-          icon: 'play',
-          placement: ['tab-bar'],
-          order: 10,
-        })
-        yield scoped.ui.contribute({
-          kind: 'route',
           id: PLAYER_ROUTES.queue,
           path: '/queue',
           title: 'Queue',

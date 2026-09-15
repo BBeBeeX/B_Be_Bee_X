@@ -114,6 +114,12 @@ importers:
       '@BBeBee/plugin-log-file':
         specifier: workspace:*
         version: link:../../packages/logs/plugin-log-file
+      '@BBeBee/plugin-now-playing':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-now-playing
+      '@BBeBee/plugin-now-playing-ui-desktop':
+        specifier: workspace:*
+        version: link:../../packages/ui/plugin-now-playing-ui-desktop
       '@BBeBee/plugin-player':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-player
@@ -244,6 +250,12 @@ importers:
       '@BBeBee/plugin-log-file':
         specifier: workspace:*
         version: link:../../packages/logs/plugin-log-file
+      '@BBeBee/plugin-now-playing':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-now-playing
+      '@BBeBee/plugin-now-playing-ui-mobile':
+        specifier: workspace:*
+        version: link:../../packages/ui/plugin-now-playing-ui-mobile
       '@BBeBee/plugin-player':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-player
@@ -920,6 +932,18 @@ importers:
       '@types/react':
         specifier: ^19.2.0
         version: 19.2.18
+
+  packages/feature/plugin-now-playing:
+    dependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
 
   packages/feature/plugin-player:
     dependencies:
@@ -1616,6 +1640,110 @@ importers:
       '@BBeBee/plugin-local-scanner':
         specifier: workspace:*
         version: link:../../feature/plugin-local-scanner
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.2.7(@types/react@19.2.18)
+      react-dom:
+        specifier: 19.2.3
+        version: 19.2.3(react@19.2.3)
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.1)(jsdom@30.0.1)(vite@7.3.6(@types/node@22.20.1)(lightningcss@1.33.0)(terser@5.51.2)(yaml@2.9.0))
+
+  packages/ui/plugin-now-playing-ui-desktop:
+    dependencies:
+      '@BBeBee/plugin-cache':
+        specifier: workspace:*
+        version: link:../../feature/plugin-cache
+      '@BBeBee/plugin-now-playing':
+        specifier: workspace:*
+        version: link:../../feature/plugin-now-playing
+      '@BBeBee/plugin-player':
+        specifier: workspace:*
+        version: link:../../feature/plugin-player
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@BBeBee/toolkit':
+        specifier: workspace:*
+        version: link:../../feature/toolkit
+      '@BBeBee/ui-core':
+        specifier: workspace:*
+        version: link:../ui-core
+      '@BBeBee/ui-kit-desktop':
+        specifier: workspace:*
+        version: link:../ui-kit-desktop
+      '@BBeBee/ui-tokens':
+        specifier: workspace:*
+        version: link:../ui-tokens
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    devDependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.2.7(@types/react@19.2.18)
+      react-dom:
+        specifier: 19.2.3
+        version: 19.2.3(react@19.2.3)
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.1)(jsdom@30.0.1)(vite@7.3.6(@types/node@22.20.1)(lightningcss@1.33.0)(terser@5.51.2)(yaml@2.9.0))
+
+  packages/ui/plugin-now-playing-ui-mobile:
+    dependencies:
+      '@BBeBee/plugin-cache':
+        specifier: workspace:*
+        version: link:../../feature/plugin-cache
+      '@BBeBee/plugin-now-playing':
+        specifier: workspace:*
+        version: link:../../feature/plugin-now-playing
+      '@BBeBee/plugin-player':
+        specifier: workspace:*
+        version: link:../../feature/plugin-player
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@BBeBee/toolkit':
+        specifier: workspace:*
+        version: link:../../feature/toolkit
+      '@BBeBee/ui-core':
+        specifier: workspace:*
+        version: link:../ui-core
+      '@BBeBee/ui-kit-mobile':
+        specifier: workspace:*
+        version: link:../ui-kit-mobile
+      '@BBeBee/ui-tokens':
+        specifier: workspace:*
+        version: link:../ui-tokens
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    devDependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)

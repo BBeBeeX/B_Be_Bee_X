@@ -76,7 +76,7 @@ worth more than its shape.
 | Layer | Packages | Responsible for | May depend on | Never |
 |---|---|---|---|---|
 | **5 — UI & business function** | `apps/mobile`, `apps/desktop/renderer`, `plugin-*-ui-mobile`, `plugin-*-ui-desktop`, `ui-kit-*`, `ui-core`, `ui-parity`, `ui-tokens` | Pages, navigation, gestures and keyboard, and the orchestration that turns one user intent into a sequence of feature calls | Layers 0–4 | A platform SDK; the kernel's bootstrap surface; SQL; HTTP; `console.*`; domain state ([§6](#6-state-ownership)) |
-| **4 — Feature plugins** | headless `plugin-*` (`plugin-player`, `plugin-dsp`, `plugin-sources`, `plugin-source-runtime`, `plugin-download`, `plugin-library`, `plugin-album`, `plugin-lyrics`, `plugin-cache`, `plugin-local-scanner`), plus `source-rules` as pure logic beneath them | One business capability each, headless: state, persistence, networking, events | Layers 0–3 | A platform SDK; the kernel's bootstrap surface; `console.*`; another feature plugin's internals |
+| **4 — Feature plugins** | headless `plugin-*` (`plugin-player`, `plugin-dsp`, `plugin-sources`, `plugin-source-runtime`, `plugin-download`, `plugin-library`, `plugin-album`, `plugin-now-playing`, `plugin-lyrics`, `plugin-cache`, `plugin-local-scanner`), plus `source-rules` as pure logic beneath them | One business capability each, headless: state, persistence, networking, events | Layers 0–3 | A platform SDK; the kernel's bootstrap surface; `console.*`; another feature plugin's internals |
 | **3 — Log transports** | `packages/logs/*` — `plugin-log-buffer`, `plugin-log-console`, `plugin-log-file` | Where a log line ends up, and nothing else. Each subscribes to `ctx.logger`; the shell picks which run ([04 §16](./04-core-services.md)) | Layers 0–2 | Domain knowledge; a platform SDK. A transport that knew what a track was would be a feature |
 | **2 — Core plugins** | `packages/core/*` | One platform capability per service key, with one implementation per target behind each key | Layers 0–1 — **directly** | Domain knowledge. A core plugin must not know what a track is |
 | **1 — Kernel** | `@BBeBee/kernel` | The Cordis `Context`, DI, fibers and effects, the event bus, config loading, plugin resolution, the capability gate, core migrations | Layer 0 (and Cordis) | Importing any `core-*` or `plugin-*`. The kernel does not know which plugins exist |
@@ -110,7 +110,7 @@ flowchart TD
         V["plugin-*-ui-* · ui-kit-* · ui-core"]
     end
     subgraph L4["Layer 4 — feature plugins"]
-        F1["player · queue · dsp"]
+        F1["player · now playing · queue · dsp"]
         F2["source runtime · sources · library · album · scanner"]
         F3["download · lyrics · cache"]
     end

@@ -88,7 +88,7 @@ function Shell({ ctx }: { ctx: Context }) {
 
   const navigateTo = useCallback(
     (id: string, params?: Record<string, unknown>) => {
-      if (id === 'player.now-playing') {
+      if (id === 'now-playing.view') {
         setIsFullscreenNowPlaying(true)
         return
       }
@@ -160,10 +160,10 @@ function Shell({ ctx }: { ctx: Context }) {
         | undefined)
     : undefined
 
-  const BottomBar = ctx.ui.viewFor('player.now-playing-bar') as
+  const BottomBar = ctx.ui.viewFor('now-playing.bar') as
     | ComponentType<{ ctx: Context; onOpenNowPlaying?: () => void }>
     | undefined
-  const NowPlayingView = ctx.ui.viewFor('player.now-playing') as
+  const NowPlayingView = ctx.ui.viewFor('now-playing.view') as
     | ComponentType<{ ctx: Context; onClose?: () => void }>
     | undefined
 

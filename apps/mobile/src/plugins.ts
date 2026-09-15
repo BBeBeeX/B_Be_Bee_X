@@ -89,4 +89,8 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-library-ui-mobile': {},
   '@BBeBee/plugin-player': {},
   '@BBeBee/plugin-player-ui-mobile': {},
+  // The "what is playing" surfaces, extracted from `plugin-player`: the
+  // full-screen player and the mini-player that opens it.
+  '@BBeBee/plugin-now-playing': {},
+  '@BBeBee/plugin-now-playing-ui-mobile': {},
 }

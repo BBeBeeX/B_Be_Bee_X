@@ -82,12 +82,14 @@ Layer 4（feature）— `ctx.player`：transport（走带控制）、queue（队
 ### `src/views.ts` — 描述符 id 常量
 
 ```ts
-PLAYER_VIEWS    = { nowPlaying: 'player.now-playing', queue: 'player.queue' }
-PLAYER_ROUTES   = { nowPlaying, queue }            // 同值
+PLAYER_VIEWS    = { queue: 'player.queue' }
+PLAYER_ROUTES   = { queue: 'player.queue' }        // 同值
 PLAYER_COMMANDS = { togglePlay: 'player.togglePlay', next: 'player.next', previous: 'player.previous' }
 ```
 
-init 时注册 route `/now-playing`（tab-bar，order 10）、route `/queue`（tab-bar + sidebar，order 20）与三个 command（`togglePlay` 默认键位 `Space`；命令不依赖视图——桌面进命令面板，移动端进 more-menu）。**没有 slot**；view 组件由 `plugin-player-ui-{desktop,mobile}` 绑定到这些 id。
+init 时注册 route `/queue`（tab-bar + sidebar，order 20）与三个 command（`togglePlay` 默认键位 `Space`；命令不依赖视图——桌面进命令面板，移动端进 more-menu）。**没有 slot**；view 组件由 `plugin-player-ui-{desktop,mobile}` 绑定到 `player.queue`。
+
+> "正在播放"的两块面——整屏播放器（route `/now-playing`，`now-playing.view`）与常驻走带条/迷你条（`now-playing.bar`）——已拆到 `plugin-now-playing`：transport 服务不该因为一块屏幕改动而改动。hooks（`useTransport`/`usePosition`/`useDuration`/`useTransportAvailability`/`useTracksByUrn`）仍在 `plugin-player/hooks`，随服务走。
 
 ## 事件
 

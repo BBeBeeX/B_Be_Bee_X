@@ -105,9 +105,9 @@ describe('the desktop shell', () => {
 
   it('opens and closes fullscreen now playing page', async () => {
     const { container, ctx } = await mount((ui) => {
-      ui.routes = [route('queue', 'Queue'), route('player.now-playing', 'Now playing')]
+      ui.routes = [route('queue', 'Queue'), route('now-playing.view', 'Now playing')]
       ui.views.set('queue', () => h('p', null, 'queue view'))
-      ui.views.set('player.now-playing', ({ onClose }: { onClose?: () => void }) =>
+      ui.views.set('now-playing.view', ({ onClose }: { onClose?: () => void }) =>
         h(
           'div',
           null,
@@ -115,7 +115,7 @@ describe('the desktop shell', () => {
           h('button', { 'aria-label': 'Close now playing', onClick: onClose }, 'Close'),
         ),
       )
-      ui.views.set('player.now-playing-bar', () => h('div', null, 'bottom bar'))
+      ui.views.set('now-playing.bar', () => h('div', null, 'bottom bar'))
     })
 
     expect(container.textContent).toContain('queue view')
@@ -123,7 +123,7 @@ describe('the desktop shell', () => {
 
     // Navigate to now-playing
     await act(async () => {
-      ctx.emit('ui/navigate', 'player.now-playing')
+      ctx.emit('ui/navigate', 'now-playing.view')
     })
 
     expect(container.textContent).toContain('now playing fullscreen view')
@@ -227,7 +227,7 @@ describe('the desktop shell', () => {
     const { container } = await mount((ui) => {
       ui.routes = [route('home', 'Home')]
       ui.views.set('home', () => h('p', null, 'home page'))
-      ui.views.set('player.now-playing-bar', () => h('div', null, 'player bar'))
+      ui.views.set('now-playing.bar', () => h('div', null, 'player bar'))
     })
 
     const nav = container.querySelector('nav') as HTMLElement

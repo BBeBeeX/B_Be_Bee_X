@@ -172,6 +172,8 @@ B_Be_Bee/
 │   │   ├── plugin-source-local/    ✅        the one provider that is not a string (06 §12)
 │   │   ├── plugin-local-scanner/   ✅        ctx.scanner — the ≥5,000-file corpus walk
 │   │   ├── plugin-player/          ✅        ctx.player — transport, queue, history (05 §2)
+│   │   ├── plugin-now-playing/     ✅        the "what is playing" surfaces: the full-screen
+│   │   │                                       player and the bar that opens it (05 §4, 08 §4)
 │   │   ├── plugin-ui/              ✅        the ctx.ui contribution registry — descriptors
 │   │   │                                       only, so it holds no React (08 §2)
 │   │   ├── plugin-inspector/       ✅        fiber tree + labelled effects (M0 exit criterion)
@@ -201,8 +203,10 @@ B_Be_Bee/
 │   │   │                                       kits meet it (08 §6)
 │   │   ├── ui-kit-mobile/          ✅        React Native components
 │   │   ├── ui-kit-desktop/         ✅        React DOM components
-│   │   ├── plugin-player-ui-desktop/ ✅      ┐ now playing, transport, queue
+│   │   ├── plugin-player-ui-desktop/ ✅      ┐ the up-next queue
 │   │   ├── plugin-player-ui-mobile/  ✅      ┘
+│   │   ├── plugin-now-playing-ui-desktop/ ✅ ┐ full-screen player + bar / mini-player
+│   │   ├── plugin-now-playing-ui-mobile/  ✅ ┘
 │   │   ├── plugin-sources-ui-desktop/ ✅     ┐ library, search, source list,
 │   │   ├── plugin-sources-ui-mobile/  ✅     ┘ import review, test screen (08 §4)
 │   │   ├── plugin-album-ui-desktop/  ✅      ┐ one album: header, tracks, actions (08 §4)

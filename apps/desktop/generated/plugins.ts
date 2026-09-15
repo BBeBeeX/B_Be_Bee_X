@@ -21,6 +21,8 @@ import pluginLibrary from '@BBeBee/plugin-library'
 import pluginLibraryUi from '@BBeBee/plugin-library-ui-desktop'
 import pluginLocalScanner from '@BBeBee/plugin-local-scanner'
 import pluginLocalScannerUi from '@BBeBee/plugin-local-scanner-ui-desktop'
+import pluginNowPlaying from '@BBeBee/plugin-now-playing'
+import pluginNowPlayingUi from '@BBeBee/plugin-now-playing-ui-desktop'
 import pluginPlayer from '@BBeBee/plugin-player'
 import pluginPlayerUi from '@BBeBee/plugin-player-ui-desktop'
 import pluginSourceLocal from '@BBeBee/plugin-source-local'
@@ -126,6 +128,16 @@ export const bundled: PluginRegistry = {
   "@BBeBee/plugin-local-scanner-ui-desktop": {
     plugin: pluginLocalScannerUi,
     manifest: {"id":"@BBeBee/plugin-local-scanner-ui-desktop","version":"0.0.0","displayName":"Local Scanner (desktop views)","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["scanner"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-now-playing": {
+    plugin: pluginNowPlaying,
+    manifest: {"id":"@BBeBee/plugin-now-playing","version":"0.0.0","displayName":"Now playing","description":"The full-screen player and the persistent bar that opens it.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[]},
+    builtin: true,
+  },
+  "@BBeBee/plugin-now-playing-ui-desktop": {
+    plugin: pluginNowPlayingUi,
+    manifest: {"id":"@BBeBee/plugin-now-playing-ui-desktop","version":"0.0.0","displayName":"Now playing (desktop views)","description":"The full-screen player and the persistent bar that opens it.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-player": {

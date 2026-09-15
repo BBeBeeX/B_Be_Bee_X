@@ -38,6 +38,8 @@
     "@BBeBee/plugin-log-buffer": "workspace:*",
     "@BBeBee/plugin-log-console": "workspace:*",
     "@BBeBee/plugin-log-file": "workspace:*",
+    "@BBeBee/plugin-now-playing": "workspace:*",
+    "@BBeBee/plugin-now-playing-ui-mobile": "workspace:*",
     "@BBeBee/plugin-player": "workspace:*",
     "@BBeBee/plugin-player-ui-mobile": "workspace:*",
     "@BBeBee/plugin-source-local": "workspace:*",
