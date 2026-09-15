@@ -28,6 +28,8 @@
     "@BBeBee/plugin-cache": "workspace:*",
     "@BBeBee/plugin-inspector": "workspace:*",
     "@BBeBee/plugin-inspector-ui-desktop": "workspace:*",
+    "@BBeBee/plugin-library": "workspace:*",
+    "@BBeBee/plugin-library-ui-desktop": "workspace:*",
     "@BBeBee/plugin-local-scanner": "workspace:*",
     "@BBeBee/plugin-local-scanner-ui-desktop": "workspace:*",
     "@BBeBee/plugin-log-buffer": "workspace:*",

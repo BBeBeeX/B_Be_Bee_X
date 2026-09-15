@@ -130,6 +130,10 @@ end to end on real hardware. Until the first lands, a scripted document on mobil
 affected capabilities as absent rather than offering a button that cannot work, which is the
 designed degradation rather than a break.
 
+The curation half that MD-3 deferred from M1 is in as well: `plugin-library` / `ctx.library` —
+playlists, favourites, collections, and smart playlists whose rule tree compiles to parameterised
+SQL — with screens on both shells (docs/07 §4.6).
+
 ⚠️ **What "built" did and did not mean until recently.** Every package listed above was built and
 green, and *neither shell ran any of it*: the desktop bootstrap omitted `ctx.audio`, `ctx.codec`
 and `ctx.http`, so `plugin-player` was commented out and the scanner and the source runtime sat

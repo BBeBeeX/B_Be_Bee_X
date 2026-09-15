@@ -11,6 +11,36 @@ export interface LibraryEntry {
   sortKey?: string
 }
 
+/**
+ * The kinds a user can save. `genre` is a catalogue facet, not something a
+ * shelf holds, so it is deliberately absent rather than merely unhandled.
+ */
+export type SavedKind = 'track' | 'album' | 'artist' | 'playlist'
+
+/**
+ * A user-made collection — a folder of arbitrary URNs, nestable.
+ *
+ * Distinct from a playlist on purpose: order is a fractional index and an item
+ * is any entity, because a collection is a shelf, while `playlist_items` is an
+ * ordered list of tracks. See docs/07 §4.6.
+ */
+export interface Collection {
+  id: string
+  name: string
+  parentId?: string
+  /** Fractional index among siblings. */
+  position: string
+  createdAt: number
+  /** Members, counted on read. */
+  itemCount?: number
+}
+
+/** One membership row. The URN may name any entity kind. */
+export interface CollectionItem {
+  urn: string
+  position: string
+}
+
 export type SmartField =
   | 'title'
   | 'artist'

@@ -123,6 +123,15 @@ declare module 'cordis' {
 
     /* ── library & scanning ─────────────────────────── emit ── */
     'library/changed'(kind: UrnKind, urns: string[]): void
+    /**
+     * A collection was created, renamed, deleted or re-membered.
+     *
+     * Separate from `library/changed` because a collection has no URN and no
+     * `UrnKind`, and folding it in would mean emitting a kind that names
+     * something else. Collections are folders; the name change is the whole
+     * event.
+     */
+    'library/collections-changed'(): void
     'scan/specified-dirs-changed'(dirs: readonly ScanSpecifiedDir[]): void
     'scan/started'(specifiedDirId: string): void
     'scan/progress'(specifiedDirId: string, done: number, total?: number): void
@@ -181,6 +190,7 @@ export const DISPATCH_MODES = {
   'download/failed': 'emit',
   'download/changed': 'emit',
   'library/changed': 'emit',
+  'library/collections-changed': 'emit',
   'scan/specified-dirs-changed': 'emit',
   'scan/started': 'emit',
   'scan/progress': 'emit',

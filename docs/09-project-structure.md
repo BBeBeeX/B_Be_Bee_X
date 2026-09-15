@@ -179,7 +179,8 @@ B_Be_Bee/
 │   │   │                                       directory, If-Range resume, the Wi-Fi/charging
 │   │   │                                       policy, and the before-resolve substitution for
 │   │   │                                       files the user downloaded (05 §2, 07 §4.8)
-│   │   ├── plugin-library/                   playlists, favourites, smart lists
+│   │   ├── plugin-library/          ✅       ctx.library — playlists, favourites, smart lists,
+│   │   │                                       collections (07 §4.6)
 │   │   ├── plugin-lyrics/                    lyric providers
 │   │   ├── plugin-cache/           ✅        ctx.cache — covers and remote streams served from
 │   │   │                                       ctx.paths.cache, fetched only on a miss, LRU per
@@ -204,6 +205,8 @@ B_Be_Bee/
 │   │   ├── plugin-sources-ui-mobile/  ✅     ┘ import review, test screen (08 §4)
 │   │   ├── plugin-download-ui-desktop/ ✅    ┐ the download queue and cache (08 §4)
 │   │   ├── plugin-download-ui-mobile/  ✅    ┘
+│   │   ├── plugin-library-ui-desktop/ ✅     ┐ playlists, one playlist, favourites (08 §4)
+│   │   ├── plugin-library-ui-mobile/  ✅     ┘
 │   │   ├── plugin-local-scanner-ui-desktop/ ✅ ┐ settings: scan roots
 │   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
 │   │   └── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered

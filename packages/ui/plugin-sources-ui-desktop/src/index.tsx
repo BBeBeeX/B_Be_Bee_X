@@ -24,7 +24,6 @@ import {
   useAlbums,
   useLocalFolders,
   useSearchSourceSelection,
-  useSetLoved,
   useSourceImport,
   useSourceSearch,
   useSourceTrace,
@@ -46,6 +45,7 @@ import {
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
+import { useToggleFavorite } from '@BBeBee/plugin-library/hooks'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
@@ -108,7 +108,9 @@ export function LibraryScreen({
 }): ReactElement {
   const [scope, setScope] = useState<LibraryScope>('all')
   const [tab, setTab] = useState<'tracks' | 'albums'>('tracks')
-  const setLoved = useSetLoved(ctx)
+  // One heart, two stores: `track_stats.loved` draws it, the library shelf
+  // lists it. See `useToggleFavorite` in `@BBeBee/plugin-library/hooks`.
+  const toggleFavorite = useToggleFavorite(ctx)
 
   const query = useMemo<CatalogQuery>(() => {
     const base: CatalogQuery = { sort: 'title' }
@@ -190,7 +192,7 @@ export function LibraryScreen({
               tracks: tracks.items,
               scope,
               query,
-              onToggleLoved: (urn, loved) => void setLoved(urn, loved),
+              onToggleLoved: (urn, loved) => void toggleFavorite(urn, loved),
               onEndReached: tracks.loadMore,
             })
           : h(AlbumGrid, {

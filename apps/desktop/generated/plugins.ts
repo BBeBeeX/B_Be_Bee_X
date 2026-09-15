@@ -15,6 +15,8 @@ import pluginDownload from '@BBeBee/plugin-download'
 import pluginDownloadUi from '@BBeBee/plugin-download-ui-desktop'
 import pluginInspector from '@BBeBee/plugin-inspector'
 import pluginInspectorUi from '@BBeBee/plugin-inspector-ui-desktop'
+import pluginLibrary from '@BBeBee/plugin-library'
+import pluginLibraryUi from '@BBeBee/plugin-library-ui-desktop'
 import pluginLocalScanner from '@BBeBee/plugin-local-scanner'
 import pluginLocalScannerUi from '@BBeBee/plugin-local-scanner-ui-desktop'
 import pluginPlayer from '@BBeBee/plugin-player'
@@ -92,6 +94,16 @@ export const bundled: PluginRegistry = {
   "@BBeBee/plugin-inspector-ui-desktop": {
     plugin: pluginInspectorUi,
     manifest: {"id":"@BBeBee/plugin-inspector-ui-desktop","version":"0.0.0","displayName":"Plugin Inspector (desktop views)","description":"Fiber tree and labelled effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["inspector"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-library": {
+    plugin: pluginLibrary,
+    manifest: {"id":"@BBeBee/plugin-library","version":"0.0.0","displayName":"Library","description":"ctx.library — playlists, favourites, collections and smart playlists.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["library"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-library-ui-desktop": {
+    plugin: pluginLibraryUi,
+    manifest: {"id":"@BBeBee/plugin-library-ui-desktop","version":"0.0.0","displayName":"Library (desktop views)","description":"ctx.library — playlists, favourites, collections and smart playlists.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["library"]}},
     builtin: true,
   },
   "@BBeBee/plugin-local-scanner": {

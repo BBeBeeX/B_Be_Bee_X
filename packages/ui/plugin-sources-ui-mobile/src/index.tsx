@@ -20,7 +20,6 @@ import {
   useAlbums,
   useLocalFolders,
   useSearchSourceSelection,
-  useSetLoved,
   useSourceImport,
   useSourceSearch,
   useSourceTrace,
@@ -43,6 +42,7 @@ import {
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
+import { useToggleFavorite } from '@BBeBee/plugin-library/hooks'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
@@ -101,7 +101,9 @@ export function LibraryScreen({
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
   const [scope, setScope] = useState<LibraryScope>('all')
   const [tab, setTab] = useState<'tracks' | 'albums'>('tracks')
-  const setLoved = useSetLoved(ctx)
+  // One heart, two stores: `track_stats.loved` draws it, the library shelf
+  // lists it. See `useToggleFavorite` in `@BBeBee/plugin-library/hooks`.
+  const toggleFavorite = useToggleFavorite(ctx)
 
   const query = useMemo<CatalogQuery>(() => {
     const base: CatalogQuery = { sort: 'title' }
@@ -217,7 +219,7 @@ export function LibraryScreen({
                   // becomes the queue (docs/05 §2). Playback announces
                   // itself in the mini-player; no navigation.
                   onPress: () => void playFromList(ctx, track.urn, { query }),
-                  onToggleLoved: () => void setLoved(track.urn, !track.loved),
+                  onToggleLoved: () => void toggleFavorite(track.urn, !track.loved),
                   // Left absent when no downloads service is loaded: a button
                   // that does nothing is worse than one that is not there.
                   onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,

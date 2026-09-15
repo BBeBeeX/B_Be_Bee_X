@@ -518,7 +518,7 @@ grow past a length threshold.
 export type SmartRule =
   | { op: 'and' | 'or'; rules: SmartRule[] }
   | { op: 'not'; rule: SmartRule }
-  | { field: SmartField; cmp: 'eq'|'neq'|'gt'|'lt'|'contains'|'startsWith'|'inLast'; value: string | number }
+  | { field: SmartField; cmp: 'eq'|'neq'|'gt'|'lt'|'contains'|'startsWith'|'inLast'; value: string | number | boolean }
 
 export type SmartField =
   | 'title' | 'artist' | 'album' | 'genre' | 'year' | 'bpm' | 'durationMs'
@@ -557,6 +557,50 @@ CREATE TABLE collection_items (
   PRIMARY KEY (collection_id, urn)
 );
 ```
+
+**`ctx.library` (`plugin-library`) owns all five tables.** It is the only writer outside the
+migrations, and the view packages call it rather than touching `ctx.db` (MD-3, docs/11 §1.3).
+
+```ts
+interface LibraryService {
+  // favourites — library_items
+  isSaved(urn: string): Promise<boolean>
+  setSaved(urn: string, saved: boolean): Promise<void>
+  listSaved(kind?: SavedKind, page?: PageRequest): Promise<Paged<LibraryEntry>>
+  setPinned(urn: string, pinned: boolean): Promise<void>
+
+  // playlists — playlists + playlist_items
+  listPlaylists(page?: PageRequest): Promise<Paged<Playlist>>
+  getPlaylist(urn: string, page?: PageRequest): Promise<PlaylistDetail | undefined>
+  createPlaylist(name: string, opts?: { description?: string; smart?: SmartPlaylist }): Promise<Playlist>
+  updatePlaylist(urn: string, patch: { name?: string; description?: string | null }): Promise<void>
+  deletePlaylist(urn: string): Promise<void>
+  addTracks(urn: string, trackUrns: readonly string[], opts?: { at?: number }): Promise<number>
+  removeItems(urn: string, itemIds: readonly string[]): Promise<void>
+  moveItem(urn: string, itemId: string, toIndex: number): Promise<void>
+  setSmartQuery(urn: string, query: SmartPlaylist): Promise<void>
+
+  // collections — collections + collection_items
+  listCollections(): Promise<readonly Collection[]>
+  createCollection(name: string, opts?: { parentId?: string }): Promise<Collection>
+  renameCollection(id: string, name: string): Promise<void>
+  deleteCollection(id: string): Promise<void>
+  listCollectionItems(id: string, page?: PageRequest): Promise<Paged<CollectionItem>>
+  addToCollection(id: string, urns: readonly string[]): Promise<number>
+  removeFromCollection(id: string, urns: readonly string[]): Promise<void>
+}
+```
+
+A **smart** playlist's `PlaylistDetail.items` are resolved from its rule tree at read time and are
+read-only: `id` is the track URN, and the item verbs refuse with a `LibraryError` whose code is
+`smart-playlist`. A stored playlist's `track_count` and `duration_ms` are recomputed in the same
+transaction as its item rows, so the derived columns cannot disagree with them. `setSaved` is
+idempotent — saving an already-saved URN keeps its original `added_at`, so a second screen
+re-saving it cannot silently reorder the shelf.
+
+The service emits `library/changed(kind, urns)` for favourites and playlist edits, and
+`library/collections-changed()` for collections: a collection has no URN and no `UrnKind`, so
+folding it into `library/changed` would mean emitting a kind that named something else.
 
 ### 4.7 Playback
 
@@ -614,9 +658,11 @@ CREATE TABLE track_stats (
 `play_history` is the append-only truth; `track_stats` is a derived cache updated in the same
 transaction as the history insert. `loved` (0/1) records whether the track is marked as a user
 favorite, toggled via `ctx.sources.setLoved(urn, loved)` and queried via `CatalogQuery.onlyLoved`
-to drive the default Favorites library. Keeping both means "most played" is a single indexed read while
-the raw record remains available for recomputation — and `scrobble_state` gives offline scrobbles
-a durable outbox that survives a kill mid-submit.
+to drive the default Favorites library. The track's `library_items` row is written by the same
+control — `useToggleFavorite` in `plugin-library/hooks` — because one heart is one intent, and a
+heart and the Favorites shelf disagreeing is a bug the user would see. Keeping both means "most
+played" is a single indexed read while the raw record remains available for recomputation — and
+`scrobble_state` gives offline scrobbles a durable outbox that survives a kill mid-submit.
 
 ### 4.8 Downloads
 
@@ -850,6 +896,8 @@ declare module 'cordis' {
 
     // library / scanning
     'library/changed'(kind: 'track' | 'album' | 'artist' | 'playlist', urns: string[]): void
+    /** A collection was created, renamed, deleted or re-membered (no URN, no kind). */
+    'library/collections-changed'(): void
     'scan/started'(specifiedDirId: string): void
     'scan/progress'(specifiedDirId: string, done: number, total?: number): void
     'scan/finished'(specifiedDirId: string, summary: { added: number; updated: number; errors: number }): void

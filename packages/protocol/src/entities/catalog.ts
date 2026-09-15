@@ -1,5 +1,7 @@
 /** Catalogue entities. See docs/07-data-model.md §4.3. */
 
+import type { SmartPlaylist } from './library.js'
+
 export interface ArtworkRef {
   id: string
   sourceUrl?: string
@@ -114,6 +116,10 @@ export interface Playlist {
   isPublic?: boolean
   trackCount?: number
   durationMs?: number
+  /**
+   * True when the tracks come from a rule tree rather than stored items.
+   * /
+  isSmart?: boolean
 }
 
 export interface PlaylistItem {
@@ -127,10 +133,16 @@ export interface PlaylistItem {
 }
 
 export interface PlaylistDetail extends Playlist, WithPayloads {
+  /**
+   * For a stored playlist, the rows in `position` order. For a smart one,
+   * synthetic rows: `id` is the track URN, because nothing was stored.
+   */
   items: PlaylistItem[]
   tracks?: Track[]
   cursor?: string
   hasMore: boolean
+  /** Present when `isSmart`, so a view can render the rule and hide edit controls. */
+  smart?: SmartPlaylist
 }
 
 export interface Genre {

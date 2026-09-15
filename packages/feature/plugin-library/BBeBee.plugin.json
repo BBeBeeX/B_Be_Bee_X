@@ -1,0 +1,25 @@
+{
+  "id": "@BBeBee/plugin-library",
+  "version": "0.0.0",
+  "displayName": "Library",
+  "description": "ctx.library — playlists, favourites, collections and smart playlists.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js",
+    "ui": {
+      "desktop": "./dist/index.js",
+      "mobile": "./dist/index.js"
+    }
+  },
+  "capabilities": [
+    "db:read:core",
+    "db:write:core"
+  ],
+  "contributes": {
+    "services": [
+      "library"
+    ]
+  }
+}
