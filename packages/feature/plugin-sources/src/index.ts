@@ -304,15 +304,6 @@ export class Sources extends Service implements SourcesService {
       scoped.effect(function* () {
         yield scoped.ui.contribute({
           kind: 'route',
-          id: SOURCES_ROUTES.library,
-          path: '/library',
-          title: 'Library',
-          icon: 'library',
-          placement: ['tab-bar', 'sidebar'],
-          order: 0,
-        })
-        yield scoped.ui.contribute({
-          kind: 'route',
           id: SOURCES_ROUTES.search,
           path: '/search',
           title: 'Search',

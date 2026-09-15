@@ -16,34 +16,48 @@ import { createElement as h, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Collection, Playlist } from '@BBeBee/protocol'
+import type { Album, Collection, Playlist } from '@BBeBee/protocol'
 import { tryParseUrn } from '@BBeBee/protocol'
 import { LIBRARY_VIEWS } from '@BBeBee/plugin-library/views'
+import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import {
   summariseLibrary,
+  useCollectionDetail,
   useCollections,
   usePlaylist,
   usePlaylists,
   useSaved,
+  type CollectionMember,
 } from '@BBeBee/plugin-library/hooks'
+import { useAlbums } from '@BBeBee/plugin-sources/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
-import { Button, ContextMenu, EmptyState, IconButton, List, Text, TextField, TrackRow } from '@BBeBee/ui-kit-desktop'
+import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
+import type { ArtworkProps } from '@BBeBee/ui-core'
+import { Artwork, Button, ContextMenu, EmptyState, IconButton, List, Text, TextField, TrackRow } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
-import { useCollectionMenu, usePlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
+import { useAddToCollection, useCollectionMenu, usePlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
 import type { MenuAnchor } from '@BBeBee/ui-core'
 
-/* ── playlists ─────────────────────────────────────────────────────────── */
+/* ── the library ───────────────────────────────────────────────────────── */
 
-export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
+/** `<Artwork>`, with the cover resolved through `ctx.cache` first. */
+function CachedArtwork({ ctx, ...props }: ArtworkProps & { ctx: Context }): ReactElement {
+  const artwork = useResolvedArtwork(ctx, props.artwork)
+  return h(Artwork, { ...props, artwork })
+}
+
+export function LibraryScreen({ ctx }: { ctx: Context }): ReactElement {
   const playlists = usePlaylists(ctx)
   const collections = useCollections(ctx)
+  const albums = useAlbums(ctx, { sort: 'title' })
   const [draft, setDraft] = useState('')
   const [collectionDraft, setCollectionDraft] = useState('')
   const [error, setError] = useState<string | undefined>(undefined)
   const summary = summariseLibrary(playlists.data ?? [], collections.data ?? [], [])
   const playlistMenu = usePlaylistMenu(ctx)
   const collectionMenu = useCollectionMenu(ctx)
+  const albumMenu = useAddToCollection(ctx)
 
   const fail = (what: string) => (cause: unknown) =>
     setError(`${what}: ${cause instanceof Error ? cause.message : String(cause)}`)
@@ -94,17 +108,17 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
   return h(
     'section',
     {
-      'aria-label': 'Playlists',
+      'aria-label': 'Library',
       style: { display: 'flex', flexDirection: 'column', gap: tokens.space[5], padding: tokens.space[4] },
     },
     h(
       'header',
       { style: { display: 'flex', alignItems: 'baseline', gap: tokens.space[3] } },
-      h(Text, { variant: 'xl' }, 'Playlists'),
+      h(Text, { variant: 'xl' }, 'Library'),
       h(
         Text,
         { variant: 'sm', tone: 'muted' },
-        `${summary.playlists} playlists · ${summary.smart} smart · ${summary.collections} collections`,
+        `${summary.playlists} playlists · ${albums.items.length} albums · ${summary.collections} collections`,
       ),
       h(Button, {
         variant: 'secondary',
@@ -162,11 +176,43 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
     h(
       'div',
       { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[2], marginTop: tokens.space[4] } },
+      h(Text, { variant: 'lg' }, 'Albums'),
+      h(
+        Text,
+        { variant: 'sm', tone: 'muted' },
+        'Everything the catalogue knows, in the order the sources reported it.',
+      ),
+      albums.status === 'ready' && albums.items.length === 0
+        ? h(EmptyState, {
+            icon: '💿',
+            title: 'No albums yet',
+            description: 'Import a source or scan a folder and albums appear here.',
+          })
+        : h(List<Album>, {
+            testID: 'albums-list',
+            items: albums.items,
+            estimatedItemSize: tokens.size.row,
+            keyExtractor: (album) => album.urn,
+            onEndReached: albums.loadMore,
+            empty: h(EmptyState, { title: 'No albums yet' }),
+            renderItem: (album) =>
+              h(AlbumRow, {
+                ctx,
+                album,
+                onOpen: () => ctx.ui.navigate(ALBUM_VIEWS.album, { urn: album.urn }),
+                onMore: (anchor) => albumMenu.open(album.title, [album.urn], anchor),
+              }),
+          }),
+    ),
+
+    h(
+      'div',
+      { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[2], marginTop: tokens.space[4] } },
       h(Text, { variant: 'lg' }, 'Collections'),
       h(
         Text,
         { variant: 'sm', tone: 'muted' },
-        'A collection is a shelf that can hold anything — tracks, albums, artists, playlists. Collections can nest.',
+        'A folder of your own: albums, playlists and tracks in one place. Collections can nest.',
       ),
       h(
         'div',
@@ -192,6 +238,7 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
           h(CollectionRow, {
             key: collection.id,
             collection,
+            onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.collection, { id: collection.id }),
             onDelete: () =>
               void ctx.library.deleteCollection(collection.id).catch(fail('could not delete the collection')),
             onMore: (anchor) => openCollectionMenu(collection, anchor),
@@ -201,6 +248,7 @@ export function PlaylistsScreen({ ctx }: { ctx: Context }): ReactElement {
     ),
     h(ContextMenu, playlistMenu.menuProps),
     h(ContextMenu, collectionMenu.menuProps),
+    h(ContextMenu, albumMenu.menuProps),
   )
 }
 
@@ -261,10 +309,12 @@ function PlaylistRow({
 
 function CollectionRow({
   collection,
+  onOpen,
   onDelete,
   onMore,
 }: {
   collection: Collection
+  onOpen: () => void
   onDelete: () => void
   onMore: (anchor?: MenuAnchor) => void
 }): ReactElement {
@@ -289,6 +339,7 @@ function CollectionRow({
       h(Text, { numberOfLines: 1 }, collection.name),
       h(Text, { variant: 'sm', tone: 'muted' }, `${collection.itemCount ?? 0} items`),
     ),
+    h(Button, { variant: 'ghost', onPress: onOpen, children: 'Open' }),
     h(IconButton, {
       icon: '⋯',
       accessibilityLabel: `More actions for ${collection.name}`,
@@ -491,6 +542,194 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   )
 }
 
+function AlbumRow({
+  ctx,
+  album,
+  onOpen,
+  onMore,
+}: {
+  ctx: Context
+  album: Album
+  onOpen: () => void
+  onMore: (anchor?: MenuAnchor) => void
+}): ReactElement {
+  return h(
+    'div',
+    {
+      onContextMenu: (event: { preventDefault(): void; clientX?: number; clientY?: number }) => {
+        event.preventDefault()
+        onMore({ x: event.clientX ?? 0, y: event.clientY ?? 0 })
+      },
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: tokens.space[3],
+        width: '100%',
+        height: tokens.size.row,
+        padding: `0 ${tokens.space[3]}px`,
+        borderRadius: tokens.radius.sm,
+      },
+    },
+    h(CachedArtwork, {
+      ctx,
+      artwork: album.artwork,
+      seed: album.urn,
+      size: tokens.size.artworkThumb,
+      radius: tokens.radius.sm,
+    }),
+    h(
+      'div',
+      { style: { flex: 1, minWidth: 0 } },
+      h(Text, { numberOfLines: 1 }, album.title),
+      album.artists?.length
+        ? h(Text, {
+            variant: 'sm',
+            tone: 'muted',
+            numberOfLines: 1,
+            children: album.artists.map((artist) => artist.name).join(', '),
+          })
+        : null,
+    ),
+    h(Button, { variant: 'ghost', onPress: onOpen, children: 'Open' }),
+    h(IconButton, {
+      icon: '⋯',
+      accessibilityLabel: `More actions for ${album.title}`,
+      variant: 'ghost',
+      onPress: () => onMore(),
+    }),
+  )
+}
+
+/* ── one collection ────────────────────────────────────────────────────── */
+
+/**
+ * A collection is a folder, so its rows are whatever its members are: tracks
+ * play, albums open the album page, playlists open the playlist page. A
+ * member the catalogue cannot answer for still shows — titled by its URN —
+ * because hiding it would silently lose something the user put there.
+ */
+export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): ReactElement {
+  const state = useCollectionDetail(ctx, id)
+  const detail = state.data
+  const tracks = detail?.members ?? []
+  const trackUrns = tracks
+    .filter((member) => member.kind === 'track' && member.track)
+    .map((member) => member.urn)
+  const menu = useTrackMenu(ctx)
+
+  if (!id) return h(EmptyState, { title: 'No collection chosen' })
+  if (state.status === 'error') {
+    return h(EmptyState, { title: 'Could not open the collection', description: state.error?.message })
+  }
+  if (!detail) return h(EmptyState, { title: 'Loading…' })
+
+  const players = serviceOf<{ playNow(urns: string[]): Promise<void> }>(ctx, 'player')
+
+  return h(
+    'section',
+    {
+      'aria-label': detail.collection?.name ?? 'Collection',
+      style: { display: 'flex', flexDirection: 'column', gap: tokens.space[3], padding: tokens.space[4], height: '100%' },
+    },
+    h(
+      'header',
+      { style: { display: 'flex', alignItems: 'center', gap: tokens.space[3] } },
+      h(
+        'div',
+        { style: { flex: 1, minWidth: 0 } },
+        h(Text, { variant: 'xl', numberOfLines: 1 }, detail.collection?.name ?? 'Collection'),
+        h(Text, { variant: 'sm', tone: 'muted' }, `${detail.members.length} items`),
+      ),
+      h(Button, {
+        onPress: () => trackUrns[0] && void players?.playNow(trackUrns),
+        disabled: trackUrns.length === 0,
+        testID: 'collection-play',
+        children: 'Play',
+      }),
+    ),
+    h(
+      'div',
+      { style: { flex: 1, minHeight: 0 } },
+      h(List<CollectionMember>, {
+        testID: 'collection-members',
+        items: [...(detail.members ?? [])],
+        estimatedItemSize: tokens.size.row,
+        keyExtractor: (member) => member.urn,
+        empty: h(EmptyState, {
+          icon: '🗂',
+          title: 'Nothing in this collection yet',
+          description: 'Add albums or playlists from the library, or tracks from any list.',
+        }),
+        renderItem: (member) => {
+          if (member.kind === 'track' && member.track) {
+            return h(
+              'div',
+              { style: { display: 'flex', alignItems: 'center' } },
+              h(
+                'div',
+                { style: { flex: 1, minWidth: 0 } },
+                h(TrackRow, {
+                  track: member.track,
+                  onPress: () =>
+                    void players?.playNow(trackUrns).then(() => {
+                      /* playNow starts at the first track; the context is the collection */
+                    }),
+                  onMore: (anchor) => menu.open({ track: member.track! }, anchor),
+                }),
+              ),
+            )
+          }
+          return h(MemberRow, {
+            member,
+            onOpen: () => {
+              if (member.kind === 'album') ctx.ui.navigate(ALBUM_VIEWS.album, { urn: member.urn })
+              else if (member.kind === 'playlist') ctx.ui.navigate(LIBRARY_VIEWS.playlist, { urn: member.urn })
+            },
+          })
+        },
+      }),
+    ),
+    h(ContextMenu, menu.menuProps),
+  )
+}
+
+/** An album/playlist/unknown member: a labelled row that opens where it can. */
+function MemberRow({ member, onOpen }: { member: CollectionMember; onOpen: () => void }): ReactElement {
+  const openable = member.kind === 'album' || member.kind === 'playlist'
+  return h(
+    'button',
+    {
+      type: 'button',
+      disabled: !openable,
+      onClick: openable ? onOpen : undefined,
+      'aria-label': member.title,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: tokens.space[3],
+        width: '100%',
+        height: tokens.size.row,
+        padding: `0 ${tokens.space[3]}px`,
+        border: 'none',
+        borderRadius: tokens.radius.sm,
+        background: 'transparent',
+        cursor: openable ? 'pointer' : 'default',
+        textAlign: 'left',
+        font: 'inherit',
+        color: 'inherit',
+      },
+    },
+    h(Text, { variant: 'md' }, member.kind === 'album' ? '💿' : member.kind === 'playlist' ? '≡' : '•'),
+    h(
+      'div',
+      { style: { flex: 1, minWidth: 0 } },
+      h(Text, { numberOfLines: 1 }, member.title),
+      member.subtitle ? h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1 }, member.subtitle) : null,
+    ),
+    openable ? h(Text, { tone: 'muted', children: '›' }) : null,
+  )
+}
+
 /* ── the plugin entry ──────────────────────────────────────────────────── */
 
 export const name = 'plugin-library-ui-desktop'
@@ -515,8 +754,9 @@ function bound<P extends { ctx: Context }>(
 
 export async function apply(ctx: Context) {
   return ctx.effect(function* () {
-    yield ctx.ui.registerView(LIBRARY_VIEWS.playlists, bound(ctx, PlaylistsScreen))
+    yield ctx.ui.registerView(LIBRARY_VIEWS.home, bound(ctx, LibraryScreen))
     yield ctx.ui.registerView(LIBRARY_VIEWS.playlist, bound(ctx, PlaylistDetailScreen))
+    yield ctx.ui.registerView(LIBRARY_VIEWS.collection, bound(ctx, CollectionScreen))
     yield ctx.ui.registerView(LIBRARY_VIEWS.favorites, bound(ctx, FavoritesScreen))
   }, 'library-ui-desktop')
 }

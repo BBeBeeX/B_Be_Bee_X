@@ -6,25 +6,23 @@
  * a single-column list rather than a grid, because a phone has one column.
  */
 
-import { createElement as h, Fragment, useMemo, useState } from 'react'
+import { createElement as h, Fragment, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Album, CatalogQuery, DownloadsService, ImportReport, ScanSpecifiedDir, ScannerService, Track, TraceEvent, UiService } from '@BBeBee/protocol'
+import type { DownloadsService, ImportReport, ScanSpecifiedDir, ScannerService, TraceEvent, UiService } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
 import {
   isLocalSource,
   playFromList,
   searchResultRows,
-  useAlbums,
   useLocalFolders,
   useSearchSourceSelection,
   useSourceImport,
   useSourceSearch,
   useSourceTrace,
   useSources,
-  useTracks,
   type SearchResultRow,
 } from '@BBeBee/plugin-sources/hooks'
 import {
@@ -43,7 +41,6 @@ import {
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
-import { useToggleFavorite } from '@BBeBee/plugin-library/hooks'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
@@ -70,215 +67,6 @@ function CachedTrackRow({ ctx, ...props }: TrackRowProps & { ctx: Context }): Re
   })
 }
 
-function Pending({ label }: { label: string }): ReactElement {
-  return h(EmptyState, { title: label, accessibilityLabel: label })
-}
-
-/** A failed read, said out loud — never a silently empty library. */
-function Failed({ error, onRetry }: { error: Error; onRetry: () => void }): ReactElement {
-  return h(EmptyState, {
-    icon: '⚠',
-    title: 'Could not read the library',
-    description: error.message,
-    action: h(Button, { onPress: onRetry, variant: 'secondary', children: 'Try again' }),
-  })
-}
-
-const SCOPES = [
-  { id: 'all', label: 'All' },
-  { id: 'local', label: 'Local' },
-  { id: 'favorites', label: 'Favorites' },
-] as const
-
-export type LibraryScope = (typeof SCOPES)[number]['id']
-
-export function LibraryScreen({
-  ctx,
-  onOpenAlbum,
-}: {
-  ctx: Context
-  onOpenAlbum?: (urn: string) => void
-}): ReactElement {
-  const native = nativePrimitives()
-  const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
-  const [scope, setScope] = useState<LibraryScope>('all')
-  const [tab, setTab] = useState<'tracks' | 'albums'>('tracks')
-  // One heart, two stores: `track_stats.loved` draws it, the library shelf
-  // lists it. See `useToggleFavorite` in `@BBeBee/plugin-library/hooks`.
-  const toggleFavorite = useToggleFavorite(ctx)
-  const menu = useTrackMenu(ctx)
-
-  const query = useMemo<CatalogQuery>(() => {
-    const base: CatalogQuery = { sort: 'title' }
-    if (scope === 'local') {
-      return { ...base, sourceIds: ['local'] }
-    }
-    if (scope === 'favorites') {
-      return { ...base, onlyLoved: true }
-    }
-    return base
-  }, [scope])
-
-  const tracks = useTracks(ctx, query)
-  const albums = useAlbums(ctx, query)
-  const active = tab === 'tracks' ? tracks : albums
-
-  const handleOpenAlbum = (urn: string) => {
-    onOpenAlbum?.(urn)
-    serviceOf<UiService>(ctx, 'ui')?.navigate(ALBUM_VIEWS.album, { urn })
-  }
-
-  const trackEmpty =
-    scope === 'favorites'
-      ? h(EmptyState, {
-          icon: '♥',
-          title: 'No favorites yet',
-          description: 'Tap the heart icon on any track to add it to your favorites.',
-        })
-      : scope === 'local'
-        ? h(EmptyState, {
-            icon: '📁',
-            title: 'No local music',
-            description: 'Add a folder in Settings and it will appear here as it is scanned.',
-          })
-        : h(EmptyState, {
-            icon: '📁',
-            title: 'No music yet',
-            description: 'Add a folder in Settings and it will appear here as it is scanned.',
-          })
-
-  const albumEmpty =
-    scope === 'favorites'
-      ? h(EmptyState, { icon: '♥', title: 'No favorite albums yet' })
-      : scope === 'local'
-        ? h(EmptyState, { icon: '💿', title: 'No local albums' })
-        : h(EmptyState, { icon: '💿', title: 'No albums yet' })
-
-  return h(
-    Fragment,
-    null,
-    h(
-    native.View as never,
-    { style: { flex: 1, backgroundColor: p().bg.base } },
-    h(
-      native.View as never,
-      {
-        style: {
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          paddingHorizontal: tokens.space[3],
-          paddingVertical: tokens.space[2],
-        },
-      },
-      h(
-        native.View as never,
-        {
-          accessibilityRole: 'tablist',
-          style: { flexDirection: 'row', gap: tokens.space[2] },
-        },
-        SCOPES.map(({ id, label }) =>
-          h(Button, {
-            key: id,
-            variant: scope === id ? 'primary' : 'ghost',
-            onPress: () => setScope(id),
-            accessibilityLabel: `Show ${label}`,
-            children: label,
-          }),
-        ),
-      ),
-      h(
-        native.View as never,
-        {
-          accessibilityRole: 'tablist',
-          style: { flexDirection: 'row', gap: tokens.space[2] },
-        },
-        (['tracks', 'albums'] as const).map((id) =>
-          h(Button, {
-            key: id,
-            variant: tab === id ? 'secondary' : 'ghost',
-            onPress: () => setTab(id),
-            accessibilityLabel: `Show ${id}`,
-            children: id === 'tracks' ? 'Tracks' : 'Albums',
-          }),
-        ),
-      ),
-    ),
-    active.status === 'error' && active.error
-      ? h(Failed, { error: active.error, onRetry: active.reload })
-      : active.status === 'loading' && active.items.length === 0
-        ? h(Pending, { label: 'Loading your library…' })
-        : tab === 'tracks'
-          ? h(List<Track>, {
-              items: tracks.items,
-              accessibilityLabel: 'Tracks',
-              estimatedItemSize: tokens.size.row,
-              keyExtractor: (track) => track.urn,
-              onEndReached: tracks.loadMore,
-              empty: trackEmpty,
-              renderItem: (track) =>
-                h(CachedTrackRow, { ctx,
-                  track,
-                  showAlbum: true,
-                  // A tap plays the track in the list it was tapped in: jump
-                  // if the queue already holds it, otherwise that whole list
-                  // becomes the queue (docs/05 §2). Playback announces
-                  // itself in the mini-player; no navigation.
-                  onPress: () => void playFromList(ctx, track.urn, { query }),
-                  onToggleLoved: () => void toggleFavorite(track.urn, !track.loved),
-                  // Left absent when no downloads service is loaded: a button
-                  // that does nothing is worse than one that is not there.
-                  onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,
-                  onMore: (anchor) => menu.open({ track }, anchor),
-                }),
-            })
-          : h(List<Album>, {
-              items: albums.items,
-              accessibilityLabel: 'Albums',
-              estimatedItemSize: tokens.size.row,
-              keyExtractor: (album) => album.urn,
-              onEndReached: albums.loadMore,
-              empty: albumEmpty,
-              renderItem: (album) =>
-                h(
-                  native.Pressable as never,
-                  {
-                    accessibilityRole: 'button',
-                    accessibilityLabel: album.title,
-                    onPress: () => handleOpenAlbum(album.urn),
-                    style: {
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: tokens.space[3],
-                      padding: tokens.space[2],
-                    },
-                  },
-                  h(CachedArtwork, { ctx,
-                    artwork: album.artwork,
-                    seed: album.urn,
-                    size: tokens.size.artworkThumb,
-                  }),
-                  h(
-                    native.View as never,
-                    { style: { flex: 1, minWidth: 0 } },
-                    h(Text, { numberOfLines: 1, children: album.title }),
-                    album.year
-                      ? h(Text, { variant: 'sm', tone: 'muted', children: String(album.year) })
-                      : null,
-                  ),
-                ),
-            }),
-    ),
-    h(ContextMenu, menu.menuProps),
-  )
-}
-
-/* ── search ────────────────────────────────────────────────────────────── */
-
-/**
- * Search the selected sources, one section per source. See the desktop twin:
- * the same hook, the same rows, a phone's column instead of a pane.
- */
 export function SearchScreen({
   ctx,
   query,
@@ -1248,7 +1036,6 @@ export const inject = ['ui', 'sources']
 
 export async function apply(ctx: Context) {
   return ctx.effect(function* () {
-    yield ctx.ui.registerView(SOURCES_VIEWS.library, bound(ctx, LibraryScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.search, bound(ctx, SearchScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceList, bound(ctx, SourcesListScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceImport, bound(ctx, ImportScreen))

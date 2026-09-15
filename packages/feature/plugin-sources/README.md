@@ -92,13 +92,14 @@ Layer 4（feature）— `ctx.sources`：导入的源文档、provider 注册表�
 ### `src/views.ts` — 描述符 id 常量
 
 ```ts
-SOURCES_VIEWS = { library: 'sources.library', search: 'sources.search',
-                  sourceList: 'sources.settings',
+SOURCES_VIEWS = { search: 'sources.search', sourceList: 'sources.settings',
                   sourceImport: 'sources.import', sourceTest: 'sources.test' }
-SOURCES_ROUTES = { library, search, sourceImport, sourceTest }   // 同值
+SOURCES_ROUTES = { search, sourceImport, sourceTest }   // 同值
 ```
 
-init 贡献 5 个 descriptor：route `/library`（tab-bar + sidebar，order 0）、route `/search`（tab-bar + sidebar，order 1）、settings（section `'sources'`，"Music sources"）、route `/sources/import`、route `/sources/test`。Test 屏把某源的每个能力各给一个测试区，全部流进同一条 trace（docs/06 §10）。
+init 贡献 4 个 descriptor：route `/search`（tab-bar + sidebar，order 1）、settings（section `'sources'`，"Music sources"）、route `/sources/import`、route `/sources/test`。Test 屏把某源的每个能力各给一个测试区，全部流进同一条 trace（docs/06 §10）。
+
+> 原来的 `sources.library`（All/Local/Favorites 的曲库浏览）已删除：库首页由 `plugin-library` 的 `library.home` 承担，同时显示 playlists、albums、collections（合集作为文件夹，其成员可以是 album/playlist/track）。
 
 > 专辑页已拆出为 `plugin-album`（`album.view`）：route/view 与 `useAlbum` 随屏幕一起搬走，目录读 `getAlbum / listAlbums` 仍在本包——读留在写旁边（MD-3）。库与搜索屏导航时从 `@BBeBee/plugin-album/views` 取 route id。
 

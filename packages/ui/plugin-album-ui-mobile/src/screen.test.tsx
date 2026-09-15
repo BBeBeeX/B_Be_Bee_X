@@ -17,7 +17,7 @@ import { Context, Service } from 'cordis'
 import type { AlbumDetail, DownloadTask } from '@BBeBee/protocol'
 import { tick } from '@BBeBee/kernel/testing'
 import { configureNative } from '@BBeBee/ui-kit-mobile'
-import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
+import { LIBRARY_VIEWS } from '@BBeBee/plugin-library/views'
 import { AlbumScreen } from './index.js'
 
 afterEach(cleanup)
@@ -216,6 +216,6 @@ describe('AlbumScreen on mobile', () => {
 
     // No `onBack` from this harness, so the screen falls back to the library
     // by its own route id rather than rendering a dead end.
-    expect(ui.navigated).toEqual([SOURCES_VIEWS.library])
+    expect(ui.navigated).toEqual([LIBRARY_VIEWS.home])
   })
 })

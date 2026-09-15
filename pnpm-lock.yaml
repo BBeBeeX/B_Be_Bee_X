@@ -1287,9 +1287,9 @@ importers:
       '@BBeBee/plugin-cache':
         specifier: workspace:*
         version: link:../../feature/plugin-cache
-      '@BBeBee/plugin-sources':
+      '@BBeBee/plugin-library':
         specifier: workspace:*
-        version: link:../../feature/plugin-sources
+        version: link:../../feature/plugin-library
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -1477,12 +1477,21 @@ importers:
 
   packages/ui/plugin-library-ui-desktop:
     dependencies:
+      '@BBeBee/plugin-album':
+        specifier: workspace:*
+        version: link:../../feature/plugin-album
+      '@BBeBee/plugin-cache':
+        specifier: workspace:*
+        version: link:../../feature/plugin-cache
       '@BBeBee/plugin-library':
         specifier: workspace:*
         version: link:../../feature/plugin-library
       '@BBeBee/plugin-player':
         specifier: workspace:*
         version: link:../../feature/plugin-player
+      '@BBeBee/plugin-sources':
+        specifier: workspace:*
+        version: link:../../feature/plugin-sources
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
@@ -1526,12 +1535,21 @@ importers:
 
   packages/ui/plugin-library-ui-mobile:
     dependencies:
+      '@BBeBee/plugin-album':
+        specifier: workspace:*
+        version: link:../../feature/plugin-album
+      '@BBeBee/plugin-cache':
+        specifier: workspace:*
+        version: link:../../feature/plugin-cache
       '@BBeBee/plugin-library':
         specifier: workspace:*
         version: link:../../feature/plugin-library
       '@BBeBee/plugin-player':
         specifier: workspace:*
         version: link:../../feature/plugin-player
+      '@BBeBee/plugin-sources':
+        specifier: workspace:*
+        version: link:../../feature/plugin-sources
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol

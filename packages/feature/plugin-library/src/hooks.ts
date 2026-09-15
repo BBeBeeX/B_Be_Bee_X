@@ -24,7 +24,10 @@ import type {
   PlaylistDetail,
   SavedKind,
   SourcesService,
+  Track,
+  UrnKind,
 } from '@BBeBee/protocol'
+import { tryParseUrn } from '@BBeBee/protocol'
 import { serviceOf, type AsyncState } from '@BBeBee/ui-core'
 
 export interface LibraryRead<T> extends AsyncState<T> {
@@ -161,4 +164,110 @@ export function summariseLibrary(
     collections: collections.length,
     saved: saved.length,
   }
+}
+
+
+/* ── one collection, as a folder ────────────────────────────────────────── */
+
+/**
+ * One member of a collection.
+ *
+ * A collection is a folder: its members are URNs of any kind, and what a
+ * screen can draw depends on what the row's own service answers — a track has
+ * a `Track`, an album a title and artists, a playlist a name. The mapping
+ * happens here so both shells render the same shape.
+ */
+export interface CollectionMember {
+  urn: string
+  kind: UrnKind
+  title: string
+  subtitle?: string
+  /** Resolved catalogue row, for a member that is a track. */
+  track?: Track
+}
+
+export interface CollectionDetail {
+  collection: Collection | undefined
+  members: readonly CollectionMember[]
+}
+
+/**
+ * A collection and its members, hydrated in the order they were added.
+ *
+ * A member whose service answers nothing (a removed source, a forgotten
+ * playlist) still appears, titled by its URN: the row is the user's, and
+ * hiding it would silently lose something they put there.
+ */
+export function useCollectionDetail(
+  ctx: Context,
+  id: string | undefined,
+): LibraryRead<CollectionDetail> {
+  return useLibraryRead(
+    ctx,
+    async () => {
+      if (!id) return { collection: undefined, members: [] }
+      const collections = await ctx.library.listCollections()
+      const collection = collections.find((candidate) => candidate.id === id)
+      const items = await readAll((cursor) =>
+        ctx.library.listCollectionItems(id, cursor ? { cursor } : undefined),
+      )
+
+      const sources = serviceOf<SourcesService>(ctx, 'sources')
+      const byKind = (kind: UrnKind): string[] =>
+        items.filter((item) => tryParseUrn(item.urn)?.kind === kind).map((item) => item.urn)
+
+      const trackUrns = byKind('track')
+      const tracks = sources ? await sources.getTracks(trackUrns) : []
+      const trackByUrn = new Map(tracks.map((track) => [track.urn, track]))
+
+      const members: CollectionMember[] = []
+      for (const item of items) {
+        const parsed = tryParseUrn(item.urn)
+        const kind = parsed?.kind ?? 'track'
+        switch (kind) {
+          case 'track': {
+            const track = trackByUrn.get(item.urn)
+            members.push({
+              urn: item.urn,
+              kind,
+              title: track?.title ?? item.urn,
+              ...(track ? { track } : {}),
+            })
+            break
+          }
+          case 'album': {
+            const album = sources ? await sources.getAlbum(item.urn) : undefined
+            members.push({
+              urn: item.urn,
+              kind,
+              title: album?.title ?? item.urn,
+              ...(album?.artists?.length
+                ? { subtitle: album.artists.map((artist) => artist.name).join(', ') }
+                : {}),
+            })
+            break
+          }
+          case 'playlist': {
+            const playlist = await ctx.library.getPlaylist(item.urn).catch(() => undefined)
+            members.push({
+              urn: item.urn,
+              kind,
+              title: playlist?.name ?? item.urn,
+              ...(playlist?.trackCount !== undefined
+                ? { subtitle: `${playlist.trackCount} tracks` }
+                : {}),
+            })
+            break
+          }
+          default: {
+            const artist = sources ? await sources.getArtist(item.urn).catch(() => undefined) : undefined
+            members.push({ urn: item.urn, kind, title: artist?.name ?? item.urn })
+            break
+          }
+        }
+      }
+      return { collection, members }
+    },
+    `collection:${id ?? ''}`,
+  )
 }

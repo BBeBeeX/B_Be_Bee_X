@@ -16,12 +16,14 @@ import { Context, Service } from 'cordis'
 import type { Collection, Paged, Playlist, PlaylistDetail, SavedKind, Track } from '@BBeBee/protocol'
 import { tick } from '@BBeBee/kernel/testing'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
-import { FavoritesScreen, PlaylistDetailScreen, PlaylistsScreen } from './index.js'
+import { CollectionScreen, FavoritesScreen, LibraryScreen, PlaylistDetailScreen } from './index.js'
 
 afterEach(cleanup)
 
 const TRACK = 'BBeBee:demo:track:one'
 const PLAYLIST_URN = 'BBeBee:local:playlist:one'
+const ALBUM_URN = 'BBeBee:demo:album:one'
+const COLLECTION_ID = 'col-1'
 
 const track: Track = {
   urn: TRACK,
@@ -70,6 +72,18 @@ class LibraryStub extends Service {
   async deleteCollection(id: string): Promise<void> {
     this.calls.push(`collection-delete:${id}`)
   }
+  async listCollectionItems(id: string): Promise<Paged<{ urn: string; position: string }>> {
+    return id === COLLECTION_ID
+      ? {
+          items: [
+            { urn: TRACK, position: 'a' },
+            { urn: ALBUM_URN, position: 'b' },
+            { urn: PLAYLIST_URN, position: 'c' },
+          ],
+          hasMore: false,
+        }
+      : { items: [], hasMore: false }
+  }
   async getPlaylist(urn: string): Promise<PlaylistDetail | undefined> {
     return urn === PLAYLIST_URN ? storedPlaylist : undefined
   }
@@ -106,6 +120,17 @@ class SourcesStub extends Service {
   }
   async getTracks(urns: readonly string[]): Promise<Track[]> {
     return urns.includes(TRACK) ? [track] : []
+  }
+  async listAlbums() {
+    return { items: [], hasMore: false }
+  }
+  async getAlbum(urn: string) {
+    return urn === ALBUM_URN
+      ? { urn, title: 'Homogenic', artists: [{ urn: 'a', name: 'Björk', role: 'main', ordinal: 0 }] }
+      : undefined
+  }
+  async getArtist() {
+    return undefined
   }
 }
 
@@ -144,11 +169,11 @@ function type(field: HTMLElement, value: string): void {
   field.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
-describe('PlaylistsScreen', () => {
+describe('LibraryScreen', () => {
   it('renders the playlists and creates a trimmed one', async () => {
     const { ctx, library } = await harness()
     await withListLayout(async () => {
-      const { container, getByTestId } = render(h(PlaylistsScreen, { ctx }))
+      const { container, getByTestId } = render(h(LibraryScreen, { ctx }))
       await act(async () => {
         await tick()
       })
@@ -170,7 +195,7 @@ describe('PlaylistsScreen', () => {
   it('deletes and opens by the playlist URN', async () => {
     const { ctx, library, ui } = await harness()
     await withListLayout(async () => {
-      const { container, getByLabelText } = render(h(PlaylistsScreen, { ctx }))
+      const { container, getByLabelText } = render(h(LibraryScreen, { ctx }))
       await act(async () => {
         await tick()
       })
@@ -242,5 +267,28 @@ describe('FavoritesScreen', () => {
     })
 
     expect(library.calls).toContain(`save:${TRACK}:false`)
+  })
+})
+
+
+describe('CollectionScreen', () => {
+  it('renders tracks, albums and playlists as folder members', async () => {
+    const { ctx, ui } = await harness()
+    await withListLayout(async () => {
+      const { container, getByText } = render(h(CollectionScreen, { ctx, id: COLLECTION_ID }))
+      await act(async () => {
+        await tick()
+      })
+
+      expect(container.textContent).toContain('Alpha')
+      expect(container.textContent).toContain('Homogenic')
+      expect(container.textContent).toContain('Road trip')
+
+      await act(async () => {
+        getByText('Homogenic').click()
+        await tick()
+      })
+      expect(ui.calls).toContain(`album.view:{"urn":"${ALBUM_URN}"}`)
+    })
   })
 })

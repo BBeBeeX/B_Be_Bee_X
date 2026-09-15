@@ -255,8 +255,8 @@ describe('the desktop shell', () => {
 
   it('navigates right pane to album view while keeping sidebar intact', async () => {
     const { container } = await mount((ui) => {
-      ui.routes = [route('sources.library', 'Library')]
-      ui.views.set('sources.library', ({ onOpenAlbum }: { onOpenAlbum?: (urn: string) => void }) =>
+      ui.routes = [route('library.home', 'Library')]
+      ui.views.set('library.home', ({ onOpenAlbum }: { onOpenAlbum?: (urn: string) => void }) =>
         h(
           'div',
           null,

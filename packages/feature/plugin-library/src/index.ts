@@ -90,12 +90,12 @@ export class Library extends Service implements LibraryService {
       scoped.effect(function* () {
         yield scoped.ui.contribute({
           kind: 'route',
-          id: LIBRARY_ROUTES.playlists,
-          path: '/playlists',
-          title: 'Playlists',
-          icon: 'list',
+          id: LIBRARY_ROUTES.home,
+          path: '/library',
+          title: 'Library',
+          icon: 'library',
           placement: ['sidebar', 'tab-bar'],
-          order: 30,
+          order: 0,
         })
         yield scoped.ui.contribute({
           kind: 'route',
@@ -107,6 +107,15 @@ export class Library extends Service implements LibraryService {
           // placement is deliberate — the desktop sidebar treats an *absent*
           // placement as `sidebar`, so omitting it would put a bare "Playlist"
           // entry beside the real one (docs/08 §3).
+          placement: [],
+          order: 0,
+        })
+        yield scoped.ui.contribute({
+          kind: 'route',
+          id: LIBRARY_ROUTES.collection,
+          path: '/collection/:id',
+          title: 'Collection',
+          // Reached from the library, like the playlist detail.
           placement: [],
           order: 0,
         })

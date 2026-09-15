@@ -12,6 +12,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from 'cordis'
 import type { LibraryService, Playlist, Track } from '@BBeBee/protocol'
 import {
+  addToCollectionOnlyItems,
+  addToCollectionSubmenu,
   addToPlaylistSubmenu,
   collectionMenuItems,
   playlistMenuItems,
@@ -40,11 +42,23 @@ const playlists: Playlist[] = [
 class LibraryStub extends Service {
   readonly calls: string[] = []
   items: readonly Playlist[] = playlists
+  readonly collections = [{ id: 'col-1', name: 'Shelf', position: 'a', createdAt: 0 }]
   constructor(ctx: Context) {
     super(ctx, 'library')
   }
   async listPlaylists() {
     return { items: this.items, hasMore: false }
+  }
+  async listCollections() {
+    return this.collections
+  }
+  async createCollection(name: string) {
+    this.calls.push(`collection:${name}`)
+    return { id: 'col-new', name, position: 'b', createdAt: 0 }
+  }
+  async addToCollection(id: string, urns: readonly string[]) {
+    this.calls.push(`collect:${id}:${urns.join(',')}`)
+    return urns.length
   }
   async createPlaylist(name: string) {
     this.calls.push(`create:${name}`)
@@ -133,6 +147,7 @@ describe('trackMenuItems', () => {
     const items = trackMenuItems(h.ctx, { track }, { playlists })
     expect(items.map((i) => i.id)).toEqual([
       'add-to-playlist',
+      'add-to-collection',
       'remove-favourite',
       'enqueue',
       'download',
@@ -143,7 +158,7 @@ describe('trackMenuItems', () => {
   it('omits what the build cannot do rather than offering a failing item', async () => {
     const h = await harness({ downloads: false, player: false, ui: false })
     const items = trackMenuItems(h.ctx, { track: { ...track, loved: false } }, {})
-    expect(items.map((i) => i.id)).toEqual(['add-to-playlist'])
+    expect(items.map((i) => i.id)).toEqual(['add-to-playlist', 'add-to-collection'])
   })
 
   it('offers “remove from this playlist” only inside a playlist', async () => {
@@ -212,6 +227,50 @@ describe('the add-to-playlist submenu', () => {
   })
 })
 
+describe('the add-to-collection submenu', () => {
+  it('filters, creates and lists, exactly like the playlist one', async () => {
+    const h = await harness()
+    const submenu = addToCollectionSubmenu(h.library as unknown as LibraryService, [URN], h.library.collections)
+    expect(submenu?.searchPlaceholder).toBe('查找合集')
+    expect(submenu?.create?.label).toBe('新建合集')
+    expect(submenu?.items.map((i) => i.label)).toEqual(['Shelf'])
+
+    await submenu!.create?.onSelect('New shelf')
+    expect(h.library.calls).toEqual(['collection:New shelf', 'collect:col-new:BBeBee:local:track:1'])
+
+    await submenu!.items[0]?.onSelect?.()
+    expect(h.library.calls).toContain('collect:col-1:BBeBee:local:track:1')
+  })
+
+  it('adds a playlist itself, so its songs are in the library through it', async () => {
+    const h = await harness()
+    const items = playlistMenuItems(
+      h.ctx,
+      { urn: 'BBeBee:local:playlist:1', name: 'Road trip' },
+      [URN],
+      playlists,
+      h.library.collections,
+    )
+    const submenu = items.find((i) => i.id === 'add-to-collection')?.submenu
+    expect(submenu).toBeTruthy()
+    await submenu!.items[0]?.onSelect?.()
+    expect(h.library.calls).toContain('collect:col-1:BBeBee:local:playlist:1')
+  })
+})
+
+describe('addToCollectionOnlyItems', () => {
+  it('offers the folder submenu for an album, and nothing when unloaded', async () => {
+    const h = await harness()
+    const items = addToCollectionOnlyItems(h.ctx, ['BBeBee:demo:album:1'], h.library.collections)
+    expect(items.map((i) => i.id)).toEqual(['add-to-collection'])
+    await items[0]?.submenu?.items[0]?.onSelect?.()
+    expect(h.library.calls).toContain('collect:col-1:BBeBee:demo:album:1')
+
+    const bare = new Context()
+    expect(addToCollectionOnlyItems(bare, ['x'], [])).toEqual([])
+  })
+})
+
 describe('playlistMenuItems', () => {
   it('saves, queues, downloads and copies the whole list', async () => {
     const h = await harness()
@@ -226,6 +285,7 @@ describe('playlistMenuItems', () => {
       'enqueue',
       'download',
       'add-to-playlist',
+      'add-to-collection',
     ])
     await press(items, 'save-to-library')
     await press(items, 'enqueue')
@@ -239,9 +299,9 @@ describe('playlistMenuItems', () => {
   it('drops the list actions when the tracks were never resolved', async () => {
     const h = await harness()
     const items = playlistMenuItems(h.ctx, { urn: 'u', name: 'n' }, [], [])
-    // Nothing to queue, download or copy: only the save remains. An item that
-    // would act on an empty list is worse than one that is absent.
-    expect(items.map((i) => i.id)).toEqual(['save-to-library'])
+    // Nothing to queue, download or copy: the save and the folder remain. An
+    // item that would act on an empty list is worse than one that is absent.
+    expect(items.map((i) => i.id)).toEqual(['save-to-library', 'add-to-collection'])
   })
 })
 

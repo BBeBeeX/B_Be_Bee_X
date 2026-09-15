@@ -6,8 +6,6 @@
  */
 
 export const SOURCES_VIEWS = {
-  /** Tracks and albums. The app's home screen. */
-  library: 'sources.library',
   /**
    * Search across the selected sources, one result section per source.
    *
@@ -31,7 +29,6 @@ export const SOURCES_VIEWS = {
 } as const
 
 export const SOURCES_ROUTES = {
-  library: 'sources.library',
   search: 'sources.search',
   sourceImport: 'sources.import',
   sourceTest: 'sources.test',

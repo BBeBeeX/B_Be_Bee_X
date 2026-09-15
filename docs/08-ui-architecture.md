@@ -323,9 +323,9 @@ A download starts from the **⬇ control on a track row** (`TrackRow.onDownload`
 
 The rule that keeps this affordable is [§1](#1-the-three-package-convention)'s: parsing,
 validating, diffing, tracing and redacting all live in the headless package. The view packages
-show a list, a text field, and a set of toggles. The library screen is a conventional catalogue
-surface in `plugin-sources-ui-*`, and the album screen — split out into `plugin-album-ui-*` —
-reads through `@BBeBee/plugin-album/hooks`; the four above are the ones the string model added.
+show a list, a text field, and a set of toggles. The library itself is `plugin-library-ui-*`
+(playlists, albums and collections side by side), the album page is `plugin-album-ui-*`, and the
+four above are the ones the string model added.
 
 ---
 

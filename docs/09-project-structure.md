@@ -211,14 +211,14 @@ B_Be_Bee/
 │   │   ├── plugin-queue-ui-mobile/   ✅      ┘
 │   │   ├── plugin-now-playing-ui-desktop/ ✅ ┐ full-screen player + bar / mini-player
 │   │   ├── plugin-now-playing-ui-mobile/  ✅ ┘
-│   │   ├── plugin-sources-ui-desktop/ ✅     ┐ library, search, source list,
-│   │   ├── plugin-sources-ui-mobile/  ✅     ┘ import review, test screen (08 §4)
+│   │   ├── plugin-sources-ui-desktop/ ✅     ┐ search, source list, import review,
+│   │   ├── plugin-sources-ui-mobile/  ✅     ┘ test screen (08 §4)
 │   │   ├── plugin-album-ui-desktop/  ✅      ┐ one album: header, tracks, actions (08 §4)
 │   │   ├── plugin-album-ui-mobile/   ✅      ┘
 │   │   ├── plugin-download-ui-desktop/ ✅    ┐ the download queue and cache (08 §4)
 │   │   ├── plugin-download-ui-mobile/  ✅    ┘
-│   │   ├── plugin-library-ui-desktop/ ✅     ┐ playlists, one playlist, favourites (08 §4)
-│   │   ├── plugin-library-ui-mobile/  ✅     ┘
+│   │   ├── plugin-library-ui-desktop/ ✅     ┐ the library (playlists, albums, collections),
+│   │   ├── plugin-library-ui-mobile/  ✅     ┘ one playlist, one collection, favourites (08 §4)
 │   │   ├── plugin-local-scanner-ui-desktop/ ✅ ┐ settings: scan roots
 │   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
 │   │   └── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered

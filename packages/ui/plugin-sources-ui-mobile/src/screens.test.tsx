@@ -41,7 +41,7 @@ import { tempDir, tick } from '@BBeBee/kernel/testing'
 import { configureNative } from '@BBeBee/ui-kit-mobile'
 import httpPlugin from '@BBeBee/core-http-node'
 import sourceRuntime from '@BBeBee/plugin-source-runtime'
-import { LibraryScreen, SearchScreen, SourcesListScreen, TestScreen, inject } from './index.js'
+import { SearchScreen, SourcesListScreen, TestScreen, inject } from './index.js'
 
 afterEach(cleanup)
 
@@ -126,130 +126,6 @@ async function harnessWithRuntime(): Promise<{ ctx: Context; admin: Context }> {
   await tick()
   return { ctx, admin }
 }
-
-async function withTrack(admin: Context): Promise<void> {
-  await admin.db.exec(
-    `INSERT INTO sources (id, source_url, name, doc_json, doc_hash, imported_at, updated_at)
-     VALUES ('local', 'bbebee://local/local', 'This device', '{}', 'h', 0, 0)`,
-  )
-  await admin.db.exec(
-    `INSERT INTO tracks (urn, source_id, remote_id, title, fetched_at)
-     VALUES ('BBeBee:local:track:1', 'local', '1', 'Jóga', 0)`,
-  )
-}
-
-/** Uncaught errors during `body` — React reports handler throws, not rethrows. */
-async function reportedDuring(body: () => Promise<void> | void): Promise<string[]> {
-  const seen: string[] = []
-  const onError = (event: ErrorEvent) => {
-    seen.push(String(event.error ?? event.message))
-    event.preventDefault()
-  }
-  window.addEventListener('error', onError)
-  try {
-    await body()
-  } finally {
-    window.removeEventListener('error', onError)
-  }
-  return seen
-}
-
-describe('LibraryScreen on mobile', () => {
-  it('renders the catalogue it was given', async () => {
-    const { ctx, admin } = await harness()
-    await withTrack(admin)
-
-    const { container } = render(h(LibraryScreen, { ctx }))
-    await act(async () => {
-      await tick()
-    })
-
-    expect(container.textContent).toContain('Jóga')
-  })
-
-  it('plays a track without a player loaded, instead of reporting an error', async () => {
-    // The device bug: `ctx.player?.playNow()` is not a safe optional on a
-    // scoped context, because the `?.` never gets to short-circuit — the
-    // property read itself throws.
-    const { ctx, admin } = await harness()
-    await withTrack(admin)
-
-    const { container } = render(h(LibraryScreen, { ctx }))
-    await act(async () => {
-      await tick()
-    })
-
-    const row = container.querySelector('[role="listitem"] [data-host]') as HTMLElement | null
-    expect(row, 'the track is on screen').toBeTruthy()
-
-    const reported = await reportedDuring(() => {
-      row!.click()
-    })
-    expect(reported, 'tapping with no player must be a no-op').toEqual([])
-  })
-
-  it('renders an empty library as an empty state, not a blank screen', async () => {
-    const { ctx } = await harness()
-    const { container } = render(h(LibraryScreen, { ctx }))
-    await act(async () => {
-      await tick()
-    })
-    expect(container.textContent).toContain('No music yet')
-  })
-
-  it('queues a library track for download, through the service', async () => {
-    const { ctx, admin } = await harness()
-    await withTrack(admin)
-    const queued: string[] = []
-    class DownloadsStub extends Service {
-      constructor(c: Context) {
-        super(c, 'downloads')
-      }
-      async enqueue(urns: string[]) {
-        queued.push(...urns)
-        return []
-      }
-    }
-    await admin.plugin(DownloadsStub)
-    await tick()
-
-    const { container } = render(h(LibraryScreen, { ctx }))
-    await act(async () => {
-      await tick()
-    })
-
-    const button = container.querySelector('[data-label="Download"]') as HTMLElement | null
-    expect(button, 'the row offers a download control').toBeTruthy()
-    await act(async () => {
-      button!.click()
-      await tick()
-    })
-    expect(queued).toEqual(['BBeBee:local:track:1'])
-  })
-
-  it('switches between all, local, and favorites scopes', async () => {
-    const { ctx, admin } = await harness()
-    await withTrack(admin)
-    const { container } = render(h(LibraryScreen, { ctx }))
-    await act(async () => {
-      await tick()
-    })
-
-    expect(container.textContent).toContain('Jóga')
-
-    const favoritesBtn = Array.from(container.querySelectorAll('[data-host]')).find(
-      (el) => el.textContent === 'Favorites',
-    ) as HTMLElement | undefined
-    expect(favoritesBtn).toBeTruthy()
-
-    await act(async () => {
-      favoritesBtn!.click()
-      await tick()
-    })
-
-    expect(container.textContent).toContain('No favorites yet')
-  })
-})
 
 /* ── the source list and the test screen ────────────────────────────────── */
 

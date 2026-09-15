@@ -336,7 +336,7 @@ export function Shell({ ctx }: { ctx: Context }) {
       onForward: handleForward,
       onHome: handleHome,
       onSearch: (query: string) => {
-        const libraryEntry = entries.find((e) => e.id === 'sources.library') ?? defaultEntry
+        const libraryEntry = entries.find((e) => e.id === 'library.home') ?? defaultEntry
         if (libraryEntry) {
           navigateTo(libraryEntry.id, { query })
         }
@@ -380,7 +380,7 @@ export function Shell({ ctx }: { ctx: Context }) {
         ...entries.map((entry, index) => {
           const isActive =
             currentId === entry.id ||
-            (currentId === 'album.view' && entry.id === 'sources.library')
+            (currentId === 'album.view' && entry.id === 'library.home')
           return h(
             'div',
             { key: entry.id },

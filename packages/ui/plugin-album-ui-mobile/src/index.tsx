@@ -19,7 +19,7 @@ import { useTrackMenu } from '@BBeBee/ui-menus'
 import { Artwork, Button, ContextMenu, EmptyState, List, Text, TrackRow, nativePrimitives } from '@BBeBee/ui-kit-mobile'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
-import { SOURCES_VIEWS } from '@BBeBee/plugin-sources/views'
+import { LIBRARY_VIEWS } from '@BBeBee/plugin-library/views'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
@@ -67,7 +67,7 @@ export function AlbumScreen({
     // The shell's own back handler when it passed one; otherwise the library,
     // which is where an album is reached from in every shell that exists.
     if (onBack) onBack()
-    else serviceOf<{ navigate(id: string): void }>(ctx, 'ui')?.navigate(SOURCES_VIEWS.library)
+    else serviceOf<{ navigate(id: string): void }>(ctx, 'ui')?.navigate(LIBRARY_VIEWS.home)
   }
 
   if (album.status === 'loading' || album.status === 'idle') {

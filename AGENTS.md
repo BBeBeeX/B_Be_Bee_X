@@ -678,10 +678,10 @@ Test conventions in this repo:
   both targets, the scanner, the catalogue, the player (gapless, crossfade, prefetch, the
   interruption table), both UI kits with the parity check, and five screens on both shells.
   Those screens have since been split into surface plugins so a screen can evolve without touching
-  a service: `plugin-album-ui-*` (album), `plugin-now-playing-ui-*` (player + bar),
-  `plugin-queue-ui-*` (up-next), with the catalogue screens in `plugin-sources-ui-*`;
-  `plugin-player` itself is headless with commands only. Both shells load the **generated**
-  registry.
+  a service: `plugin-library-ui-*` is the library itself (playlists, albums, collections),
+  `plugin-album-ui-*` (album), `plugin-now-playing-ui-*` (player + bar), `plugin-queue-ui-*`
+  (up-next), with the search/source screens in `plugin-sources-ui-*`; `plugin-player` itself is
+  headless with commands only. Both shells load the **generated** registry.
 - M2: `source-rules` (full rule engine with its own tests), `core-js-quickjs-node`, the runtime
   with search/explore/album/lyrics/login (`DocumentAuth`, single-flight re-auth), `ctx.secrets`
   on both targets with persistent per-source cookie jars, the import/review flow, the per-feature

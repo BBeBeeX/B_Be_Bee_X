@@ -28,6 +28,7 @@ import type {
 } from '@BBeBee/ui-core'
 import { serviceOf } from '@BBeBee/ui-core'
 import type {
+  Collection,
   DownloadsService,
   LibraryService,
   PlayerService,
@@ -80,6 +81,44 @@ export function addToPlaylistSubmenu(
   }
 }
 
+/* ── the collection submenu ─────────────────────────────────────────────── */
+
+/**
+ * "Add to a collection" — the folder counterpart of the playlist submenu.
+ *
+ * A collection holds any URN, so the caller passes what it means to add: a
+ * playlist adds itself (its songs are then in the library *through* it), a
+ * track adds its own URN. Same structure as the playlist submenu: filter,
+ * create, list.
+ */
+export function addToCollectionSubmenu(
+  library: LibraryService | undefined,
+  urns: readonly string[],
+  collections: readonly Collection[],
+): SubmenuSpec | undefined {
+  if (!library || urns.length === 0) return undefined
+  return {
+    title: '加入合集',
+    searchPlaceholder: '查找合集',
+    emptyLabel: '没有匹配的合集',
+    create: {
+      label: '新建合集',
+      placeholder: '合集名称',
+      onSelect: async (name) => {
+        const collection = await library.createCollection(name)
+        await library.addToCollection(collection.id, urns)
+      },
+    },
+    items: collections.map((collection) => ({
+      id: collection.id,
+      label: collection.name,
+      onSelect: async () => {
+        await library.addToCollection(collection.id, urns)
+      },
+    })),
+  }
+}
+
 /* ── tracks ─────────────────────────────────────────────────────────────── */
 
 export interface TrackMenuTarget {
@@ -96,6 +135,8 @@ export interface TrackMenuOptions {
   fromPlaylistUrn?: string
   /** Resolved by the hook when the menu opens. */
   playlists?: readonly Playlist[]
+  /** Same, for the "add to collection" submenu. */
+  collections?: readonly Collection[]
 }
 
 /**
@@ -119,6 +160,11 @@ export function trackMenuItems(
 
   const submenu = addToPlaylistSubmenu(library, [track.urn], opts.playlists ?? [])
   if (submenu) items.push({ id: 'add-to-playlist', label: '加入歌单', icon: '＋', submenu })
+
+  const collectionSubmenu = addToCollectionSubmenu(library, [track.urn], opts.collections ?? [])
+  if (collectionSubmenu) {
+    items.push({ id: 'add-to-collection', label: '加入合集', icon: '🗂', submenu: collectionSubmenu })
+  }
 
   if (library && opts.fromPlaylistUrn && target.playlistItemId) {
     const playlistUrn = opts.fromPlaylistUrn
@@ -178,6 +224,47 @@ export function trackMenuItems(
   return items
 }
 
+/**
+ * The one-item menu for an entity that is only a candidate for a folder:
+ * an album (or anything else) whose useful action here is "put this in a
+ * collection".
+ */
+export function addToCollectionOnlyItems(
+  ctx: Context,
+  urns: readonly string[],
+  collections: readonly Collection[],
+): MenuItemSpec[] {
+  const library = serviceOf<LibraryService>(ctx, 'library')
+  const submenu = addToCollectionSubmenu(library, urns, collections)
+  return submenu ? [{ id: 'add-to-collection', label: '加入合集', icon: '🗂', submenu }] : []
+}
+
+export interface AddToCollectionController extends MenuController {
+  open(title: string, urns: readonly string[], anchor?: MenuAnchor): void
+}
+
+/** A folder menu for an arbitrary entity — currently the album rows' menu. */
+export function useAddToCollection(ctx: Context): AddToCollectionController {
+  const state = useMenuState<{ title: string; urns: readonly string[] }>()
+  const open = useCallback(
+    (title: string, urns: readonly string[], anchor?: MenuAnchor) => state.show({ title, urns }, anchor, ctx),
+    [state, ctx],
+  )
+  return {
+    open,
+    menuProps: {
+      open: state.open !== undefined,
+      onClose: state.close,
+      x: state.open?.anchor.x ?? 0,
+      y: state.open?.anchor.y ?? 0,
+      items: state.open
+        ? addToCollectionOnlyItems(ctx, state.open.target.urns, state.collections)
+        : [],
+      ...(state.open ? { title: state.open.target.title } : {}),
+    },
+  }
+}
+
 /* ── playlists and collections ──────────────────────────────────────────── */
 
 /**
@@ -193,6 +280,7 @@ export function playlistMenuItems(
   playlist: { urn: string; name: string },
   tracks: readonly string[],
   playlists: readonly Playlist[] = [],
+  collections: readonly Collection[] = [],
 ): MenuItemSpec[] {
   const library = serviceOf<LibraryService>(ctx, 'library')
   const player = serviceOf<PlayerService>(ctx, 'player')
@@ -228,6 +316,14 @@ export function playlistMenuItems(
 
   const submenu = addToPlaylistSubmenu(library, tracks, playlists)
   if (submenu) items.push({ id: 'add-to-playlist', label: '添加到歌单', icon: '≡', submenu })
+
+  // The playlist itself, not its tracks: a collection is a folder, and the
+  // songs are in the library *through* the playlist. Editing the playlist
+  // later is reflected, because nothing was copied.
+  const collectionSubmenu = addToCollectionSubmenu(library, [playlist.urn], collections)
+  if (collectionSubmenu) {
+    items.push({ id: 'add-to-collection', label: '加入合集', icon: '🗂', submenu: collectionSubmenu })
+  }
 
   return items
 }
@@ -301,18 +397,25 @@ function anchorOf(anchor: MenuAnchor | undefined): MenuAnchor {
 function useMenuState<T>() {
   const [open, setOpen] = useState<{ target: T; anchor: MenuAnchor } | undefined>(undefined)
   const [playlists, setPlaylists] = useState<readonly Playlist[]>([])
+  const [collections, setCollections] = useState<readonly Collection[]>([])
 
   const show = useCallback((target: T, anchor?: MenuAnchor, ctx?: Context) => {
     setOpen({ target, anchor: anchorOf(anchor) })
     if (!ctx) return
-    void serviceOf<LibraryService>(ctx, 'library')
-      ?.listPlaylists()
+    const library = serviceOf<LibraryService>(ctx, 'library')
+    if (!library) return
+    void library
+      .listPlaylists()
       .then((page) => setPlaylists(page.items))
       .catch(() => setPlaylists([]))
+    void library
+      .listCollections()
+      .then((items) => setCollections(items))
+      .catch(() => setCollections([]))
   }, [])
 
   const close = useCallback(() => setOpen(undefined), [])
-  return { open, playlists, show, close }
+  return { open, playlists, collections, show, close }
 }
 
 export interface TrackMenuController extends MenuController {
@@ -333,7 +436,13 @@ export function useTrackMenu(ctx: Context, opts: TrackMenuOptions = {}): TrackMe
       onClose: state.close,
       x: state.open?.anchor.x ?? 0,
       y: state.open?.anchor.y ?? 0,
-      items: state.open ? trackMenuItems(ctx, state.open.target, { ...opts, playlists: state.playlists }) : [],
+      items: state.open
+        ? trackMenuItems(ctx, state.open.target, {
+            ...opts,
+            playlists: state.playlists,
+            collections: state.collections,
+          })
+        : [],
       ...(state.open ? { title: state.open.target.track.title } : {}),
     },
   }
@@ -359,7 +468,13 @@ export function usePlaylistMenu(ctx: Context): PlaylistMenuController {
       x: state.open?.anchor.x ?? 0,
       y: state.open?.anchor.y ?? 0,
       items: state.open
-        ? playlistMenuItems(ctx, state.open.target.playlist, state.open.target.tracks, state.playlists)
+        ? playlistMenuItems(
+            ctx,
+            state.open.target.playlist,
+            state.open.target.tracks,
+            state.playlists,
+            state.collections,
+          )
         : [],
       ...(state.open ? { title: state.open.target.playlist.name } : {}),
     },

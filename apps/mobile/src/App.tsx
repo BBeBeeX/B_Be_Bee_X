@@ -237,7 +237,7 @@ function Shell({ ctx }: { ctx: Context }) {
       ...tabs.map((tab) => {
         const isSelected =
           activeTab?.id === tab.id ||
-          (currentId === 'album.view' && tab.id === 'sources.library')
+          (currentId === 'album.view' && tab.id === 'library.home')
         return h(
           Pressable,
           {
