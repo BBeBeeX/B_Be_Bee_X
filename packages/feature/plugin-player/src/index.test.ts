@@ -518,6 +518,40 @@ describe('playFromContext', () => {
     expect(player.state.trackUrn).toBe(urn('e'))
     expect(player.queue, 'still the same five tracks').toHaveLength(5)
   })
+
+  it('replaces queue with context even if the clicked track was already in the previous queue', async () => {
+    const { player } = await harness()
+    await player.playNow([urn('a'), urn('b'), urn('c')])
+    expect(player.queue.map((i) => i.trackUrn)).toEqual([urn('a'), urn('b'), urn('c')])
+
+    // Track 'b' is already in queue, but tapped inside a new playlist [b, d, e]
+    await player.playFromContext(urn('b'), [urn('b'), urn('d'), urn('e')])
+    expect(player.state.trackUrn).toBe(urn('b'))
+    expect(player.queue.map((i) => i.trackUrn)).toEqual([urn('b'), urn('d'), urn('e')])
+  })
+})
+
+describe('queue deduplication', () => {
+  it('deduplicates tracks in playNow while preserving start index', async () => {
+    const { player } = await harness()
+    await player.playNow([urn('a'), urn('b'), urn('a'), urn('c'), urn('b')], { startIndex: 3 })
+    expect(player.queue.map((i) => i.trackUrn)).toEqual([urn('a'), urn('b'), urn('c')])
+    expect(player.state.trackUrn).toBe(urn('c'))
+  })
+
+  it('deduplicates tracks in enqueueNext against queue and incoming list', async () => {
+    const { player } = await harness()
+    await player.playNow([urn('a'), urn('b')])
+    player.enqueueNext([urn('b'), urn('c'), urn('c'), urn('d')])
+    expect(player.queue.map((i) => i.trackUrn)).toEqual([urn('a'), urn('c'), urn('d'), urn('b')])
+  })
+
+  it('deduplicates tracks in enqueueLast against queue and incoming list', async () => {
+    const { player } = await harness()
+    await player.playNow([urn('a'), urn('b')])
+    player.enqueueLast([urn('b'), urn('c'), urn('c'), urn('d')])
+    expect(player.queue.map((i) => i.trackUrn)).toEqual([urn('a'), urn('b'), urn('c'), urn('d')])
+  })
 })
 
 describe('persistence', () => {

@@ -245,7 +245,7 @@ export function SearchScreen({
                           showAlbum: true,
                           onPress: () =>
                             void playFromList(ctx, row.track.urn, {
-                              urns: row.queue,
+                              urns: [row.track.urn],
                               context: { kind: 'search', label: search.text },
                             }),
                           onDownload: downloads ? () => void downloads.enqueue([row.track.urn]) : undefined,

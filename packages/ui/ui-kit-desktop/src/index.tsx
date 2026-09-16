@@ -441,7 +441,7 @@ export function TrackRow(props: TrackRowProps) {
           }),
         )
       : null,
-    props.onDownload
+    props.onDownload && !props.track.urn.startsWith('BBeBee:local:')
       ? h(
           'span',
           { onClick: (e: { stopPropagation: () => void }) => e.stopPropagation() },
@@ -455,8 +455,17 @@ export function TrackRow(props: TrackRowProps) {
     props.onMore
       ? h(
           'span',
-          { onClick: (e: { stopPropagation: () => void }) => e.stopPropagation() },
-          h(IconButton, { icon: '⋯', accessibilityLabel: 'More', onPress: props.onMore }),
+          {
+            onClick: (e: React.MouseEvent<HTMLElement>) => {
+              e.stopPropagation()
+              const rect = e.currentTarget.getBoundingClientRect()
+              props.onMore?.({ x: rect.left, y: rect.bottom + 4 })
+            },
+            style: {
+              visibility: hovered ? 'visible' : 'hidden',
+            },
+          },
+          h(IconButton, { icon: '⋯', accessibilityLabel: 'More', onPress: () => {} }),
         )
       : null,
   )
@@ -592,7 +601,9 @@ const MENU_WIDTH = 248
  * Which actions exist, and what they do, is built once by `@BBeBee/ui-menus`.
  */
 export function ContextMenu(props: ContextMenuProps): ReactElement | null {
-  const [submenuId, setSubmenuId] = useState<string | undefined>(undefined)
+  const [submenuState, setSubmenuState] = useState<
+    { id: string; rect?: { top: number; right: number; bottom: number; left: number } } | undefined
+  >(undefined)
   const [filter, setFilter] = useState('')
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState('')
@@ -601,7 +612,7 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
   // Every close resets the depth, so the next open never starts mid-submenu.
   useEffect(() => {
     if (props.open) return
-    setSubmenuId(undefined)
+    setSubmenuState(undefined)
     setFilter('')
     setCreating(false)
     setDraft('')
@@ -609,7 +620,7 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
 
   if (!props.open) return null
 
-  const submenu = props.items.find((item) => item.id === submenuId)?.submenu
+  const submenu = props.items.find((item) => item.id === submenuState?.id)?.submenu
   const needle = filter.trim().toLowerCase()
   const visible = submenu
     ? submenu.items.filter((item) => item.label.toLowerCase().includes(needle))
@@ -619,10 +630,7 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
   const activate = (item: MenuItemSpec) => {
     if (item.disabled) return
     if (item.submenu) {
-      setSubmenuId(item.id)
-      setFilter('')
-      setCreating(false)
-      setDraft('')
+      setSubmenuState((prev) => (prev?.id === item.id ? prev : { id: item.id }))
       return
     }
     void item.onSelect?.()
@@ -634,6 +642,29 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
   const viewportHeight = typeof window === 'undefined' ? 768 : window.innerHeight
   const left = Math.max(8, Math.min(props.x, viewportWidth - width - 8))
   const top = Math.max(8, Math.min(props.y, Math.max(8, viewportHeight - 240)))
+
+  let flyoutLeft: number
+  let flyoutTop: number
+  if (submenuState?.rect && (submenuState.rect.right > 0 || submenuState.rect.left > 0)) {
+    const r = submenuState.rect
+    if (r.right + width + 8 <= viewportWidth) {
+      flyoutLeft = r.right + 2
+    } else if (r.left - width - 2 >= 8) {
+      flyoutLeft = r.left - width - 2
+    } else {
+      flyoutLeft = Math.max(8, viewportWidth - width - 8)
+    }
+    flyoutTop = Math.max(8, Math.min(r.top, viewportHeight - 240))
+  } else {
+    if (left + width + width + 8 <= viewportWidth) {
+      flyoutLeft = left + width + 2
+    } else if (left - width - 2 >= 8) {
+      flyoutLeft = left - width - 2
+    } else {
+      flyoutLeft = Math.max(8, viewportWidth - width - 8)
+    }
+    flyoutTop = top
+  }
 
   return h(
     'div',
@@ -679,89 +710,132 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
             h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1, children: props.title }),
           )
         : null,
-      submenu
-        ? h(
-            'div',
-            { style: { display: 'flex', flexDirection: 'column' } },
-            h(MenuRow, {
-              item: { id: '__back', label: `\u2039 ${submenu.title ?? 'Back'}`, icon: undefined },
-              onActivate: () => {
-                setSubmenuId(undefined)
+      props.items.map((item) =>
+        h(MenuRow, {
+          key: item.id,
+          item,
+          active: submenuState?.id === item.id,
+          onActivate: activate,
+          onHover: (rect) => {
+            if (item.submenu) {
+              if (submenuState?.id !== item.id) {
+                setSubmenuState({ id: item.id, rect })
                 setFilter('')
                 setCreating(false)
                 setDraft('')
-              },
-            }),
-            submenu.searchPlaceholder
+              }
+            } else {
+              setSubmenuState(undefined)
+              setFilter('')
+              setCreating(false)
+              setDraft('')
+            }
+          },
+        }),
+      ),
+    ),
+    submenu
+      ? h(
+          'div',
+          {
+            role: 'menu',
+            'aria-label': submenu.title ?? 'Submenu',
+            onClick: (event: { stopPropagation(): void }) => event.stopPropagation(),
+            style: {
+              position: 'fixed',
+              left: flyoutLeft,
+              top: flyoutTop,
+              width,
+              maxHeight: '70vh',
+              overflowY: 'auto',
+              padding: tokens.space[1],
+              borderRadius: tokens.radius.md,
+              border: `1px solid ${p.border.subtle}`,
+              background: p.bg.overlay,
+              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)',
+              zIndex: tokens.z.overlay + 1,
+            },
+          },
+          submenu.title
+            ? h(
+                'div',
+                { style: { padding: `${tokens.space[2]}px ${tokens.space[3]}px` } },
+                h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1, children: submenu.title }),
+              )
+            : null,
+          submenu.searchPlaceholder
+            ? h(
+                'div',
+                { style: { padding: `0 ${tokens.space[2]}px ${tokens.space[2]}px` } },
+                h(TextField, {
+                  value: filter,
+                  onChange: setFilter,
+                  placeholder: submenu.searchPlaceholder,
+                  testID: 'context-menu-filter',
+                }),
+              )
+            : null,
+          submenu.create
+            ? creating
               ? h(
                   'div',
-                  { style: { padding: `0 ${tokens.space[2]}px ${tokens.space[2]}px` } },
-                  h(TextField, {
-                    value: filter,
-                    onChange: setFilter,
-                    placeholder: submenu.searchPlaceholder,
-                    testID: 'context-menu-filter',
+                  {
+                    style: {
+                      display: 'flex',
+                      gap: tokens.space[2],
+                      padding: `${tokens.space[1]}px ${tokens.space[2]}px`,
+                    },
+                  },
+                  h(
+                    'div',
+                    { style: { flex: 1, minWidth: 0 } },
+                    h(TextField, {
+                      value: draft,
+                      onChange: setDraft,
+                      placeholder: submenu.create.placeholder,
+                      testID: 'context-menu-create-name',
+                    }),
+                  ),
+                  h(Button, {
+                    onPress: () => {
+                      const name = draft.trim()
+                      if (!name) return
+                      void submenu.create?.onSelect(name)
+                      close()
+                    },
+                    disabled: draft.trim().length === 0,
+                    testID: 'context-menu-create-confirm',
+                    children: 'OK',
                   }),
                 )
-              : null,
-            submenu.create
-              ? creating
-                ? h(
-                    'div',
-                    {
-                      style: {
-                        display: 'flex',
-                        gap: tokens.space[2],
-                        padding: `${tokens.space[1]}px ${tokens.space[2]}px`,
-                      },
-                    },
-                    h(
-                      'div',
-                      { style: { flex: 1, minWidth: 0 } },
-                      h(TextField, {
-                        value: draft,
-                        onChange: setDraft,
-                        placeholder: submenu.create.placeholder,
-                        testID: 'context-menu-create-name',
-                      }),
-                    ),
-                    h(Button, {
-                      onPress: () => {
-                        const name = draft.trim()
-                        if (!name) return
-                        void submenu.create?.onSelect(name)
-                        close()
-                      },
-                      disabled: draft.trim().length === 0,
-                      testID: 'context-menu-create-confirm',
-                      children: 'OK',
-                    }),
-                  )
-                : h(MenuRow, {
-                    item: { id: '__create', label: submenu.create.label, icon: '\uff0b' },
-                    onActivate: () => setCreating(true),
-                  })
-              : null,
-            visible.length === 0
-              ? h(
-                  'div',
-                  { style: { padding: tokens.space[3] } },
-                  h(Text, { variant: 'sm', tone: 'muted', children: submenu.emptyLabel ?? 'No matches' }),
-                )
-              : visible.map((item) => h(MenuRow, { key: item.id, item, onActivate: activate })),
-          )
-        : props.items.map((item) => h(MenuRow, { key: item.id, item, onActivate: activate })),
-    ),
+              : h(MenuRow, {
+                  item: { id: '__create', label: submenu.create.label, icon: '\uff0b' },
+                  onActivate: () => setCreating(true),
+                })
+            : null,
+          visible.length === 0
+            ? h(
+                'div',
+                { style: { padding: tokens.space[3] } },
+                h(Text, { variant: 'sm', tone: 'muted', children: submenu.emptyLabel ?? 'No matches' }),
+              )
+            : visible.map((item) => h(MenuRow, { key: item.id, item, onActivate: activate })),
+        )
+      : null,
   )
 }
 
 /** One `role="menuitem"` row, shared by the root menu and every submenu. */
 function MenuRow({
   item,
+  active,
   onActivate,
+  onHover,
 }: {
   item: MenuItemSpec
+  active?: boolean
   onActivate: (item: MenuItemSpec) => void
+  onHover?: (rect: { top: number; right: number; bottom: number; left: number }) => void
 }): ReactElement {
   const p = c()
   const [hovered, hoverProps] = useHover()
@@ -773,8 +847,19 @@ function MenuRow({
       role: 'menuitem',
       disabled: item.disabled,
       'aria-haspopup': item.submenu ? 'menu' : undefined,
-      onClick: () => onActivate(item),
-      ...hoverProps,
+      onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+        const rect = event.currentTarget.getBoundingClientRect()
+        onHover?.({ top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left })
+        onActivate(item)
+      },
+      onMouseEnter: (event: React.MouseEvent<HTMLButtonElement>) => {
+        hoverProps.onMouseEnter?.()
+        const rect = event.currentTarget.getBoundingClientRect()
+        onHover?.({ top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left })
+      },
+      onMouseLeave: () => {
+        hoverProps.onMouseLeave?.()
+      },
       style: {
         display: 'flex',
         alignItems: 'center',
@@ -787,7 +872,7 @@ function MenuRow({
         textAlign: 'left',
         cursor: item.disabled ? 'default' : 'pointer',
         opacity: item.disabled ? 0.45 : 1,
-        background: hovered && !item.disabled ? p.bg.raised : 'transparent',
+        background: (hovered || active) && !item.disabled ? p.bg.raised : 'transparent',
         color: danger ? p.state.error : p.text.primary,
         font: 'inherit',
       },

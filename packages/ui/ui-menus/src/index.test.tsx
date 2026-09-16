@@ -158,7 +158,7 @@ describe('trackMenuItems', () => {
   it('omits what the build cannot do rather than offering a failing item', async () => {
     const h = await harness({ downloads: false, player: false, ui: false })
     const items = trackMenuItems(h.ctx, { track: { ...track, loved: false } }, {})
-    expect(items.map((i) => i.id)).toEqual(['add-to-playlist', 'add-to-collection'])
+    expect(items.map((i) => i.id)).toEqual(['add-to-playlist', 'add-to-collection', 'add-favourite'])
   })
 
   it('offers “remove from this playlist” only inside a playlist', async () => {
@@ -180,6 +180,13 @@ describe('trackMenuItems', () => {
     await press(trackMenuItems(h.ctx, { track }, { playlists }), 'remove-favourite')
     expect(h.sources.calls).toEqual([`loved:${URN}:false`])
     expect(h.library.calls).toEqual([`save:${URN}:false`])
+  })
+
+  it('likes through both stores, so the heart and the shelf agree', async () => {
+    const h = await harness()
+    await press(trackMenuItems(h.ctx, { track: { ...track, loved: false } }, { playlists }), 'add-favourite')
+    expect(h.sources.calls).toEqual([`loved:${URN}:true`])
+    expect(h.library.calls).toEqual([`save:${URN}:true`])
   })
 
   it('queues, downloads and navigates to the album', async () => {

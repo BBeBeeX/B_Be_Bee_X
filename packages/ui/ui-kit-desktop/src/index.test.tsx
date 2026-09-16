@@ -111,10 +111,11 @@ describe('TrackRow', () => {
     expect(html(h(TrackRow, { track, onMore: () => {} }))).toContain('aria-label="More"')
   })
 
-  it('offers a download control only where a downloads service is loaded', () => {
-    // A button that does nothing would be worse than one that is not there.
-    expect(html(h(TrackRow, { track }))).not.toContain('aria-label="Download"')
-    expect(html(h(TrackRow, { track, onDownload: () => {} }))).toContain('aria-label="Download"')
+  it('offers a download control only where a downloads service is loaded, and omits for local tracks', () => {
+    const remote = { ...track, urn: 'BBeBee:remote:track:1' }
+    expect(html(h(TrackRow, { track: remote }))).not.toContain('aria-label="Download"')
+    expect(html(h(TrackRow, { track: remote, onDownload: () => {} }))).toContain('aria-label="Download"')
+    expect(html(h(TrackRow, { track, onDownload: () => {} }))).not.toContain('aria-label="Download"')
   })
 })
 
@@ -544,4 +545,25 @@ describe('ContextMenu', () => {
     expect(container.textContent).toContain('Late night')
     expect(container.textContent).not.toContain('Road trip')
   })
+
+  it('opens a submenu on hover without clicking, and closes when hovering another item', () => {
+    const { container } = render(h(ContextMenu, { open: true, onClose: () => {}, x: 0, y: 0, items }))
+    const add = Array.from(container.querySelectorAll('[role="menuitem"]')).find((node) =>
+      node.textContent?.startsWith('加入歌单'),
+    ) as HTMLElement
+    const queue = Array.from(container.querySelectorAll('[role="menuitem"]')).find((node) =>
+      node.textContent?.startsWith('加入播放列表'),
+    ) as HTMLElement
+
+    expect(container.textContent).not.toContain('Road trip')
+
+    // Hovering over "加入歌单" displays the submenu
+    fireEvent.mouseEnter(add)
+    expect(container.textContent).toContain('Road trip')
+
+    // Hovering over "加入播放列表" (which has no submenu) closes it
+    fireEvent.mouseEnter(queue)
+    expect(container.textContent).not.toContain('Road trip')
+  })
 })
+

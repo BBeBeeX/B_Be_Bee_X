@@ -429,7 +429,7 @@ export function TrackRow(props: TrackRowProps): ReactElement {
           onPress: props.onToggleLoved,
         })
       : null,
-    props.onDownload
+    props.onDownload && !props.track.urn.startsWith('BBeBee:local:')
       ? h(IconButton, { icon: '⬇', accessibilityLabel: 'Download', onPress: props.onDownload })
       : null,
     props.onMore

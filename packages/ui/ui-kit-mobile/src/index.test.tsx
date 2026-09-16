@@ -185,11 +185,14 @@ describe('TrackRow', () => {
     expect(JSON.stringify(without.map((n) => n.props))).not.toContain('Homogenic')
   })
 
-  it('offers a download control only where a downloads service is loaded', () => {
-    const offered = JSON.stringify(tree(h(TrackRow, { track, onDownload: () => {} })))
+  it('offers a download control only where a downloads service is loaded, and omits for local tracks', () => {
+    const remote = { ...track, urn: 'BBeBee:remote:track:1' }
+    const offered = JSON.stringify(tree(h(TrackRow, { track: remote, onDownload: () => {} })))
     expect(offered).toContain('Download')
-    const absent = JSON.stringify(tree(h(TrackRow, { track })))
+    const absent = JSON.stringify(tree(h(TrackRow, { track: remote })))
     expect(absent).not.toContain('Download')
+    const localWithDownload = JSON.stringify(tree(h(TrackRow, { track, onDownload: () => {} })))
+    expect(localWithDownload).not.toContain('Download')
   })
 })
 

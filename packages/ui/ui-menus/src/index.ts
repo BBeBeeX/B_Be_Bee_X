@@ -178,17 +178,25 @@ export function trackMenuItems(
     })
   }
 
-  // Only when it *is* a favourite: an "unlike" on something not liked is a
-  // control that does nothing, and the heart in the row already toggles on.
   if (track.loved) {
     items.push({
       id: 'remove-favourite',
-      label: '从“最喜欢的歌曲”中删除',
+      label: '从“最喜欢的音乐”中删除',
       icon: '♡',
       tone: 'danger',
       onSelect: async () => {
         await sources?.setLoved(track.urn, false)
         await library?.setSaved(track.urn, false)
+      },
+    })
+  } else if (sources || library) {
+    items.push({
+      id: 'add-favourite',
+      label: '添加至“最喜欢的音乐”',
+      icon: '♥',
+      onSelect: async () => {
+        await sources?.setLoved(track.urn, true)
+        await library?.setSaved(track.urn, true)
       },
     })
   }

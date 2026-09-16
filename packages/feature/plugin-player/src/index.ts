@@ -634,14 +634,29 @@ export class Player extends Service implements PlayerService {
     const accepted = this.beforeEnqueue(urns)
     if (accepted.length === 0) return
 
-    const items = accepted.map((urn) => this.newItem(urn, 'user', opts.context))
+    const targetUrn = opts.startIndex !== undefined ? accepted[opts.startIndex] : undefined
+    const seen = new Set<string>()
+    const deduplicated: string[] = []
+    for (const u of accepted) {
+      if (!seen.has(u)) {
+        seen.add(u)
+        deduplicated.push(u)
+      }
+    }
+    let startIndex = opts.startIndex ?? 0
+    if (targetUrn) {
+      const found = deduplicated.indexOf(targetUrn)
+      if (found >= 0) startIndex = found
+    }
+
+    const items = deduplicated.map((urn) => this.newItem(urn, 'user', opts.context))
     this.cancelPrefetch()
     this.model.replace(items)
     await this.store.replaceQueue(this.model.all)
     this.emitQueueChanged()
 
     this.playIntent = true
-    const startAt = Math.max(0, Math.min(items.length - 1, opts.startIndex ?? 0))
+    const startAt = Math.max(0, Math.min(items.length - 1, startIndex))
     const entry = this.model.entry(this.model.order()[startAt]!)
     if (entry) await this.start(entry, { autoplay: true })
   }
@@ -651,11 +666,18 @@ export class Player extends Service implements PlayerService {
     contextUrns: readonly string[] = [],
     opts: PlayNowOptions = {},
   ): Promise<void> {
+    // When context is provided and contains the tapped track (e.g. tapping in an album,
+    // a playlist, or search results), replace the queue with the context and play the track.
+    const at = contextUrns.indexOf(urn)
+    if (contextUrns.length > 0 && at >= 0) {
+      await this.playNow([...contextUrns], { ...opts, ...(opts.startIndex === undefined ? { startIndex: at } : {}) })
+      return
+    }
+
+    // When the track is already in the queue and no context list was provided
+    // (e.g. tapping inside the Queue view), jump to that item in the queue.
     const queued = this.entryForUrn(urn)
     if (queued) {
-      // Already queued: the queue *is* the context, and the tap means "play
-      // that one" — reordering or replacing it would throw away what the user
-      // had built. A jump is what next()/previous() would land on.
       this.ownCtx.logger.info('player: playFromContext jumps to queued %s (itemId: %s)', urn, queued.item.id)
       this.pausedByInterruption = false
       this.playIntent = true
@@ -663,16 +685,6 @@ export class Player extends Service implements PlayerService {
       return
     }
 
-    // Not queued: the tapped row stands for the list it was tapped in — the
-    // album, the local library — and that list becomes the queue, starting at
-    // the tap. Without a usable context (or a track the context does not
-    // actually contain), the track plays alone rather than starting somewhere
-    // the user did not point at.
-    const at = contextUrns.indexOf(urn)
-    if (contextUrns.length > 0 && at >= 0) {
-      await this.playNow([...contextUrns], { ...opts, ...(opts.startIndex === undefined ? { startIndex: at } : {}) })
-      return
-    }
     await this.playNow([urn], opts)
   }
 
@@ -686,7 +698,16 @@ export class Player extends Service implements PlayerService {
   }
 
   enqueueNext(urns: string[]): void {
-    const items = this.beforeEnqueue(urns).map((urn) => this.newItem(urn, 'user'))
+    const existingUrns = new Set(this.model.items.map((item) => item.trackUrn))
+    const seen = new Set<string>()
+    const deduplicated: string[] = []
+    for (const u of this.beforeEnqueue(urns)) {
+      if (!existingUrns.has(u) && !seen.has(u)) {
+        seen.add(u)
+        deduplicated.push(u)
+      }
+    }
+    const items = deduplicated.map((urn) => this.newItem(urn, 'user'))
     if (items.length === 0) return
     this.ownCtx.logger.info('player: enqueueNext with %d track(s)', items.length)
     const added = this.model.insertAfter(this.transport.currentItemId, items)
@@ -696,7 +717,16 @@ export class Player extends Service implements PlayerService {
   }
 
   enqueueLast(urns: string[]): void {
-    const items = this.beforeEnqueue(urns).map((urn) => this.newItem(urn, 'user'))
+    const existingUrns = new Set(this.model.items.map((item) => item.trackUrn))
+    const seen = new Set<string>()
+    const deduplicated: string[] = []
+    for (const u of this.beforeEnqueue(urns)) {
+      if (!existingUrns.has(u) && !seen.has(u)) {
+        seen.add(u)
+        deduplicated.push(u)
+      }
+    }
+    const items = deduplicated.map((urn) => this.newItem(urn, 'user'))
     if (items.length === 0) return
     this.ownCtx.logger.info('player: enqueueLast with %d track(s)', items.length)
     const added = this.model.append(items)

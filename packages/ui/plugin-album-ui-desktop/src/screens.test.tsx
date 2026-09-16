@@ -19,14 +19,14 @@ import { AlbumScreen } from './index.js'
 
 afterEach(cleanup)
 
-const ALBUM_URN = 'BBeBee:local:album:one'
-const TRACK_A = 'BBeBee:local:track:a'
-const TRACK_B = 'BBeBee:local:track:b'
+const ALBUM_URN = 'BBeBee:remote:album:one'
+const TRACK_A = 'BBeBee:remote:track:a'
+const TRACK_B = 'BBeBee:remote:track:b'
 
 const detail: AlbumDetail = {
   urn: ALBUM_URN,
   title: 'Homogenic',
-  artists: [{ urn: 'BBeBee:local:artist:bjork', name: 'Björk', role: 'main', ordinal: 0 }],
+  artists: [{ urn: 'BBeBee:remote:artist:bjork', name: 'Björk', role: 'main', ordinal: 0 }],
   tracks: [
     { urn: TRACK_A, title: 'Hunter', artists: [] },
     { urn: TRACK_B, title: 'Jóga', artists: [] },
