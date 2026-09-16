@@ -44,6 +44,8 @@
     "@BBeBee/plugin-player": "workspace:*",
     "@BBeBee/plugin-queue": "workspace:*",
     "@BBeBee/plugin-queue-ui-desktop": "workspace:*",
+    "@BBeBee/plugin-settings": "workspace:*",
+    "@BBeBee/plugin-settings-ui-desktop": "workspace:*",
     "@BBeBee/plugin-sleep-timer": "workspace:*",
     "@BBeBee/plugin-source-local": "workspace:*",
     "@BBeBee/plugin-source-runtime": "workspace:*",

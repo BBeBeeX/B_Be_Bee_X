@@ -42,11 +42,13 @@ import type { AuthStatus } from './services/sources.js'
 import type { CheckReport } from './services/source-document.js'
 import type { SourceError } from './errors.js'
 import type { ScanSpecifiedDir, ScanSummary } from './services/scanner.js'
+import type { AppSettings } from './services/settings.js'
 import type { SleepTimerState } from './services/sleep-timer.js'
 import type { UrnKind } from './urn.js'
 
 declare module 'cordis' {
   interface Events {
+    'settings/changed'(settings: AppSettings): void
     /* ── player ─────────────────────────────────────── emit ── */
     'player/state-changed'(state: TransportState): void
     'player/track-changed'(trackUrn: string | undefined, previous?: string): void
@@ -211,6 +213,7 @@ export const DISPATCH_MODES = {
   'plugin/unloaded': 'emit',
   'sleep-timer/changed': 'emit',
   'sleep-timer/fired': 'emit',
+  'settings/changed': 'emit',
 } as const satisfies Record<string, DispatchMode>
 
 export type BBeBeeEventName = keyof typeof DISPATCH_MODES

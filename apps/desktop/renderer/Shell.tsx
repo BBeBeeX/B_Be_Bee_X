@@ -342,10 +342,7 @@ export function Shell({ ctx }: { ctx: Context }) {
         }
       },
       onOpenSettings: () => {
-        const settingsEntry = entries.find((e) => e.group === 'settings')
-        if (settingsEntry) {
-          navigateTo(settingsEntry.id)
-        }
+        navigateTo('settings.view')
       },
     }),
     h(
