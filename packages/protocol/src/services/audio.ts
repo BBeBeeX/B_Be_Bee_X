@@ -11,9 +11,16 @@
 
 // Pulls `cordis` into the program so the `declare module` augmentation below
 // resolves. Erased at build time; this adds no runtime import.
-import type {} from 'cordis'
 import type { Disposable, Uri } from '../common.js'
-import type { QueueItem, QueueSourceContext, RepeatMode, TransportState } from '../entities/playback.js'
+import type {
+  PlayHistoryHeatmapDay,
+  PlayHistoryStats,
+  PlayRecord,
+  QueueItem,
+  QueueSourceContext,
+  RepeatMode,
+  TransportState,
+} from '../entities/playback.js'
 
 /* ── ctx.audio ──────────────────────────────────────────────────────────── */
 
@@ -129,6 +136,11 @@ export interface PlayerService {
   removeItems(ids: string[]): void
   moveItem(id: string, toIndex: number): void
   clearQueue(): void
+
+  getHistory(opts?: { limit?: number; offset?: number; date?: string }): Promise<PlayRecord[]>
+  getHistoryStats(): Promise<PlayHistoryStats>
+  getHistoryHeatmap(days?: number): Promise<PlayHistoryHeatmapDay[]>
+  clearHistory(): Promise<void>
 }
 
 /* ── ctx.dsp ────────────────────────────────────────────────────────────── */

@@ -10,9 +10,19 @@
  * here instead.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Context } from 'cordis'
-import type { NowPlayingMeta, QueueItem, SourcesService, Track, TransportState } from '@BBeBee/protocol'
+import type {
+  NowPlayingMeta,
+  PlayHistoryHeatmapDay,
+  PlayHistoryStats,
+  PlayRecord,
+  PlayerService,
+  QueueItem,
+  SourcesService,
+  Track,
+  TransportState,
+} from '@BBeBee/protocol'
 import { serviceOf, shallowArrayEqual, useServiceState } from '@BBeBee/ui-core'
 
 /** The transport, re-read whenever it changes. */
@@ -248,5 +258,152 @@ export function useTransportAvailability(ctx: Context): TransportAvailability {
 export function useDuration(ctx: Context): number | undefined {
   const state = useTransport(ctx)
   return state.durationMs > 0 ? state.durationMs : undefined
+}
+
+/* ── history hooks ─────────────────────────────────────────────────────── */
+
+export interface UsePlayHistoryResult {
+  records: readonly PlayRecord[]
+  loading: boolean
+  refresh: () => void
+}
+
+export function usePlayHistory(
+  ctx: Context,
+  opts: { limit?: number; date?: string } = {},
+): UsePlayHistoryResult {
+  const [records, setRecords] = useState<readonly PlayRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [tick, setTick] = useState(0)
+  const refresh = useCallback(() => setTick((t) => t + 1), [])
+
+  useEffect(() => {
+    const player = serviceOf<PlayerService>(ctx, 'player')
+    if (!player) {
+      setRecords([])
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    player
+      .getHistory(opts)
+      .then((data) => {
+        if (!cancelled) {
+          setRecords(data)
+          setLoading(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    const off = ctx.on('player/history-changed', () => {
+      refresh()
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [ctx, opts.limit, opts.date, tick, refresh])
+
+  return { records, loading, refresh }
+}
+
+export interface UsePlayHistoryStatsResult {
+  stats: PlayHistoryStats
+  loading: boolean
+  refresh: () => void
+}
+
+const DEFAULT_STATS: PlayHistoryStats = {
+  totalPlays: 0,
+  totalMsPlayed: 0,
+  todayPlays: 0,
+  completedPlays: 0,
+}
+
+export function usePlayHistoryStats(ctx: Context): UsePlayHistoryStatsResult {
+  const [stats, setStats] = useState<PlayHistoryStats>(DEFAULT_STATS)
+  const [loading, setLoading] = useState(true)
+  const [tick, setTick] = useState(0)
+  const refresh = useCallback(() => setTick((t) => t + 1), [])
+
+  useEffect(() => {
+    const player = serviceOf<PlayerService>(ctx, 'player')
+    if (!player) {
+      setStats(DEFAULT_STATS)
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    player
+      .getHistoryStats()
+      .then((data) => {
+        if (!cancelled) {
+          setStats(data)
+          setLoading(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    const off = ctx.on('player/history-changed', () => {
+      refresh()
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [ctx, tick, refresh])
+
+  return { stats, loading, refresh }
+}
+
+export interface UsePlayHistoryHeatmapResult {
+  heatmap: readonly PlayHistoryHeatmapDay[]
+  loading: boolean
+  refresh: () => void
+}
+
+export function usePlayHistoryHeatmap(ctx: Context, days = 365): UsePlayHistoryHeatmapResult {
+  const [heatmap, setHeatmap] = useState<readonly PlayHistoryHeatmapDay[]>([])
+  const [loading, setLoading] = useState(true)
+  const [tick, setTick] = useState(0)
+  const refresh = useCallback(() => setTick((t) => t + 1), [])
+
+  useEffect(() => {
+    const player = serviceOf<PlayerService>(ctx, 'player')
+    if (!player) {
+      setHeatmap([])
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    player
+      .getHistoryHeatmap(days)
+      .then((data) => {
+        if (!cancelled) {
+          setHeatmap(data)
+          setLoading(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    const off = ctx.on('player/history-changed', () => {
+      refresh()
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [ctx, days, tick, refresh])
+
+  return { heatmap, loading, refresh }
 }
 

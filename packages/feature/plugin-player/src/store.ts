@@ -7,7 +7,17 @@
  * actually means (docs/07 §4.7).
  */
 
-import type { ArtworkRef, DbService, NowPlayingMeta, PlayRecord, QueueItem, RepeatMode, SqlValue } from '@BBeBee/protocol'
+import type {
+  ArtworkRef,
+  DbService,
+  NowPlayingMeta,
+  PlayHistoryHeatmapDay,
+  PlayHistoryStats,
+  PlayRecord,
+  QueueItem,
+  RepeatMode,
+  SqlValue,
+} from '@BBeBee/protocol'
 import type { QueueEntry } from './queue.js'
 
 export interface PersistedState {
@@ -197,6 +207,117 @@ export class PlayerStore {
     })
   }
 
+  async listHistory(opts: { limit?: number; offset?: number; date?: string } = {}): Promise<PlayRecord[]> {
+    const limit = opts.limit ?? 100
+    const offset = opts.offset ?? 0
+    let query = `SELECT id, track_urn, started_at, ended_at, ms_played, completed, skipped, source_json, device_id
+                 FROM play_history`
+    const params: SqlValue[] = []
+
+    if (opts.date) {
+      const parts = opts.date.split('-').map(Number)
+      if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+        const startOfDay = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0).getTime()
+        const endOfDay = new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999).getTime()
+        query += ` WHERE started_at >= ? AND started_at <= ?`
+        params.push(startOfDay, endOfDay)
+      }
+    }
+
+    query += ` ORDER BY started_at DESC LIMIT ? OFFSET ?`
+    params.push(limit, offset)
+
+    const rows = await this.db.query<{
+      id: string
+      track_urn: string
+      started_at: number
+      ended_at: number | null
+      ms_played: number
+      completed: number
+      skipped: number
+      source_json: string | null
+      device_id: string | null
+    }>(query, params)
+
+    return rows.map((row) => ({
+      id: row.id,
+      trackUrn: row.track_urn,
+      startedAt: row.started_at,
+      ...(row.ended_at !== null ? { endedAt: row.ended_at } : {}),
+      msPlayed: row.ms_played,
+      completed: row.completed === 1,
+      skipped: row.skipped === 1,
+      ...(parseContext(row.source_json) ? { source: parseContext(row.source_json) } : {}),
+      ...(row.device_id ? { deviceId: row.device_id } : {}),
+    }))
+  }
+
+  async getHistoryStats(): Promise<PlayHistoryStats> {
+    const overall = await this.db.get<{
+      total_plays: number
+      total_ms_played: number | null
+      completed_plays: number | null
+    }>(
+      `SELECT count(*) AS total_plays,
+              coalesce(sum(ms_played), 0) AS total_ms_played,
+              coalesce(sum(completed), 0) AS completed_plays
+         FROM play_history`,
+    )
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayStartMs = today.getTime()
+
+    const todayRow = await this.db.get<{ today_plays: number }>(
+      `SELECT count(*) AS today_plays FROM play_history WHERE started_at >= ?`,
+      [todayStartMs],
+    )
+
+    return {
+      totalPlays: overall?.total_plays ?? 0,
+      totalMsPlayed: overall?.total_ms_played ?? 0,
+      todayPlays: todayRow?.today_plays ?? 0,
+      completedPlays: overall?.completed_plays ?? 0,
+    }
+  }
+
+  async getHistoryHeatmap(days = 365): Promise<PlayHistoryHeatmapDay[]> {
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1), 0, 0, 0, 0)
+    const startMs = start.getTime()
+
+    const rows = await this.db.query<{ started_at: number; ms_played: number }>(
+      `SELECT started_at, ms_played FROM play_history WHERE started_at >= ? ORDER BY started_at ASC`,
+      [startMs],
+    )
+
+    const dayMap = new Map<string, { count: number; msPlayed: number }>()
+    for (let i = 0; i < days; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
+      const dateStr = formatDateIso(d)
+      dayMap.set(dateStr, { count: 0, msPlayed: 0 })
+    }
+
+    for (const row of rows) {
+      const dateStr = formatDateIso(new Date(row.started_at))
+      const entry = dayMap.get(dateStr)
+      if (entry) {
+        entry.count += 1
+        entry.msPlayed += row.ms_played
+      }
+    }
+
+    return Array.from(dayMap.entries()).map(([date, data]) => ({
+      date,
+      count: data.count,
+      msPlayed: data.msPlayed,
+    }))
+  }
+
+  async clearHistory(): Promise<void> {
+    await this.db.exec('DELETE FROM play_history')
+  }
+
   /** A track the provider says is gone: greyed out in lists, not hidden. */
   async markUnavailable(urn: string): Promise<void> {
     await this.db.exec('UPDATE tracks SET available = 0 WHERE urn = ?', [urn])
@@ -276,4 +397,11 @@ async function insertEntry(
       entry.item.addedAt ?? Date.now(),
     ],
   )
+}
+
+function formatDateIso(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }

@@ -21,6 +21,8 @@ import type {
   AudioSourceHandle,
   Disposable,
   NowPlayingMeta,
+  PlayHistoryHeatmapDay,
+  PlayHistoryStats,
   PlayNowOptions,
   PlayRecord,
   PlayerService,
@@ -767,6 +769,26 @@ export class Player extends Service implements PlayerService {
     this.emitQueueChanged()
   }
 
+  /* ── history ───────────────────────────────────────────────────────── */
+
+  async getHistory(opts?: { limit?: number; offset?: number; date?: string }): Promise<PlayRecord[]> {
+    return this.store.listHistory(opts)
+  }
+
+  async getHistoryStats(): Promise<PlayHistoryStats> {
+    return this.store.getHistoryStats()
+  }
+
+  async getHistoryHeatmap(days?: number): Promise<PlayHistoryHeatmapDay[]> {
+    return this.store.getHistoryHeatmap(days)
+  }
+
+  async clearHistory(): Promise<void> {
+    this.ownCtx.logger.info('player: clearHistory')
+    await this.store.clearHistory()
+    this.ownCtx.emit('player/history-changed')
+  }
+
   /** The upcoming order, which under shuffle is the permutation, not the rows. */
   upcoming(): QueueItem[] {
     const order = this.model.order()
@@ -1257,6 +1279,7 @@ export class Player extends Service implements PlayerService {
     // Scrobblers, stats and anything else run in parallel; one failing does
     // not block the others (docs/07 §5).
     await this.ownCtx.parallel('player/track-completed', record).catch(() => undefined)
+    this.ownCtx.emit('player/history-changed')
   }
 
   /* ── errors ────────────────────────────────────────────────────────── */

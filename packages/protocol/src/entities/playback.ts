@@ -63,3 +63,19 @@ export interface PlayRecord {
   source?: QueueSourceContext
   deviceId?: string
 }
+
+/** Summary statistics for playback history. */
+export interface PlayHistoryStats {
+  totalPlays: number
+  totalMsPlayed: number
+  todayPlays: number
+  completedPlays: number
+}
+
+/** Aggregated play count and duration for one day in the contribution heatmap. */
+export interface PlayHistoryHeatmapDay {
+  date: string
+  count: number
+  msPlayed: number
+}
+

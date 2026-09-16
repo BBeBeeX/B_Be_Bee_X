@@ -1,0 +1,17 @@
+{
+  "id": "@BBeBee/plugin-history",
+  "version": "0.0.0",
+  "displayName": "Play History",
+  "description": "Play history and statistics — a view of the playback history ctx.player owns.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js",
+    "ui": {
+      "desktop": "./dist/index.js",
+      "mobile": "./dist/index.js"
+    }
+  },
+  "capabilities": []
+}

@@ -30,6 +30,8 @@
     "@BBeBee/plugin-album": "workspace:*",
     "@BBeBee/plugin-album-ui-mobile": "workspace:*",
     "@BBeBee/plugin-cache": "workspace:*",
+    "@BBeBee/plugin-history": "workspace:*",
+    "@BBeBee/plugin-history-ui-mobile": "workspace:*",
     "@BBeBee/plugin-inspector": "workspace:*",
     "@BBeBee/plugin-library": "workspace:*",
     "@BBeBee/plugin-library-ui-mobile": "workspace:*",

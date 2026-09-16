@@ -6,7 +6,7 @@
  * prefetch that makes gapless possible. The rest need a device.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context, Service } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
@@ -1314,6 +1314,42 @@ describe('lifecycle', () => {
     const callerPlayer = (callerCtx as unknown as { player: Player }).player
     await callerPlayer.playNow([urn('1')])
     expect(callerPlayer.state.status).toBe('playing')
+  })
+
+  it('records play history, computes stats and heatmap, and allows clearing', async () => {
+    const { ctx, player } = await harness()
+    const historyChanged = vi.fn()
+    ctx.on('player/history-changed', historyChanged)
+
+    const initialHistory = await player.getHistory()
+    expect(initialHistory).toEqual([])
+    const initialStats = await player.getHistoryStats()
+    expect(initialStats.totalPlays).toBe(0)
+
+    await player.playNow([urn('1'), urn('2')])
+    await player.next()
+    await tick()
+
+    expect(historyChanged).toHaveBeenCalled()
+
+    const history = await player.getHistory()
+    expect(history.length).toBe(1)
+    expect(history[0]?.trackUrn).toBe(urn('1'))
+
+    const stats = await player.getHistoryStats()
+    expect(stats.totalPlays).toBe(1)
+    expect(stats.todayPlays).toBe(1)
+
+    const heatmap = await player.getHistoryHeatmap(7)
+    expect(heatmap.length).toBe(7)
+    const todayEntry = heatmap[heatmap.length - 1]
+    expect(todayEntry?.count).toBe(1)
+
+    await player.clearHistory()
+    const cleared = await player.getHistory()
+    expect(cleared.length).toBe(0)
+    const clearedStats = await player.getHistoryStats()
+    expect(clearedStats.totalPlays).toBe(0)
   })
 })
 

@@ -53,6 +53,7 @@ declare module 'cordis' {
     /** Throttled to 1 Hz. The UI interpolates between ticks. */
     'player/position'(positionMs: number, durationMs: number): void
     'player/error'(error: SourceError, trackUrn: string): void
+    'player/history-changed'(): void
 
     /* ── player ─────────────────────────────────── parallel ── */
     'player/track-completed'(play: PlayRecord): void
@@ -173,6 +174,7 @@ export const DISPATCH_MODES = {
   'player/track-changed': 'emit',
   'player/position': 'emit',
   'player/error': 'emit',
+  'player/history-changed': 'emit',
   'player/track-completed': 'parallel',
   'player/before-resolve': 'waterfall',
   'player/before-enqueue': 'waterfall',

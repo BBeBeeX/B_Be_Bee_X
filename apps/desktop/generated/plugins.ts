@@ -15,6 +15,8 @@ import pluginAlbumUi from '@BBeBee/plugin-album-ui-desktop'
 import pluginCache from '@BBeBee/plugin-cache'
 import pluginDownload from '@BBeBee/plugin-download'
 import pluginDownloadUi from '@BBeBee/plugin-download-ui-desktop'
+import pluginHistory from '@BBeBee/plugin-history'
+import pluginHistoryUi from '@BBeBee/plugin-history-ui-desktop'
 import pluginInspector from '@BBeBee/plugin-inspector'
 import pluginInspectorUi from '@BBeBee/plugin-inspector-ui-desktop'
 import pluginLibrary from '@BBeBee/plugin-library'
@@ -100,6 +102,16 @@ export const bundled: PluginRegistry = {
   "@BBeBee/plugin-download-ui-desktop": {
     plugin: pluginDownloadUi,
     manifest: {"id":"@BBeBee/plugin-download-ui-desktop","version":"0.0.0","displayName":"Downloads (desktop views)","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["downloads"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-history": {
+    plugin: pluginHistory,
+    manifest: {"id":"@BBeBee/plugin-history","version":"0.0.0","displayName":"Play History","description":"Play history and statistics — a view of the playback history ctx.player owns.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[]},
+    builtin: true,
+  },
+  "@BBeBee/plugin-history-ui-desktop": {
+    plugin: pluginHistoryUi,
+    manifest: {"id":"@BBeBee/plugin-history-ui-desktop","version":"0.0.0","displayName":"Play History (desktop views)","description":"Play history and statistics — a view of the playback history ctx.player owns.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-inspector": {
