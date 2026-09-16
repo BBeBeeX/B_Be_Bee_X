@@ -20,6 +20,8 @@ export const LIBRARY_VIEWS = {
   collection: 'library.collection',
   /** Saved tracks, albums, artists and playlists. */
   favorites: 'library.favorites',
+  /** Local files on this device. */
+  local: 'library.local',
 } as const
 
 /** Routes are the same ids, because a route is what the shells navigate to. */

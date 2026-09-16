@@ -9,14 +9,15 @@
  * all.
  */
 
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { createElement as h } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from 'cordis'
 import type { Collection, Paged, Playlist, PlaylistDetail, SavedKind, Track } from '@BBeBee/protocol'
+import { tryParseUrn } from '@BBeBee/protocol'
 import { tick } from '@BBeBee/kernel/testing'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
-import { CollectionScreen, FavoritesScreen, LibraryScreen, PlaylistDetailScreen, inject } from './index.js'
+import { CollectionScreen, FavoritesScreen, LibraryScreen, LocalMusicScreen, PlaylistDetailScreen, inject } from './index.js'
 
 afterEach(cleanup)
 
@@ -47,6 +48,7 @@ class LibraryStub extends Service {
   playlists: Playlist[] = [storedPlaylist]
   collections: Collection[] = []
   saved: string[] = [TRACK]
+  pinned: string[] = []
 
   constructor(ctx: Context) {
     super(ctx, 'library')
@@ -87,17 +89,29 @@ class LibraryStub extends Service {
   async getPlaylist(urn: string): Promise<PlaylistDetail | undefined> {
     return urn === PLAYLIST_URN ? storedPlaylist : undefined
   }
-  async listSaved(_kind?: SavedKind): Promise<Paged<{ urn: string; kind: 'track'; sourceId: string; addedAt: number }>> {
+  async listSaved(kind?: SavedKind): Promise<Paged<{ urn: string; kind: 'track' | 'album'; sourceId: string; addedAt: number; pinned?: boolean }>> {
+    const items = this.saved.map((urn, index) => {
+      const parsed = tryParseUrn(urn)
+      const k = parsed?.kind === 'album' ? ('album' as const) : ('track' as const)
+      return { urn, kind: k, sourceId: 'demo', addedAt: index, pinned: this.pinned.includes(urn) }
+    })
     return {
-      items: this.saved.map((urn, index) => ({ urn, kind: 'track' as const, sourceId: 'demo', addedAt: index })),
+      items: kind ? items.filter((it) => it.kind === kind) : items,
       hasMore: false,
     }
   }
   async setSaved(urn: string, saved: boolean): Promise<void> {
     this.calls.push(`save:${urn}:${saved}`)
+    if (saved && !this.saved.includes(urn)) this.saved.push(urn)
+    if (!saved) this.saved = this.saved.filter((u) => u !== urn)
   }
   async isSaved(urn: string): Promise<boolean> {
     return this.saved.includes(urn)
+  }
+  async setPinned(urn: string, pinned: boolean): Promise<void> {
+    this.calls.push(`pin:${urn}:${pinned}`)
+    if (pinned && !this.pinned.includes(urn)) this.pinned.push(urn)
+    if (!pinned) this.pinned = this.pinned.filter((u) => u !== urn)
   }
   async removeItems(urn: string, itemIds: readonly string[]): Promise<void> {
     this.calls.push(`remove:${urn}:${itemIds.join(',')}`)
@@ -112,6 +126,12 @@ class PlayerStub extends Service {
   async playFromContext(urn: string, urns?: readonly string[]): Promise<void> {
     this.calls.push(`${urn} <- ${urns?.length ?? 0}`)
   }
+  async playNow(urns: readonly string[]): Promise<void> {
+    this.calls.push(`now:${urns.join(',')}`)
+  }
+  async getHistory(): Promise<any[]> {
+    return []
+  }
 }
 
 class SourcesStub extends Service {
@@ -120,6 +140,9 @@ class SourcesStub extends Service {
   }
   async getTracks(urns: readonly string[]): Promise<Track[]> {
     return urns.includes(TRACK) ? [track] : []
+  }
+  async listTracks() {
+    return { items: [track], hasMore: false }
   }
   async listAlbums() {
     return { items: [], hasMore: false }
@@ -195,23 +218,177 @@ describe('LibraryScreen', () => {
   it('deletes and opens by the playlist URN', async () => {
     const { ctx, library, ui } = await harness()
     await withListLayout(async () => {
-      const { container, getByLabelText } = render(h(LibraryScreen, { ctx }))
+      const { getByLabelText, getByText } = render(h(LibraryScreen, { ctx }))
       await act(async () => {
         await tick()
       })
 
       await act(async () => {
         getByLabelText('Delete Road trip').click()
-        const open = Array.from(container.querySelectorAll('button')).find(
-          (button) => button.textContent === 'Open',
-        )
-        open?.click()
+        getByText('Road trip').click()
         await tick()
       })
     })
 
     expect(library.calls).toContain(`delete:${PLAYLIST_URN}`)
     expect(ui.calls).toContain(`library.playlist:{"urn":"${PLAYLIST_URN}"}`)
+  })
+
+  it('renders unified list with special rows, playlists, albums, and collections', async () => {
+    const { ctx, library, ui } = await harness()
+    library.collections = [{ id: 'col-1', name: 'Ambient mix', position: 'a', createdAt: 0 }]
+    library.saved = [TRACK, ALBUM_URN]
+    await withListLayout(async () => {
+      const { container, getByText } = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      expect(container.textContent).toContain('最喜欢的音乐')
+      expect(container.textContent).toContain('本地音乐')
+      expect(container.textContent).toContain('Road trip')
+      expect(container.textContent).toContain('Ambient mix')
+      expect(container.textContent).toContain('Homogenic')
+
+      await act(async () => {
+        getByText('本地音乐').click()
+        await tick()
+      })
+      expect(ui.calls).toContain('library.local:{}')
+
+      await act(async () => {
+        getByText('最喜欢的音乐').click()
+        await tick()
+      })
+      expect(ui.calls).toContain('library.favorites:{}')
+    })
+  })
+
+  it('filters items by top toggle buttons (歌单, 专辑, 目录, 已下载)', async () => {
+    const { ctx, library } = await harness()
+    library.collections = [{ id: 'col-1', name: 'Ambient mix', position: 'a', createdAt: 0 }]
+    library.saved = [TRACK, ALBUM_URN]
+    await withListLayout(async () => {
+      const { container, getByText } = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Click '歌单'
+      await act(async () => {
+        getByText('歌单').click()
+        await tick()
+      })
+      expect(container.textContent).toContain('Road trip')
+      expect(container.textContent).toContain('最喜欢的音乐')
+      expect(container.textContent).not.toContain('Homogenic')
+      expect(container.textContent).not.toContain('Ambient mix')
+
+      // Click '专辑'
+      await act(async () => {
+        getByText('专辑').click()
+        await tick()
+      })
+      expect(container.textContent).toContain('Homogenic')
+      expect(container.textContent).not.toContain('Road trip')
+      expect(container.textContent).not.toContain('Ambient mix')
+
+      // Toggle off by clicking '专辑' again
+      await act(async () => {
+        getByText('专辑').click()
+        await tick()
+      })
+      expect(container.textContent).toContain('Road trip')
+      expect(container.textContent).toContain('Homogenic')
+    })
+  })
+
+  it('searches items via search input', async () => {
+    const { ctx, library } = await harness()
+    library.saved = [TRACK, ALBUM_URN]
+    await withListLayout(async () => {
+      const { container, getByLabelText, getByTestId } = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Open search input
+      await act(async () => {
+        getByLabelText('搜索').click()
+        await tick()
+      })
+
+      // Type query
+      await act(async () => {
+        type(getByTestId('library-search-input'), 'Road')
+        await tick()
+      })
+
+      expect(container.textContent).toContain('Road trip')
+      expect(container.textContent).not.toContain('Homogenic')
+    })
+  })
+
+  it('plays playlist content when clicking the cover play overlay', async () => {
+    const { ctx, player } = await harness()
+    await withListLayout(async () => {
+      const { getByText, getByTitle } = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      const row = getByText('Road trip').closest('[style*="cursor: pointer"]') as HTMLElement
+      expect(row).toBeTruthy()
+
+      // Hover row to reveal cover play button
+      await act(async () => {
+        fireEvent.mouseEnter(row)
+        await tick()
+      })
+
+      const playOverlay = getByTitle('播放 Road trip')
+      expect(playOverlay).toBeTruthy()
+
+      await act(async () => {
+        playOverlay.click()
+        await tick()
+      })
+    })
+
+    expect(player.calls).toContain(`${TRACK} <- 2`)
+  })
+
+  it('pins a playlist via context menu', async () => {
+    const { ctx, library } = await harness()
+    library.playlists = [
+      storedPlaylist,
+      { urn: 'BBeBee:local:playlist:two', name: 'Zebra playlist', trackCount: 0 },
+    ]
+    library.saved = [TRACK]
+    await withListLayout(async () => {
+      const { getByText } = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      const zebraRow = getByText('Zebra playlist').closest('[style*="cursor: pointer"]') as HTMLElement
+      expect(zebraRow).toBeTruthy()
+
+      await act(async () => {
+        fireEvent.contextMenu(zebraRow)
+        await tick()
+      })
+
+      const pinItem = getByText('置顶歌单')
+      expect(pinItem).toBeTruthy()
+
+      await act(async () => {
+        pinItem.click()
+        await tick()
+      })
+
+      expect(library.calls).toContain('pin:BBeBee:local:playlist:two:true')
+    })
   })
 })
 
@@ -292,3 +469,26 @@ describe('CollectionScreen', () => {
     })
   })
 })
+
+describe('LocalMusicScreen', () => {
+  it('renders local tracks and plays all on button press', async () => {
+    const { ctx, player } = await harness()
+    await withListLayout(async () => {
+      const { container, getByTestId } = render(h(LocalMusicScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      expect(container.textContent).toContain('本地音乐')
+      expect(container.textContent).toContain('Alpha')
+
+      await act(async () => {
+        ;(getByTestId('local-music-play') as HTMLElement).click()
+        await tick()
+      })
+    })
+
+    expect(player.calls).toContain(`now:${TRACK}`)
+  })
+})
+

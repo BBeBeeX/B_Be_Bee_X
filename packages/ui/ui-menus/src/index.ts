@@ -346,21 +346,42 @@ export function addToCollectionOnlyItems(
   ctx: Context,
   urns: readonly string[],
   collections: readonly Collection[],
+  opts: { pinned?: boolean; onTogglePin?: () => void } = {},
 ): MenuItemSpec[] {
   const library = serviceOf<LibraryService>(ctx, 'library')
   const submenu = addToCollectionSubmenu(library, urns, collections)
-  return submenu ? [{ id: 'add-to-collection', label: '加入合集', icon: '🗂', submenu }] : []
+  const items: MenuItemSpec[] = []
+  if (opts.onTogglePin) {
+    items.push({
+      id: 'toggle-pin',
+      label: opts.pinned ? '取消置顶歌单' : '置顶歌单',
+      icon: '📌',
+      onSelect: opts.onTogglePin,
+    })
+  }
+  if (submenu) items.push({ id: 'add-to-collection', label: '加入合集', icon: '🗂', submenu })
+  return items
 }
 
 export interface AddToCollectionController extends MenuController {
-  open(title: string, urns: readonly string[], anchor?: MenuAnchor): void
+  open(
+    title: string,
+    urns: readonly string[],
+    anchor?: MenuAnchor,
+    opts?: { pinned?: boolean; onTogglePin?: () => void },
+  ): void
 }
 
 /** A folder menu for an arbitrary entity — currently the album rows' menu. */
 export function useAddToCollection(ctx: Context): AddToCollectionController {
   const state = useMenuState<{ title: string; urns: readonly string[] }>()
   const open = useCallback(
-    (title: string, urns: readonly string[], anchor?: MenuAnchor) => state.show({ title, urns }, anchor, ctx),
+    (
+      title: string,
+      urns: readonly string[],
+      anchor?: MenuAnchor,
+      opts?: { pinned?: boolean; onTogglePin?: () => void },
+    ) => state.show({ title, urns }, anchor, ctx, opts),
     [state, ctx],
   )
   return {
@@ -371,7 +392,7 @@ export function useAddToCollection(ctx: Context): AddToCollectionController {
       x: state.open?.anchor.x ?? 0,
       y: state.open?.anchor.y ?? 0,
       items: state.open
-        ? addToCollectionOnlyItems(ctx, state.open.target.urns, state.collections)
+        ? addToCollectionOnlyItems(ctx, state.open.target.urns, state.collections, state.open.opts)
         : [],
       ...(state.open ? { title: state.open.target.title } : {}),
     },
@@ -394,11 +415,21 @@ export function playlistMenuItems(
   tracks: readonly string[],
   playlists: readonly Playlist[] = [],
   collections: readonly Collection[] = [],
+  opts: { pinned?: boolean; onTogglePin?: () => void } = {},
 ): MenuItemSpec[] {
   const library = serviceOf<LibraryService>(ctx, 'library')
   const player = serviceOf<PlayerService>(ctx, 'player')
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
   const items: MenuItemSpec[] = []
+
+  if (opts.onTogglePin) {
+    items.push({
+      id: 'toggle-pin',
+      label: opts.pinned ? '取消置顶歌单' : '置顶歌单',
+      icon: '📌',
+      onSelect: opts.onTogglePin,
+    })
+  }
 
   if (library) {
     items.push({
@@ -452,11 +483,21 @@ export function collectionMenuItems(
   ctx: Context,
   trackUrns: readonly string[],
   playlists: readonly Playlist[] = [],
+  opts: { pinned?: boolean; onTogglePin?: () => void } = {},
 ): MenuItemSpec[] {
   const library = serviceOf<LibraryService>(ctx, 'library')
   const player = serviceOf<PlayerService>(ctx, 'player')
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
   const items: MenuItemSpec[] = []
+
+  if (opts.onTogglePin) {
+    items.push({
+      id: 'toggle-pin',
+      label: opts.pinned ? '取消置顶歌单' : '置顶歌单',
+      icon: '📌',
+      onSelect: opts.onTogglePin,
+    })
+  }
 
   if (player && trackUrns.length > 0) {
     items.push({
@@ -508,24 +549,36 @@ function anchorOf(anchor: MenuAnchor | undefined): MenuAnchor {
  * arrives, and an absent library leaves it empty rather than throwing.
  */
 function useMenuState<T>() {
-  const [open, setOpen] = useState<{ target: T; anchor: MenuAnchor } | undefined>(undefined)
+  const [open, setOpen] = useState<{
+    target: T
+    anchor: MenuAnchor
+    opts?: { pinned?: boolean; onTogglePin?: () => void }
+  } | undefined>(undefined)
   const [playlists, setPlaylists] = useState<readonly Playlist[]>([])
   const [collections, setCollections] = useState<readonly Collection[]>([])
 
-  const show = useCallback((target: T, anchor?: MenuAnchor, ctx?: Context) => {
-    setOpen({ target, anchor: anchorOf(anchor) })
-    if (!ctx) return
-    const library = serviceOf<LibraryService>(ctx, 'library')
-    if (!library) return
-    void library
-      .listPlaylists()
-      .then((page) => setPlaylists(page.items))
-      .catch(() => setPlaylists([]))
-    void library
-      .listCollections()
-      .then((items) => setCollections(items))
-      .catch(() => setCollections([]))
-  }, [])
+  const show = useCallback(
+    (
+      target: T,
+      anchor?: MenuAnchor,
+      ctx?: Context,
+      opts?: { pinned?: boolean; onTogglePin?: () => void },
+    ) => {
+      setOpen({ target, anchor: anchorOf(anchor), opts })
+      if (!ctx) return
+      const library = serviceOf<LibraryService>(ctx, 'library')
+      if (!library) return
+      void library
+        .listPlaylists()
+        .then((page) => setPlaylists(page.items))
+        .catch(() => setPlaylists([]))
+      void library
+        .listCollections()
+        .then((items) => setCollections(items))
+        .catch(() => setCollections([]))
+    },
+    [],
+  )
 
   const close = useCallback(() => setOpen(undefined), [])
   return { open, playlists, collections, show, close }
@@ -562,15 +615,24 @@ export function useTrackMenu(ctx: Context, opts: TrackMenuOptions = {}): TrackMe
 }
 
 export interface PlaylistMenuController extends MenuController {
-  open(playlist: { urn: string; name: string }, tracks: readonly string[], anchor?: MenuAnchor): void
+  open(
+    playlist: { urn: string; name: string },
+    tracks: readonly string[],
+    anchor?: MenuAnchor,
+    opts?: { pinned?: boolean; onTogglePin?: () => void },
+  ): void
 }
 
 /** A playlist row's menu. `tracks` are its resolved track URNs, when the caller has them. */
 export function usePlaylistMenu(ctx: Context): PlaylistMenuController {
   const state = useMenuState<{ playlist: { urn: string; name: string }; tracks: readonly string[] }>()
   const open = useCallback(
-    (playlist: { urn: string; name: string }, tracks: readonly string[], anchor?: MenuAnchor) =>
-      state.show({ playlist, tracks }, anchor, ctx),
+    (
+      playlist: { urn: string; name: string },
+      tracks: readonly string[],
+      anchor?: MenuAnchor,
+      opts?: { pinned?: boolean; onTogglePin?: () => void },
+    ) => state.show({ playlist, tracks }, anchor, ctx, opts),
     [state, ctx],
   )
   return {
@@ -587,6 +649,7 @@ export function usePlaylistMenu(ctx: Context): PlaylistMenuController {
             state.open.target.tracks,
             state.playlists,
             state.collections,
+            state.open.opts,
           )
         : [],
       ...(state.open ? { title: state.open.target.playlist.name } : {}),
@@ -595,15 +658,24 @@ export function usePlaylistMenu(ctx: Context): PlaylistMenuController {
 }
 
 export interface CollectionMenuController extends MenuController {
-  open(title: string, trackUrns: readonly string[], anchor?: MenuAnchor): void
+  open(
+    title: string,
+    trackUrns: readonly string[],
+    anchor?: MenuAnchor,
+    opts?: { pinned?: boolean; onTogglePin?: () => void },
+  ): void
 }
 
 /** A collection row's menu. `trackUrns` are its track members, resolved by the caller. */
 export function useCollectionMenu(ctx: Context): CollectionMenuController {
   const state = useMenuState<{ title: string; trackUrns: readonly string[] }>()
   const open = useCallback(
-    (title: string, trackUrns: readonly string[], anchor?: MenuAnchor) =>
-      state.show({ title, trackUrns }, anchor, ctx),
+    (
+      title: string,
+      trackUrns: readonly string[],
+      anchor?: MenuAnchor,
+      opts?: { pinned?: boolean; onTogglePin?: () => void },
+    ) => state.show({ title, trackUrns }, anchor, ctx, opts),
     [state, ctx],
   )
   return {
@@ -613,7 +685,9 @@ export function useCollectionMenu(ctx: Context): CollectionMenuController {
       onClose: state.close,
       x: state.open?.anchor.x ?? 0,
       y: state.open?.anchor.y ?? 0,
-      items: state.open ? collectionMenuItems(ctx, state.open.target.trackUrns, state.playlists) : [],
+      items: state.open
+        ? collectionMenuItems(ctx, state.open.target.trackUrns, state.playlists, state.open.opts)
+        : [],
       ...(state.open ? { title: state.open.target.title } : {}),
     },
   }
