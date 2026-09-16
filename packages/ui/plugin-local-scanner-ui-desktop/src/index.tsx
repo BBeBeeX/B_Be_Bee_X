@@ -168,6 +168,7 @@ function bound<P extends { ctx: Context }>(
 export const inject = ['ui', 'scanner', 'fs']
 
 export async function apply(ctx: Context) {
+  ctx.logger.info('plugin-local-scanner-ui-desktop: loaded')
   return ctx.effect(function* () {
     yield ctx.ui.registerView(SCANNER_VIEWS.settings, bound(ctx, ScanSpecifiedDirsScreen))
   }, 'scanner-ui-desktop')

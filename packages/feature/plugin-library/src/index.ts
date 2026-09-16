@@ -54,7 +54,7 @@ function kindOfUrn(urn: string): UrnKind {
 }
 
 export class Library extends Service implements LibraryService {
-  static inject = ['db']
+  static inject = ['ui','db']
 
   /**
    * The plugin's own context, captured at construction.
@@ -143,6 +143,7 @@ export class Library extends Service implements LibraryService {
 
   async setSaved(urn: string, saved: boolean): Promise<void> {
     await this.saved.setSaved(urn, saved)
+    this.ownCtx.logger.info(`library: ${saved ? 'saved' : 'unsaved'} ${urn}`)
     this.changed(kindOfUrn(urn), [urn])
   }
 
@@ -152,6 +153,7 @@ export class Library extends Service implements LibraryService {
 
   async setPinned(urn: string, pinned: boolean): Promise<void> {
     await this.saved.setPinned(urn, pinned)
+    this.ownCtx.logger.info(`library: ${pinned ? 'pinned' : 'unpinned'} ${urn}`)
     this.changed(kindOfUrn(urn), [urn])
   }
 
@@ -177,6 +179,7 @@ export class Library extends Service implements LibraryService {
 
   async updatePlaylist(urn: string, patch: { name?: string; description?: string | null }): Promise<void> {
     await this.playlists.update(urn, patch)
+    this.ownCtx.logger.info(`library: updated playlist ${urn}`)
     this.changed('playlist', [urn])
   }
 
@@ -192,22 +195,28 @@ export class Library extends Service implements LibraryService {
     opts: { at?: number } = {},
   ): Promise<number> {
     const added = await this.playlists.addTracks(urn, trackUrns, opts)
-    if (added > 0) this.changed('playlist', [urn])
+    if (added > 0) {
+      this.ownCtx.logger.info(`library: added ${added} track(s) to playlist ${urn}`)
+      this.changed('playlist', [urn])
+    }
     return added
   }
 
   async removeItems(urn: string, itemIds: readonly string[]): Promise<void> {
     await this.playlists.removeItems(urn, itemIds)
+    this.ownCtx.logger.info(`library: removed ${itemIds.length} item(s) from playlist ${urn}`)
     this.changed('playlist', [urn])
   }
 
   async moveItem(urn: string, itemId: string, toIndex: number): Promise<void> {
     await this.playlists.moveItem(urn, itemId, toIndex)
+    this.ownCtx.logger.info(`library: moved item ${itemId} in playlist ${urn} to index ${toIndex}`)
     this.changed('playlist', [urn])
   }
 
   async setSmartQuery(urn: string, query: SmartPlaylist): Promise<void> {
     await this.playlists.setSmartQuery(urn, query)
+    this.ownCtx.logger.info(`library: updated smart query for playlist ${urn}`)
     this.changed('playlist', [urn])
   }
 
@@ -219,17 +228,20 @@ export class Library extends Service implements LibraryService {
 
   async createCollection(name: string, opts: { parentId?: string } = {}): Promise<Collection> {
     const collection = await this.collections.create(name, opts)
+    this.ownCtx.logger.info(`library: created collection "${collection.name}" (${collection.id})`)
     this.collectionsChanged()
     return collection
   }
 
   async renameCollection(id: string, name: string): Promise<void> {
     await this.collections.rename(id, name)
+    this.ownCtx.logger.info(`library: renamed collection ${id} to "${name}"`)
     this.collectionsChanged()
   }
 
   async deleteCollection(id: string): Promise<void> {
     await this.collections.remove(id)
+    this.ownCtx.logger.info(`library: deleted collection ${id}`)
     this.collectionsChanged()
   }
 
@@ -239,12 +251,16 @@ export class Library extends Service implements LibraryService {
 
   async addToCollection(id: string, urns: readonly string[]): Promise<number> {
     const added = await this.collections.add(id, urns)
-    if (added > 0) this.collectionsChanged()
+    if (added > 0) {
+      this.ownCtx.logger.info(`library: added ${added} item(s) to collection ${id}`)
+      this.collectionsChanged()
+    }
     return added
   }
 
   async removeFromCollection(id: string, urns: readonly string[]): Promise<void> {
     await this.collections.removeItems(id, urns)
+    this.ownCtx.logger.info(`library: removed ${urns.length} item(s) from collection ${id}`)
     this.collectionsChanged()
   }
 

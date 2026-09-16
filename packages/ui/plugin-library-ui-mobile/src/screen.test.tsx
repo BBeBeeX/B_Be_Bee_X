@@ -18,7 +18,7 @@ import { Context, Service } from 'cordis'
 import type { Collection, Paged, Playlist, PlaylistDetail, SavedKind, Track } from '@BBeBee/protocol'
 import { tick } from '@BBeBee/kernel/testing'
 import { configureNative } from '@BBeBee/ui-kit-mobile'
-import { CollectionScreen, FavoritesScreen, LibraryScreen, PlaylistDetailScreen } from './index.js'
+import { CollectionScreen, FavoritesScreen, LibraryScreen, PlaylistDetailScreen, inject } from './index.js'
 
 afterEach(cleanup)
 
@@ -206,7 +206,7 @@ async function harness() {
   await root.plugin(SourcesStub)
   await root.plugin(UiStub)
   let scoped: Context | undefined
-  root.inject(['ui', 'library', 'player', 'sources'], (s) => void (scoped = s))
+  root.inject(inject, (s) => void (scoped = s))
   await tick()
   if (!scoped) throw new Error('no scoped context')
   return {

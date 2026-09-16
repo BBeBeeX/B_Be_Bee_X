@@ -199,6 +199,7 @@ export const name = 'core-device-expo'
  * `ctx.device` is usable.
  */
 export async function apply(ctx: Context, config: DeviceExpoConfig = {}) {
+  ctx.logger.info('core-device-expo: loaded')
   const fiber = await ctx.plugin(DeviceExpo, config)
   return () => void fiber.dispose()
 }

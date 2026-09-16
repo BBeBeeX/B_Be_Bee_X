@@ -39,6 +39,7 @@ export async function apply(ctx: Context) {
   // with no contribution, not a plugin that never finishes loading.
   const fiber = ctx.inject(['ui'], (scoped) =>
     scoped.effect(function* () {
+      scoped.logger.debug(`now-playing: contributing route ${NOW_PLAYING_ROUTES.nowPlaying}`)
       yield scoped.ui.contribute({
         kind: 'route',
         id: NOW_PLAYING_ROUTES.nowPlaying,

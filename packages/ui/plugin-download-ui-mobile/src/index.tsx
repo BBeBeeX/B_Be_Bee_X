@@ -363,6 +363,7 @@ function bound<P extends { ctx: Context }>(
 export const inject = ['ui', 'downloads']
 
 export async function apply(ctx: Context) {
+  ctx.logger.info('plugin-download-ui-mobile: loaded')
   return ctx.effect(function* () {
     yield ctx.ui.registerView(DOWNLOADS_VIEWS.page, bound(ctx, DownloadsScreen))
   }, 'downloads-ui-mobile')

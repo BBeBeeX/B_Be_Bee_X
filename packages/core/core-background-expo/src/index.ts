@@ -244,6 +244,7 @@ export const name = 'core-background-expo'
  * `ctx.background` is usable.
  */
 export async function apply(ctx: Context, config: BackgroundExpoConfig = {}) {
+  ctx.logger.info('core-background-expo: loaded')
   const fiber = await ctx.plugin(BackgroundExpo, config)
   return () => void fiber.dispose()
 }

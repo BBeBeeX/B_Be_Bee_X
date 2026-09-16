@@ -109,6 +109,7 @@ export const name = 'core-codec-rn'
  * `ctx.codec` is usable.
  */
 export async function apply(ctx: Context, config: CodecRnConfig = {}) {
+  ctx.logger.info('core-codec-rn: loaded')
   const fiber = await ctx.plugin(CodecRn, config)
   return () => void fiber.dispose()
 }

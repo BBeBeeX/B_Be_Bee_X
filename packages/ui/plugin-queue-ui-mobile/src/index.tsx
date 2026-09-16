@@ -102,6 +102,7 @@ function bound<P extends { ctx: Context }>(
 }
 
 export async function apply(ctx: Context) {
+  ctx.logger.info('plugin-queue-ui-mobile: loaded')
   return ctx.effect(function* () {
     yield ctx.ui.registerView(QUEUE_VIEWS.queue, bound(ctx, QueueScreen))
   }, 'queue-ui-mobile')

@@ -1200,6 +1200,7 @@ export function TestScreen({ ctx, sourceId }: { ctx: Context; sourceId?: string 
 export const inject = ['ui', 'sources']
 
 export async function apply(ctx: Context) {
+  ctx.logger.info('plugin-sources-ui-desktop: loaded')
   return ctx.effect(function* () {
     yield ctx.ui.registerView(SOURCES_VIEWS.search, bound(ctx, SearchScreen))
     yield ctx.ui.registerView(SOURCES_VIEWS.sourceList, bound(ctx, SourcesListScreen))

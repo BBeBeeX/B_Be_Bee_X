@@ -324,6 +324,7 @@ function tryBridge(): BridgeApi | undefined {
 export const name = 'core-media-session-electron'
 
 export async function apply(ctx: Context, config: MediaSessionElectronConfig = {}) {
+  ctx.logger.info('core-media-session-electron: loaded')
   const fiber = await ctx.plugin(MediaSessionElectron, config)
   return () => void fiber.dispose()
 }

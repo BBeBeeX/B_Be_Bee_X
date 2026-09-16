@@ -183,6 +183,7 @@ function bound<P extends { ctx: Context }>(
 }
 
 export async function apply(ctx: Context) {
+  ctx.logger.info('plugin-album-ui-mobile: loaded')
   return ctx.effect(function* () {
     yield ctx.ui.registerView(ALBUM_VIEWS.album, bound(ctx, AlbumScreen))
   }, 'album-ui-mobile')

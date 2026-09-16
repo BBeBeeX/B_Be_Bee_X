@@ -266,6 +266,7 @@ function bound<P extends { ctx: Context }>(
 }
 
 export async function apply(ctx: Context) {
+  ctx.logger.info('plugin-now-playing-ui-mobile: loaded')
   return ctx.effect(function* () {
     yield ctx.ui.registerView(NOW_PLAYING_VIEWS.nowPlaying, bound(ctx, NowPlayingScreen))
     yield ctx.ui.registerView(NOW_PLAYING_VIEWS.bar, bound(ctx, NowPlayingBar))

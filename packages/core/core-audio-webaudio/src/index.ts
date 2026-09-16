@@ -566,6 +566,7 @@ export const name = 'core-audio-webaudio'
  * `ctx.audio` is usable.
  */
 export async function apply(ctx: Context, config: AudioWebAudioConfig = {}) {
+  ctx.logger.info('core-audio-webaudio: loaded')
   const fiber = await ctx.plugin(AudioWebAudio, config)
   return () => void fiber.dispose()
 }

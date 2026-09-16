@@ -62,6 +62,7 @@ export const name = 'core-http-rn'
  * `ctx.http` is usable.
  */
 export async function apply(ctx: Context, config: HttpRnConfig = {}) {
+  ctx.logger.info('core-http-rn: loaded')
   const fiber = await ctx.plugin(HttpRn, config)
   return () => void fiber.dispose()
 }

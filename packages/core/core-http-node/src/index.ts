@@ -684,6 +684,7 @@ export const name = 'core-http-node'
  * `ctx.http` is usable.
  */
 export async function apply(ctx: Context, config: HttpNodeConfig = {}) {
+  ctx.logger.info('core-http-node: loaded')
   const fiber = await ctx.plugin(HttpNode, config)
   return () => void fiber.dispose()
 }

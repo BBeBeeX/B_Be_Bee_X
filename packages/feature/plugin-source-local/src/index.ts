@@ -491,6 +491,7 @@ export const name = 'plugin-source-local'
  * registered itself.
  */
 export async function apply(ctx: Context, config: SourceLocalConfig = {}) {
+  ctx.logger.info('plugin-source-local: loaded')
   const fiber = await ctx.plugin(SourceLocal, config)
   return () => void fiber.dispose()
 }

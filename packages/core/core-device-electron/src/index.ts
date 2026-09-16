@@ -253,6 +253,7 @@ function tryBridge(): BridgeApi | undefined {
 export const name = 'core-device-electron'
 
 export async function apply(ctx: Context, config: DeviceElectronConfig = {}) {
+  ctx.logger.info('core-device-electron: loaded')
   const fiber = await ctx.plugin(DeviceElectron, config)
   return () => void fiber.dispose()
 }

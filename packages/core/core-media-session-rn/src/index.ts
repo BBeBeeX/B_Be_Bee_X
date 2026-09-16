@@ -306,6 +306,7 @@ export const name = 'core-media-session-rn'
  * `ctx.mediaSession` is usable.
  */
 export async function apply(ctx: Context, config: MediaSessionRnConfig = {}) {
+  ctx.logger.info('core-media-session-rn: loaded')
   const fiber = await ctx.plugin(MediaSessionRn, config)
   return () => void fiber.dispose()
 }

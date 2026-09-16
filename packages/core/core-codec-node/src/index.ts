@@ -285,6 +285,7 @@ export const name = 'core-codec-node'
  * `ctx.codec` is usable.
  */
 export async function apply(ctx: Context, config: CodecNodeConfig = {}) {
+  ctx.logger.info('core-codec-node: loaded')
   const fiber = await ctx.plugin(CodecNode, config)
   return () => void fiber.dispose()
 }

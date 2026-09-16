@@ -135,6 +135,7 @@ function bound<P extends { ctx: Context }>(
  * build on the other shape (docs/03 §2).
  */
 export async function apply(ctx: Context) {
+  ctx.logger.info('plugin-inspector-ui-desktop: loaded')
   return ctx.effect(function* () {
     yield ctx.ui.registerView(INSPECTOR_VIEW, bound(ctx, InspectorPanel))
     yield ctx.ui.contribute({

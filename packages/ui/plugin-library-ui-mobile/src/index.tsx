@@ -724,7 +724,7 @@ function MemberRow({ member, onOpen }: { member: CollectionMember; onOpen: () =>
 
 export const name = 'plugin-library-ui-mobile'
 
-export const inject = ['ui', 'library', 'player']
+export const inject = ['ui', 'library', 'player', 'sources']
 
 /**
  * Register a component bound to **this** context, not the shell's — the same
@@ -740,6 +740,7 @@ function bound<P extends { ctx: Context }>(
 }
 
 export async function apply(ctx: Context) {
+  ctx.logger.info('plugin-library-ui-mobile: loaded')
   return ctx.effect(function* () {
     yield ctx.ui.registerView(LIBRARY_VIEWS.home, bound(ctx, LibraryScreen))
     yield ctx.ui.registerView(LIBRARY_VIEWS.playlist, bound(ctx, PlaylistDetailScreen))

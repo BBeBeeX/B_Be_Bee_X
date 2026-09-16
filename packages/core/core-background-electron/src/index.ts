@@ -170,6 +170,7 @@ function tryBridge(): BridgeApi | undefined {
 export const name = 'core-background-electron'
 
 export async function apply(ctx: Context, config: BackgroundElectronConfig = {}) {
+  ctx.logger.info('core-background-electron: loaded')
   const fiber = await ctx.plugin(BackgroundElectron, config)
   return () => void fiber.dispose()
 }
