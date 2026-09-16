@@ -26,6 +26,7 @@ import pluginNowPlayingUi from '@BBeBee/plugin-now-playing-ui-desktop'
 import pluginPlayer from '@BBeBee/plugin-player'
 import pluginQueue from '@BBeBee/plugin-queue'
 import pluginQueueUi from '@BBeBee/plugin-queue-ui-desktop'
+import pluginSleepTimer from '@BBeBee/plugin-sleep-timer'
 import pluginSourceLocal from '@BBeBee/plugin-source-local'
 import pluginSourceRuntime from '@BBeBee/plugin-source-runtime'
 import pluginSources from '@BBeBee/plugin-sources'
@@ -154,6 +155,11 @@ export const bundled: PluginRegistry = {
   "@BBeBee/plugin-queue-ui-desktop": {
     plugin: pluginQueueUi,
     manifest: {"id":"@BBeBee/plugin-queue-ui-desktop","version":"0.0.0","displayName":"Queue (desktop views)","description":"The up-next list — a view of the queue ctx.player owns.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
+    builtin: true,
+  },
+  "@BBeBee/plugin-sleep-timer": {
+    plugin: pluginSleepTimer,
+    manifest: {"id":"@BBeBee/plugin-sleep-timer","version":"0.0.0","displayName":"Sleep Timer","description":"ctx.sleepTimer — stops playback after a duration, at a specific time, or at track end.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["sleepTimer"]}},
     builtin: true,
   },
   "@BBeBee/plugin-source-local": {

@@ -42,6 +42,7 @@ import type { AuthStatus } from './services/sources.js'
 import type { CheckReport } from './services/source-document.js'
 import type { SourceError } from './errors.js'
 import type { ScanSpecifiedDir, ScanSummary } from './services/scanner.js'
+import type { SleepTimerState } from './services/sleep-timer.js'
 import type { UrnKind } from './urn.js'
 
 declare module 'cordis' {
@@ -157,6 +158,10 @@ declare module 'cordis' {
     'plugin/loaded'(id: string): void
     'plugin/failed'(id: string, error: Error): void
     'plugin/unloaded'(id: string): void
+
+    /* ── sleep timer ─────────────────────────────────── emit ── */
+    'sleep-timer/changed'(state: SleepTimerState): void
+    'sleep-timer/fired'(): void
   }
 }
 
@@ -202,6 +207,8 @@ export const DISPATCH_MODES = {
   'plugin/loaded': 'emit',
   'plugin/failed': 'emit',
   'plugin/unloaded': 'emit',
+  'sleep-timer/changed': 'emit',
+  'sleep-timer/fired': 'emit',
 } as const satisfies Record<string, DispatchMode>
 
 export type BBeBeeEventName = keyof typeof DISPATCH_MODES

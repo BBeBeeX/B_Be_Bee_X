@@ -1,0 +1,18 @@
+{
+  "id": "@BBeBee/plugin-sleep-timer",
+  "version": "0.0.0",
+  "displayName": "Sleep Timer",
+  "description": "ctx.sleepTimer — stops playback after a duration, at a specific time, or at track end.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [],
+  "contributes": {
+    "services": [
+      "sleepTimer"
+    ]
+  }
+}

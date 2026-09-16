@@ -54,7 +54,7 @@ function kindOfUrn(urn: string): UrnKind {
 }
 
 export class Library extends Service implements LibraryService {
-  static inject = ['ui','db']
+  static inject = ['db']
 
   /**
    * The plugin's own context, captured at construction.

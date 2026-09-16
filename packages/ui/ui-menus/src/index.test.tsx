@@ -10,13 +10,14 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from 'cordis'
-import type { LibraryService, Playlist, Track } from '@BBeBee/protocol'
+import type { LibraryService, Playlist, SleepTimerService, SleepTimerState, Track } from '@BBeBee/protocol'
 import {
   addToCollectionOnlyItems,
   addToCollectionSubmenu,
   addToPlaylistSubmenu,
   collectionMenuItems,
   playlistMenuItems,
+  sleepTimerSubmenu,
   trackMenuItems,
   useTrackMenu,
 } from './index.js'
@@ -117,13 +118,40 @@ class UiStub extends Service {
   }
 }
 
-async function harness(opts: { downloads?: boolean; player?: boolean; ui?: boolean } = {}) {
+class SleepTimerStub extends Service {
+  readonly calls: string[] = []
+  state: SleepTimerState = {
+    active: false,
+  }
+  constructor(ctx: Context) {
+    super(ctx, 'sleepTimer')
+  }
+  startDuration(ms: number) {
+    this.calls.push(`duration:${ms}`)
+    this.state = { active: true, mode: 'duration', targetEpochMs: Date.now() + ms, durationMs: ms }
+  }
+  startAtEpoch(epochMs: number) {
+    this.calls.push(`epoch:${epochMs}`)
+    this.state = { active: true, mode: 'epoch', targetEpochMs: epochMs, durationMs: Math.max(0, epochMs - Date.now()) }
+  }
+  startEndOfTrack() {
+    this.calls.push('end-of-track')
+    this.state = { active: true, mode: 'end-of-track' }
+  }
+  cancel() {
+    this.calls.push('cancel')
+    this.state = { active: false }
+  }
+}
+
+async function harness(opts: { downloads?: boolean; player?: boolean; ui?: boolean; sleepTimer?: boolean } = {}) {
   const ctx = new Context()
   await ctx.plugin(LibraryStub)
   await ctx.plugin(SourcesStub)
   if (opts.player !== false) await ctx.plugin(PlayerStub)
   if (opts.downloads !== false) await ctx.plugin(DownloadsStub)
   if (opts.ui !== false) await ctx.plugin(UiStub)
+  if (opts.sleepTimer === true) await ctx.plugin(SleepTimerStub)
   return {
     ctx,
     library: ctx.library as unknown as LibraryStub,
@@ -131,6 +159,7 @@ async function harness(opts: { downloads?: boolean; player?: boolean; ui?: boole
     player: ctx.player as unknown as PlayerStub,
     downloads: ctx.downloads as unknown as DownloadsStub,
     ui: ctx.ui as unknown as UiStub,
+    sleepTimer: ctx.sleepTimer as unknown as SleepTimerStub,
   }
 }
 
@@ -199,6 +228,81 @@ describe('trackMenuItems', () => {
     expect(h.player.calls).toEqual([`enqueue:${URN}`])
     expect(h.downloads.calls).toEqual([`download:${URN}`])
     expect(h.ui.calls).toEqual([`nav:album.view:${JSON.stringify({ urn: ALBUM })}`])
+  })
+
+  it('includes sleep timer when sleepTimer service is present', async () => {
+    const h = await harness({ sleepTimer: true })
+    const items = trackMenuItems(h.ctx, { track }, { playlists })
+    const timerItem = items.find((i) => i.id === 'sleep-timer')
+    expect(timerItem).toBeTruthy()
+    expect(timerItem?.label).toBe('睡眠定时器')
+    expect(timerItem?.submenu).toBeTruthy()
+  })
+})
+
+describe('the sleep-timer submenu', () => {
+  it('returns undefined when sleepTimer service is absent', () => {
+    expect(sleepTimerSubmenu(undefined)).toBeUndefined()
+  })
+
+  it('lists preset intervals, end-of-track, and offers custom time create when inactive', () => {
+    const stub = new SleepTimerStub(new Context()) as unknown as SleepTimerService
+    const submenu = sleepTimerSubmenu(stub)
+    expect(submenu?.title).toBe('睡眠定时器')
+    expect(submenu?.create?.label).toBe('自定义时间')
+    expect(submenu?.create?.placeholder).toBe('输入分钟数 (如 20)')
+    expect(submenu?.items.map((i) => i.label)).toEqual([
+      '5 分钟',
+      '10 分钟',
+      '15 分钟',
+      '30 分钟',
+      '45 分钟',
+      '1 小时',
+      '当前曲目结束时',
+    ])
+    expect(submenu?.items.some((i) => i.id === 'timer-cancel')).toBe(false)
+  })
+
+  it('starts duration and end-of-track from preset items', async () => {
+    const ctx = new Context()
+    const stub = new SleepTimerStub(ctx)
+    const submenu = sleepTimerSubmenu(stub as unknown as SleepTimerService)!
+
+    await submenu.items.find((i) => i.id === 'timer-5m')?.onSelect?.()
+    expect(stub.calls).toContain('duration:300000')
+
+    await submenu.items.find((i) => i.id === 'timer-end-of-track')?.onSelect?.()
+    expect(stub.calls).toContain('end-of-track')
+  })
+
+  it('handles custom time input for minutes and clock time', async () => {
+    const ctx = new Context()
+    const stub = new SleepTimerStub(ctx)
+    const submenu = sleepTimerSubmenu(stub as unknown as SleepTimerService)!
+
+    // Numeric minutes
+    await submenu.create?.onSelect('25')
+    expect(stub.calls).toContain('duration:1500000')
+
+    // Clock time HH:mm
+    await submenu.create?.onSelect('14:30')
+    expect(stub.calls.some((c) => c.startsWith('epoch:'))).toBe(true)
+  })
+
+  it('shows cancel option when timer is active and cancels on press', async () => {
+    const ctx = new Context()
+    const stub = new SleepTimerStub(ctx)
+    stub.startDuration(600_000)
+    expect(stub.state.active).toBe(true)
+
+    const submenu = sleepTimerSubmenu(stub as unknown as SleepTimerService)!
+    const cancelItem = submenu.items.find((i) => i.id === 'timer-cancel')
+    expect(cancelItem).toBeTruthy()
+    expect(cancelItem?.label).toBe('关闭睡眠定时器')
+    expect(cancelItem?.tone).toBe('danger')
+
+    await cancelItem?.onSelect?.()
+    expect(stub.calls).toContain('cancel')
   })
 })
 
