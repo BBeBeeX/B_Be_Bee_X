@@ -17,6 +17,7 @@ LIBRARY_VIEWS = {
   playlist: 'library.playlist',    // /playlist/:urn 无 placement
   collection: 'library.collection',// /collection/:id 无 placement
   favorites: 'library.favorites',  // /favorites     sidebar, order 1
+  local: 'library.local',          // /local-music   无 placement
 }
 ```
 
@@ -24,7 +25,7 @@ LIBRARY_VIEWS = {
 
 | 文件 | 内容 |
 |---|---|
-| `src/index.ts` | `Library` 服务：favourites（`library_items`，幂等保存/置顶）、playlists（创建/改名/删除/加删移曲目/智能规则，`track_count`/`duration_ms` 与曲目同事务重算）、collections（嵌套、成员增删）；emit `library/changed` 与 `library/collections-changed`；贡献 4 条 route |
+| `src/index.ts` | `Library` 服务：favourites（`library_items`，幂等保存/置顶）、playlists（创建/改名/删除/加删移曲目/智能规则，`track_count`/`duration_ms` 与曲目同事务重算）、collections（嵌套、成员增删）；emit `library/changed` 与 `library/collections-changed`；贡献 5 条 route |
 | `src/playlists.ts` | `playlists` + `playlist_items`；`between()` 分数索引移动一行、`recount` 同事务、smart 树解析为参数化 SQL（`smart.ts`） |
 | `src/smart.ts` | 规则树 → WHERE，字段白名单 + 值一律绑定（`inLast` 只对日期字段等） |
 | `src/saved.ts` | `library_items`：保存保留原 `added_at`、pinned 优先 |

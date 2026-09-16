@@ -15,24 +15,25 @@ Layer 5（ui）— 两个 shell 共用的**右键/长按菜单模型**：对曲�
 
 ```ts
 // 纯模型（可单测，无渲染器）
-trackMenuItems(ctx, { track, playlistItemId? }, { fromPlaylistUrn?, playlists? }): MenuItemSpec[]
-playlistMenuItems(ctx, { urn, name }, tracks, playlists?): MenuItemSpec[]
-collectionMenuItems(ctx, trackUrns, playlists?): MenuItemSpec[]
+trackMenuItems(ctx, { track, playlistItemId? }, { fromPlaylistUrn?, playlists?, collections? }): MenuItemSpec[]
+playlistMenuItems(ctx, { urn, name }, tracks, playlists?, collections?, opts?: { pinned?, onTogglePin? }): MenuItemSpec[]
+collectionMenuItems(ctx, trackUrns, playlists?, opts?: { pinned?, onTogglePin? }): MenuItemSpec[]
 addToPlaylistSubmenu(library, trackUrns, playlists): SubmenuSpec | undefined
 
 // React 控制器：open() + 可直接展开的 menuProps
 useTrackMenu(ctx, { fromPlaylistUrn? }) → { open(target, anchor?), menuProps }
-usePlaylistMenu(ctx)                    → { open(playlist, tracks, anchor?), menuProps }
-useCollectionMenu(ctx)                  → { open(title, trackUrns, anchor?), menuProps }
+usePlaylistMenu(ctx)                    → { open(playlist, tracks, anchor?, opts?), menuProps }
+useCollectionMenu(ctx)                  → { open(title, trackUrns, anchor?, opts?), menuProps }
+useAddToCollection(ctx)                 → { open(title, itemUrns, anchor?, opts?), menuProps }
 ```
 
 ## 菜单内容
 
-**曲目**：加入歌单（子菜单：搜索框 → 新建歌单 → 全部歌单）→ 从此歌单中删除（仅在歌单详情里出现）→ 从“最喜欢的歌曲”中删除（仅 `track.loved` 时）→ 加入播放列表（`player.enqueueLast`）→ 下载 → 转至专辑（有 `albumUrn` 时）。
+**曲目**：加入歌单（子菜单：搜索框 → 新建歌单 → 全部歌单）→ 从此歌单中删除（仅在歌单详情里出现）→ 从“最喜欢的歌曲”中删除（仅 `track.loved` 时）→ 加入播放列表（`player.enqueueLast`）→ 下载 → 加入合集 → 转至专辑（有 `albumUrn` 时）→ 睡眠定时器。
 
-**歌单**：添加到音乐库（`library.setSaved`）→ 加入播放列表（整张入队）→ 下载（整张）→ 添加到歌单（子菜单，整张复制）。
+**歌单**：置顶歌单 / 取消置顶歌单（`toggle-pin`，传入 `onTogglePin` 时）→ 添加到音乐库（`library.setSaved`）→ 加入播放列表（整张入队）→ 下载（整张）→ 添加到歌单（子菜单，整张复制）→ 加入合集。
 
-**合集**：加入播放列表 / 下载 / 添加到歌单，作用于其**曲目成员**；没有“添加到音乐库”——合集只有 id、没有 URN。
+**合集**：置顶歌单 / 取消置顶歌单（同上）→ 加入播放列表 / 下载 / 添加到歌单，作用于其**曲目成员**；没有“添加到音乐库”——合集只有 id、没有 URN。
 
 ## 设计要点
 
@@ -43,4 +44,4 @@ useCollectionMenu(ctx)                  → { open(title, trackUrns, anchor?), m
 
 ## 测试（`src/index.test.tsx`）
 
-12 个用例：曲目条目的顺序、缺服务时条目消失、`remove-from-playlist` 只在歌单内出现、取消喜欢同时写 `track_stats` 与 `library_items`、入队/下载/转专辑的调用、子菜单的创建/选择/智能歌单禁用、歌单与合集条目、`useTrackMenu` 的 open/close 状态。
+23 个用例：曲目条目的顺序、缺服务时条目消失、`remove-from-playlist` 只在歌单内出现、取消喜欢同时写 `track_stats` 与 `library_items`、入队/下载/转专辑的调用、睡眠定时器预设与自定义时间解析/取消、子菜单的创建/选择/智能歌单禁用、歌单与合集条目、`useTrackMenu` 的 open/close 状态。
