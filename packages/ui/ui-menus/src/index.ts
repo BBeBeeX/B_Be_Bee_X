@@ -175,7 +175,7 @@ export function sleepTimerSubmenu(
     },
     {
       id: 'timer-end-of-track',
-      label: '当前曲目结束时',
+      label: '曲目结束时',
       onSelect: () => sleepTimer.startEndOfTrack(),
     },
   )
@@ -184,7 +184,10 @@ export function sleepTimerSubmenu(
     title: '睡眠定时器',
     create: {
       label: '自定义时间',
-      placeholder: '输入分钟数 (如 20)',
+      placeholder: '自定义时间 (单位: 分钟)',
+      alwaysVisible: true,
+      placement: 'bottom',
+      buttonLabel: '确定',
       onSelect: (val: string) => {
         const trimmed = val.trim()
         const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(trimmed)
@@ -315,7 +318,7 @@ export function trackMenuItems(
   if (sleepSubmenu) {
     items.push({
       id: 'sleep-timer',
-      label: '睡眠定时器',
+      label: sleepTimer?.state.active ? '睡眠定时器 (已开启)' : '睡眠定时器',
       icon: '⏱',
       submenu: sleepSubmenu,
     })

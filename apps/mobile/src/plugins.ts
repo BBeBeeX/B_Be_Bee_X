@@ -99,4 +99,5 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-history-ui-mobile': {},
   '@BBeBee/plugin-settings': {},
   '@BBeBee/plugin-settings-ui-mobile': {},
+  '@BBeBee/plugin-sleep-timer': {},
 }

@@ -238,6 +238,15 @@ describe('trackMenuItems', () => {
     expect(timerItem?.label).toBe('睡眠定时器')
     expect(timerItem?.submenu).toBeTruthy()
   })
+
+  it('shows (已开启) on sleep timer label when timer is active', async () => {
+    const h = await harness({ sleepTimer: true })
+    h.sleepTimer.startDuration(600_000)
+    const items = trackMenuItems(h.ctx, { track }, { playlists })
+    const timerItem = items.find((i) => i.id === 'sleep-timer')
+    expect(timerItem).toBeTruthy()
+    expect(timerItem?.label).toBe('睡眠定时器 (已开启)')
+  })
 })
 
 describe('the sleep-timer submenu', () => {
@@ -250,7 +259,10 @@ describe('the sleep-timer submenu', () => {
     const submenu = sleepTimerSubmenu(stub)
     expect(submenu?.title).toBe('睡眠定时器')
     expect(submenu?.create?.label).toBe('自定义时间')
-    expect(submenu?.create?.placeholder).toBe('输入分钟数 (如 20)')
+    expect(submenu?.create?.placeholder).toBe('自定义时间 (单位: 分钟)')
+    expect(submenu?.create?.alwaysVisible).toBe(true)
+    expect(submenu?.create?.placement).toBe('bottom')
+    expect(submenu?.create?.buttonLabel).toBe('确定')
     expect(submenu?.items.map((i) => i.label)).toEqual([
       '5 分钟',
       '10 分钟',
@@ -258,7 +270,7 @@ describe('the sleep-timer submenu', () => {
       '30 分钟',
       '45 分钟',
       '1 小时',
-      '当前曲目结束时',
+      '曲目结束时',
     ])
     expect(submenu?.items.some((i) => i.id === 'timer-cancel')).toBe(false)
   })

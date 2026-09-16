@@ -672,51 +672,67 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
               testID: 'context-menu-filter',
             })
           : null,
-        submenu.create
-          ? creating
-            ? h(
-                native.View as never,
-                {
-                  key: '__create-field',
-                  style: { flexDirection: 'row', alignItems: 'center', gap: tokens.space[2] },
-                },
+        ...(() => {
+          const isCreateBottom = submenu.create?.placement === 'bottom'
+          const createRow = submenu.create
+            ? creating || submenu.create.alwaysVisible
+              ? h(
+                  native.View as never,
+                  {
+                    key: '__create-field',
+                    style: {
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: tokens.space[2],
+                      borderTopWidth: isCreateBottom ? 1 : 0,
+                      borderTopColor: 'rgba(255, 255, 255, 0.08)',
+                      paddingTop: isCreateBottom ? tokens.space[2] : 0,
+                      marginTop: isCreateBottom ? tokens.space[1] : 0,
+                    },
+                  },
+                  h(
+                    native.View as never,
+                    { style: { flex: 1 } },
+                    h(TextField, {
+                      value: draft,
+                      onChange: setDraft,
+                      placeholder: submenu.create.placeholder,
+                      testID: 'context-menu-create-name',
+                    }),
+                  ),
+                  h(Button, {
+                    onPress: () => {
+                      const name = draft.trim()
+                      if (!name) return
+                      void submenu.create?.onSelect(name)
+                      close()
+                    },
+                    disabled: draft.trim().length === 0,
+                    testID: 'context-menu-create-confirm',
+                    children: submenu.create.buttonLabel ?? '确定',
+                  }),
+                )
+              : h(MenuRow, {
+                  key: '__create',
+                  item: { id: '__create', label: submenu.create.label, icon: '\uff0b' },
+                  onActivate: () => setCreating(true),
+                })
+            : null
+
+          const itemRows = visible.length === 0
+            ? [
                 h(
                   native.View as never,
-                  { style: { flex: 1 } },
-                  h(TextField, {
-                    value: draft,
-                    onChange: setDraft,
-                    placeholder: submenu.create.placeholder,
-                    testID: 'context-menu-create-name',
-                  }),
+                  { key: '__empty', style: { padding: tokens.space[3] } },
+                  h(Text, { variant: 'sm', tone: 'muted', children: submenu.emptyLabel ?? 'No matches' }),
                 ),
-                h(Button, {
-                  onPress: () => {
-                    const name = draft.trim()
-                    if (!name) return
-                    void submenu.create?.onSelect(name)
-                    close()
-                  },
-                  disabled: draft.trim().length === 0,
-                  testID: 'context-menu-create-confirm',
-                  children: 'OK',
-                }),
-              )
-            : h(MenuRow, {
-                key: '__create',
-                item: { id: '__create', label: submenu.create.label, icon: '\uff0b' },
-                onActivate: () => setCreating(true),
-              })
-          : null,
-        ...(visible.length === 0
-          ? [
-              h(
-                native.View as never,
-                { key: '__empty', style: { padding: tokens.space[3] } },
-                h(Text, { variant: 'sm', tone: 'muted', children: submenu.emptyLabel ?? 'No matches' }),
-              ),
-            ]
-          : visible.map((item) => h(MenuRow, { key: item.id, item, onActivate: activate }))),
+              ]
+            : visible.map((item) => h(MenuRow, { key: item.id, item, onActivate: activate }))
+
+          return isCreateBottom
+            ? [...itemRows, ...(createRow ? [createRow] : [])]
+            : [...(createRow ? [createRow] : []), ...itemRows]
+        })(),
       ]
     : props.items.map((item) => h(MenuRow, { key: item.id, item, onActivate: activate }))
 

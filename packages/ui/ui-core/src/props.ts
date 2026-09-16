@@ -93,6 +93,12 @@ export interface SubmenuSpec {
   create?: {
     label: string
     placeholder: string
+    /** When true, renders directly as an input field instead of requiring an expansion click. */
+    alwaysVisible?: boolean
+    /** Whether the create field sits above the list (default) or below it. */
+    placement?: 'top' | 'bottom'
+    /** Label for the confirm button (defaults to 'OK'). */
+    buttonLabel?: string
     onSelect: (name: string) => void | Promise<void>
   }
   items: readonly MenuItemSpec[]

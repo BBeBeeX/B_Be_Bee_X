@@ -14,9 +14,9 @@
  * component is at the wrong altitude.
  */
 
-import { createElement as h, useCallback, useEffect, useRef, useState } from 'react'
+import { createElement as h, Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import type { CSSProperties, ReactElement, ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent, ReactElement, ReactNode } from 'react'
 import { palettes, tokens, type Palette, type Scheme } from '@BBeBee/ui-tokens'
 import { identicon } from '@BBeBee/ui-core'
 import type {
@@ -775,51 +775,81 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
                 }),
               )
             : null,
-          submenu.create
-            ? creating
-              ? h(
-                  'div',
-                  {
-                    style: {
-                      display: 'flex',
-                      gap: tokens.space[2],
-                      padding: `${tokens.space[1]}px ${tokens.space[2]}px`,
+          (() => {
+            const isCreateBottom = submenu.create?.placement === 'bottom'
+            const createRow = submenu.create
+              ? creating || submenu.create.alwaysVisible
+                ? h(
+                    'div',
+                    {
+                      key: '__create-field',
+                      style: {
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: tokens.space[2],
+                        padding: `${tokens.space[2]}px ${tokens.space[2]}px`,
+                        borderTop: isCreateBottom ? `1px solid ${p.border.subtle}` : undefined,
+                        borderBottom: !isCreateBottom ? `1px solid ${p.border.subtle}` : undefined,
+                        marginTop: isCreateBottom ? tokens.space[1] : 0,
+                        marginBottom: !isCreateBottom ? tokens.space[1] : 0,
+                      },
+                      onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
+                        if (e.key === 'Enter') {
+                          e.stopPropagation()
+                          const name = draft.trim()
+                          if (!name) return
+                          void submenu.create?.onSelect(name)
+                          close()
+                        }
+                      },
                     },
-                  },
+                    h(
+                      'div',
+                      { style: { flex: 1, minWidth: 0 } },
+                      h(TextField, {
+                        value: draft,
+                        onChange: setDraft,
+                        placeholder: submenu.create.placeholder,
+                        testID: 'context-menu-create-name',
+                      }),
+                    ),
+                    h(Button, {
+                      onPress: () => {
+                        const name = draft.trim()
+                        if (!name) return
+                        void submenu.create?.onSelect(name)
+                        close()
+                      },
+                      disabled: draft.trim().length === 0,
+                      testID: 'context-menu-create-confirm',
+                      children: submenu.create.buttonLabel ?? '确定',
+                    }),
+                  )
+                : h(MenuRow, {
+                    key: '__create',
+                    item: { id: '__create', label: submenu.create.label, icon: '＋' },
+                    onActivate: () => setCreating(true),
+                  })
+              : null
+
+            const itemRows = visible.length === 0
+              ? [
                   h(
                     'div',
-                    { style: { flex: 1, minWidth: 0 } },
-                    h(TextField, {
-                      value: draft,
-                      onChange: setDraft,
-                      placeholder: submenu.create.placeholder,
-                      testID: 'context-menu-create-name',
-                    }),
+                    { key: '__empty', style: { padding: tokens.space[3] } },
+                    h(Text, { variant: 'sm', tone: 'muted', children: submenu.emptyLabel ?? 'No matches' }),
                   ),
-                  h(Button, {
-                    onPress: () => {
-                      const name = draft.trim()
-                      if (!name) return
-                      void submenu.create?.onSelect(name)
-                      close()
-                    },
-                    disabled: draft.trim().length === 0,
-                    testID: 'context-menu-create-confirm',
-                    children: 'OK',
-                  }),
-                )
-              : h(MenuRow, {
-                  item: { id: '__create', label: submenu.create.label, icon: '\uff0b' },
-                  onActivate: () => setCreating(true),
-                })
-            : null,
-          visible.length === 0
-            ? h(
-                'div',
-                { style: { padding: tokens.space[3] } },
-                h(Text, { variant: 'sm', tone: 'muted', children: submenu.emptyLabel ?? 'No matches' }),
-              )
-            : visible.map((item) => h(MenuRow, { key: item.id, item, onActivate: activate })),
+                ]
+              : visible.map((item) => h(MenuRow, { key: item.id, item, onActivate: activate }))
+
+            return h(
+              Fragment,
+              null,
+              !isCreateBottom ? createRow : null,
+              itemRows,
+              isCreateBottom ? createRow : null,
+            )
+          })(),
         )
       : null,
   )
