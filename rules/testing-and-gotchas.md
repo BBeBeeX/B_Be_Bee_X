@@ -31,6 +31,11 @@ Test conventions, common gotchas, and milestone status for BBeBee.
 | `@Inject` fails at runtime, compiles | Legacy decorator flags in tsconfig. Babel needs `{ version: '2023-11' }` |
 | A plugin sits in `PENDING` forever | An injected service never arrived. Check `ctx.inspector` or missing service key |
 | `app.start()` resolves but service not ready | Un-awaited `ctx.plugin()` in an apply function |
+| `TypeError: app.inject is not a function` | `createApp()` returns `App` (`{ ctx, start, ... }`). Use `app.ctx.inject(...)` |
+| `ReferenceError: process is not defined` | Vite/Electron renderer sandbox lacks Node globals. Guard with `typeof process !== 'undefined'` or use `window.BBeBee` / `ctx.device` |
+| `Type '() => boolean' not assignable to Destructor` | React 19 `useEffect` cleanup requires `void`. Wrap Cordis disposers: `return () => { off() }` |
+| `cannot get property "x" without inject` | Direct access to undeclared service on scoped context throws. Use `serviceOf<T>(ctx, key)` in UI components |
+| Window close leaves app running in background | Secondary windows (e.g. `lyricWindow`) keep loop active when `closeToTray: false`. Call `app.quit()` explicitly on main close |
 | Plugin still active after unload | Disposer returned through proxy was not wrapped in local closure |
 | `CapabilityError: … may not …` | Capability missing in manifest or unauthorized namespace. Widen manifest, never the gate |
 | `CapabilityError: host … not allowed` | Source rule accessed undeclared host. Add host to `allowedHosts` |

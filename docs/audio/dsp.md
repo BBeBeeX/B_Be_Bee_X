@@ -99,8 +99,9 @@ and gain returns. Without this, toggling or reordering an effect mid-playback cl
 
 Chain ordering, per-effect enabled states, and effect parameters are automatically persisted in `ctx.store`
 under the `'dsp'` namespace. Both desktop and mobile shells provide a dedicated DSP chain editor
-(`@BBeBee/plugin-dsp-ui-*`, registering `dsp.view` and `settings.dsp`) and direct in-settings controls
-(`@BBeBee/plugin-settings-ui-*`) for the core EQ, Normalize, Compressor, and Reverb effects.
+(`@BBeBee/plugin-dsp-ui-*`, registering `dsp.view`). To avoid redundant UI controls and keep the settings center clean,
+the dedicated DSP panel is opened as a distinct page (`dsp.view`) via an action button in the playback settings section,
+rather than embedding a duplicate DSP section inside the main settings page.
 
 ### Built-in effects
 

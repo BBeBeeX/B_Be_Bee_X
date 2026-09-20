@@ -66,5 +66,14 @@ export interface LogTransport {
 > the test screen's trace ([06 §10](../sources/authoring.md#10-diagnosing-a-broken-source)) exists
 > to be copied into a forum thread — so the same redactor runs over traces, not only over logs.
 
+### In-App Diagnostic Views
+
+The desktop diagnostic center (`@BBeBee/plugin-settings-ui-desktop`) exposes real-time telemetry surfaces:
+
+1. **Discover System Logs (`debug.logs`)**:
+   Reads directly from `ctx.logBuffer`. Provides live stream inspection, log level filtering (`ALL`, `DEBUG`, `INFO`, `WARN`, `ERROR`), substring search, clipboard export as NDJSON, and one-click buffer clearing.
+2. **HTTP Logs (`debug.http-logs`)**:
+   Monitors outgoing HTTP requests emitted by third-party music sources and background tasks. The core HTTP client (`core-http-node`) formats traces as `[HTTP] ${method} ${url} -> ${status} (${durationMs}ms)`, which the view parses into structured records with method badges, HTTP status codes, latency in milliseconds, and destination URLs.
+
 ---
 

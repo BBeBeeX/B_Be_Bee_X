@@ -85,3 +85,33 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 - Artwork renders `blurhash` first, then falls back to `artworks.dominant_color`.
 - If no cover exists, generate a GitHub-style square identicon from entity URN (`identicon()` in `ui-core`).
 - Cache integration: Covers resolve through `ctx.cache` (`useResolvedArtwork` in `@BBeBee/plugin-cache/hooks`).
+
+---
+
+## 5. Desktop Settings Center & Diagnostics Specifications
+
+### Layout & Navigation Principles
+- **Single-page vertical scrolling**: All setting categories reside simultaneously in the DOM tree, browsed via natural window scrolling. Avoid nested scroll containers inside sections.
+- **Text-only tab bar**: Header tab bar contains pure text labels (no icons), providing smooth anchor jumping via `scrollIntoView({ behavior: 'smooth' })`.
+- **Card-level hierarchy**: Use muted translucent backgrounds (`rgba(255, 255, 255, 0.03)`) for section cards with generous whitespace, rather than wrapping individual setting rows into isolated cards.
+- **Consistent row components**:
+  - `Boolean` → `Switch`
+  - `Enum` → `Select` dropdown
+  - `Number` → `Slider`
+  - `Text` → `Input`
+  - `Action` → `Button`
+  - `Nested/Expanded` → Chevron expandable row
+
+### Dedicated Domains in Settings
+- **General & Language**: Language selector; minimize to system tray on window close (`closeToTray`). (Theme selection is omitted on desktop to preserve the immersive dark streaming look).
+- **Playback & Audio**: Crossfade, gapless playback, pause on unplug, and an action button to open the dedicated DSP Equalizer view (`dsp.view`).
+- **Desktop Lyrics**: Master enable switch, position persistence (`{ x, y }`), locked click-through toggle, single/double line mode, left/center/right alignment, custom font family and size (16–48px), color palette with hex input, opacity (0.2–1.0), live floating preview card, and strict 4-step startup lifecycle (1. check enabled → 2. restore position → 3. push settings & data → 4. show window).
+- **Global Hotkeys**: Master toggle (enabled by default) and 10 standard media/navigation bindings (`togglePlay`, `prev`, `next`, `volumeUp`, `volumeDown`, `seekForward`, `seekBackward`, `toggleLyrics`, `toggleApp`, `favorite`), backed by `ctx.device.registerHotkey`.
+- **Network & Proxy**: Master toggle, protocol (HTTP/HTTPS/SOCKS5), host/port, latency probe button targeting Google (`https://www.google.com/generate_204`), and per-source proxy bypass switches embedded directly within the proxy card.
+- **Storage & Cache**: Download and Cache directories with path badges, native folder picker (`dialog.pickDirectory`), and directory opener (`shell.openPath`).
+- **About & Danger Zone**: App metadata, followed by an "Advanced Settings" checkbox-style toggle button that guards the Danger Zone (settings reset and navigation to `debug.view`).
+
+### Diagnostics System
+- `debug.view`: Debug mode indicator, environment specs (Node, Electron, OS, Chromium, paths), and quick links to log screens.
+- `debug.logs`: Discover live ring-buffer logs (`ctx.logBuffer`) with level filters, search, and NDJSON export.
+- `debug.http-logs`: Outgoing HTTP requests from third-party music sources, detailing method, status code, latency, and URL.

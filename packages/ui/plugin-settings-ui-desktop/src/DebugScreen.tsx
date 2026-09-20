@@ -10,20 +10,18 @@ import { serviceOf } from '@BBeBee/ui-core'
 import type { UiService, DeviceService } from '@BBeBee/protocol'
 import { Button } from '@BBeBee/ui-kit-desktop'
 
-declare global {
-  interface Window {
-    BBeBee?: {
-      platform?: string
-      versions?: { electron?: string; node?: string }
-      isDebug?: boolean
-    }
+interface WindowWithBBeBee {
+  BBeBee?: {
+    platform?: string
+    versions?: { electron?: string; node?: string }
+    isDebug?: boolean
   }
 }
 
 export function DebugScreen({ ctx }: { ctx: Context }): ReactElement {
   const ui = serviceOf<UiService>(ctx, 'ui')
   const device = serviceOf<DeviceService>(ctx, 'device')
-  const bbebee = typeof window !== 'undefined' ? window.BBeBee : undefined
+  const bbebee = typeof window !== 'undefined' ? (window as unknown as WindowWithBBeBee).BBeBee : undefined
   const nodeProc = typeof process !== 'undefined' ? process : undefined
 
   const [platformInfo, setPlatformInfo] = useState(() => ({

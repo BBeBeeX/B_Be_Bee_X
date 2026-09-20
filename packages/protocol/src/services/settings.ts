@@ -6,8 +6,15 @@
 // resolves. Erased at build time; this adds no runtime import.
 import type {} from 'cordis'
 import type { Disposable } from '../common.js'
+import type { DesktopLyricsPosition } from './lyrics.js'
 
 export interface DesktopLyricsSettings {
+  /** Whether desktop lyrics is currently enabled/visible. Default is false. */
+  enabled?: boolean
+  /** Saved screen position (x, y coordinates). */
+  position?: DesktopLyricsPosition
+  /** Whether lyrics window mouse penetration is locked. */
+  locked?: boolean
   /** Line display mode: single line or double line. */
   lineMode: 'single' | 'double'
   /** Horizontal alignment: center, left, or right. */
@@ -89,6 +96,9 @@ export interface AppSettings {
 }
 
 export const DEFAULT_DESKTOP_LYRICS_SETTINGS: DesktopLyricsSettings = {
+  enabled: false,
+  position: { x: -1, y: -1 },
+  locked: false,
   lineMode: 'double',
   align: 'center',
   fontFamily: 'system-ui',

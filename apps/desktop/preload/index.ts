@@ -53,8 +53,19 @@ const api = {
       ipcRenderer.invoke('stream:set-headers', entry),
   },
   desktopLyrics: {
-    setVisible: (visible: boolean): Promise<void> =>
-      ipcRenderer.invoke('desktop-lyrics:set-visible', visible),
+    setVisible: (visible: boolean, pos?: { x: number; y: number }): Promise<void> =>
+      ipcRenderer.invoke('desktop-lyrics:set-visible', visible, pos),
+    setPosition: (pos: { x: number; y: number }): Promise<void> =>
+      ipcRenderer.invoke('desktop-lyrics:set-position', pos),
+    getPosition: (): Promise<{ x: number; y: number } | undefined> =>
+      ipcRenderer.invoke('desktop-lyrics:get-position'),
+    onMoved: (callback: (pos: { x: number; y: number }) => void): (() => void) => {
+      const listener = (_event: unknown, pos: { x: number; y: number }) => callback(pos)
+      ipcRenderer.on('desktop-lyrics:moved', listener)
+      return () => {
+        ipcRenderer.removeListener('desktop-lyrics:moved', listener)
+      }
+    },
     setLocked: (locked: boolean): Promise<void> =>
       ipcRenderer.invoke('desktop-lyrics:set-locked', locked),
     updateData: (data: unknown): Promise<void> =>

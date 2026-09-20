@@ -8,11 +8,11 @@ import { serviceOf, useServiceState } from '@BBeBee/ui-core'
 import type { DesktopLyricsPosition, DesktopLyricsService, DesktopLyricsState } from '@BBeBee/protocol'
 
 const DEFAULT_STATE: DesktopLyricsState = {
-  visible: true,
+  visible: false,
   showNextLine: true,
-  fontSize: 22,
+  fontSize: 24,
   opacity: 0.92,
-  position: { x: 0, y: 0 },
+  position: { x: -1, y: -1 },
   locked: false,
 }
 

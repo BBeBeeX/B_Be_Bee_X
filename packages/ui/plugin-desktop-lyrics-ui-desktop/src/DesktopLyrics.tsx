@@ -30,7 +30,10 @@ interface DesktopLyricsActionPayload {
 interface WindowWithBridge {
   BBeBee?: {
     desktopLyrics?: {
-      setVisible(visible: boolean): Promise<void>
+      setVisible(visible: boolean, pos?: { x: number; y: number }): Promise<void>
+      setPosition(pos: { x: number; y: number }): Promise<void>
+      getPosition(): Promise<{ x: number; y: number } | undefined>
+      onMoved(callback: (pos: { x: number; y: number }) => void): () => void
       setLocked(locked: boolean): Promise<void>
       updateData(data: unknown): Promise<void>
       sendAction(action: unknown): Promise<void>
@@ -84,6 +87,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
   const effectiveFontFamily = lyricsConfig?.fontFamily ?? 'system-ui'
   const effectiveTextColor = lyricsConfig?.textColor ?? '#FFFFFF'
   const isSingleLine = lyricsConfig?.lineMode === 'single'
+  const isEnabled = visible
 
   const { status, currentLine, nextLine, title, artist, isPlaying } = useCurrentLyric(ctx)
   const [hovered, setHovered] = useState(false)
@@ -95,47 +99,62 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
       : undefined
   const hasNativeBridge = Boolean(bridge)
 
+  // 严格执行启动与数据同步时序：
+  // 1. 先看是否打开歌词；
+  // 2. 若打开，再看桌面歌词所在位置并移动；
+  // 3. 再看设置中的桌面歌词设置（字号、对齐、字体、颜色、透明度、锁定）并推入窗口；
+  // 4. 再显示桌面歌词。
   useEffect(() => {
     if (!hasNativeBridge || !bridge) return
 
-    // 1. Sync visibility
-    void bridge.setVisible(visible)
-    // 2. Sync lock state
-    void bridge.setLocked(locked)
-
-    // 3. Sync data
-    if (visible) {
-      let lineText = currentLine?.text
-      if (!lineText) {
-        if (status === 'loading-song' || status === 'loading-lyrics') {
-          lineText = '歌词加载中…'
-        } else if (title) {
-          lineText = `${title}${artist ? ` - ${artist}` : ''}`
-        } else {
-          lineText = 'BBeBee 音乐'
-        }
-      }
-
-      void bridge.updateData({
-        currentLine: lineText,
-        nextLine: !isSingleLine && showNextLine && nextLine ? nextLine.text : undefined,
-        fontSize: effectiveFontSize,
-        opacity: effectiveOpacity,
-        locked,
-        playing: isPlaying,
-        title,
-        artist,
-        align: effectiveAlign,
-        fontFamily: effectiveFontFamily,
-        textColor: effectiveTextColor,
-        lineMode: lyricsConfig?.lineMode ?? (showNextLine ? 'double' : 'single'),
-      })
+    // 1. 先看是否打开歌词
+    if (!isEnabled) {
+      void bridge.setVisible(false)
+      return
     }
+
+    // 2. 再看桌面歌词所在位置
+    const savedPos = lyricsConfig?.position ?? position
+    if (savedPos && savedPos.x >= 0 && savedPos.y >= 0) {
+      void bridge.setPosition(savedPos)
+    }
+
+    // 3. 再看设置中的桌面歌词设置
+    let lineText = currentLine?.text
+    if (!lineText) {
+      if (status === 'loading-song' || status === 'loading-lyrics') {
+        lineText = '歌词加载中…'
+      } else if (title) {
+        lineText = `${title}${artist ? ` - ${artist}` : ''}`
+      } else {
+        lineText = 'BBeBee 音乐'
+      }
+    }
+
+    void bridge.updateData({
+      currentLine: lineText,
+      nextLine: !isSingleLine && showNextLine && nextLine ? nextLine.text : undefined,
+      fontSize: effectiveFontSize,
+      opacity: effectiveOpacity,
+      locked: lyricsConfig?.locked ?? locked,
+      playing: isPlaying,
+      title,
+      artist,
+      align: effectiveAlign,
+      fontFamily: effectiveFontFamily,
+      textColor: effectiveTextColor,
+      lineMode: lyricsConfig?.lineMode ?? (showNextLine ? 'double' : 'single'),
+    })
+    void bridge.setLocked(lyricsConfig?.locked ?? locked)
+
+    // 4. 再显示桌面歌词
+    void bridge.setVisible(true, savedPos)
   }, [
     hasNativeBridge,
     bridge,
-    visible,
+    isEnabled,
     locked,
+    lyricsConfig?.locked,
     currentLine?.text,
     nextLine?.text,
     showNextLine,
@@ -146,11 +165,36 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
     effectiveTextColor,
     isSingleLine,
     lyricsConfig?.lineMode,
+    lyricsConfig?.position,
     isPlaying,
     title,
     artist,
     status,
   ])
+
+  // 监听原生窗口拖拽位置移动并实时保存至设置
+  useEffect(() => {
+    if (!hasNativeBridge || !bridge?.onMoved) return
+
+    const off = bridge.onMoved((pos: { x: number; y: number }) => {
+      setPosition(pos)
+      const settingsService = serviceOf<SettingsService>(ctx, 'settings')
+      if (settingsService) {
+        void settingsService.get().then((current) => {
+          void settingsService.update({
+            desktopLyrics: {
+              ...current.desktopLyrics,
+              position: pos,
+            },
+          })
+        })
+      }
+    })
+
+    return () => {
+      off()
+    }
+  }, [hasNativeBridge, bridge, setPosition, ctx])
 
   // Handle actions sent from the native desktop lyrics window
   useEffect(() => {
@@ -158,8 +202,20 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
 
     const off = bridge.onAction((rawAction: unknown) => {
       const action = rawAction as DesktopLyricsActionPayload
+      const settingsService = serviceOf<SettingsService>(ctx, 'settings')
       if (action.type === 'toggle-lock') {
-        setLocked(!locked)
+        const nextLocked = !locked
+        setLocked(nextLocked)
+        if (settingsService) {
+          void settingsService.get().then((current) => {
+            void settingsService.update({
+              desktopLyrics: {
+                ...current.desktopLyrics,
+                locked: nextLocked,
+              },
+            })
+          })
+        }
       } else if (action.type === 'toggle-play') {
         ctx.player?.togglePlay?.()
       } else if (action.type === 'next-track') {
@@ -167,16 +223,37 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
       } else if (action.type === 'prev-track') {
         void ctx.player?.previous?.()
       } else if (action.type === 'set-font-size' && typeof action.size === 'number') {
-        setFontSize(action.size)
+        const newSize = action.size
+        setFontSize(newSize)
+        if (settingsService) {
+          void settingsService.get().then((current) => {
+            void settingsService.update({
+              desktopLyrics: {
+                ...current.desktopLyrics,
+                fontSize: newSize,
+              },
+            })
+          })
+        }
       } else if (action.type === 'close') {
         setVisible(false)
+        if (settingsService) {
+          void settingsService.get().then((current) => {
+            void settingsService.update({
+              desktopLyrics: {
+                ...current.desktopLyrics,
+                enabled: false,
+              },
+            })
+          })
+        }
       }
     })
 
     return () => {
       off()
     }
-  }, [hasNativeBridge, bridge, locked, setLocked, setFontSize, setVisible, ctx.player])
+  }, [hasNativeBridge, bridge, locked, setLocked, setFontSize, setVisible, ctx.player, ctx])
 
   if (hasNativeBridge) {
     return null
@@ -210,13 +287,24 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
       isDragging.current = false
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
+      const settingsService = serviceOf<SettingsService>(ctx, 'settings')
+      if (settingsService) {
+        void settingsService.get().then((current) => {
+          void settingsService.update({
+            desktopLyrics: {
+              ...current.desktopLyrics,
+              position,
+            },
+          })
+        })
+      }
     }
 
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
   }
 
-  if (!visible) return null
+  if (!isEnabled) return null
 
   // Determine displayText
   let displayText = currentLine?.text

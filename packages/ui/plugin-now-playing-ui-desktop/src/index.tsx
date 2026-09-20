@@ -14,7 +14,12 @@
 import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { DesktopLyricsService, PlayMode } from '@BBeBee/protocol'
+import type {
+  DesktopLyricsService,
+  DesktopLyricsSettings,
+  PlayMode,
+  SettingsService,
+} from '@BBeBee/protocol'
 import { formatDuration } from '@BBeBee/toolkit'
 import { NOW_PLAYING_VIEWS } from '@BBeBee/plugin-now-playing/views'
 import {
@@ -32,12 +37,18 @@ const p = () => palettes.dark
 
 /**
  * Toggle button for floating desktop lyrics.
+ * Synchronized bidirectionally with ctx.desktopLyrics and ctx.settings.
  */
 function DesktopLyricsToggle({ ctx }: { ctx: Context }): ReactElement {
   const isVisible = useServiceState<boolean>(
     ctx,
-    ['desktop-lyrics/changed'],
-    () => serviceOf<DesktopLyricsService>(ctx, 'desktopLyrics')?.state.visible ?? false,
+    ['desktop-lyrics/changed', 'settings/changed'],
+    () => {
+      const dl = serviceOf<DesktopLyricsService>(ctx, 'desktopLyrics')
+      if (dl) return dl.state.visible
+      const settings = serviceOf<SettingsService>(ctx, 'settings')
+      return settings?.getSync()?.desktopLyrics?.enabled ?? false
+    },
   )
 
   const handleToggle = () => {
@@ -45,6 +56,16 @@ function DesktopLyricsToggle({ ctx }: { ctx: Context }): ReactElement {
     if (service) {
       service.toggleVisible()
     } else {
+      const settings = serviceOf<SettingsService>(ctx, 'settings')
+      if (settings) {
+        const cur = settings.getSync()?.desktopLyrics
+        void settings.update({
+          desktopLyrics: {
+            ...cur,
+            enabled: !(cur?.enabled ?? false),
+          } as DesktopLyricsSettings,
+        })
+      }
       void ctx.ui?.runCommand?.('desktop-lyrics.toggle')
     }
   }

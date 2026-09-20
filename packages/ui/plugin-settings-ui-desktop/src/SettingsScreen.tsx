@@ -6,7 +6,7 @@
 import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import { serviceOf } from '@BBeBee/ui-core'
+import { serviceOf, useServiceState } from '@BBeBee/ui-core'
 import type {
   DesktopLyricsSettings,
   GlobalShortcutsSettings,
@@ -18,6 +18,7 @@ import type {
   DesktopLyricsService,
   PathsService,
   UiService,
+  SettingsService,
 } from '@BBeBee/protocol'
 import {
   DEFAULT_DESKTOP_LYRICS_SETTINGS,
@@ -162,10 +163,23 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
     }
   }, [settings.theme])
 
+  // Desktop lyrics visibility synchronized with both desktopLyrics service and settings
+  const isDesktopLyricsVisible = useServiceState<boolean>(
+    ctx,
+    ['desktop-lyrics/changed', 'settings/changed'],
+    () => {
+      const dl = serviceOf<DesktopLyricsService>(ctx, 'desktopLyrics')
+      if (dl) return dl.state.visible
+      const s = serviceOf<SettingsService>(ctx, 'settings')
+      return s?.getSync()?.desktopLyrics?.enabled ?? settings.desktopLyrics?.enabled ?? false
+    },
+  )
+
   // Safe configurations with fallback defaults
   const desktopLyrics: DesktopLyricsSettings = {
     ...DEFAULT_DESKTOP_LYRICS_SETTINGS,
     ...(settings.desktopLyrics ?? {}),
+    enabled: isDesktopLyricsVisible,
   }
 
   const shortcuts: GlobalShortcutsSettings = {
@@ -227,7 +241,20 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
     })
     register(kb.toggleLyrics, () => {
       const dl = serviceOf<DesktopLyricsService>(ctx, 'desktopLyrics')
-      dl?.toggleVisible?.()
+      if (dl) {
+        dl.toggleVisible()
+      } else {
+        const s = serviceOf<SettingsService>(ctx, 'settings')
+        if (s) {
+          const cur = s.getSync()?.desktopLyrics
+          void s.update({
+            desktopLyrics: {
+              ...cur,
+              enabled: !(cur?.enabled ?? false),
+            } as DesktopLyricsSettings,
+          })
+        }
+      }
     })
     register(kb.toggleWindow, () => {
       const bridge = (
@@ -887,6 +914,19 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             title: '桌面歌词设置',
             description: '配置悬浮桌面歌词的显示行数、对齐、字体、字号、颜色及透明度',
           },
+          h(SettingsRow, {
+            title: '开启桌面歌词',
+            description: '在屏幕最上层显示悬浮桌面歌词窗口',
+            action: h(Switch, {
+              checked: isDesktopLyricsVisible,
+              accessibilityLabel: '开启桌面歌词',
+              onChange: (enabled) => {
+                void update({ desktopLyrics: { ...desktopLyrics, enabled } })
+                const dl = serviceOf<DesktopLyricsService>(ctx, 'desktopLyrics')
+                dl?.setVisible?.(enabled)
+              },
+            }),
+          }),
           h(SettingsRow, {
             title: '歌词显示行数',
             description: '选择同时显示当前歌词与下一句歌词，或仅显示单行',

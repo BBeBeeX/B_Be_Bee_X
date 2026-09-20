@@ -20,6 +20,10 @@ function mergeSettings(base: AppSettings, patch?: Partial<AppSettings>): AppSett
     desktopLyrics: {
       ...base.desktopLyrics,
       ...(patch.desktopLyrics ?? {}),
+      position: {
+        ...(base.desktopLyrics?.position ?? { x: -1, y: -1 }),
+        ...(patch.desktopLyrics?.position ?? {}),
+      },
     },
     shortcuts: {
       ...base.shortcuts,

@@ -13,6 +13,7 @@ class PlayerStub extends Service {
     muted: false,
     repeat: 'off',
     shuffle: false,
+    playMode: 'sequence',
   }
 
   constructor(ctx: Context) {
@@ -38,8 +39,11 @@ describe('plugin-desktop-lyrics', () => {
     expect(typeof apply).toBe('function')
   })
 
-  it('manages visibility state', async () => {
+  it('manages visibility state (default false until opened)', async () => {
     const { ctx } = await createHarness()
+    expect(ctx.desktopLyrics.state.visible).toBe(false)
+
+    ctx.desktopLyrics.toggleVisible()
     expect(ctx.desktopLyrics.state.visible).toBe(true)
 
     ctx.desktopLyrics.toggleVisible()

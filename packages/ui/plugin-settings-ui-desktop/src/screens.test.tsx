@@ -444,12 +444,21 @@ describe('SettingsScreen', () => {
     const { container, getByText } = render(h(SettingsScreen, { ctx }))
 
     expect(getByText('桌面歌词设置')).toBeTruthy()
+    expect(getByText('开启桌面歌词')).toBeTruthy()
     expect(getByText('歌词显示行数')).toBeTruthy()
     expect(getByText('文本对齐方式')).toBeTruthy()
     expect(getByText('歌词字体')).toBeTruthy()
     expect(getByText('歌词字号')).toBeTruthy()
     expect(getByText('歌词高亮颜色')).toBeTruthy()
     expect(getByText('文字透明度')).toBeTruthy()
+
+    // Toggle 开启桌面歌词 switch
+    const lyricsSwitch = container.querySelector('button[aria-label="开启桌面歌词"]') as HTMLButtonElement
+    expect(lyricsSwitch).toBeTruthy()
+    fireEvent.click(lyricsSwitch)
+    await waitFor(() => {
+      expect(calls.some((c) => c.includes('"enabled":true'))).toBe(true)
+    })
 
     // Live preview box is present
     const preview = container.querySelector('[data-testid="desktop-lyrics-preview"]')

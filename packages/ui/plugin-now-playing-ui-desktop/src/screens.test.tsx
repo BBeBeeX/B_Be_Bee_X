@@ -205,6 +205,32 @@ describe('NowPlayingBar', () => {
     expect(out).toContain('词')
   })
 
+  it('synchronizes desktop lyrics toggle state with desktopLyrics service and settings', async () => {
+    class DesktopLyricsStub extends Service {
+      public state = {
+        visible: true,
+        fontSize: 24,
+        opacity: 1,
+        showNextLine: true,
+        position: { x: -1, y: -1 },
+        locked: false,
+      }
+      constructor(c: Context) {
+        super(c, 'desktopLyrics')
+      }
+      toggleVisible() {
+        this.state.visible = !this.state.visible
+        this.ctx.emit('desktop-lyrics/changed', this.state)
+      }
+    }
+
+    const { ctx } = await harness({ status: 'playing' })
+    await ctx.plugin(DesktopLyricsStub)
+
+    const out = html(h(NowPlayingBar, { ctx }))
+    expect(out).toContain('aria-label="隐藏桌面歌词"')
+  })
+
   it('places play mode button to the left of previous track and volume control to the right of next track', async () => {
     const { ctx } = await harness({ status: 'playing', playMode: 'sequence' })
     const out = html(h(NowPlayingBar, { ctx }))

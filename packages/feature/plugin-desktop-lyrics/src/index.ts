@@ -4,22 +4,27 @@
 
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
-import type {} from '@BBeBee/protocol'
-import type { DesktopLyricsPosition, DesktopLyricsState } from '@BBeBee/protocol'
+import type {
+  DesktopLyricsPosition,
+  DesktopLyricsService as IDesktopLyricsService,
+  DesktopLyricsState,
+  SettingsService,
+} from '@BBeBee/protocol'
 
 export type { DesktopLyricsPosition, DesktopLyricsState }
 
-export class DesktopLyricsService extends Service {
+export class DesktopLyricsService extends Service implements IDesktopLyricsService {
   static inject = []
 
   private readonly ownCtx: Context
+  private settingsService?: SettingsService
 
   private currentState: DesktopLyricsState = {
-    visible: true,
+    visible: false,
     showNextLine: true,
-    fontSize: 22,
+    fontSize: 24,
     opacity: 0.92,
-    position: { x: 0, y: 0 },
+    position: { x: -1, y: -1 },
     locked: false,
   }
 
@@ -30,6 +35,51 @@ export class DesktopLyricsService extends Service {
 
   async [Service.init]() {
     this.ownCtx.logger.info('plugin-desktop-lyrics: initialized')
+
+    const initialSettings = this.getSettings()
+    if (initialSettings) {
+      try {
+        const s = initialSettings.getSync()
+        if (s?.desktopLyrics) {
+          this.update({
+            visible: s.desktopLyrics.enabled ?? false,
+            position: s.desktopLyrics.position ?? { x: -1, y: -1 },
+            locked: s.desktopLyrics.locked ?? false,
+            fontSize: s.desktopLyrics.fontSize ?? this.currentState.fontSize,
+            opacity: s.desktopLyrics.opacity ?? this.currentState.opacity,
+          })
+        }
+      } catch {
+        // ignore if not loaded synchronously
+      }
+    }
+
+    // Bind settings service if available
+    this.ownCtx.inject(['settings'], (scoped: Context) => {
+      this.settingsService = scoped.settings
+      void scoped.settings.get().then((s) => {
+        if (s?.desktopLyrics) {
+          this.update({
+            visible: s.desktopLyrics.enabled ?? false,
+            position: s.desktopLyrics.position ?? { x: -1, y: -1 },
+            locked: s.desktopLyrics.locked ?? false,
+            fontSize: s.desktopLyrics.fontSize ?? this.currentState.fontSize,
+            opacity: s.desktopLyrics.opacity ?? this.currentState.opacity,
+          })
+        }
+      })
+      scoped.on('settings/changed', (s) => {
+        if (s?.desktopLyrics) {
+          this.update({
+            visible: s.desktopLyrics.enabled ?? this.currentState.visible,
+            position: s.desktopLyrics.position ?? this.currentState.position,
+            locked: s.desktopLyrics.locked ?? this.currentState.locked,
+            fontSize: s.desktopLyrics.fontSize ?? this.currentState.fontSize,
+            opacity: s.desktopLyrics.opacity ?? this.currentState.opacity,
+          })
+        }
+      })
+    })
 
     // Contribute commands via ctx.ui if available
     const toggle = () => this.toggleVisible()
@@ -59,12 +109,49 @@ export class DesktopLyricsService extends Service {
     this.ownCtx.emit('desktop-lyrics/changed', this.currentState)
   }
 
+  private getSettings(): SettingsService | undefined {
+    return (
+      this.settingsService ??
+      ((this.ownCtx as unknown as { reflect?: { get(key: string, required: boolean): unknown } })
+        .reflect?.get?.('settings', false) as SettingsService | undefined)
+    )
+  }
+
+  private persistToSettings(patch: {
+    enabled?: boolean
+    position?: DesktopLyricsPosition
+    locked?: boolean
+  }): void {
+    const settings = this.getSettings()
+    if (!settings) return
+    void settings.get().then((current) => {
+      void settings.update({
+        desktopLyrics: {
+          ...current.desktopLyrics,
+          ...patch,
+        },
+      })
+    })
+  }
+
+  setState(partial: Partial<DesktopLyricsState>): void {
+    this.update(partial)
+    const patch: { enabled?: boolean; position?: DesktopLyricsPosition; locked?: boolean } = {}
+    if (partial.visible !== undefined) patch.enabled = partial.visible
+    if (partial.position !== undefined) patch.position = partial.position
+    if (partial.locked !== undefined) patch.locked = partial.locked
+    if (Object.keys(patch).length > 0) {
+      this.persistToSettings(patch)
+    }
+  }
+
   toggleVisible(): void {
     this.setVisible(!this.currentState.visible)
   }
 
   setVisible(visible: boolean): void {
     this.update({ visible })
+    this.persistToSettings({ enabled: visible })
   }
 
   setShowNextLine(showNextLine: boolean): void {
@@ -83,10 +170,12 @@ export class DesktopLyricsService extends Service {
 
   setPosition(position: DesktopLyricsPosition): void {
     this.update({ position })
+    this.persistToSettings({ position })
   }
 
   setLocked(locked: boolean): void {
     this.update({ locked })
+    this.persistToSettings({ locked })
   }
 }
 

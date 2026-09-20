@@ -25,6 +25,7 @@ import {
   Tray,
   Menu,
   session,
+  screen,
 } from 'electron'
 import { createHost, type Host } from '@BBeBee/core-desktop-bridge/main'
 import {
@@ -149,14 +150,52 @@ function createWindow(): BrowserWindow {
   return window
 }
 
+function clampToVisibleScreen(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  try {
+    const display = screen.getDisplayMatching({ x, y, width, height })
+    const { workArea } = display
+    const clampedX = Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - width))
+    const clampedY = Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - height))
+    return { x: clampedX, y: clampedY }
+  } catch {
+    return { x, y }
+  }
+}
+
 let lyricWindow: BrowserWindow | undefined
 
-function createLyricWindow(): BrowserWindow {
+function createLyricWindow(pos?: { x?: number; y?: number }): BrowserWindow {
+  const windowWidth = 860
+  const windowHeight = 140
+
+  let initialX: number | undefined
+  let initialY: number | undefined
+
+  if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' && pos.x >= 0 && pos.y >= 0) {
+    const clamped = clampToVisibleScreen(pos.x, pos.y, windowWidth, windowHeight)
+    initialX = clamped.x
+    initialY = clamped.y
+  } else {
+    try {
+      const primary = screen.getPrimaryDisplay()
+      initialX = Math.round(primary.workArea.x + (primary.workArea.width - windowWidth) / 2)
+      initialY = Math.round(primary.workArea.y + primary.workArea.height - windowHeight - 40)
+    } catch {
+      // let electron pick default
+    }
+  }
+
   const window = new BrowserWindow({
-    width: 860,
-    height: 140,
+    width: windowWidth,
+    height: windowHeight,
     minWidth: 400,
     minHeight: 80,
+    ...(initialX !== undefined && initialY !== undefined ? { x: initialX, y: initialY } : {}),
     backgroundColor: '#00000000',
     transparent: true,
     frame: false,
@@ -164,6 +203,7 @@ function createLyricWindow(): BrowserWindow {
     skipTaskbar: true,
     resizable: true,
     hasShadow: false,
+    show: false,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -187,7 +227,20 @@ function createLyricWindow(): BrowserWindow {
     })
   }
 
+  let moveTimer: NodeJS.Timeout | undefined
+  window.on('moved', () => {
+    if (moveTimer) clearTimeout(moveTimer)
+    moveTimer = setTimeout(() => {
+      if (window.isDestroyed()) return
+      const [x, y] = window.getPosition()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('desktop-lyrics:moved', { x, y })
+      }
+    }, 150)
+  })
+
   window.on('closed', () => {
+    if (moveTimer) clearTimeout(moveTimer)
     if (lyricWindow === window) lyricWindow = undefined
   })
 
@@ -405,17 +458,48 @@ function registerHandlers(): void {
     await session.defaultSession.setProxy({ proxyRules: proxyRule })
   })
 
-  ipcMain.handle('desktop-lyrics:set-visible', (_event, visible: boolean) => {
-    if (visible) {
-      if (!lyricWindow || lyricWindow.isDestroyed()) {
-        lyricWindow = createLyricWindow()
+  ipcMain.handle(
+    'desktop-lyrics:set-visible',
+    (_event, visible: boolean, position?: { x: number; y: number }) => {
+      if (visible) {
+        if (!lyricWindow || lyricWindow.isDestroyed()) {
+          lyricWindow = createLyricWindow(position)
+        } else if (
+          position &&
+          typeof position.x === 'number' &&
+          typeof position.y === 'number' &&
+          position.x >= 0 &&
+          position.y >= 0
+        ) {
+          const clamped = clampToVisibleScreen(position.x, position.y, 860, 140)
+          lyricWindow.setPosition(clamped.x, clamped.y)
+        }
+        lyricWindow.showInactive()
+      } else {
+        if (lyricWindow && !lyricWindow.isDestroyed()) {
+          lyricWindow.hide()
+        }
       }
-      lyricWindow.showInactive()
-    } else {
-      if (lyricWindow && !lyricWindow.isDestroyed()) {
-        lyricWindow.hide()
+    },
+  )
+
+  ipcMain.handle('desktop-lyrics:set-position', (_event, position: { x: number; y: number }) => {
+    if (position && typeof position.x === 'number' && typeof position.y === 'number') {
+      const clamped = clampToVisibleScreen(position.x, position.y, 860, 140)
+      if (!lyricWindow || lyricWindow.isDestroyed()) {
+        lyricWindow = createLyricWindow(clamped)
+      } else {
+        lyricWindow.setPosition(clamped.x, clamped.y)
       }
     }
+  })
+
+  ipcMain.handle('desktop-lyrics:get-position', () => {
+    if (lyricWindow && !lyricWindow.isDestroyed()) {
+      const [x, y] = lyricWindow.getPosition()
+      return { x, y }
+    }
+    return undefined
   })
 
   ipcMain.handle('desktop-lyrics:set-locked', (_event, locked: boolean) => {
