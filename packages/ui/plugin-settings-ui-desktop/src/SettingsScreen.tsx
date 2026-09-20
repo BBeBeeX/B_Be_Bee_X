@@ -6,11 +6,18 @@
 import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
+import { serviceOf } from '@BBeBee/ui-core'
 import type {
   DesktopLyricsSettings,
   GlobalShortcutsSettings,
   ProxySettings,
   SourceRecord,
+  SourcesService,
+  DeviceService,
+  PlayerService,
+  DesktopLyricsService,
+  PathsService,
+  UiService,
 } from '@BBeBee/protocol'
 import {
   DEFAULT_DESKTOP_LYRICS_SETTINGS,
@@ -99,12 +106,16 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
   } | null>(null)
 
   // Third-party sources list
-  const [sourcesList, setSourcesList] = useState<readonly SourceRecord[]>(
-    () => (ctx.sources?.sources ? [...ctx.sources.sources] : []),
-  )
+  const [sourcesList, setSourcesList] = useState<readonly SourceRecord[]>(() => {
+    const s = serviceOf<SourcesService>(ctx, 'sources')
+    return s?.sources ? [...s.sources] : []
+  })
 
   useEffect(() => {
-    const refresh = () => setSourcesList(ctx.sources?.sources ? [...ctx.sources.sources] : [])
+    const refresh = () => {
+      const s = serviceOf<SourcesService>(ctx, 'sources')
+      setSourcesList(s?.sources ? [...s.sources] : [])
+    }
     const off1 = ctx.on('source/imported', refresh)
     const off2 = ctx.on('source/changed', refresh)
     const off3 = ctx.on('source/removed', refresh)
@@ -165,7 +176,8 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
 
   // Global shortcuts registration
   useEffect(() => {
-    if (!shortcuts.enabled || !ctx.device?.registerHotkey) return
+    const device = serviceOf<DeviceService>(ctx, 'device')
+    if (!shortcuts.enabled || !device?.registerHotkey) return
     const disposers: (() => void)[] = []
     const kb = shortcuts.keybindings
     if (!kb) return
@@ -173,7 +185,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
     const register = (acc: string | undefined, handler: () => void) => {
       if (!acc) return
       try {
-        const off = ctx.device.registerHotkey(acc, handler)
+        const off = device.registerHotkey(acc, handler)
         if (off) disposers.push(off)
       } catch {
         // ignore unavailable accelerator
@@ -181,24 +193,30 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
     }
 
     register(kb.playPause, () => {
-      ctx.player?.togglePlay?.()
+      const p = serviceOf<PlayerService>(ctx, 'player')
+      p?.togglePlay?.()
     })
     register(kb.prevTrack, () => {
-      void ctx.player?.previous?.()
+      const p = serviceOf<PlayerService>(ctx, 'player')
+      void p?.previous?.()
     })
     register(kb.nextTrack, () => {
-      void ctx.player?.next?.()
+      const p = serviceOf<PlayerService>(ctx, 'player')
+      void p?.next?.()
     })
     register(kb.volumeUp, () => {
-      const cur = ctx.player?.state?.volume ?? 0.8
-      ctx.player?.setVolume?.(Math.min(1, Math.round((cur + 0.05) * 100) / 100))
+      const p = serviceOf<PlayerService>(ctx, 'player')
+      const cur = p?.state?.volume ?? 0.8
+      p?.setVolume?.(Math.min(1, Math.round((cur + 0.05) * 100) / 100))
     })
     register(kb.volumeDown, () => {
-      const cur = ctx.player?.state?.volume ?? 0.8
-      ctx.player?.setVolume?.(Math.max(0, Math.round((cur - 0.05) * 100) / 100))
+      const p = serviceOf<PlayerService>(ctx, 'player')
+      const cur = p?.state?.volume ?? 0.8
+      p?.setVolume?.(Math.max(0, Math.round((cur - 0.05) * 100) / 100))
     })
     register(kb.toggleLyrics, () => {
-      ctx.desktopLyrics?.toggleVisible?.()
+      const dl = serviceOf<DesktopLyricsService>(ctx, 'desktopLyrics')
+      dl?.toggleVisible?.()
     })
     register(kb.toggleWindow, () => {
       const bridge = (
@@ -207,18 +225,22 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
       void bridge?.window?.toggle?.()
     })
     register(kb.toggleLoved, () => {
-      const urn = ctx.player?.state?.trackUrn
-      if (urn && ctx.sources?.setLoved) {
-        void ctx.sources.setLoved(urn, true)
+      const p = serviceOf<PlayerService>(ctx, 'player')
+      const s = serviceOf<SourcesService>(ctx, 'sources')
+      const urn = p?.state?.trackUrn
+      if (urn && s?.setLoved) {
+        void s.setLoved(urn, true)
       }
     })
     register(kb.seekForward, () => {
-      const pos = ctx.player?.state?.positionMs ?? 0
-      void ctx.player?.seek?.(pos + 5000)
+      const p = serviceOf<PlayerService>(ctx, 'player')
+      const pos = p?.state?.positionMs ?? 0
+      void p?.seek?.(pos + 5000)
     })
     register(kb.seekBackward, () => {
-      const pos = ctx.player?.state?.positionMs ?? 0
-      void ctx.player?.seek?.(Math.max(0, pos - 5000))
+      const p = serviceOf<PlayerService>(ctx, 'player')
+      const pos = p?.state?.positionMs ?? 0
+      void p?.seek?.(Math.max(0, pos - 5000))
     })
 
     return () => {
@@ -226,10 +248,11 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
     }
   }, [ctx, shortcuts])
 
-  const defaultDownloadsDir = ctx.paths?.downloads
-    ? `${ctx.paths.downloads}/BBeBee`
+  const paths = serviceOf<PathsService>(ctx, 'paths')
+  const defaultDownloadsDir = paths?.downloads
+    ? `${paths.downloads}/BBeBee`
     : '默认下载目录 (Downloads/BBeBee)'
-  const defaultCacheDir = ctx.paths?.cache ? `${ctx.paths.cache}/BBeBee` : '默认缓存目录 (Cache/BBeBee)'
+  const defaultCacheDir = paths?.cache ? `${paths.cache}/BBeBee` : '默认缓存目录 (Cache/BBeBee)'
   const currentDownloadsDir = settings.downloadDir || defaultDownloadsDir
   const currentCacheDir = settings.cacheDir || defaultCacheDir
 
@@ -866,7 +889,8 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             description: '完整的专业音频效果器图拓扑调音与处理链路',
           },
           (() => {
-            const DspComponent = ctx.ui?.viewFor?.('settings.dsp') as
+            const ui = serviceOf<UiService>(ctx, 'ui')
+            const DspComponent = ui?.viewFor?.('settings.dsp') as
               | React.ComponentType<{ ctx: Context }>
               | undefined
             if (DspComponent) {
@@ -1250,7 +1274,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             action: h(Button, {
               children: '管理音乐源',
               onPress: () => {
-                ctx.ui?.navigate?.('sources.settings')
+                serviceOf<UiService>(ctx, 'ui')?.navigate?.('sources.settings')
               },
             }),
           }),
@@ -1261,7 +1285,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             action: h(Button, {
               children: '管理文件夹',
               onPress: () => {
-                ctx.ui?.navigate?.('scanner.settings')
+                serviceOf<UiService>(ctx, 'ui')?.navigate?.('scanner.settings')
               },
             }),
           }),
@@ -1304,7 +1328,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             action: h(Button, {
               children: '进入下载管理',
               onPress: () => {
-                ctx.ui?.navigate?.('downloads.page')
+                serviceOf<UiService>(ctx, 'ui')?.navigate?.('downloads.page')
               },
             }),
           }),

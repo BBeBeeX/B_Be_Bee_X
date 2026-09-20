@@ -129,13 +129,18 @@ async function harness(initialSettings: Partial<AppSettings> = {}) {
     getParams = () => ({})
   }
 
-  const ctx = new Context()
-  await ctx.plugin(SettingsStub)
-  await ctx.plugin(CacheStub)
-  await ctx.plugin(UiStub)
-  await ctx.plugin(DspStub)
+  const root = new Context()
+  await root.plugin(SettingsStub)
+  await root.plugin(CacheStub)
+  await root.plugin(UiStub)
+  await root.plugin(DspStub)
 
-  return { ctx, calls, getCurrentSettings: () => currentSettings }
+  let scoped: Context | undefined
+  root.inject(['ui', 'settings'], (s) => void (scoped = s))
+  await new Promise((r) => setTimeout(r, 0))
+  if (!scoped) throw new Error('Failed to create scoped context in harness')
+
+  return { ctx: scoped, calls, getCurrentSettings: () => currentSettings }
 }
 
 describe('SettingsScreen', () => {
