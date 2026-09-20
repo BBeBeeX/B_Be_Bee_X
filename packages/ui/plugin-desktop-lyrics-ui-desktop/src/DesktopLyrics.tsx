@@ -9,7 +9,7 @@
  * - Dark mode modern aesthetics
  */
 
-import { createElement as h, useRef, useState } from 'react'
+import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import { useCurrentLyric } from '@BBeBee/plugin-lyrics/hooks'
@@ -18,6 +18,24 @@ import { tokens } from '@BBeBee/ui-tokens'
 
 export interface DesktopLyricsProps {
   ctx: Context
+}
+
+interface DesktopLyricsActionPayload {
+  type: string
+  size?: number
+}
+
+interface WindowWithBridge {
+  BBeBee?: {
+    desktopLyrics?: {
+      setVisible(visible: boolean): Promise<void>
+      setLocked(locked: boolean): Promise<void>
+      updateData(data: unknown): Promise<void>
+      sendAction(action: unknown): Promise<void>
+      onData(callback: (data: unknown) => void): () => void
+      onAction(callback: (action: unknown) => void): () => void
+    }
+  }
 }
 
 export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null {
@@ -38,6 +56,77 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
 
   const { status, currentLine, nextLine, title, artist, isPlaying } = useCurrentLyric(ctx)
   const [hovered, setHovered] = useState(false)
+
+  // Check if running in Electron environment with native desktopLyrics window support
+  const bridge =
+    typeof window !== 'undefined'
+      ? (window as unknown as WindowWithBridge).BBeBee?.desktopLyrics
+      : undefined
+  const hasNativeBridge = Boolean(bridge)
+
+  useEffect(() => {
+    if (!hasNativeBridge || !bridge) return
+
+    // 1. Sync visibility
+    void bridge.setVisible(visible)
+    // 2. Sync lock state
+    void bridge.setLocked(locked)
+
+    // 3. Sync data
+    if (visible) {
+      let lineText = currentLine?.text
+      if (!lineText) {
+        if (status === 'loading-song' || status === 'loading-lyrics') {
+          lineText = '歌词加载中…'
+        } else if (title) {
+          lineText = `${title}${artist ? ` - ${artist}` : ''}`
+        } else {
+          lineText = 'BBeBee 音乐'
+        }
+      }
+
+      void bridge.updateData({
+        currentLine: lineText,
+        nextLine: showNextLine && nextLine ? nextLine.text : undefined,
+        fontSize,
+        opacity,
+        locked,
+        playing: isPlaying,
+        title,
+        artist,
+      })
+    }
+  }, [hasNativeBridge, bridge, visible, locked, currentLine?.text, nextLine?.text, showNextLine, fontSize, opacity, isPlaying, title, artist, status])
+
+  // Handle actions sent from the native desktop lyrics window
+  useEffect(() => {
+    if (!hasNativeBridge || !bridge?.onAction) return
+
+    const off = bridge.onAction((rawAction: unknown) => {
+      const action = rawAction as DesktopLyricsActionPayload
+      if (action.type === 'toggle-lock') {
+        setLocked(!locked)
+      } else if (action.type === 'toggle-play') {
+        ctx.player?.togglePlay?.()
+      } else if (action.type === 'next-track') {
+        void ctx.player?.next?.()
+      } else if (action.type === 'prev-track') {
+        void ctx.player?.previous?.()
+      } else if (action.type === 'set-font-size' && typeof action.size === 'number') {
+        setFontSize(action.size)
+      } else if (action.type === 'close') {
+        setVisible(false)
+      }
+    })
+
+    return () => {
+      off()
+    }
+  }, [hasNativeBridge, bridge, locked, setLocked, setFontSize, setVisible, ctx.player])
+
+  if (hasNativeBridge) {
+    return null
+  }
 
   // Dragging state
   const isDragging = useRef(false)

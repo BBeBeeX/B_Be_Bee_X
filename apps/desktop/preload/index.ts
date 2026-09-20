@@ -43,6 +43,30 @@ const api = {
     setHeaders: (entry: { url: string; headers: Record<string, string> }): Promise<void> =>
       ipcRenderer.invoke('stream:set-headers', entry),
   },
+  desktopLyrics: {
+    setVisible: (visible: boolean): Promise<void> =>
+      ipcRenderer.invoke('desktop-lyrics:set-visible', visible),
+    setLocked: (locked: boolean): Promise<void> =>
+      ipcRenderer.invoke('desktop-lyrics:set-locked', locked),
+    updateData: (data: unknown): Promise<void> =>
+      ipcRenderer.invoke('desktop-lyrics:update-data', data),
+    sendAction: (action: unknown): Promise<void> =>
+      ipcRenderer.invoke('desktop-lyrics:send-action', action),
+    onData: (callback: (data: unknown) => void): (() => void) => {
+      const listener = (_event: unknown, data: unknown) => callback(data)
+      ipcRenderer.on('desktop-lyrics:data', listener)
+      return () => {
+        ipcRenderer.removeListener('desktop-lyrics:data', listener)
+      }
+    },
+    onAction: (callback: (action: unknown) => void): (() => void) => {
+      const listener = (_event: unknown, action: unknown) => callback(action)
+      ipcRenderer.on('desktop-lyrics:action', listener)
+      return () => {
+        ipcRenderer.removeListener('desktop-lyrics:action', listener)
+      }
+    },
+  },
   platform: process.platform,
   versions: { electron: process.versions.electron, node: process.versions.node },
   isDebug: Boolean(

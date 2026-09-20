@@ -9,14 +9,23 @@ import { createElement as h, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { boot } from './boot.js'
 import { Shell } from './Shell.js'
+import { DesktopLyricsWindow } from './DesktopLyricsWindow.js'
 
 const root = createRoot(document.getElementById('root')!)
 
-boot()
-  .then(async (app) => {
-    const ctx = await app.ready(['ui'], { timeoutMs: 10_000 })
-    root.render(h(StrictMode, null, h(Shell, { ctx })))
-  })
+const isLyricsWindow =
+  typeof window !== 'undefined' &&
+  (new URLSearchParams(window.location.search).get('window') === 'desktop-lyrics' ||
+    window.location.hash.includes('desktop-lyrics'))
+
+if (isLyricsWindow) {
+  root.render(h(StrictMode, null, h(DesktopLyricsWindow)))
+} else {
+  boot()
+    .then(async (app) => {
+      const ctx = await app.ready(['ui'], { timeoutMs: 10_000 })
+      root.render(h(StrictMode, null, h(Shell, { ctx })))
+    })
   .catch((error: unknown) => {
     // A boot failure must be visible, not a blank window.
     root.render(
@@ -27,3 +36,4 @@ boot()
       ),
     )
   })
+}

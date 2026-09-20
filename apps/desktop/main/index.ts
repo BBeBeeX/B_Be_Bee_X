@@ -141,6 +141,51 @@ function createWindow(): BrowserWindow {
   return window
 }
 
+let lyricWindow: BrowserWindow | undefined
+
+function createLyricWindow(): BrowserWindow {
+  const window = new BrowserWindow({
+    width: 860,
+    height: 140,
+    minWidth: 400,
+    minHeight: 80,
+    backgroundColor: '#00000000',
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: true,
+    hasShadow: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      preload: join(here, '../preload/index.cjs'),
+    },
+  })
+
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isWebUrl(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
+  const rendererUrl = process.env['ELECTRON_RENDERER_URL']
+  if (rendererUrl) {
+    void window.loadURL(`${rendererUrl}?window=desktop-lyrics`)
+  } else {
+    void window.loadFile(join(here, '../renderer/index.html'), {
+      query: { window: 'desktop-lyrics' },
+      hash: 'desktop-lyrics',
+    })
+  }
+
+  window.on('closed', () => {
+    if (lyricWindow === window) lyricWindow = undefined
+  })
+
+  return window
+}
+
 /** The three facts the window policy decides from. */
 function closeContext(): CloseContext {
   return { quitting, hasTray: tray !== undefined, platform: process.platform }
@@ -278,6 +323,37 @@ function registerHandlers(): void {
   ipcMain.handle('window:isMaximized', (event) => {
     const target = BrowserWindow.fromWebContents(event.sender)
     return target?.isMaximized() ?? false
+  })
+
+  ipcMain.handle('desktop-lyrics:set-visible', (_event, visible: boolean) => {
+    if (visible) {
+      if (!lyricWindow || lyricWindow.isDestroyed()) {
+        lyricWindow = createLyricWindow()
+      }
+      lyricWindow.showInactive()
+    } else {
+      if (lyricWindow && !lyricWindow.isDestroyed()) {
+        lyricWindow.hide()
+      }
+    }
+  })
+
+  ipcMain.handle('desktop-lyrics:set-locked', (_event, locked: boolean) => {
+    if (lyricWindow && !lyricWindow.isDestroyed()) {
+      lyricWindow.setIgnoreMouseEvents(locked, { forward: true })
+    }
+  })
+
+  ipcMain.handle('desktop-lyrics:update-data', (_event, data: unknown) => {
+    if (lyricWindow && !lyricWindow.isDestroyed()) {
+      lyricWindow.webContents.send('desktop-lyrics:data', data)
+    }
+  })
+
+  ipcMain.handle('desktop-lyrics:send-action', (_event, action: unknown) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('desktop-lyrics:action', action)
+    }
   })
 }
 
@@ -531,6 +607,10 @@ void app.whenReady().then(async () => {
  */
 app.on('before-quit', () => {
   quitting = true
+  if (lyricWindow && !lyricWindow.isDestroyed()) {
+    lyricWindow.destroy()
+    lyricWindow = undefined
+  }
 })
 
 app.on('window-all-closed', () => {

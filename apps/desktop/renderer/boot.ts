@@ -66,6 +66,14 @@ declare global {
         close(): Promise<void>
         isMaximized(): Promise<boolean>
       }
+      desktopLyrics?: {
+        setVisible(visible: boolean): Promise<void>
+        setLocked(locked: boolean): Promise<void>
+        updateData(data: unknown): Promise<void>
+        sendAction(action: unknown): Promise<void>
+        onData(callback: (data: unknown) => void): () => void
+        onAction(callback: (action: unknown) => void): () => void
+      }
     }
   }
 }
