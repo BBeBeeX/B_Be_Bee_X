@@ -272,7 +272,7 @@ export async function boot(): Promise<App> {
   await app.ready([...BOOTSTRAP_SERVICES], { timeoutMs: 15_000 })
 
   // Sync closeToTray preference to Electron main process
-  app.inject(['settings'], (scoped) => {
+  app.ctx.inject(['settings'], (scoped) => {
     void scoped.settings.get().then((s) => {
       if (s && s.closeToTray !== undefined) {
         void window.BBeBee?.window?.setCloseToTray?.(s.closeToTray)

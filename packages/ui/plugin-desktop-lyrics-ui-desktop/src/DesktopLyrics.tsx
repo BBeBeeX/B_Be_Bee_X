@@ -53,7 +53,9 @@ function useDesktopLyricsSettings(ctx: Context) {
     const off = ctx.on('settings/changed', (updated: AppSettings) => {
       setSettings(updated)
     })
-    return () => off()
+    return () => {
+      off()
+    }
   }, [ctx])
 
   return settings.desktopLyrics
