@@ -102,12 +102,12 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-desktop-lyrics": {
     plugin: pluginDesktopLyrics,
-    manifest: {"id":"@BBeBee/plugin-desktop-lyrics","version":"0.0.0","displayName":"Desktop Lyrics","description":"Floating desktop lyrics state and command contributions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[]},
+    manifest: {"id":"@BBeBee/plugin-desktop-lyrics","version":"0.0.0","displayName":"Desktop Lyrics","description":"Floating desktop lyrics state and command contributions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["desktopLyrics"]}},
     builtin: true,
   },
   "@BBeBee/plugin-desktop-lyrics-ui-desktop": {
     plugin: pluginDesktopLyricsUi,
-    manifest: {"id":"@BBeBee/plugin-desktop-lyrics-ui-desktop","version":"0.0.0","displayName":"Desktop Lyrics (desktop views)","description":"Floating desktop lyrics state and command contributions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
+    manifest: {"id":"@BBeBee/plugin-desktop-lyrics-ui-desktop","version":"0.0.0","displayName":"Desktop Lyrics (desktop views)","description":"Floating desktop lyrics state and command contributions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["desktopLyrics"]}},
     builtin: true,
   },
   "@BBeBee/plugin-download": {

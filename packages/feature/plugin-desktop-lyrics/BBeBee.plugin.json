@@ -12,5 +12,10 @@
       "desktop": "./dist/index.js"
     }
   },
-  "capabilities": []
+  "capabilities": [],
+  "contributes": {
+    "services": [
+      "desktopLyrics"
+    ]
+  }
 }

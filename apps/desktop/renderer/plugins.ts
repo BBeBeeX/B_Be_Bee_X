@@ -83,6 +83,10 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   // queue screen. `plugin-player` itself is headless now — commands only.
   '@BBeBee/plugin-now-playing': {},
   '@BBeBee/plugin-now-playing-ui-desktop': {},
+  '@BBeBee/plugin-lyrics': {},
+  '@BBeBee/plugin-lyrics-ui-desktop': {},
+  '@BBeBee/plugin-desktop-lyrics': {},
+  '@BBeBee/plugin-desktop-lyrics-ui-desktop': {},
   '@BBeBee/plugin-queue': {},
   '@BBeBee/plugin-queue-ui-desktop': {},
   '@BBeBee/plugin-history': {},

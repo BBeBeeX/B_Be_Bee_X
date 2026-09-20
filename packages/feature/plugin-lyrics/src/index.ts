@@ -7,14 +7,15 @@
 
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
+import type {} from '@BBeBee/protocol'
 import type {
   Lyrics,
   LyricsService,
   LyricsState,
+  TransportState,
 } from '@BBeBee/protocol'
-import { tryParseUrn, type DbService, type SourcesService } from '@BBeBee/protocol'
+import { tryParseUrn } from '@BBeBee/protocol'
 import { findActiveLyricIndex, parseLrc, type ParsedLyrics } from '@BBeBee/toolkit'
-import { serviceOf } from '@BBeBee/ui-core'
 
 export interface LyricsConfig {
   /** In-memory cache size limit for lyrics documents. */
@@ -24,7 +25,7 @@ export interface LyricsConfig {
 const DEFAULT_CACHE_SIZE = 100
 
 export class LyricsPlugin extends Service implements LyricsService {
-  static inject = ['player']
+  static inject = ['player', 'db', 'sources']
 
   private readonly ownCtx: Context
   private readonly memoryCache = new Map<string, Lyrics>()
@@ -47,7 +48,7 @@ export class LyricsPlugin extends Service implements LyricsService {
     this.ownCtx.logger.info('plugin-lyrics: initialized')
 
     // Contribute the lyrics panel view to the now-playing.panel slot
-    this.ownCtx.inject(['ui'], (scoped) =>
+    this.ownCtx.inject(['ui'], (scoped: Context) =>
       scoped.effect(function* () {
         scoped.logger.debug('lyrics: contributing now-playing.panel slot')
         yield scoped.ui.contribute({
@@ -74,7 +75,7 @@ export class LyricsPlugin extends Service implements LyricsService {
     )
 
     // Listen to player transport state changes (loading, stopped, etc.)
-    const offStateChanged = this.ownCtx.on('player/state-changed', (transport) => {
+    const offStateChanged = this.ownCtx.on('player/state-changed', (transport: TransportState) => {
       if (transport.status === 'loading' && !this.currentState.trackUrn) {
         this.updateState({ status: 'loading-song' })
       } else if (transport.status === 'idle' && !transport.trackUrn) {
@@ -177,10 +178,9 @@ export class LyricsPlugin extends Service implements LyricsService {
     }
 
     // 2. Persistent SQLite cache
-    const db = serviceOf<DbService>(this.ownCtx, 'db')
-    if (db) {
+    if (this.ownCtx.db) {
       try {
-        const rows = await db.query<{
+        const rows = await this.ownCtx.db.query<{
           format: string
           content: string
           synced: number
@@ -207,11 +207,10 @@ export class LyricsPlugin extends Service implements LyricsService {
     }
 
     // 3. Online media provider resolution via ctx.sources
-    const sources = serviceOf<SourcesService>(this.ownCtx, 'sources')
-    if (sources) {
+    if (this.ownCtx.sources) {
       const parsedUrn = tryParseUrn(trackUrn)
       if (parsedUrn) {
-        const provider = sources.forUrn(trackUrn)
+        const provider = this.ownCtx.sources.forUrn(trackUrn)
         if (provider?.getLyrics) {
           const fetched = await provider.getLyrics(parsedUrn.id)
           if (fetched && fetched.content) {
@@ -238,12 +237,11 @@ export class LyricsPlugin extends Service implements LyricsService {
   }
 
   private async persistLyrics(trackUrn: string, lyrics: Lyrics): Promise<void> {
-    const db = serviceOf<DbService>(this.ownCtx, 'db')
-    if (!db) return
+    if (!this.ownCtx.db) return
     try {
       const parsedUrn = tryParseUrn(trackUrn)
       const instanceId = parsedUrn?.sourceId ?? 'default'
-      await db.exec(
+      await this.ownCtx.db.exec(
         `INSERT OR REPLACE INTO lyrics (track_urn, instance_id, format, content, synced, offset_ms, language, is_preferred, fetched_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [

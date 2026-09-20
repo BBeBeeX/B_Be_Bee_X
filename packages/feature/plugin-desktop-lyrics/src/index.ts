@@ -4,12 +4,13 @@
 
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
+import type {} from '@BBeBee/protocol'
 import type { DesktopLyricsPosition, DesktopLyricsState } from '@BBeBee/protocol'
 
 export type { DesktopLyricsPosition, DesktopLyricsState }
 
 export class DesktopLyricsService extends Service {
-  static inject = ['player']
+  static inject = []
 
   private readonly ownCtx: Context
 
@@ -32,7 +33,7 @@ export class DesktopLyricsService extends Service {
 
     // Contribute commands via ctx.ui if available
     const toggle = () => this.toggleVisible()
-    this.ownCtx.inject(['ui'], (scoped) =>
+    this.ownCtx.inject(['ui'], (scoped: Context) =>
       scoped.effect(function* () {
         scoped.logger.debug('desktop-lyrics: contributing commands')
         yield scoped.ui.contribute({
