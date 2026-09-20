@@ -186,7 +186,8 @@ B_Be_Bee/
 │   │   │                                       files the user downloaded (05 §2, 07 §4.8)
 │   │   ├── plugin-library/          ✅       ctx.library — playlists, favourites, smart lists,
 │   │   │                                       collections (07 §4.6)
-│   │   ├── plugin-lyrics/                    lyric providers
+│   │   ├── plugin-lyrics/          ✅        ctx.lyrics — lyric cache, source resolution and sync
+│   │   ├── plugin-desktop-lyrics/  ✅        ctx.desktopLyrics — floating/secondary window lyrics
 │   │   ├── plugin-cache/           ✅        ctx.cache — covers and remote streams served from
 │   │   │                                       ctx.paths.cache, fetched only on a miss, LRU per
 │   │   │                                       class (05 §2, 07 §4.11)
@@ -221,7 +222,9 @@ B_Be_Bee/
 │   │   ├── plugin-library-ui-mobile/  ✅     ┘ one playlist, one collection, favourites (08 §4)
 │   │   ├── plugin-local-scanner-ui-desktop/ ✅ ┐ settings: scan roots
 │   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
-│   │   └── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered
+│   │   ├── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered
+│   │   ├── plugin-lyrics-ui-desktop/ ✅      now-playing lyrics panel, smooth auto-scrolling
+│   │   └── plugin-desktop-lyrics-ui-desktop/ ✅ desktop lyrics button + secondary window adapter
 │   │
 │   └── tooling/                            🔧 OUTSIDE THE LAYER MODEL
 │       │                                      Development aids. Nothing here ships in an app

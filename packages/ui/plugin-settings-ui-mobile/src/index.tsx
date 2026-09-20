@@ -8,6 +8,7 @@ import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import { SETTINGS_VIEWS } from '@BBeBee/plugin-settings/views'
 import { useAppSettings, useCacheStats } from '@BBeBee/plugin-settings/hooks'
+import { useDsp } from '@BBeBee/plugin-dsp/hooks'
 import { Button, Slider, Text, nativePrimitives } from '@BBeBee/ui-kit-mobile'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
@@ -25,6 +26,10 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
   const native = nativePrimitives()
   const { settings, update, reset } = useAppSettings(ctx)
   const { usage, clear } = useCacheStats(ctx)
+  const { chain, latencyMs, setEnabled, applyPreset } = useDsp(ctx)
+  const eqEntry = chain.find((c) => c.effectId === 'eq10')
+  const compEntry = chain.find((c) => c.effectId === 'compressor')
+  const widenerEntry = chain.find((c) => c.effectId === 'widener')
   const [clearingCache, setClearingCache] = useState(false)
   const [confirmingReset, setConfirmingReset] = useState(false)
 
@@ -224,7 +229,64 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
       ),
     ]),
 
-    // 3. Storage Section
+    // 3. Audio & DSP Section
+    renderSectionHeader('音频效果与均衡器 (DSP)', '实时效果链与声音风格调教'),
+    renderCard([
+      renderRow(
+        '10 频段均衡器 (EQ)',
+        '调节各频段增益，优化听音体验',
+        renderToggle(eqEntry?.enabled ?? false, () =>
+          void setEnabled('eq10', !(eqEntry?.enabled ?? false)),
+        ),
+      ),
+      eqEntry?.enabled
+        ? h(
+            native.View as never,
+            { style: { flexDirection: 'row', flexWrap: 'wrap', gap: tokens.space[1], paddingVertical: 2 } },
+            [
+              { id: '原声 (Flat)', label: '原声' },
+              { id: '低音增强 (Bass Boost)', label: '低音' },
+              { id: '人声清晰 (Vocal Boost)', label: '人声' },
+              { id: '明亮高音 (Treble Boost)', label: '高音' },
+            ].map((p) =>
+              h(Button, {
+                key: p.id,
+                variant: 'secondary',
+                onPress: () => void applyPreset('eq10', p.id),
+                children: p.label,
+              }),
+            ),
+          )
+        : null,
+      renderRow(
+        '夜间压缩模式',
+        '降低过大爆发音量，提升微弱细节',
+        renderToggle(compEntry?.enabled ?? false, () => {
+          const next = !(compEntry?.enabled ?? false)
+          void setEnabled('compressor', next)
+          if (next) void applyPreset('compressor', '夜间模式 (Night Mode)')
+        }),
+      ),
+      renderRow(
+        '立体声扩宽',
+        '扩展声场宽度，强化沉浸感',
+        renderToggle(widenerEntry?.enabled ?? false, () =>
+          void setEnabled('widener', !(widenerEntry?.enabled ?? false)),
+        ),
+      ),
+      renderRow(
+        '高级效果器调音',
+        `处理节点: ${chain.length} · 延迟: ${latencyMs}ms`,
+        h(Button, {
+          children: '效果器面板',
+          onPress: () => {
+            ctx.ui?.navigate?.('dsp.view')
+          },
+        }),
+      ),
+    ]),
+
+    // 4. Storage Section
     renderSectionHeader('存储与缓存', '本地临时文件管理'),
     renderCard([
       renderRow(

@@ -146,10 +146,10 @@ B_Be_Bee/
 │   │   ├── plugin-inspector/       ✅        fiber 树 + 带标注的 effect (M0 完成标准)
 │   │   ├── plugin-dsp/                       ctx.dsp —— 效果链 (05 §3)
 │   │   ├── plugin-effect-eq10/               一个 DSP 效果，作为一个插件
-│   │   ├── plugin-download/                  media_bindings + before-resolve 替换
-│   │   ├── plugin-library/                   播放列表、收藏、智能列表
-│   │   ├── plugin-lyrics/                    歌词提供方
-│   │   ├── plugin-cache/                     http/request 缓存层
+│   │   ├── plugin-library/          ✅       播放列表、收藏、智能列表
+│   │   ├── plugin-lyrics/          ✅        ctx.lyrics —— 歌词缓存、音源解析与播放进度同步
+│   │   ├── plugin-desktop-lyrics/  ✅        ctx.desktopLyrics —— 桌面悬浮歌词与独立次级窗口控制器
+│   │   ├── plugin-cache/           ✅        http/request 缓存层
 │   │   └── plugin-…
 │   │
 │   ├── ui/                          🔹 LAYER 5 —— 视图与 UI 基础设施
@@ -169,7 +169,9 @@ B_Be_Bee/
 │   │   ├── plugin-sources-ui-mobile/  ✅     ┘ 审查、测试界面 (08 §4)
 │   │   ├── plugin-local-scanner-ui-desktop/ ✅ ┐ 设置：扫描根目录
 │   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
-│   │   └── plugin-inspector-ui-desktop/ ✅   渲染出来的 fiber 树
+│   │   ├── plugin-inspector-ui-desktop/ ✅   渲染出来的 fiber 树
+│   │   ├── plugin-lyrics-ui-desktop/ ✅      播放详情页右侧歌词面板，平滑滚动高亮与点击跳转
+│   │   └── plugin-desktop-lyrics-ui-desktop/ ✅ 底部栏桌面歌词按钮与原生 Electron 独立窗口 IPC 适配器
 │   │
 │   └── tooling/                            🔧 分层模型之外
 │       │                                      开发辅助。这里没有任何东西进入应用

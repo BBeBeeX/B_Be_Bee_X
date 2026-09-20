@@ -74,6 +74,7 @@ async function harness(initialSettings: Partial<AppSettings> = {}) {
   }
 
   class UiStub extends Service {
+    public views = new Map<string, unknown>()
     constructor(ctx: Context) {
       super(ctx, 'ui')
     }
@@ -81,12 +82,50 @@ async function harness(initialSettings: Partial<AppSettings> = {}) {
     navigate = (id: string) => {
       calls.push(`navigate:${id}`)
     }
+
+    viewFor = (id: string) => {
+      return this.views.get(id)
+    }
+
+    registerView = (id: string, component: unknown) => {
+      this.views.set(id, component)
+      return () => {
+        this.views.delete(id)
+      }
+    }
+  }
+
+  class DspStub extends Service {
+    public chain = [
+      { effectId: 'eq10', enabled: true, ordinal: 20 },
+      { effectId: 'compressor', enabled: false, ordinal: 30 },
+    ]
+    public definitions = [
+      { id: 'eq10', displayName: '10频段均衡器', defaultOrder: 20 },
+      { id: 'compressor', displayName: '压缩器', defaultOrder: 30 },
+    ]
+    public latencyMs = 2
+
+    constructor(ctx: Context) {
+      super(ctx, 'dsp')
+    }
+
+    setEnabled = async (id: string, on: boolean) => {
+      calls.push(`dsp:setEnabled:${id}:${on}`)
+    }
+
+    applyPreset = async (id: string, name: string) => {
+      calls.push(`dsp:applyPreset:${id}:${name}`)
+    }
+
+    getParams = () => ({})
   }
 
   const ctx = new Context()
   await ctx.plugin(SettingsStub)
   await ctx.plugin(CacheStub)
   await ctx.plugin(UiStub)
+  await ctx.plugin(DspStub)
 
   return { ctx, calls, getCurrentSettings: () => currentSettings }
 }
@@ -175,5 +214,32 @@ describe('SettingsScreen', () => {
 
     expect(await findByText('跨平台插件化音乐播放器 · Version 0.1.0')).toBeTruthy()
     expect(getByText('微内核架构')).toBeTruthy()
+  })
+
+  it('displays DSP settings in playback tab and switches to DSP tab', async () => {
+    const { ctx, calls } = await harness()
+    // Register mock DSP view
+    ;(ctx.ui as any).registerView('settings.dsp', () => h('div', null, 'Mock DSP Screen Content'))
+
+    const { findByText, getByText } = render(h(SettingsScreen, { ctx }))
+
+    // Switch to playback tab
+    const playbackTab = await findByText('播放与音频')
+    fireEvent.click(playbackTab)
+
+    expect(await findByText('音频效果与均衡器 (DSP)')).toBeTruthy()
+    expect(getByText('10 频段均衡器 (10-Band EQ)')).toBeTruthy()
+    expect(getByText('均衡器预设风格')).toBeTruthy()
+
+    // Click Flat preset
+    const flatButton = getByText('原声')
+    fireEvent.click(flatButton)
+    expect(calls.some((c) => c.includes('dsp:applyPreset:eq10:原声 (Flat)'))).toBe(true)
+
+    // Switch to DSP tab
+    const dspTab = await findByText('音效均衡器')
+    fireEvent.click(dspTab)
+
+    expect(await findByText('Mock DSP Screen Content')).toBeTruthy()
   })
 })

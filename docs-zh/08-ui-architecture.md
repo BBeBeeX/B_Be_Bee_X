@@ -387,6 +387,18 @@ export const tokens = {
 
 桌面端的**命令面板**（`Cmd/Ctrl+K`）值得单独一提：它直接渲染 `ctx.ui.commands`，因此每个插件命令无需插件作者做任何 UI 工作即可触达。这是整个项目杠杆比最高的外壳代码。
 
+### 7.1 次级窗口与单内核守卫（以桌面歌词为例）
+
+当桌面端特性需要脱离主应用窗口时 —— 例如**桌面歌词**需要跨窗口悬浮在其他桌面应用上层、主窗口最小化时保持显示、支持多屏自由拖拽并在锁定时开启鼠标穿透：
+
+1. **单 Cordis 内核不变量 (ADR-3)**：次级 `BrowserWindow` 绝对**不能**调用 `boot()` 或创建第二个 Cordis Context。启动第二个内核会导致状态裂脑、事件监听重复触发并破坏插件单例。
+2. **被动视图架构（Passive View）**：次级窗口作为纯轻量 React 界面运行，通过 URL 查询参数或哈希（`?window=desktop-lyrics` 或 `#desktop-lyrics`）定向路由，直接挂载视图组件，不加载 Cordis 插件体系。
+3. **IPC 数据中枢**：主窗口渲染进程的 UI 适配插件（`plugin-desktop-lyrics-ui-desktop`）通过 `window.BBeBee.desktopLyrics.updateData(...)` 向次级窗口推送歌词、进度和字号数据；同时监听次级窗口操作栏的动作请求（上一首、下一首、暂停、锁定、关窗等），反向派发给主窗口内的 `ctx.player` 与 `ctx.desktopLyrics` 服务执行。
+4. **系统级原生集成**：
+   - 无边框透明窗口（`frame: false`, `transparent: true`, `backgroundColor: '#00000000'`, `alwaysOnTop: true`, `skipTaskbar: true`）。
+   - 全屏自由拖拽：容器样式配置 `-webkit-app-region: drag`，按钮控制项配置 `-webkit-app-region: no-drag`。
+   - 鼠标穿透（锁定模式）：动态调用 `lyricWindow.setIgnoreMouseEvents(locked, { forward: true })`，让鼠标穿透歌词点击底层软件。
+
 ---
 
 ## 8. 无障碍

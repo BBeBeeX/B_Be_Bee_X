@@ -28,6 +28,8 @@
     "@BBeBee/plugin-desktop-lyrics": "workspace:*",
     "@BBeBee/plugin-download": "workspace:*",
     "@BBeBee/plugin-download-ui-mobile": "workspace:*",
+    "@BBeBee/plugin-dsp": "workspace:*",
+    "@BBeBee/plugin-dsp-ui-mobile": "workspace:*",
     "@BBeBee/plugin-album": "workspace:*",
     "@BBeBee/plugin-album-ui-mobile": "workspace:*",
     "@BBeBee/plugin-cache": "workspace:*",

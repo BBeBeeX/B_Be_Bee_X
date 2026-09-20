@@ -175,6 +175,7 @@ export function createMockAudio(options: MockAudioOptions = {}): MockAudio {
   let currentTime = 0
 
   const chainInput = new MockNode() as unknown as GainNode
+  const chainOutput = new MockNode() as unknown as GainNode
   const destination = new MockNode() as unknown as AudioNode
 
   const service: AudioService = {
@@ -185,6 +186,11 @@ export function createMockAudio(options: MockAudioOptions = {}): MockAudio {
     sampleRate: 48_000,
     outputLatencyMs: 10,
     chainInput,
+    chainOutput,
+
+    async dipVolume() {
+      return () => {}
+    },
 
     async load(src: string | Uri, opts: LoadOptions): Promise<AudioSourceHandle> {
       loads.push({ src, opts })

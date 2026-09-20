@@ -204,7 +204,8 @@ test/stubs/                 the three native modules Node cannot load, aliased b
 
 Beyond the core services in §6, several **feature plugins claim service keys** of their own:
 `ctx.player` (plugin-player), `ctx.sources` (plugin-sources), `ctx.scanner`
-(plugin-local-scanner), `ctx.ui` (plugin-ui), `ctx.inspector` (plugin-inspector), and
+(plugin-local-scanner), `ctx.lyrics` (plugin-lyrics), `ctx.desktopLyrics`
+(plugin-desktop-lyrics), `ctx.ui` (plugin-ui), `ctx.inspector` (plugin-inspector), and
 `ctx.logBuffer` (plugin-log-buffer). Those keys are declared in `@BBeBee/protocol` like any
 other; they are registered by their plugins, not by a `core-*` package.
 

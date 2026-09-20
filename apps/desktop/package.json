@@ -27,6 +27,8 @@
     "@BBeBee/plugin-desktop-lyrics-ui-desktop": "workspace:*",
     "@BBeBee/plugin-download": "workspace:*",
     "@BBeBee/plugin-download-ui-desktop": "workspace:*",
+    "@BBeBee/plugin-dsp": "workspace:*",
+    "@BBeBee/plugin-dsp-ui-desktop": "workspace:*",
     "@BBeBee/plugin-album": "workspace:*",
     "@BBeBee/plugin-album-ui-desktop": "workspace:*",
     "@BBeBee/plugin-cache": "workspace:*",

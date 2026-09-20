@@ -8,12 +8,13 @@ import type { Context } from 'cordis'
 import { Button, Slider } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
 import { useAppSettings, useCacheStats } from '@BBeBee/plugin-settings/hooks'
+import { useDsp } from '@BBeBee/plugin-dsp/hooks'
 import { Switch } from './components/Switch.js'
 import { SegmentedControl } from './components/SegmentedControl.js'
 import { SettingsRow } from './components/SettingsRow.js'
 import { SettingsSection } from './components/SettingsSection.js'
 
-type SettingsTab = 'general' | 'playback' | 'sources' | 'storage' | 'about'
+type SettingsTab = 'general' | 'playback' | 'dsp' | 'sources' | 'storage' | 'about'
 
 interface TabItem {
   id: SettingsTab
@@ -24,6 +25,7 @@ interface TabItem {
 const TABS: readonly TabItem[] = [
   { id: 'general', label: '常规与外观', icon: '🎨' },
   { id: 'playback', label: '播放与音频', icon: '🎵' },
+  { id: 'dsp', label: '音效均衡器', icon: '🎚️' },
   { id: 'sources', label: '曲库与来源', icon: '📂' },
   { id: 'storage', label: '存储与缓存', icon: '💾' },
   { id: 'about', label: '关于应用', icon: 'ℹ️' },
@@ -41,6 +43,10 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
   const { settings, update, reset } = useAppSettings(ctx)
   const { usage, clear } = useCacheStats(ctx)
+  const { chain, latencyMs, setEnabled, applyPreset } = useDsp(ctx)
+  const eqEntry = chain.find((c) => c.effectId === 'eq10')
+  const compEntry = chain.find((c) => c.effectId === 'compressor')
+  const widenerEntry = chain.find((c) => c.effectId === 'widener')
   const [clearingCache, setClearingCache] = useState(false)
   const [resetting, setResetting] = useState(false)
 
@@ -255,6 +261,89 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
               }),
             }),
           ),
+          h(
+            SettingsSection,
+            { title: '音频效果与均衡器 (DSP)', description: '图示均衡器、动态压缩与声学扩展配置' },
+            h(SettingsRow, {
+              title: '10 频段均衡器 (10-Band EQ)',
+              description: '调整各频段增益，塑造更加适合耳机或音响的声音曲线',
+              action: h(Switch, {
+                checked: eqEntry?.enabled ?? false,
+                accessibilityLabel: '启用 10 频段均衡器',
+                onChange: (checked) => void setEnabled('eq10', checked),
+              }),
+            }),
+            eqEntry?.enabled
+              ? h(SettingsRow, {
+                  title: '均衡器预设风格',
+                  description: '快速切换平直、低音增强、清晰人声等调音风格',
+                  action: h(
+                    'div',
+                    { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+                    [
+                      { id: '原声 (Flat)', label: '原声' },
+                      { id: '低音增强 (Bass Boost)', label: '低音增强' },
+                      { id: '人声清晰 (Vocal Boost)', label: '清晰人声' },
+                      { id: '明亮高音 (Treble Boost)', label: '明亮高音' },
+                    ].map((p) =>
+                      h(Button, {
+                        key: p.id,
+                        variant: 'secondary',
+                        onPress: () => void applyPreset('eq10', p.id),
+                        children: p.label,
+                      }),
+                    ),
+                  ),
+                })
+              : null,
+            h(SettingsRow, {
+              title: '夜间压缩模式 (Night Mode)',
+              description: '压缩大动态范围，降低突然的高音量并提升微弱细节',
+              action: h(Switch, {
+                checked: compEntry?.enabled ?? false,
+                accessibilityLabel: '夜间压缩模式',
+                onChange: (checked) => {
+                  void setEnabled('compressor', checked)
+                  if (checked) void applyPreset('compressor', '夜间模式 (Night Mode)')
+                },
+              }),
+            }),
+            h(SettingsRow, {
+              title: '立体声扩宽 (Stereo Widener)',
+              description: '扩展中侧声场，营造开阔立体的临场空间感',
+              action: h(Switch, {
+                checked: widenerEntry?.enabled ?? false,
+                accessibilityLabel: '立体声扩宽',
+                onChange: (checked) => void setEnabled('widener', checked),
+              }),
+            }),
+            h(SettingsRow, {
+              title: '高级效果器调音与编排',
+              description: `当前效果链包含 ${chain.length} 个处理节点，延迟: ${latencyMs}ms`,
+              action: h(Button, {
+                children: '打开音效面板',
+                onPress: () => setActiveTab('dsp'),
+              }),
+            }),
+          ),
+        ),
+      activeTab === 'dsp' &&
+        h(
+          'div',
+          null,
+          (() => {
+            const DspComponent = ctx.ui?.viewFor?.('settings.dsp') as
+              | React.ComponentType<{ ctx: Context }>
+              | undefined
+            if (DspComponent) {
+              return h(DspComponent, { ctx })
+            }
+            return h(
+              SettingsSection,
+              { title: '音频效果器 (DSP)', description: '效果器视图未加载' },
+              h('div', { style: { color: '#8e8e93', fontSize: 13, padding: '12px 0' } }, '效果器视图加载中或未安装。'),
+            )
+          })(),
         ),
       activeTab === 'sources' &&
         h(

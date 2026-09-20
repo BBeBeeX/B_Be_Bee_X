@@ -1,7 +1,7 @@
 {
-  "name": "@BBeBee/plugin-settings-ui-desktop",
+  "name": "@BBeBee/plugin-dsp-ui-mobile",
   "version": "0.0.0",
-  "description": "React DOM views for @BBeBee/plugin-settings.",
+  "description": "Mobile React Native views for @BBeBee/plugin-dsp (DSP Chain Editor).",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -18,12 +18,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@BBeBee/plugin-cache": "workspace:*",
     "@BBeBee/plugin-dsp": "workspace:*",
-    "@BBeBee/plugin-settings": "workspace:*",
     "@BBeBee/protocol": "workspace:*",
     "@BBeBee/ui-core": "workspace:*",
-    "@BBeBee/ui-kit-desktop": "workspace:*",
+    "@BBeBee/ui-kit-mobile": "workspace:*",
     "@BBeBee/ui-tokens": "workspace:*",
     "cordis": "4.0.0-rc.9",
     "react": "19.2.3"

@@ -357,6 +357,30 @@ export class AudioWebAudio extends Service implements AudioService {
     this.master.connect(this.context.destination)
   }
 
+  get chainOutput(): GainNode {
+    return this.master
+  }
+
+  async dipVolume(durationMs = 20): Promise<Disposable> {
+    const currentGain = this.master.gain.value
+    const dipSeconds = Math.max(0.005, durationMs / 1000)
+    const now = this.context.currentTime
+    if (typeof this.master.gain.setTargetAtTime === 'function') {
+      this.master.gain.setTargetAtTime(0, now, dipSeconds / 3)
+    } else {
+      this.master.gain.value = 0
+    }
+    await new Promise((resolve) => setTimeout(resolve, durationMs))
+    return () => {
+      const resumeNow = this.context.currentTime
+      if (typeof this.master.gain.setTargetAtTime === 'function') {
+        this.master.gain.setTargetAtTime(currentGain, resumeNow, dipSeconds / 3)
+      } else {
+        this.master.gain.value = currentGain
+      }
+    }
+  }
+
   get destination(): AudioNode {
     return this.context.destination
   }

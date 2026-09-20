@@ -83,6 +83,10 @@ export interface AudioService {
    * `destination`, so sources and effects have independent lifetimes.
    */
   readonly chainInput: AudioNode
+  /** Where `ctx.dsp` connects the end of its chain. Connects to master volume. */
+  readonly chainOutput?: AudioNode
+  /** Smoothly dip master volume to avoid clicks during graph rewiring. */
+  dipVolume?(durationMs?: number): Promise<Disposable>
 
   /** 0..1, applied post-chain. */
   setVolume(v: number): void
@@ -206,6 +210,7 @@ export interface DspService {
   /** Never rebuilds the graph — a rebuild on every slider drag is audible. */
   setParam(effectId: string, name: string, value: EffectParamValue): Promise<void>
   applyPreset(effectId: string, presetName: string): Promise<void>
+  getParams?(effectId: string): Record<string, unknown>
 
   /** Total added latency, so the visualiser and lyrics can compensate. */
   readonly latencyMs: number

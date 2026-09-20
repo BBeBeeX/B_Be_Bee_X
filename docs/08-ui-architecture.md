@@ -537,6 +537,18 @@ The desktop **command palette** (`Cmd/Ctrl+K`) is worth calling out: it renders
 `ctx.ui.commands` directly, so every plugin command is reachable with zero UI work from the plugin
 author. It is the highest-leverage piece of shell code in the project.
 
+### Secondary windows and single-kernel preservation
+
+When desktop features require OS-level window detachment — such as **Desktop Lyrics** which must float on top of other desktop applications, remain visible when the main window is minimized, support arbitrary multi-monitor dragging, and provide click-through mouse event forwarding when locked:
+
+1. **Single Cordis Kernel Invariant (ADR-3)**: The secondary `BrowserWindow` must **never** call `boot()` or initialize a secondary Cordis Context. Starting a second kernel would split plugin states, duplicate playback hooks, and violate singletons.
+2. **Passive View Architecture**: The secondary window runs as a passive React view loaded via query/hash routing (`?window=desktop-lyrics` or `#desktop-lyrics`). It mounts a standalone, lightweight view component directly without activating Cordis plugins.
+3. **IPC Forwarding Hub**: The main renderer's UI adapter (`plugin-desktop-lyrics-ui-desktop`) syncs state down to the secondary window through `window.BBeBee.desktopLyrics.updateData(...)`, and receives user actions back from the secondary window through `sendAction(...)` dispatched to `ctx.player` and `ctx.desktopLyrics`.
+4. **OS Integration**:
+   - Frameless transparent window (`frame: false`, `transparent: true`, `backgroundColor: '#00000000'`, `alwaysOnTop: true`, `skipTaskbar: true`).
+   - Free dragging via CSS `-webkit-app-region: drag` and interactive buttons via `-webkit-app-region: no-drag`.
+   - Mouse click-through: `setIgnoreMouseEvents(locked, { forward: true })` toggled dynamically upon lock state.
+
 ---
 
 ## 8. Accessibility

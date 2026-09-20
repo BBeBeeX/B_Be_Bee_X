@@ -15,6 +15,8 @@ import pluginCache from '@BBeBee/plugin-cache'
 import pluginDesktopLyrics from '@BBeBee/plugin-desktop-lyrics'
 import pluginDownload from '@BBeBee/plugin-download'
 import pluginDownloadUi from '@BBeBee/plugin-download-ui-mobile'
+import pluginDsp from '@BBeBee/plugin-dsp'
+import pluginDspUi from '@BBeBee/plugin-dsp-ui-mobile'
 import pluginHistory from '@BBeBee/plugin-history'
 import pluginHistoryUi from '@BBeBee/plugin-history-ui-mobile'
 import pluginInspector from '@BBeBee/plugin-inspector'
@@ -104,6 +106,16 @@ export const bundled: PluginRegistry = {
   "@BBeBee/plugin-download-ui-mobile": {
     plugin: pluginDownloadUi,
     manifest: {"id":"@BBeBee/plugin-download-ui-mobile","version":"0.0.0","displayName":"Downloads (mobile views)","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["downloads"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-dsp": {
+    plugin: pluginDsp,
+    manifest: {"id":"@BBeBee/plugin-dsp","version":"0.0.0","displayName":"DSP Effect Chain","description":"ctx.dsp — effect chain builder, presets, and audio processing effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["audio"],"contributes":{"services":["dsp"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-dsp-ui-mobile": {
+    plugin: pluginDspUi,
+    manifest: {"id":"@BBeBee/plugin-dsp-ui-mobile","version":"0.0.0","displayName":"DSP Effect Chain (mobile views)","description":"ctx.dsp — effect chain builder, presets, and audio processing effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["dsp"]}},
     builtin: true,
   },
   "@BBeBee/plugin-history": {
