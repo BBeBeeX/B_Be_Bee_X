@@ -64,7 +64,30 @@ export function useAppSettings(ctx: Context): UseAppSettingsResult {
       if (service) {
         return service.update(partial)
       }
-      const next = { ...settings, ...partial }
+      const next: AppSettings = {
+        ...settings,
+        ...partial,
+        desktopLyrics: {
+          ...settings.desktopLyrics,
+          ...(partial.desktopLyrics ?? {}),
+        },
+        shortcuts: {
+          ...settings.shortcuts,
+          ...(partial.shortcuts ?? {}),
+          keybindings: {
+            ...settings.shortcuts?.keybindings,
+            ...(partial.shortcuts?.keybindings ?? {}),
+          },
+        },
+        proxy: {
+          ...settings.proxy,
+          ...(partial.proxy ?? {}),
+          sourceRules: {
+            ...settings.proxy?.sourceRules,
+            ...(partial.proxy?.sourceRules ?? {}),
+          },
+        },
+      }
       setSettings(next)
       return next
     },

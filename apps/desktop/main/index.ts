@@ -63,6 +63,7 @@ function isWebUrl(value: string): boolean {
  * menu, and sets this first.
  */
 let quitting = false
+let closeToTray = true
 
 let tray: Tray | undefined
 let mainWindow: BrowserWindow | undefined
@@ -188,7 +189,7 @@ function createLyricWindow(): BrowserWindow {
 
 /** The three facts the window policy decides from. */
 function closeContext(): CloseContext {
-  return { quitting, hasTray: tray !== undefined, platform: process.platform }
+  return { quitting, hasTray: tray !== undefined, platform: process.platform, closeToTray }
 }
 
 function showWindow(): void {
@@ -323,6 +324,58 @@ function registerHandlers(): void {
   ipcMain.handle('window:isMaximized', (event) => {
     const target = BrowserWindow.fromWebContents(event.sender)
     return target?.isMaximized() ?? false
+  })
+
+  ipcMain.handle('window:setCloseToTray', (_event, enabled: boolean) => {
+    closeToTray = Boolean(enabled)
+  })
+
+  ipcMain.handle('window:toggle', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      showWindow()
+      return
+    }
+    if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+      mainWindow.hide()
+    } else {
+      showWindow()
+    }
+  })
+
+  ipcMain.handle('shell:openPath', async (_event, fullPath: string) => {
+    if (typeof fullPath !== 'string' || !fullPath) return ''
+    return shell.openPath(fullPath)
+  })
+
+  ipcMain.handle('proxy:test', async (_event, config: { protocol: string; host: string; port: number }) => {
+    const start = Date.now()
+    const testUrl = 'https://music.163.com'
+    try {
+      const proxyRule = `${config.protocol}://${config.host}:${config.port}`
+      const testSession = session.fromPartition('proxy-test-' + Date.now())
+      await testSession.setProxy({ proxyRules: proxyRule })
+      const res = await net.fetch(testUrl, { method: 'HEAD', signal: AbortSignal.timeout(5000) })
+      return { ok: res.status < 500, latencyMs: Date.now() - start }
+    } catch {
+      try {
+        const fallbackUrl = 'https://www.google.com'
+        const testSession = session.fromPartition('proxy-test-' + Date.now())
+        await testSession.setProxy({ proxyRules: `${config.protocol}://${config.host}:${config.port}` })
+        const res = await net.fetch(fallbackUrl, { method: 'HEAD', signal: AbortSignal.timeout(5000) })
+        return { ok: res.status < 500, latencyMs: Date.now() - start }
+      } catch (err2: unknown) {
+        return { ok: false, error: err2 instanceof Error ? err2.message : String(err2) }
+      }
+    }
+  })
+
+  ipcMain.handle('proxy:set', async (_event, config: { enabled: boolean; protocol?: string; host?: string; port?: number }) => {
+    if (!config?.enabled || !config.host || !config.port) {
+      await session.defaultSession.setProxy({ mode: 'direct' })
+      return
+    }
+    const proxyRule = `${config.protocol || 'http'}://${config.host}:${config.port}`
+    await session.defaultSession.setProxy({ proxyRules: proxyRule })
   })
 
   ipcMain.handle('desktop-lyrics:set-visible', (_event, visible: boolean) => {

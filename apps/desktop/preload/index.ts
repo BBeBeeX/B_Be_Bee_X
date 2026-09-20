@@ -29,6 +29,7 @@ const api = {
   },
   shell: {
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url),
+    openPath: (path: string): Promise<string> => ipcRenderer.invoke('shell:openPath', path),
   },
   dialog: {
     pickDirectory: (): Promise<string | undefined> => ipcRenderer.invoke('dialog:pickDirectory'),
@@ -38,6 +39,14 @@ const api = {
     maximize: (): Promise<void> => ipcRenderer.invoke('window:maximize'),
     close: (): Promise<void> => ipcRenderer.invoke('window:close'),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
+    setCloseToTray: (enabled: boolean): Promise<void> =>
+      ipcRenderer.invoke('window:setCloseToTray', enabled),
+    toggle: (): Promise<void> => ipcRenderer.invoke('window:toggle'),
+  },
+  proxy: {
+    test: (config: unknown): Promise<{ ok: boolean; latencyMs?: number; error?: string }> =>
+      ipcRenderer.invoke('proxy:test', config),
+    set: (config: unknown): Promise<void> => ipcRenderer.invoke('proxy:set', config),
   },
   stream: {
     setHeaders: (entry: { url: string; headers: Record<string, string> }): Promise<void> =>

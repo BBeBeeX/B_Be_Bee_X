@@ -19,6 +19,8 @@ export interface CloseContext {
   hasTray: boolean
   /** `process.platform`. macOS keeps an app alive with no windows by design. */
   platform: NodeJS.Platform
+  /** User preference: whether closing the window should minimize/hide to tray. Default true. */
+  closeToTray?: boolean
 }
 
 /**
@@ -44,6 +46,7 @@ export function canSurviveWithoutWindow(ctx: Omit<CloseContext, 'quitting'>): bo
  */
 export function shouldHideOnClose(ctx: CloseContext): boolean {
   if (ctx.quitting) return false
+  if (ctx.closeToTray === false) return false
   return canSurviveWithoutWindow(ctx)
 }
 
@@ -54,5 +57,5 @@ export function shouldHideOnClose(ctx: CloseContext): boolean {
  * intercepts the rest.
  */
 export function shouldQuitWhenWindowsGone(ctx: CloseContext): boolean {
-  return ctx.quitting || !canSurviveWithoutWindow(ctx)
+  return ctx.quitting || ctx.closeToTray === false || !canSurviveWithoutWindow(ctx)
 }

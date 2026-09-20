@@ -46,6 +46,13 @@ describe('closing the window', () => {
       expect(shouldQuitWhenWindowsGone({ ...target, quitting: true }), target.platform).toBe(true)
     }
   })
+
+  it('destroys and quits when closeToTray is disabled by the user', () => {
+    expect(shouldHideOnClose({ ...WITH_TRAY, quitting: false, closeToTray: false })).toBe(false)
+    expect(shouldQuitWhenWindowsGone({ ...WITH_TRAY, quitting: false, closeToTray: false })).toBe(true)
+    expect(shouldHideOnClose({ ...MAC, quitting: false, closeToTray: false })).toBe(false)
+    expect(shouldQuitWhenWindowsGone({ ...MAC, quitting: false, closeToTray: false })).toBe(true)
+  })
 })
 
 describe('canSurviveWithoutWindow', () => {

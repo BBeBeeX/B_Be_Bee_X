@@ -274,11 +274,14 @@ describe('SettingsScreen', () => {
     const { ctx } = await harness()
     const { container } = render(h(SettingsScreen, { ctx }))
 
-    // All section anchors exist concurrently in DOM
+    // All 9 section anchors exist concurrently in DOM
     const sectionIds = [
       'section-general',
       'section-playback',
       'section-dsp',
+      'section-lyrics',
+      'section-shortcuts',
+      'section-network',
       'section-sources',
       'section-storage',
       'section-about',
@@ -289,11 +292,14 @@ describe('SettingsScreen', () => {
 
     // Tab buttons have no emoji / icons
     const tabButtons = container.querySelectorAll('aside button[role="tab"]')
-    expect(tabButtons.length).toBe(6)
+    expect(tabButtons.length).toBe(9)
     for (const btn of Array.from(tabButtons)) {
       expect(btn.querySelector('svg')).toBeNull()
       expect(btn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u)
     }
+
+    // Default volume is removed completely from the UI
+    expect(container.textContent).not.toContain('默认音量')
   })
 
   it('updates theme and language via Select dropdowns', async () => {
@@ -354,5 +360,99 @@ describe('SettingsScreen', () => {
     expect(expandBtn).toBeTruthy()
     fireEvent.click(expandBtn)
     expect(container.textContent).toContain('淡入淡出持续时间')
+  })
+
+  it('renders download and cache directories with change and open buttons', async () => {
+    const { ctx } = await harness({ downloadDir: '/custom/downloads', cacheDir: '/custom/cache' })
+    const { getByText, container } = render(h(SettingsScreen, { ctx }))
+
+    expect(getByText('下载目录')).toBeTruthy()
+    expect(container.textContent).toContain('/custom/downloads')
+    expect(getByText('歌曲缓存目录')).toBeTruthy()
+    expect(container.textContent).toContain('/custom/cache')
+
+    const changeButtons = Array.from(container.querySelectorAll('button')).filter(
+      (b) => b.textContent === '更改目录',
+    )
+    expect(changeButtons.length).toBe(2)
+
+    const openButtons = Array.from(container.querySelectorAll('button')).filter(
+      (b) => b.textContent === '打开文件夹',
+    )
+    expect(changeButtons.length).toBe(2)
+    expect(openButtons.length).toBe(2)
+  })
+
+  it('renders desktop lyrics settings and live preview box', async () => {
+    const { ctx, calls } = await harness()
+    const { container, getByText } = render(h(SettingsScreen, { ctx }))
+
+    expect(getByText('桌面歌词设置')).toBeTruthy()
+    expect(getByText('歌词显示行数')).toBeTruthy()
+    expect(getByText('文本对齐方式')).toBeTruthy()
+    expect(getByText('歌词字体')).toBeTruthy()
+    expect(getByText('歌词字号')).toBeTruthy()
+    expect(getByText('歌词高亮颜色')).toBeTruthy()
+    expect(getByText('文字透明度')).toBeTruthy()
+
+    // Live preview box is present
+    const preview = container.querySelector('[data-testid="desktop-lyrics-preview"]')
+    expect(preview).toBeTruthy()
+    expect(preview?.textContent).toContain('桌面歌词实时预览效果')
+    expect(preview?.textContent).toContain('哪怕生命如尘 也要绚烂如火')
+
+    // Change line mode to single
+    const lineModeSelect = container.querySelector('select[aria-label="歌词显示行数"]') as HTMLSelectElement
+    expect(lineModeSelect).toBeTruthy()
+    fireEvent.change(lineModeSelect, { target: { value: 'single' } })
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.includes('"lineMode":"single"'))).toBe(true)
+    })
+  })
+
+  it('renders global shortcuts settings with master switch and actions', async () => {
+    const { ctx, calls } = await harness()
+    const { container, getByText, getAllByText } = render(h(SettingsScreen, { ctx }))
+
+    expect(getAllByText('全局快捷键').length).toBeGreaterThanOrEqual(1)
+    expect(getByText('启用全局快捷键')).toBeTruthy()
+    expect(getByText('播放 / 暂停')).toBeTruthy()
+    expect(getByText('增大音量 (+5%)')).toBeTruthy()
+    expect(getByText('显示 / 隐藏桌面歌词')).toBeTruthy()
+    expect(getByText('显示 / 隐藏音乐界面')).toBeTruthy()
+
+    // Toggle master shortcuts switch
+    const switchBtn = container.querySelector('button[aria-label="启用全局快捷键"]') as HTMLButtonElement
+    expect(switchBtn).toBeTruthy()
+    fireEvent.click(switchBtn)
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.includes('"enabled":false'))).toBe(true)
+    })
+
+    // Click reset default shortcuts
+    const resetBtn = getByText('恢复默认快捷键')
+    fireEvent.click(resetBtn)
+    await waitFor(() => {
+      expect(calls.some((c) => c.includes('CommandOrControl+Alt+Space'))).toBe(true)
+    })
+  })
+
+  it('renders network proxy settings and handles connection test', async () => {
+    const { ctx } = await harness({ proxy: { enabled: true, protocol: 'http', host: '127.0.0.1', port: 7890, sourceRules: {} } })
+    const { getByText, findByText } = render(h(SettingsScreen, { ctx }))
+
+    expect(getByText('网络代理设置')).toBeTruthy()
+    expect(getByText('启用网络代理')).toBeTruthy()
+    expect(getByText('代理协议类型')).toBeTruthy()
+    expect(getByText('服务器主机与端口')).toBeTruthy()
+    expect(getByText('第三方音源代理独立分流')).toBeTruthy()
+
+    const testBtn = getByText('测试连接')
+    expect(testBtn).toBeTruthy()
+    fireEvent.click(testBtn)
+
+    expect(await findByText(/代理连通正常|代理连接/)).toBeTruthy()
   })
 })

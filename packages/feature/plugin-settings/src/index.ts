@@ -12,12 +12,40 @@ import { SETTINGS_ROUTES } from './views.js'
 
 const STORE_KEY = 'preferences'
 
+function mergeSettings(base: AppSettings, patch?: Partial<AppSettings>): AppSettings {
+  if (!patch) return { ...base }
+  return {
+    ...base,
+    ...patch,
+    desktopLyrics: {
+      ...base.desktopLyrics,
+      ...(patch.desktopLyrics ?? {}),
+    },
+    shortcuts: {
+      ...base.shortcuts,
+      ...(patch.shortcuts ?? {}),
+      keybindings: {
+        ...base.shortcuts.keybindings,
+        ...(patch.shortcuts?.keybindings ?? {}),
+      },
+    },
+    proxy: {
+      ...base.proxy,
+      ...(patch.proxy ?? {}),
+      sourceRules: {
+        ...base.proxy.sourceRules,
+        ...(patch.proxy?.sourceRules ?? {}),
+      },
+    },
+  }
+}
+
 export class SettingsPlugin extends Service implements SettingsService {
   static override readonly name = 'settings'
   static readonly inject = ['store']
 
   private readonly ownCtx: Context
-  private current: AppSettings = { ...DEFAULT_APP_SETTINGS }
+  private current: AppSettings = mergeSettings(DEFAULT_APP_SETTINGS)
 
   constructor(ctx: Context) {
     super(ctx, 'settings')
@@ -29,7 +57,7 @@ export class SettingsPlugin extends Service implements SettingsService {
     try {
       const stored = await this.ownCtx.store.get<Partial<AppSettings>>(STORE_KEY)
       if (stored) {
-        this.current = { ...DEFAULT_APP_SETTINGS, ...stored }
+        this.current = mergeSettings(DEFAULT_APP_SETTINGS, stored)
       }
     } catch (err) {
       this.ownCtx.logger.warn(`settings: failed to load persisted preferences: ${err}`)
@@ -61,7 +89,7 @@ export class SettingsPlugin extends Service implements SettingsService {
 
   async update(partial: Partial<AppSettings>): Promise<AppSettings> {
     this.ownCtx.logger.debug('settings: update', partial)
-    this.current = { ...this.current, ...partial }
+    this.current = mergeSettings(this.current, partial)
     await this.ownCtx.store.set(STORE_KEY, this.current)
     this.ownCtx.emit('settings/changed', { ...this.current })
     return { ...this.current }
