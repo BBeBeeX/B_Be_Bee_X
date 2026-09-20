@@ -39,10 +39,17 @@ export function useDsp(ctx: Context): UseDspResult {
 
   useEffect(() => {
     refresh()
-    const off = ctx.on('dsp/chain-changed', () => {
+    const off1 = ctx.on('dsp/chain-changed', () => {
       refresh()
     })
-    return () => void off()
+    const untypedCtx = ctx as { on?: (event: string, cb: (name: unknown) => void) => () => void }
+    const off2 = untypedCtx.on?.('internal/service', (name: unknown) => {
+      if (name === 'dsp') refresh()
+    })
+    return () => {
+      void off1()
+      if (typeof off2 === 'function') void off2()
+    }
   }, [ctx, refresh])
 
   const setEnabled = useCallback(

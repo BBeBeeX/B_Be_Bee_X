@@ -338,6 +338,7 @@ export class DspPlugin extends Service implements DspService {
 }
 
 export const name = 'plugin-dsp'
+export const inject = ['audio', 'store']
 
 export async function apply(ctx: Context) {
   ctx.logger.info('plugin-dsp: loaded')
@@ -345,4 +346,4 @@ export async function apply(ctx: Context) {
   return () => void fiber.dispose()
 }
 
-export default { name, apply }
+export default { name, inject, apply }

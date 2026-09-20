@@ -102,4 +102,6 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-settings': {},
   '@BBeBee/plugin-settings-ui-mobile': {},
   '@BBeBee/plugin-sleep-timer': {},
+  '@BBeBee/plugin-dsp': {},
+  '@BBeBee/plugin-dsp-ui-mobile': {},
 }
