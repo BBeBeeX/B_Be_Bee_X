@@ -40,7 +40,6 @@ function formatBytes(bytes: number): string {
 
 export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
-  const scrollContainerRef = useRef<HTMLElement>(null)
   const isClickNavigatingRef = useRef(false)
 
   const { settings, update, reset } = useAppSettings(ctx)
@@ -80,7 +79,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
 
   // Scroll spy to sync activeTab with visible section
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined' || !scrollContainerRef.current) return
+    if (typeof IntersectionObserver === 'undefined') return
     const observer = new IntersectionObserver(
       (entries) => {
         if (isClickNavigatingRef.current) return
@@ -93,7 +92,6 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
         }
       },
       {
-        root: scrollContainerRef.current,
         threshold: 0.2,
       },
     )
@@ -128,11 +126,10 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
     {
       style: {
         display: 'flex',
-        height: '100%',
-        minHeight: 500,
+        minHeight: '100%',
         maxWidth: 1040,
         margin: '0 auto',
-        padding: '24px 32px',
+        padding: '24px 32px 48px',
         gap: 36,
       },
     },
@@ -144,7 +141,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
           width: 160,
           flexShrink: 0,
           position: 'sticky',
-          top: 0,
+          top: 24,
           alignSelf: 'flex-start',
           display: 'flex',
           flexDirection: 'column',
@@ -200,17 +197,14 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
         )
       }),
     ),
-    // Right Main Scrollable Area (Single Page, All Sections in DOM)
+    // Right Main Area (Natural page flow, no internal scroll container)
     h(
       'main',
       {
-        ref: scrollContainerRef,
         style: {
           flex: 1,
           minWidth: 0,
-          overflowY: 'auto',
-          paddingRight: 12,
-          scrollBehavior: 'smooth',
+          paddingRight: 8,
         },
       },
 
