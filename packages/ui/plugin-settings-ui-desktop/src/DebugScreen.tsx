@@ -7,36 +7,65 @@ import { createElement as h, useState, useEffect } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import { serviceOf } from '@BBeBee/ui-core'
-import type { UiService } from '@BBeBee/protocol'
+import type { UiService, DeviceService } from '@BBeBee/protocol'
 import { Button } from '@BBeBee/ui-kit-desktop'
+
+declare global {
+  interface Window {
+    BBeBee?: {
+      platform?: string
+      versions?: { electron?: string; node?: string }
+      isDebug?: boolean
+    }
+  }
+}
 
 export function DebugScreen({ ctx }: { ctx: Context }): ReactElement {
   const ui = serviceOf<UiService>(ctx, 'ui')
-  const [platformInfo, setPlatformInfo] = useState({
-    platform: 'unknown',
-    arch: 'unknown',
-    node: 'unknown',
-    electron: 'unknown',
-    chrome: 'unknown',
-    userAgent: '',
-  })
+  const device = serviceOf<DeviceService>(ctx, 'device')
+  const bbebee = typeof window !== 'undefined' ? window.BBeBee : undefined
+  const nodeProc = typeof process !== 'undefined' ? process : undefined
+
+  const [platformInfo, setPlatformInfo] = useState(() => ({
+    platform: bbebee?.platform ?? device?.platform ?? nodeProc?.platform ?? 'desktop',
+    arch: nodeProc?.arch ?? 'x64',
+    node: bbebee?.versions?.node ?? nodeProc?.versions?.node ?? 'embedded',
+    electron:
+      bbebee?.versions?.electron ??
+      (nodeProc?.versions as Record<string, string> | undefined)?.electron ??
+      'N/A',
+    chrome:
+      (typeof navigator !== 'undefined' && /Chrome\/([0-9.]+)/.exec(navigator.userAgent)?.[1]) ||
+      'N/A',
+    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+    appVersion: device?.appVersion ?? '0.1.0-alpha',
+  }))
 
   useEffect(() => {
-    if (typeof process !== 'undefined') {
+    if (nodeProc) {
       setPlatformInfo({
-        platform: process.platform ?? 'unknown',
-        arch: process.arch ?? 'unknown',
-        node: process.versions?.node ?? 'unknown',
-        electron: (process.versions as Record<string, string>)?.electron ?? 'N/A',
-        chrome: (process.versions as Record<string, string>)?.chrome ?? 'N/A',
+        platform: bbebee?.platform ?? device?.platform ?? nodeProc.platform ?? 'desktop',
+        arch: nodeProc.arch ?? 'x64',
+        node: bbebee?.versions?.node ?? nodeProc.versions?.node ?? 'embedded',
+        electron:
+          bbebee?.versions?.electron ??
+          (nodeProc.versions as Record<string, string> | undefined)?.electron ??
+          'N/A',
+        chrome:
+          (typeof navigator !== 'undefined' &&
+            /Chrome\/([0-9.]+)/.exec(navigator.userAgent)?.[1]) ||
+          'N/A',
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+        appVersion: device?.appVersion ?? '0.1.0-alpha',
       })
     }
-  }, [])
+  }, [nodeProc, bbebee, device])
 
-  const isDebugMode =
-    typeof process !== 'undefined' &&
-    (process.env?.NODE_ENV !== 'production' || Boolean(process.env?.DEBUG))
+  const envNodeEnv = nodeProc?.env?.['NODE_ENV']
+  const envDebug = nodeProc?.env?.['DEBUG']
+  const isDebugMode = Boolean(
+    bbebee?.isDebug || (envNodeEnv && envNodeEnv !== 'production') || Boolean(envDebug),
+  )
 
   return h(
     'div',
@@ -146,7 +175,7 @@ export function DebugScreen({ ctx }: { ctx: Context }): ReactElement {
             border: '1px solid rgba(255, 255, 255, 0.04)',
           },
         },
-        renderInfoItem('Node 环境', process.env?.NODE_ENV || 'production'),
+        renderInfoItem('Node 环境', envNodeEnv || 'production'),
         renderInfoItem('日志输出', 'RingBuffer (2000 lines)'),
         renderInfoItem('隔离沙箱', 'QuickJS Realm Isolation'),
       ),
@@ -182,7 +211,7 @@ export function DebugScreen({ ctx }: { ctx: Context }): ReactElement {
         renderInfoItem('Node.js 版本', platformInfo.node),
         renderInfoItem('Electron 版本', platformInfo.electron),
         renderInfoItem('Chromium 版本', platformInfo.chrome),
-        renderInfoItem('应用构建版本', '0.1.0-alpha'),
+        renderInfoItem('应用构建版本', platformInfo.appVersion),
       ),
       h(
         'div',

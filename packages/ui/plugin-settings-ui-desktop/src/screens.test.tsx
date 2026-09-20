@@ -538,6 +538,20 @@ describe('SettingsScreen', () => {
     expect(calls.includes('navigate:settings.view')).toBe(true)
   })
 
+  it('renders DebugScreen safely when process is undefined in browser sandbox', async () => {
+    const { ctx } = await harness()
+    const originalProcess = globalThis.process
+    try {
+      // @ts-expect-error test without process
+      delete globalThis.process
+      const { findByText, getByText } = render(h(DebugScreen, { ctx }))
+      expect(await findByText('调试与诊断 (Debug)')).toBeTruthy()
+      expect(getByText('生产环境 (Production)')).toBeTruthy()
+    } finally {
+      globalThis.process = originalProcess
+    }
+  })
+
   it('renders LogsScreen and handles actions', async () => {
     const { ctx, calls } = await harness()
     const { getByText, findByText } = render(h(LogsScreen, { ctx }))
