@@ -3,7 +3,7 @@
  * Desktop Settings Screen component tests.
  */
 
-import { describe, expect, it, afterEach } from 'vitest'
+import { describe, expect, it, afterEach, vi } from 'vitest'
 import { createElement as h } from 'react'
 import { fireEvent, render, cleanup, waitFor } from '@testing-library/react'
 import { Context, Service } from 'cordis'
@@ -166,13 +166,11 @@ describe('SettingsScreen', () => {
     expect(getByText('拔出音频设备时自动暂停')).toBeTruthy()
 
     // Find and click the toggle switch for crossfade
-    const switches = document.querySelectorAll('button[role="switch"]')
-    expect(switches.length).toBeGreaterThan(0)
-    // The second switch is crossfade (first is gapless)
-    const crossfadeSwitch = switches[1] ?? switches[0]
-    if (crossfadeSwitch) {
-      fireEvent.click(crossfadeSwitch)
-    }
+    const crossfadeSwitch =
+      (document.querySelector('button[aria-label="曲目交叉淡入淡出"]') as HTMLButtonElement) ??
+      document.querySelectorAll('button[role="switch"]')[2]
+    expect(crossfadeSwitch).toBeTruthy()
+    fireEvent.click(crossfadeSwitch)
 
     await waitFor(() => {
       expect(calls.some((c) => c.startsWith('update:') && c.includes('crossfadeEnabled'))).toBe(true)
@@ -270,5 +268,91 @@ describe('SettingsScreen', () => {
     fireEvent.click(dspTab)
 
     expect(await findByText('Mock DSP Screen Content')).toBeTruthy()
+  })
+
+  it('renders all sections simultaneously in the DOM with no icons in tabs', async () => {
+    const { ctx } = await harness()
+    const { container } = render(h(SettingsScreen, { ctx }))
+
+    // All section anchors exist concurrently in DOM
+    const sectionIds = [
+      'section-general',
+      'section-playback',
+      'section-dsp',
+      'section-sources',
+      'section-storage',
+      'section-about',
+    ]
+    for (const id of sectionIds) {
+      expect(container.querySelector(`#${id}`)).toBeTruthy()
+    }
+
+    // Tab buttons have no emoji / icons
+    const tabButtons = container.querySelectorAll('aside button[role="tab"]')
+    expect(tabButtons.length).toBe(6)
+    for (const btn of Array.from(tabButtons)) {
+      expect(btn.querySelector('svg')).toBeNull()
+      expect(btn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u)
+    }
+  })
+
+  it('updates theme and language via Select dropdowns', async () => {
+    const { ctx, calls } = await harness({ theme: 'dark', language: 'zh' })
+    const { container } = render(h(SettingsScreen, { ctx }))
+
+    // Theme select
+    const themeSelect = container.querySelector('select[aria-label="外观主题"]') as HTMLSelectElement
+    expect(themeSelect).toBeTruthy()
+    expect(themeSelect.value).toBe('dark')
+    fireEvent.change(themeSelect, { target: { value: 'light' } })
+    await waitFor(() => {
+      expect(calls.some((c) => c.includes('"theme":"light"'))).toBe(true)
+    })
+
+    // Language select
+    const langSelect = container.querySelector('select[aria-label="界面语言"]') as HTMLSelectElement
+    expect(langSelect).toBeTruthy()
+    expect(langSelect.value).toBe('zh')
+    fireEvent.change(langSelect, { target: { value: 'en' } })
+    await waitFor(() => {
+      expect(calls.some((c) => c.includes('"language":"en"'))).toBe(true)
+    })
+  })
+
+  it('navigates to section via tab scrollIntoView', async () => {
+    const { ctx } = await harness()
+    const { container, findByText } = render(h(SettingsScreen, { ctx }))
+
+    const playbackSection = container.querySelector('#section-playback') as HTMLElement
+    expect(playbackSection).toBeTruthy()
+    const scrollMock = vi.fn()
+    playbackSection.scrollIntoView = scrollMock
+
+    const playbackTab = await findByText('播放与音频')
+    fireEvent.click(playbackTab)
+
+    expect(scrollMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+  })
+
+  it('toggles expandable row via chevron button', async () => {
+    const { ctx } = await harness({ crossfadeEnabled: true })
+    const { container } = render(h(SettingsScreen, { ctx }))
+
+    // Initially expanded when crossfadeEnabled: true
+    expect(container.textContent).toContain('淡入淡出持续时间')
+
+    // Find the chevron toggle button for crossfade
+    const chevronBtn = container.querySelector('button[aria-label^="收起 曲目交叉淡入淡出"]') as HTMLButtonElement
+    expect(chevronBtn).toBeTruthy()
+    fireEvent.click(chevronBtn)
+
+    // Now collapsed
+    expect(container.textContent).not.toContain('淡入淡出持续时间')
+
+    // Click again to re-expand
+    const expandBtn = container.querySelector('button[aria-label^="展开 曲目交叉淡入淡出"]') as HTMLButtonElement
+    expect(expandBtn).toBeTruthy()
+    fireEvent.click(expandBtn)
+    expect(container.textContent).toContain('淡入淡出持续时间')
   })
 })
