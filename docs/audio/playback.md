@@ -111,10 +111,10 @@ The player unifies queue traversal and repeating into four explicit playback mod
 
 | Mode | Key | `shuffle` | `repeat` | Queue Traversal Behaviour |
 |---|---|---|---|---|
-| **顺序播放** (Sequence) | `'sequence'` | `false` | `'off'` | Traverses queue in order, stops playback upon reaching queue end. |
-| **单曲循环** (Single Loop) | `'single-loop'` | `false` | `'one'` | Replays the current track repeatedly without re-resolving streams. |
-| **列表循环** (List Loop) | `'list-loop'` | `false` | `'all'` | Traverses queue in order and wraps around to the beginning indefinitely. |
-| **随机播放** (Shuffle) | `'shuffle'` | `true` | `'all'` | Shuffles queue with a stable seeded permutation and loops indefinitely. |
+| **Sequence** | `'sequence'` | `false` | `'off'` | Traverses queue in order, stops playback upon reaching queue end. |
+| **Single Loop**  | `'single-loop'` | `false` | `'one'` | Replays the current track repeatedly without re-resolving streams. |
+| **List Loop** | `'list-loop'` | `false` | `'all'` | Traverses queue in order and wraps around to the beginning indefinitely. |
+| **Shuffle** | `'shuffle'` | `true` | `'all'` | Shuffles queue with a stable seeded permutation and loops indefinitely. |
 
 - **Mode Cycling**: `cyclePlayMode()` advances modes in the standard order: `sequence` $\to$ `single-loop` $\to$ `list-loop` $\to$ `shuffle` $\to$ `sequence`.
 - **Backward Compatibility**: Calling `setRepeat()` or `setShuffle()` automatically synchronizes `state.playMode` through `derivePlayMode()`. Similarly, calling `setPlayMode()` automatically configures the underlying `repeat` and `shuffle` properties on the queue.

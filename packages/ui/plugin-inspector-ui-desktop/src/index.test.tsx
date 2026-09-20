@@ -132,4 +132,32 @@ describe('the inspector view', () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(renderToStaticMarkup(h(InspectorPanel, { ctx }))).toContain('Plugin graph')
   })
+
+  it('renders the 5 PCB visual layers and hardware HUD elements', async () => {
+    const { shellCtx } = await harness()
+    const html = renderAsShell(shellCtx)
+
+    // Hardware HUD identifiers
+    expect(html).toContain('EVSERFL12–347')
+    expect(html).toContain('EC1')
+    expect(html).toContain('EC2')
+    expect(html).toContain('CORE VCC')
+
+    // 5 Visual Layers
+    expect(html).toContain('glow-layer')
+    expect(html).toContain('trace-layer')
+    expect(html).toContain('pin-layer')
+    expect(html).toContain('node-layer')
+    expect(html).toContain('signal-flow-layer')
+
+    // Key reference nodes
+    expect(html).toContain('cs20')
+    expect(html).toContain('cs30')
+    expect(html).toContain('Level 4')
+    expect(html).toContain('Level 5')
+
+    // Orthogonal trace path markers & filters
+    expect(html).toContain('pcb-glow')
+    expect(html).toContain('pcb-grid-pattern')
+  })
 })
