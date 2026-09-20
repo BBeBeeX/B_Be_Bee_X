@@ -53,8 +53,16 @@ export type { App, AppOptions, BootstrapEntry, Target } from './bootstrap/app.js
 export { resolveConfig, isEnabled } from './config/config.js'
 export type { AppConfig, PluginEntry, ResolvedPlugin } from './config/config.js'
 
-export { loadPlugins } from './loader/loader.js'
-export type { LoadOptions, LoadState, LoadedPlugin, PluginRegistry, RegistryEntry } from './loader/loader.js'
+export { loadPlugins, loadPlugin } from './loader/loader.js'
+export type {
+  LoadOptions,
+  LoadState,
+  LoadedPlugin,
+  PluginLoader,
+  PluginModule,
+  PluginRegistry,
+  RegistryEntry,
+} from './loader/loader.js'
 
 export {
   scopeContext,

@@ -376,17 +376,26 @@ workspace for packages containing a `BBeBee.plugin.json` and emits:
 
 ```ts
 // apps/mobile/generated/plugins.ts — GENERATED, do not edit
-import player from '@BBeBee/plugin-player'
-import sourceLocal from '@BBeBee/plugin-source-local'
-// …
-export const bundled = {
-  '@BBeBee/plugin-player': player,
-  '@BBeBee/plugin-source-local': sourceLocal,
-} as const
+import type { PluginRegistry } from '@BBeBee/kernel'
+
+export const bundled: PluginRegistry = {
+  '@BBeBee/plugin-player': {
+    load: () => import('@BBeBee/plugin-player'),
+    manifest: { /* … */ },
+    builtin: true,
+  },
+  '@BBeBee/plugin-source-local': {
+    load: () => import('@BBeBee/plugin-source-local'),
+    manifest: { /* … */ },
+    builtin: true,
+  },
+}
 ```
 
-Configuration decides which of these are actually instantiated and with what settings. The
-generated file is committed so a clean checkout builds without running codegen first.
+Configuration decides which of these are actually instantiated and with what settings. The loader
+dynamically invokes `load()` on demand at startup, ensuring that unconfigured plugins are neither
+fetched nor evaluated. The generated file is committed so a clean checkout builds without running
+codegen first.
 
 ### 6.2 Desktop additions — `plugin-loader-dynamic`
 

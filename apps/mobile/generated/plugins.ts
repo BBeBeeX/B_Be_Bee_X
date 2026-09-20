@@ -2,239 +2,200 @@
 // Target: mobile. Run `pnpm gen:plugins` to refresh.
 
 import type { PluginRegistry } from '@BBeBee/kernel'
-import coreAudioWebaudio from '@BBeBee/core-audio-webaudio'
-import coreBackgroundExpo from '@BBeBee/core-background-expo'
-import coreCodecRn from '@BBeBee/core-codec-rn'
-import coreDeviceExpo from '@BBeBee/core-device-expo'
-import coreHttpRn from '@BBeBee/core-http-rn'
-import coreMediaSessionRn from '@BBeBee/core-media-session-rn'
-import coreSecretsExpo from '@BBeBee/core-secrets-expo'
-import pluginAlbum from '@BBeBee/plugin-album'
-import pluginAlbumUi from '@BBeBee/plugin-album-ui-mobile'
-import pluginCache from '@BBeBee/plugin-cache'
-import pluginDesktopLyrics from '@BBeBee/plugin-desktop-lyrics'
-import pluginDownload from '@BBeBee/plugin-download'
-import pluginDownloadUi from '@BBeBee/plugin-download-ui-mobile'
-import pluginDsp from '@BBeBee/plugin-dsp'
-import pluginDspUi from '@BBeBee/plugin-dsp-ui-mobile'
-import pluginHistory from '@BBeBee/plugin-history'
-import pluginHistoryUi from '@BBeBee/plugin-history-ui-mobile'
-import pluginInspector from '@BBeBee/plugin-inspector'
-import pluginLibrary from '@BBeBee/plugin-library'
-import pluginLibraryUi from '@BBeBee/plugin-library-ui-mobile'
-import pluginLocalScanner from '@BBeBee/plugin-local-scanner'
-import pluginLocalScannerUi from '@BBeBee/plugin-local-scanner-ui-mobile'
-import pluginLyrics from '@BBeBee/plugin-lyrics'
-import pluginNowPlaying from '@BBeBee/plugin-now-playing'
-import pluginNowPlayingUi from '@BBeBee/plugin-now-playing-ui-mobile'
-import pluginPlayer from '@BBeBee/plugin-player'
-import pluginQueue from '@BBeBee/plugin-queue'
-import pluginQueueUi from '@BBeBee/plugin-queue-ui-mobile'
-import pluginSettings from '@BBeBee/plugin-settings'
-import pluginSettingsUi from '@BBeBee/plugin-settings-ui-mobile'
-import pluginSleepTimer from '@BBeBee/plugin-sleep-timer'
-import pluginSourceLocal from '@BBeBee/plugin-source-local'
-import pluginSourceRuntime from '@BBeBee/plugin-source-runtime'
-import pluginSources from '@BBeBee/plugin-sources'
-import pluginSourcesUi from '@BBeBee/plugin-sources-ui-mobile'
-import pluginUi from '@BBeBee/plugin-ui'
-import pluginLogBuffer from '@BBeBee/plugin-log-buffer'
-import pluginLogConsole from '@BBeBee/plugin-log-console'
-import pluginLogFile from '@BBeBee/plugin-log-file'
 
 export const bundled: PluginRegistry = {
   "@BBeBee/core-audio-webaudio": {
-    plugin: coreAudioWebaudio,
+    load: () => import('@BBeBee/core-audio-webaudio'),
     manifest: {"id":"@BBeBee/core-audio-webaudio","version":"0.0.0","displayName":"Audio","description":"ctx.audio — the Web Audio graph, shared by every target.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["audio"]}},
     builtin: true,
   },
   "@BBeBee/core-background-expo": {
-    plugin: coreBackgroundExpo,
+    load: () => import('@BBeBee/core-background-expo'),
     manifest: {"id":"@BBeBee/core-background-expo","platforms":["mobile"],"version":"0.0.0","displayName":"Background","description":"ctx.background for iOS and Android — audio session, wake locks, deferred work.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["background"],"contributes":{"services":["background"]}},
     builtin: true,
   },
   "@BBeBee/core-codec-rn": {
-    plugin: coreCodecRn,
+    load: () => import('@BBeBee/core-codec-rn'),
     manifest: {"id":"@BBeBee/core-codec-rn","platforms":["mobile"],"version":"0.0.0","displayName":"Codec","description":"ctx.codec for iOS and Android — tags over ctx.fs, PCM via AudioDecoder.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:all"],"contributes":{"services":["codec"]}},
     builtin: true,
   },
   "@BBeBee/core-device-expo": {
-    plugin: coreDeviceExpo,
+    load: () => import('@BBeBee/core-device-expo'),
     manifest: {"id":"@BBeBee/core-device-expo","platforms":["mobile"],"version":"0.0.0","displayName":"Device","description":"ctx.device for iOS and Android — network, battery, locale.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["device"]}},
     builtin: true,
   },
   "@BBeBee/core-http-rn": {
-    plugin: coreHttpRn,
+    load: () => import('@BBeBee/core-http-rn'),
     manifest: {"id":"@BBeBee/core-http-rn","platforms":["mobile"],"version":"0.0.0","displayName":"HTTP","description":"ctx.http for iOS and Android — the M1 slice over expo/fetch.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*"],"contributes":{"services":["http"]}},
     builtin: true,
   },
   "@BBeBee/core-media-session-rn": {
-    plugin: coreMediaSessionRn,
+    load: () => import('@BBeBee/core-media-session-rn'),
     manifest: {"id":"@BBeBee/core-media-session-rn","platforms":["mobile"],"version":"0.0.0","displayName":"Media Session","description":"ctx.mediaSession for iOS and Android — lock screen and media notification.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["mediaSession"],"contributes":{"services":["mediaSession"]}},
     builtin: true,
   },
   "@BBeBee/core-secrets-expo": {
-    plugin: coreSecretsExpo,
+    load: () => import('@BBeBee/core-secrets-expo'),
     manifest: {"id":"@BBeBee/core-secrets-expo","platforms":["mobile"],"version":"0.0.0","displayName":"Secrets","description":"ctx.secrets for iOS and Android, over expo-secure-store.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["secrets"]}},
     builtin: true,
   },
   "@BBeBee/plugin-album": {
-    plugin: pluginAlbum,
+    load: () => import('@BBeBee/plugin-album'),
     manifest: {"id":"@BBeBee/plugin-album","version":"0.0.0","displayName":"Album","description":"The album page — detail, tracks, and album-level actions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-album-ui-mobile": {
-    plugin: pluginAlbumUi,
+    load: () => import('@BBeBee/plugin-album-ui-mobile'),
     manifest: {"id":"@BBeBee/plugin-album-ui-mobile","version":"0.0.0","displayName":"Album (mobile views)","description":"The album page — detail, tracks, and album-level actions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-cache": {
-    plugin: pluginCache,
+    load: () => import('@BBeBee/plugin-cache'),
     manifest: {"id":"@BBeBee/plugin-cache","version":"0.0.0","displayName":"Cache","description":"ctx.cache — covers and remote audio streams are served from disk, and fetched only on a miss.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","db:read:core","db:write:core"],"contributes":{"services":["cache"]}},
     builtin: true,
   },
   "@BBeBee/plugin-desktop-lyrics": {
-    plugin: pluginDesktopLyrics,
+    load: () => import('@BBeBee/plugin-desktop-lyrics'),
     manifest: {"id":"@BBeBee/plugin-desktop-lyrics","version":"0.0.0","displayName":"Desktop Lyrics","description":"Floating desktop lyrics state and command contributions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["desktopLyrics"]}},
     builtin: true,
   },
   "@BBeBee/plugin-download": {
-    plugin: pluginDownload,
+    load: () => import('@BBeBee/plugin-download'),
     manifest: {"id":"@BBeBee/plugin-download","version":"0.0.0","displayName":"Downloads","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","fs:read:downloads","fs:write:downloads","db:read:core","db:write:core"],"contributes":{"services":["downloads"]}},
     builtin: true,
   },
   "@BBeBee/plugin-download-ui-mobile": {
-    plugin: pluginDownloadUi,
+    load: () => import('@BBeBee/plugin-download-ui-mobile'),
     manifest: {"id":"@BBeBee/plugin-download-ui-mobile","version":"0.0.0","displayName":"Downloads (mobile views)","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["downloads"]}},
     builtin: true,
   },
   "@BBeBee/plugin-dsp": {
-    plugin: pluginDsp,
+    load: () => import('@BBeBee/plugin-dsp'),
     manifest: {"id":"@BBeBee/plugin-dsp","version":"0.0.0","displayName":"DSP Effect Chain","description":"ctx.dsp — effect chain builder, presets, and audio processing effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["audio"],"contributes":{"services":["dsp"]}},
     builtin: true,
   },
   "@BBeBee/plugin-dsp-ui-mobile": {
-    plugin: pluginDspUi,
+    load: () => import('@BBeBee/plugin-dsp-ui-mobile'),
     manifest: {"id":"@BBeBee/plugin-dsp-ui-mobile","version":"0.0.0","displayName":"DSP Effect Chain (mobile views)","description":"ctx.dsp — effect chain builder, presets, and audio processing effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["dsp"]}},
     builtin: true,
   },
   "@BBeBee/plugin-history": {
-    plugin: pluginHistory,
+    load: () => import('@BBeBee/plugin-history'),
     manifest: {"id":"@BBeBee/plugin-history","version":"0.0.0","displayName":"Play History","description":"Play history and statistics — a view of the playback history ctx.player owns.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-history-ui-mobile": {
-    plugin: pluginHistoryUi,
+    load: () => import('@BBeBee/plugin-history-ui-mobile'),
     manifest: {"id":"@BBeBee/plugin-history-ui-mobile","version":"0.0.0","displayName":"Play History (mobile views)","description":"Play history and statistics — a view of the playback history ctx.player owns.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-inspector": {
-    plugin: pluginInspector,
+    load: () => import('@BBeBee/plugin-inspector'),
     manifest: {"id":"@BBeBee/plugin-inspector","version":"0.0.0","displayName":"Plugin Inspector","description":"Fiber tree and labelled effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["inspector"]}},
     builtin: true,
   },
   "@BBeBee/plugin-library": {
-    plugin: pluginLibrary,
+    load: () => import('@BBeBee/plugin-library'),
     manifest: {"id":"@BBeBee/plugin-library","version":"0.0.0","displayName":"Library","description":"ctx.library — playlists, favourites, collections and smart playlists.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["library"]}},
     builtin: true,
   },
   "@BBeBee/plugin-library-ui-mobile": {
-    plugin: pluginLibraryUi,
+    load: () => import('@BBeBee/plugin-library-ui-mobile'),
     manifest: {"id":"@BBeBee/plugin-library-ui-mobile","version":"0.0.0","displayName":"Library (mobile views)","description":"ctx.library — playlists, favourites, collections and smart playlists.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["library"]}},
     builtin: true,
   },
   "@BBeBee/plugin-local-scanner": {
-    plugin: pluginLocalScanner,
+    load: () => import('@BBeBee/plugin-local-scanner'),
     manifest: {"id":"@BBeBee/plugin-local-scanner","version":"0.0.0","displayName":"Local Scanner","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["fs:read:media","fs:read:all","fs:read:cache","fs:write:cache","db:read:core","db:write:core","background"],"contributes":{"services":["scanner"]}},
     builtin: true,
   },
   "@BBeBee/plugin-local-scanner-ui-mobile": {
-    plugin: pluginLocalScannerUi,
+    load: () => import('@BBeBee/plugin-local-scanner-ui-mobile'),
     manifest: {"id":"@BBeBee/plugin-local-scanner-ui-mobile","version":"0.0.0","displayName":"Local Scanner (mobile views)","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["scanner"]}},
     builtin: true,
   },
   "@BBeBee/plugin-lyrics": {
-    plugin: pluginLyrics,
+    load: () => import('@BBeBee/plugin-lyrics'),
     manifest: {"id":"@BBeBee/plugin-lyrics","version":"0.0.0","displayName":"Lyrics","description":"ctx.lyrics — lyric retrieval, caching, synchronization and unified state.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["lyrics"]}},
     builtin: true,
   },
   "@BBeBee/plugin-now-playing": {
-    plugin: pluginNowPlaying,
+    load: () => import('@BBeBee/plugin-now-playing'),
     manifest: {"id":"@BBeBee/plugin-now-playing","version":"0.0.0","displayName":"Now playing","description":"The full-screen player and the persistent bar that opens it.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-now-playing-ui-mobile": {
-    plugin: pluginNowPlayingUi,
+    load: () => import('@BBeBee/plugin-now-playing-ui-mobile'),
     manifest: {"id":"@BBeBee/plugin-now-playing-ui-mobile","version":"0.0.0","displayName":"Now playing (mobile views)","description":"The full-screen player and the persistent bar that opens it.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-player": {
-    plugin: pluginPlayer,
+    load: () => import('@BBeBee/plugin-player'),
     manifest: {"id":"@BBeBee/plugin-player","version":"0.0.0","displayName":"Player","description":"ctx.player — transport, queue, resolution, history.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio","mediaSession","background","db:read:core","db:write:core"],"contributes":{"services":["player"]}},
     builtin: true,
   },
   "@BBeBee/plugin-queue": {
-    plugin: pluginQueue,
+    load: () => import('@BBeBee/plugin-queue'),
     manifest: {"id":"@BBeBee/plugin-queue","version":"0.0.0","displayName":"Queue","description":"The up-next list — a view of the queue ctx.player owns.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-queue-ui-mobile": {
-    plugin: pluginQueueUi,
+    load: () => import('@BBeBee/plugin-queue-ui-mobile'),
     manifest: {"id":"@BBeBee/plugin-queue-ui-mobile","version":"0.0.0","displayName":"Queue (mobile views)","description":"The up-next list — a view of the queue ctx.player owns.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-settings": {
-    plugin: pluginSettings,
+    load: () => import('@BBeBee/plugin-settings'),
     manifest: {"id":"@BBeBee/plugin-settings","version":"0.0.0","displayName":"Settings","description":"Global application preferences, settings service, and settings views.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["settings"]}},
     builtin: true,
   },
   "@BBeBee/plugin-settings-ui-mobile": {
-    plugin: pluginSettingsUi,
+    load: () => import('@BBeBee/plugin-settings-ui-mobile'),
     manifest: {"id":"@BBeBee/plugin-settings-ui-mobile","version":"0.0.0","displayName":"Settings (mobile views)","description":"Global application preferences, settings service, and settings views.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["settings"]}},
     builtin: true,
   },
   "@BBeBee/plugin-sleep-timer": {
-    plugin: pluginSleepTimer,
+    load: () => import('@BBeBee/plugin-sleep-timer'),
     manifest: {"id":"@BBeBee/plugin-sleep-timer","version":"0.0.0","displayName":"Sleep Timer","description":"ctx.sleepTimer — stops playback after a duration, at a specific time, or at track end.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["sleepTimer"]}},
     builtin: true,
   },
   "@BBeBee/plugin-source-local": {
-    plugin: pluginSourceLocal,
+    load: () => import('@BBeBee/plugin-source-local'),
     manifest: {"id":"@BBeBee/plugin-source-local","version":"0.0.0","displayName":"This device","description":"plugin-source-local — the files on this device, as a MediaProvider.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:all","db:read:core","db:write:core"],"contributes":{"services":["sourceLocal"]}},
     builtin: true,
   },
   "@BBeBee/plugin-source-runtime": {
-    plugin: pluginSourceRuntime,
+    load: () => import('@BBeBee/plugin-source-runtime'),
     manifest: {"id":"@BBeBee/plugin-source-runtime","version":"0.0.0","displayName":"Music sources","description":"plugin-source-runtime — interprets imported source strings.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","db:read:core","db:write:core"],"contributes":{"slots":["settings.sources"]}},
     builtin: true,
   },
   "@BBeBee/plugin-sources": {
-    plugin: pluginSources,
+    load: () => import('@BBeBee/plugin-sources'),
     manifest: {"id":"@BBeBee/plugin-sources","version":"0.0.0","displayName":"Sources","description":"ctx.sources — imported source documents, the registry, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["sources"]}},
     builtin: true,
   },
   "@BBeBee/plugin-sources-ui-mobile": {
-    plugin: pluginSourcesUi,
+    load: () => import('@BBeBee/plugin-sources-ui-mobile'),
     manifest: {"id":"@BBeBee/plugin-sources-ui-mobile","version":"0.0.0","displayName":"Sources (mobile views)","description":"ctx.sources — imported source documents, the registry, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["sources"]}},
     builtin: true,
   },
   "@BBeBee/plugin-ui": {
-    plugin: pluginUi,
+    load: () => import('@BBeBee/plugin-ui'),
     manifest: {"id":"@BBeBee/plugin-ui","version":"0.0.0","displayName":"UI Registry","description":"The ctx.ui contribution registry.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["ui"]}},
     builtin: true,
   },
   "@BBeBee/plugin-log-buffer": {
-    plugin: pluginLogBuffer,
+    load: () => import('@BBeBee/plugin-log-buffer'),
     manifest: {"id":"@BBeBee/plugin-log-buffer","version":"0.0.0","displayName":"Log Buffer","description":"In-app log ring buffer.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["logBuffer"]}},
     builtin: true,
   },
   "@BBeBee/plugin-log-console": {
-    plugin: pluginLogConsole,
+    load: () => import('@BBeBee/plugin-log-console'),
     manifest: {"id":"@BBeBee/plugin-log-console","version":"0.0.0","displayName":"Console Logs","description":"Development console transport.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
     builtin: true,
   },
   "@BBeBee/plugin-log-file": {
-    plugin: pluginLogFile,
+    load: () => import('@BBeBee/plugin-log-file'),
     manifest: {"id":"@BBeBee/plugin-log-file","version":"0.0.0","displayName":"Log File","description":"Rotating NDJSON log file.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:write:logs","fs:read:logs"]},
     builtin: true,
   },

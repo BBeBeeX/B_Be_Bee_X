@@ -16,9 +16,15 @@ import { scopeContext } from '../capability-gate/capability.js'
 import type { ResolvedPlugin } from '../config/config.js'
 import { FiberState, fiberStateName } from '../fiber-state.js'
 
-/** What the codegen step emits: package id → plugin, plus its manifest. */
+export type PluginModule = Plugin | { default: Plugin }
+export type PluginLoader = () => Promise<PluginModule | unknown>
+
+/** What the codegen step or registry emits: package id → plugin/loader, plus its manifest. */
 export interface RegistryEntry {
-  plugin: Plugin
+  /** Pre-instantiated plugin (for static tests/bootstrap), or cached instance after loading. */
+  plugin?: Plugin
+  /** Dynamic loader that imports the plugin module on demand. */
+  load?: PluginLoader
   manifest: PluginManifest
   /**
    * True for first-party plugins bundled with the app, which are granted their
@@ -123,6 +129,36 @@ export async function loadPlugins(
     }
 
     try {
+      let plugin = entry.plugin
+      if (!plugin && entry.load) {
+        try {
+          const mod = await entry.load()
+          plugin =
+            mod && typeof mod === 'object' && 'default' in mod && mod.default
+              ? (mod.default as Plugin)
+              : (mod as Plugin)
+          entry.plugin = plugin
+        } catch (cause) {
+          const error = cause instanceof Error ? cause : new Error(String(cause))
+          ctx.logger.error(
+            `failed to dynamically load plugin module for ${inst.pluginId}: ${error.message}`,
+          )
+          ctx.emit('plugin/failed', inst.pluginId, error)
+          results.push({ ...ids(inst), state: 'failed', error })
+          continue
+        }
+      }
+
+      if (!plugin) {
+        const error = new Error(
+          `plugin ${inst.pluginId} provides neither a plugin instance nor a load function`,
+        )
+        ctx.logger.error(error.message)
+        ctx.emit('plugin/failed', inst.pluginId, error)
+        results.push({ ...ids(inst), state: 'failed', error })
+        continue
+      }
+
       const base = scopeContext(ctx, {
         pluginId: inst.pluginId,
         requested: entry.manifest.capabilities,
@@ -130,14 +166,14 @@ export async function loadPlugins(
       })
       const scoped = options.deriveContext?.(base, inst, entry.manifest) ?? base
 
-      const fiber = await scoped.plugin(entry.plugin, inst.config)
+      const fiber = await scoped.plugin(plugin, inst.config)
 
       // `await ctx.plugin()` resolves as soon as the fiber settles — which
       // includes settling into PENDING because an injected service never
       // arrived. Reporting that as `active` makes the plugin inspector claim
       // a plugin is healthy while it has never run.
       if (fiber.state !== FiberState.ACTIVE) {
-        const waitingFor = missingInjections(scoped, entry.plugin)
+        const waitingFor = missingInjections(scoped, plugin)
         ctx.logger.warn(
           `plugin ${inst.pluginId} is ${fiberStateName(fiber.state)}` +
             (waitingFor.length ? `, waiting for: ${waitingFor.join(', ')}` : ''),
@@ -169,6 +205,25 @@ export async function loadPlugins(
   }
 
   return results
+}
+
+/**
+ * Instantiate a single resolved plugin.
+ */
+export async function loadPlugin(
+  ctx: Context,
+  registry: PluginRegistry,
+  plugin: ResolvedPlugin,
+  options: LoadOptions = {},
+): Promise<LoadedPlugin> {
+  const [result] = await loadPlugins(ctx, registry, [plugin], options)
+  return (
+    result ?? {
+      pluginId: plugin.pluginId,
+      state: 'failed',
+      error: new Error(`failed to load plugin ${plugin.pluginId}`),
+    }
+  )
 }
 
 /** Which of a plugin's declared injections are not currently available. */

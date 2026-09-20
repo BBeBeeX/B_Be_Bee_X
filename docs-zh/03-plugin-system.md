@@ -363,16 +363,23 @@ Metro 无法解析运行时计算出的模块路径，因此插件导入必须�
 
 ```ts
 // apps/mobile/generated/plugins.ts — GENERATED, do not edit
-import player from '@BBeBee/plugin-player'
-import sourceLocal from '@BBeBee/plugin-source-local'
-// …
-export const bundled = {
-  '@BBeBee/plugin-player': player,
-  '@BBeBee/plugin-source-local': sourceLocal,
-} as const
+import type { PluginRegistry } from '@BBeBee/kernel'
+
+export const bundled: PluginRegistry = {
+  '@BBeBee/plugin-player': {
+    load: () => import('@BBeBee/plugin-player'),
+    manifest: { /* … */ },
+    builtin: true,
+  },
+  '@BBeBee/plugin-source-local': {
+    load: () => import('@BBeBee/plugin-source-local'),
+    manifest: { /* … */ },
+    builtin: true,
+  },
+}
 ```
 
-配置决定其中哪些真正被实例化、用什么设置。生成的文件会被提交入库，因此干净的检出无需先跑
+配置决定其中哪些真正被实例化、用什么设置。加载器在启动时按需执行 `load()` 进行动态加载，未启用的插件不会被加载或求值。生成的文件会被提交入库，因此干净的检出无需先跑
 codegen 即可构建。
 
 ### 6.2 桌面端的附加设计 —— `plugin-loader-dynamic`

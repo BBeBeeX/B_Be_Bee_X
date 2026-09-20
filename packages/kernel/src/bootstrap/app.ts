@@ -107,6 +107,14 @@ export interface App {
    * that as an error instead of a hang.
    */
   ready(services: string[], opts?: { timeoutMs?: number }): Promise<Context>
+  /**
+   * Dynamically load and activate a plugin after start.
+   */
+  loadPlugin(pluginId: string, config?: unknown): Promise<LoadedPlugin>
+  /**
+   * Dynamically unload an active plugin and dispose its fiber.
+   */
+  unloadPlugin(pluginId: string): Promise<void>
 }
 
 export function createApp(options: AppOptions): App {
@@ -261,6 +269,49 @@ export function createApp(options: AppOptions): App {
             reject(error instanceof Error ? error : new Error(String(error)))
           })
       })
+    },
+
+    async loadPlugin(pluginId, config) {
+      if (!started) throw new Error('cannot load plugin before app is started')
+      const existing = loaded.find((p) => p.pluginId === pluginId)
+      if (existing && existing.state === 'active') {
+        return existing
+      }
+      const inst: ResolvedPlugin = {
+        pluginId,
+        config: (config as Record<string, unknown> | undefined) ?? {},
+      }
+      const [result] = await loadPlugins(
+        ctx,
+        options.registry ?? {},
+        [inst],
+        options.load ?? {},
+      )
+      if (result) {
+        const idx = loaded.findIndex((p) => p.pluginId === pluginId)
+        if (idx >= 0) {
+          loaded[idx] = result
+        } else {
+          loaded.push(result)
+        }
+        if (result.state === 'active') {
+          await settleGraph(ctx, options.settleTimeoutMs ?? 5_000)
+        }
+        return result
+      }
+      throw new Error(`failed to load plugin ${pluginId}`)
+    },
+
+    async unloadPlugin(pluginId) {
+      if (!started) throw new Error('cannot unload plugin before app is started')
+      const idx = loaded.findIndex((p) => p.pluginId === pluginId)
+      if (idx >= 0) {
+        const p = loaded[idx]!
+        if (p.dispose) {
+          await safeDispose(p.dispose, p.pluginId)
+        }
+        loaded.splice(idx, 1)
+      }
     },
   }
 }

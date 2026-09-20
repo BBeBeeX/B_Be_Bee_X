@@ -106,21 +106,8 @@ export function forTarget(
 }
 
 export function render(plugins: DiscoveredPlugin[], target: 'mobile' | 'desktop'): string {
-  const used = new Set<string>()
-  const identFor = (id: string): string => {
-    const base = id
-      .replace(/^@[^/]+\//, '')
-      .replace(/[^a-zA-Z0-9]+(.)?/g, (_, c: string | undefined) => (c ? c.toUpperCase() : ''))
-    let ident = /^[a-zA-Z_]/.test(base) ? base : `p${base}`
-    let n = 2
-    while (used.has(ident)) ident = `${base}${n++}`
-    used.add(ident)
-    return ident
-  }
-
   const rows = plugins.map((p) => ({
     id: p.manifest.id,
-    ident: identFor(p.manifest.id),
     ui: p.manifest.entry.ui?.[target],
     manifest: p.manifest,
   }))
@@ -130,17 +117,13 @@ export function render(plugins: DiscoveredPlugin[], target: 'mobile' | 'desktop'
     `// Target: ${target}. Run \`pnpm gen:plugins\` to refresh.`,
     '',
     "import type { PluginRegistry } from '@BBeBee/kernel'",
+    '',
+    'export const bundled: PluginRegistry = {',
   ]
 
   for (const row of rows) {
-    lines.push(`import ${row.ident} from '${row.id}'`)
-    if (row.ui) lines.push(`import ${row.ident}Ui from '${row.id}-ui-${target}'`)
-  }
-
-  lines.push('', 'export const bundled: PluginRegistry = {')
-  for (const row of rows) {
     lines.push(`  ${JSON.stringify(row.id)}: {`)
-    lines.push(`    plugin: ${row.ident},`)
+    lines.push(`    load: () => import('${row.id}'),`)
     lines.push(`    manifest: ${JSON.stringify(row.manifest)},`)
     // Workspace plugins are first-party, so the capability gate trusts their
     // manifests without a user grant (docs/03 §7).
@@ -149,7 +132,7 @@ export function render(plugins: DiscoveredPlugin[], target: 'mobile' | 'desktop'
     if (row.ui) {
       const uiId = `${row.id}-ui-${target}`
       lines.push(`  ${JSON.stringify(uiId)}: {`)
-      lines.push(`    plugin: ${row.ident}Ui,`)
+      lines.push(`    load: () => import('${uiId}'),`)
       lines.push(
         `    manifest: ${JSON.stringify({
           ...row.manifest,

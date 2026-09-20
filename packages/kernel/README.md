@@ -50,10 +50,12 @@ BBeBee 内核模块 — Layer 1，基于 Cordis 构建，提供应用生命周�
 
 **路径**: `src/loader/loader.ts`
 
-静态插件加载器，处理插件的实例化和生命周期：
+插件加载器，支持静态与动态按需加载插件，处理插件的实例化和生命周期：
 
-- **`loadPlugins()`**: 实例化所有已解析的插件
-- **`PluginRegistry`** 类型: 代码生成步骤输出的插件注册表
+- **`loadPlugins()`**: 实例化所有已解析的插件（支持动态导入函数与静态实例）
+- **`loadPlugin()`**: 单插件动态加载函数
+- **`PluginRegistry`** 类型: 包含动态加载函数与元数据的插件注册表
+- **`PluginLoader`** 类型: 动态导入函数类型 `() => Promise<PluginModule | unknown>`
 - **`LoadedPlugin`** 接口: 加载结果，包含状态和错误信息
 
 **插件状态**:
