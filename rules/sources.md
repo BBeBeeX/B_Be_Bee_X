@@ -1,0 +1,56 @@
+# Music Sources & Sandbox Rules
+
+Rules governing music source documents, rule engines, QuickJS sandboxing, and authoring in BBeBee.
+
+---
+
+## 1. What a Source Is
+
+- **A music source is a JSON document imported as text**, NOT a plugin package.
+- Interpreted solely by `plugin-source-runtime`.
+- `MediaProvider` is an internal interface with only two implementations (`plugin-source-runtime` and `plugin-source-local`).
+- Capabilities are derived from which rule blocks are present in the document.
+
+---
+
+## 2. Rule Language
+
+Rule prefixes select the execution engine:
+
+| Prefix | Engine | Description |
+|---|---|---|
+| `@json:` | JSONPath | Queries nested JSON structures |
+| `@css:` | CSS Selector | DOM extraction (stubbed, parses but requires engine) |
+| `@xpath:` | XPath | XML/HTML extraction |
+| `@js:` | QuickJS Sandbox | Sandboxed JavaScript evaluation |
+| `=` | String Literal | Returns constant string |
+| *(bare)* | Inferred | Inferred based on syntax |
+
+- URL template fields (`searchUrl`, `exploreUrl`) use `{{ }}` for variable substitution (path, not expression).
+- Only `{{@js:...}}` reaches the QuickJS sandbox.
+- Combinators:
+  - `||`: First non-empty result
+  - `&&`: Concatenate results
+  - `%%`: Interleave results
+  - `##pattern##replacement##`: Regex replacement
+
+---
+
+## 3. Sandboxing & Security
+
+- **Pure logic**: `packages/feature/source-rules` contains pure parsing/evaluation logic — no Cordis, no platform SDKs, no I/O.
+- **Sandboxed QuickJS**: `ctx.js` runs untrusted scripts in isolated QuickJS realms without ambient Node or DOM globals. Objects cross the boundary by value cloning only.
+- **Host allowlists**: Outbound HTTP requests from sources are gated against `allowedHosts` declared in the source manifest before and after `http/request` waterfall hooks.
+- **Credentials**: Passwords and tokens must NEVER be hardcoded into source documents.
+
+---
+
+## 4. Source Authoring Workflow
+
+- **Dual-file development in `sources/<id>/`**:
+  - `source.json`: Metadata, capabilities, rules, endpoints.
+  - `source.js`: External JavaScript library code with IDE syntax highlighting.
+- **CLI Commands**:
+  - `pnpm build:sources`: Compiles all `sources/` into single-file JSONs in `fixtures/sources/`.
+  - `pnpm watch:sources`: Watch mode for live re-compilation.
+  - `node --experimental-strip-types scripts/sources/cli.ts --unpack <file> [dest]`: Unpacks a single-file JSON back into `source.json` and `source.js`.

@@ -1,5 +1,5 @@
 packages:
-  # One entry per layer directory; see docs/09 §1.
+  # One entry per layer directory; see docs/workflow/structure.md §1.
   - 'packages/*/*'
   - 'packages/*'
   - 'apps/*'
