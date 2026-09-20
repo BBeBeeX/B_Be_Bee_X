@@ -178,8 +178,7 @@ B_Be_Bee/
 │   │   ├── plugin-ui/              ✅        the ctx.ui contribution registry — descriptors
 │   │   │                                       only, so it holds no React (08 §2)
 │   │   ├── plugin-inspector/       ✅        fiber tree + labelled effects (M0 exit criterion)
-│   │   ├── plugin-dsp/                       ctx.dsp — the effect chain (05 §3)
-│   │   ├── plugin-effect-eq10/               one DSP effect, as a plugin
+│   │   ├── plugin-dsp/              ✅       ctx.dsp — the effect chain, 9 built-in effects (05 §3)
 │   │   ├── plugin-download/        ✅        ctx.downloads — the task queue, the kept-downloads
 │   │   │                                       directory, If-Range resume, the Wi-Fi/charging
 │   │   │                                       policy, and the before-resolve substitution for
@@ -224,7 +223,9 @@ B_Be_Bee/
 │   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
 │   │   ├── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered
 │   │   ├── plugin-lyrics-ui-desktop/ ✅      now-playing lyrics panel, smooth auto-scrolling
-│   │   └── plugin-desktop-lyrics-ui-desktop/ ✅ desktop lyrics button + secondary window adapter
+│   │   ├── plugin-desktop-lyrics-ui-desktop/ ✅ desktop lyrics button + secondary window adapter
+│   │   ├── plugin-dsp-ui-desktop/  ✅        ┐ 10-band EQ sliders, chain ordering, effect bypass,
+│   │   └── plugin-dsp-ui-mobile/   ✅        ┘ and settings integration (08 §4)
 │   │
 │   └── tooling/                            🔧 OUTSIDE THE LAYER MODEL
 │       │                                      Development aids. Nothing here ships in an app

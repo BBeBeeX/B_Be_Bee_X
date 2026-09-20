@@ -187,6 +187,27 @@ rule language is too weak, because every document written after M2 is one someon
 `plugin-dsp` and the built-in effects from
 [05 §3](./05-audio-playback.md#built-in-effects). Chain editor UI in both shells.
 
+> **Shipped.** `ctx.dsp` and all 9 built-in effects (`preamp`, `eq10`, `normalize`, `compressor`,
+> `reverb`, `widener`, `crossfeed`, `tempo-pitch`, `limiter`) are implemented and verified
+> ([05 §3](./05-audio-playback.md#3-ctxdsp--the-effect-chain)):
+> - **Unified cross-platform effects**: EQ, normalize, compressor, and reverb (along with all other
+>   5 effects) run across desktop, iOS, and Android from a single pure Web Audio implementation.
+> - **Anti-click audio transitions**: Graph topology rewires (enabling/disabling/reordering effects)
+>   use `ctx.audio.dipVolume(20)` to exponentially ramp gain down and back over 20ms, preventing
+>   pops and clicks. Parameter updates (such as dragging EQ sliders) apply via `setTargetAtTime`
+>   without rebuilding the graph.
+> - **Dropout safety**: `tempo-pitch` monitors audio dropouts and automatically disables itself to
+>   protect the rest of the chain on resource-constrained platforms.
+> - **Chain editor UI**: `@BBeBee/plugin-dsp-ui-desktop` and `@BBeBee/plugin-dsp-ui-mobile` provide
+>   10-band graphic EQ sliders, drag-and-drop / ordering controls, individual bypass toggles, latency
+>   reporting, and preset selection.
+> - **Settings integration**: `@BBeBee/plugin-settings-ui-desktop` and
+>   `@BBeBee/plugin-settings-ui-mobile` feature direct in-settings toggles, presets, and sliders for
+>   EQ, Normalize, Compressor, and Reverb inside the "Playback" / audio section, plus a dedicated
+>   DSP tab and navigation route.
+> - **Composition root enabled**: Enabled in `apps/desktop/renderer/plugins.ts` and
+>   `apps/mobile/src/plugins.ts`.
+
 **Exit criteria**
 - EQ, normalize, compressor, and reverb run on iOS, Android, and desktop from one implementation
   each.

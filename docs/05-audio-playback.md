@@ -60,6 +60,10 @@ export interface AudioService {
 
   /** Where ctx.dsp inserts its chain. Sources connect here, not to destination. */
   readonly chainInput: AudioNode
+  /** Where ctx.dsp connects back to the master output. */
+  readonly chainOutput?: AudioNode
+  /** Dip master volume smoothly over durationMs (default 20ms) to prevent clicks during rewiring. */
+  dipVolume?(durationMs?: number): Promise<Disposable>
 
   setVolume(v: number): void         // 0..1, applied post-chain
   setMuted(m: boolean): void
@@ -353,6 +357,7 @@ export interface DspService {
   setEnabled(effectId: string, on: boolean): Promise<void>
   setOrder(effectId: string, ordinal: number): Promise<void>
   setParam(effectId: string, name: string, value: number | string | boolean): Promise<void>
+  getParams?(effectId: string): Record<string, unknown>
   applyPreset(effectId: string, presetName: string): Promise<void>
 
   /** Total added latency, so the visualiser and lyrics can compensate. */
@@ -403,12 +408,18 @@ export function apply(ctx: Context) {
 ### Chain assembly
 
 `ctx.dsp` emits the `dsp/build-chain` waterfall, each registered effect contributing a segment in
-ordinal order, and the result is spliced between `chainInput` and master volume. Rebuilds happen
-only on structural change (an effect enabled, disabled, or reordered); **parameter changes never
-rebuild the graph**, they call `setParam`. Rebuilding on every EQ slider drag would be audible.
+ordinal order, and the result is spliced between `chainInput` and `chainOutput` (which feeds master volume).
+Rebuilds happen only on structural change (an effect enabled, disabled, or reordered); **parameter changes never
+rebuild the graph**, they call `setParam` (or `setTargetAtTime` on underlying audio parameters). Rebuilding
+on every EQ slider drag would be audible.
 
-Rebuilds are also ramped: master gain dips over 20 ms, the graph is re-wired, gain returns. Without
-this, toggling an effect mid-playback clicks.
+Rebuilds are also ramped: `ctx.audio.dipVolume(20)` dips master gain over 20 ms, the graph is re-wired,
+and gain returns. Without this, toggling or reordering an effect mid-playback clicks.
+
+Chain ordering, per-effect enabled states, and effect parameters are automatically persisted in `ctx.store`
+under the `'dsp'` namespace. Both desktop and mobile shells provide a dedicated DSP chain editor
+(`@BBeBee/plugin-dsp-ui-*`, registering `dsp.view` and `settings.dsp`) and direct in-settings controls
+(`@BBeBee/plugin-settings-ui-*`) for the core EQ, Normalize, Compressor, and Reverb effects.
 
 ### Built-in effects
 

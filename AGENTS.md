@@ -191,10 +191,10 @@ packages/core/core-*        one implementation per target per service key
 packages/logs/plugin-log-*  the three transports: buffer, console, file
 packages/feature/plugin-*   headless features; source-rules and toolkit (pure-logic libraries,
                             no Cordis, no I/O, no manifest); plugin-ui claims ctx.ui;
-                            plugin-inspector claims ctx.inspector
+                            plugin-inspector claims ctx.inspector; plugin-dsp claims ctx.dsp
 packages/ui/                ui-tokens, ui-core, ui-parity, ui-kit-{mobile,desktop},
-                            plugin-*-ui-{mobile,desktop} — including plugin-inspector-ui-desktop
-                            and the plugin-sources / plugin-local-scanner UI pairs
+                            plugin-*-ui-{mobile,desktop} — including plugin-inspector-ui-desktop,
+                            the plugin-sources / plugin-local-scanner UI pairs, and plugin-dsp-ui-{mobile,desktop}
 packages/tooling/           tooling-gen-plugins, tooling-create-plugin, tooling-fixtures
 sources/                    multi-file source development directory (source.json + source.js)
 fixtures/sources/           compiled single-file example source documents; the golden corpus
@@ -205,7 +205,7 @@ test/stubs/                 the three native modules Node cannot load, aliased b
 Beyond the core services in §6, several **feature plugins claim service keys** of their own:
 `ctx.player` (plugin-player), `ctx.sources` (plugin-sources), `ctx.scanner`
 (plugin-local-scanner), `ctx.lyrics` (plugin-lyrics), `ctx.desktopLyrics`
-(plugin-desktop-lyrics), `ctx.ui` (plugin-ui), `ctx.inspector` (plugin-inspector), and
+(plugin-desktop-lyrics), `ctx.dsp` (plugin-dsp), `ctx.ui` (plugin-ui), `ctx.inspector` (plugin-inspector), and
 `ctx.logBuffer` (plugin-log-buffer). Those keys are declared in `@BBeBee/protocol` like any
 other; they are registered by their plugins, not by a `core-*` package.
 
