@@ -11,10 +11,10 @@
  * mobile belongs in the headless package instead (docs/08 §1).
  */
 
-import { createElement as h, useState } from 'react'
+import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type {} from '@BBeBee/protocol'
+import type { DesktopLyricsService, PlayMode } from '@BBeBee/protocol'
 import { formatDuration } from '@BBeBee/toolkit'
 import { NOW_PLAYING_VIEWS } from '@BBeBee/plugin-now-playing/views'
 import {
@@ -26,7 +26,6 @@ import {
 import { Artwork, IconButton, Slider, Text } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { serviceOf, useServiceState, type ArtworkProps } from '@BBeBee/ui-core'
-import type { DesktopLyricsService } from '@BBeBee/protocol'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
@@ -99,6 +98,484 @@ function DesktopLyricsToggle({ ctx }: { ctx: Context }): ReactElement {
 function CachedArtwork({ ctx, ...props }: ArtworkProps & { ctx: Context }): ReactElement {
   const artwork = useResolvedArtwork(ctx, props.artwork)
   return h(Artwork, { ...props, artwork })
+}
+
+const PLAY_MODE_INFO: Record<PlayMode, { label: string; next: string }> = {
+  sequence: { label: '顺序播放', next: '切换为列表循环' },
+  'list-loop': { label: '列表循环', next: '切换为单曲循环' },
+  'single-loop': { label: '单曲循环', next: '切换为随机播放' },
+  shuffle: { label: '随机播放', next: '切换为顺序播放' },
+}
+
+function renderPlayModeIcon(mode: PlayMode): ReactElement {
+  switch (mode) {
+    case 'shuffle':
+      return h(
+        'svg',
+        {
+          width: 18,
+          height: 18,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        },
+        h('polyline', { points: '16 3 21 3 21 8' }),
+        h('line', { x1: '4', y1: '20', x2: '21', y2: '3' }),
+        h('polyline', { points: '21 16 21 21 16 21' }),
+        h('line', { x1: '15', y1: '15', x2: '21', y2: '21' }),
+        h('line', { x1: '4', y1: '4', x2: '9', y2: '9' }),
+      )
+    case 'single-loop':
+      return h(
+        'svg',
+        {
+          width: 18,
+          height: 18,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        },
+        h('path', { d: 'M17 2l4 4-4 4' }),
+        h('path', { d: 'M3 11v-1a4 4 0 0 1 4-4h14' }),
+        h('path', { d: 'M7 22l-4-4 4-4' }),
+        h('path', { d: 'M21 13v1a4 4 0 0 1-4 4H3' }),
+        h(
+          'text',
+          {
+            x: '12',
+            y: '15',
+            textAnchor: 'middle',
+            fontSize: '9',
+            fontWeight: 'bold',
+            fill: 'currentColor',
+            stroke: 'none',
+          },
+          '1',
+        ),
+      )
+    case 'list-loop':
+      return h(
+        'svg',
+        {
+          width: 18,
+          height: 18,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        },
+        h('path', { d: 'M17 2l4 4-4 4' }),
+        h('path', { d: 'M3 11v-1a4 4 0 0 1 4-4h14' }),
+        h('path', { d: 'M7 22l-4-4 4-4' }),
+        h('path', { d: 'M21 13v1a4 4 0 0 1-4 4H3' }),
+      )
+    case 'sequence':
+    default:
+      return h(
+        'svg',
+        {
+          width: 18,
+          height: 18,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        },
+        h('line', { x1: '3', y1: '6', x2: '17', y2: '6' }),
+        h('line', { x1: '3', y1: '12', x2: '17', y2: '12' }),
+        h('line', { x1: '3', y1: '18', x2: '13', y2: '18' }),
+        h('polyline', { points: '16 15 19 18 16 21' }),
+      )
+  }
+}
+
+function renderMuteIcon(size = 18): ReactElement {
+  return h(
+    'svg',
+    {
+      width: size,
+      height: size,
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 2,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+    },
+    h('polygon', { points: '11 5 6 9 2 9 2 15 6 15 11 19 11 5', fill: 'currentColor' }),
+    h('line', { x1: '23', y1: '9', x2: '17', y2: '15' }),
+    h('line', { x1: '17', y1: '9', x2: '23', y2: '15' }),
+  )
+}
+
+function renderVolumeIcon(volume: number, muted: boolean, size = 18): ReactElement {
+  if (muted) {
+    return renderMuteIcon(size)
+  }
+  if (volume <= 0) {
+    return h(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 2,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+      },
+      h('polygon', { points: '11 5 6 9 2 9 2 15 6 15 11 19 11 5', fill: 'currentColor' }),
+    )
+  }
+  if (volume <= 0.33) {
+    // 1 wave (low)
+    return h(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 2,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+      },
+      h('polygon', { points: '11 5 6 9 2 9 2 15 6 15 11 19 11 5', fill: 'currentColor' }),
+      h('path', { d: 'M15.54 8.46a5 5 0 0 1 0 7.07' }),
+    )
+  }
+  if (volume <= 0.66) {
+    // 2 waves (medium)
+    return h(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 2,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+      },
+      h('polygon', { points: '11 5 6 9 2 9 2 15 6 15 11 19 11 5', fill: 'currentColor' }),
+      h('path', { d: 'M15.54 8.46a5 5 0 0 1 0 7.07' }),
+      h('path', { d: 'M18.36 5.64a9 9 0 0 1 0 12.72' }),
+    )
+  }
+  // 3 waves (high)
+  return h(
+    'svg',
+    {
+      width: size,
+      height: size,
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 2,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+    },
+    h('polygon', { points: '11 5 6 9 2 9 2 15 6 15 11 19 11 5', fill: 'currentColor' }),
+    h('path', { d: 'M15.54 8.46a5 5 0 0 1 0 7.07' }),
+    h('path', { d: 'M18.36 5.64a9 9 0 0 1 0 12.72' }),
+    h('path', { d: 'M21.19 2.81a13 13 0 0 1 0 18.38' }),
+  )
+}
+
+function VerticalSlider({
+  value,
+  onChange,
+}: {
+  value: number
+  onChange: (val: number) => void
+}): ReactElement {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const isDragging = useRef(false)
+
+  const updateFromPointer = (clientY: number) => {
+    if (!trackRef.current) return
+    const rect = trackRef.current.getBoundingClientRect()
+    const ratio = 1 - (clientY - rect.top) / rect.height
+    const clamped = Math.max(0, Math.min(100, Math.round(ratio * 100)))
+    onChange(clamped)
+  }
+
+  const handlePointerDown = (e: { clientY: number; preventDefault: () => void }) => {
+    e.preventDefault()
+    isDragging.current = true
+    updateFromPointer(e.clientY)
+
+    const onPointerMove = (ev: MouseEvent) => {
+      if (isDragging.current) {
+        updateFromPointer(ev.clientY)
+      }
+    }
+    const onPointerUp = () => {
+      isDragging.current = false
+      window.removeEventListener('mousemove', onPointerMove)
+      window.removeEventListener('mouseup', onPointerUp)
+    }
+    window.addEventListener('mousemove', onPointerMove)
+    window.addEventListener('mouseup', onPointerUp)
+  }
+
+  return h(
+    'div',
+    {
+      ref: trackRef,
+      role: 'slider',
+      tabIndex: 0,
+      'aria-label': 'Vertical volume slider',
+      'aria-valuemin': 0,
+      'aria-valuemax': 100,
+      'aria-valuenow': value,
+      'aria-orientation': 'vertical',
+      onMouseDown: handlePointerDown,
+      onKeyDown: (e: { key: string; preventDefault: () => void }) => {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
+          e.preventDefault()
+          onChange(Math.min(100, value + 5))
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
+          e.preventDefault()
+          onChange(Math.max(0, value - 5))
+        }
+      },
+      style: {
+        position: 'relative',
+        width: 20,
+        height: 100,
+        display: 'flex',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        touchAction: 'none',
+        outline: 'none',
+      },
+    },
+    // Track rail
+    h('div', {
+      style: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        width: 4,
+        borderRadius: 2,
+        backgroundColor: 'rgba(255, 255, 255, 0.18)',
+      },
+    }),
+    // Filled bar
+    h('div', {
+      style: {
+        position: 'absolute',
+        bottom: 0,
+        width: 4,
+        height: `${value}%`,
+        borderRadius: 2,
+        backgroundColor: '#A78BFA',
+      },
+    }),
+    // Thumb
+    h('div', {
+      style: {
+        position: 'absolute',
+        bottom: `calc(${value}% - 6px)`,
+        width: 12,
+        height: 12,
+        borderRadius: '50%',
+        backgroundColor: '#FFFFFF',
+        boxShadow: '0 1px 4px rgba(0, 0, 0, 0.4)',
+        transition: 'transform 0.1s ease',
+      },
+    }),
+  )
+}
+
+function PlayModeButton({ ctx, mode }: { ctx: Context; mode?: PlayMode }): ReactElement {
+  const currentMode = mode ?? 'sequence'
+  const info = PLAY_MODE_INFO[currentMode] ?? PLAY_MODE_INFO.sequence
+  const handleClick = () => {
+    ctx.player.cyclePlayMode()
+  }
+
+  return h(
+    'button',
+    {
+      type: 'button',
+      'aria-label': `播放模式: ${info.label}`,
+      title: `${info.label} (${info.next})`,
+      onClick: handleClick,
+      style: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 32,
+        height: 32,
+        borderRadius: tokens.radius.pill,
+        border: 'none',
+        background: 'transparent',
+        color: 'rgba(255, 255, 255, 0.7)',
+        cursor: 'pointer',
+        transition: 'color 0.15s ease, transform 0.15s ease',
+        outline: 'none',
+      },
+      onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+        e.currentTarget.style.color = '#FFFFFF'
+        e.currentTarget.style.transform = 'scale(1.1)'
+      },
+      onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+        e.currentTarget.style.color = 'rgba(255, 255, 255, 0.7)'
+        e.currentTarget.style.transform = 'scale(1)'
+      },
+    },
+    renderPlayModeIcon(currentMode),
+  )
+}
+
+function VolumeControl({
+  ctx,
+  volume,
+  muted,
+}: {
+  ctx: Context
+  volume: number
+  muted: boolean
+}): ReactElement {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const percent = Math.round(volume * 100)
+
+  return h(
+    'div',
+    {
+      ref: containerRef,
+      style: { position: 'relative', display: 'inline-flex', alignItems: 'center' },
+    },
+    h(
+      'button',
+      {
+        type: 'button',
+        'aria-label': 'Volume',
+        title: muted ? '已静音 (点击展开调节栏)' : `音量 ${percent}% (点击展开调节栏)`,
+        onClick: () => setOpen((prev) => !prev),
+        style: {
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 32,
+          height: 32,
+          borderRadius: tokens.radius.pill,
+          border: 'none',
+          background: open ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+          color: muted ? '#A0A0AE' : 'rgba(255, 255, 255, 0.8)',
+          cursor: 'pointer',
+          transition: 'all 0.15s ease',
+          outline: 'none',
+        },
+        onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.color = '#FFFFFF'
+          e.currentTarget.style.transform = 'scale(1.1)'
+        },
+        onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.color = muted ? '#A0A0AE' : 'rgba(255, 255, 255, 0.8)'
+          e.currentTarget.style.transform = 'scale(1)'
+        },
+      },
+      renderVolumeIcon(volume, muted),
+    ),
+    open
+      ? h(
+          'div',
+          {
+            role: 'dialog',
+            'aria-label': 'Volume control popover',
+            style: {
+              position: 'absolute',
+              bottom: '100%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              marginBottom: 10,
+              width: 44,
+              padding: '10px 4px 8px',
+              borderRadius: 10,
+              backgroundColor: '#1A1A22',
+              border: '1px solid rgba(255, 255, 255, 0.14)',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.65)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+              zIndex: 100,
+            },
+          },
+          h(
+            'span',
+            { style: { fontSize: 11, color: '#A0A0AE', userSelect: 'none', minHeight: 14 } },
+            `${percent}%`,
+          ),
+          h(VerticalSlider, {
+            value: percent,
+            onChange: (val) => {
+              if (muted) ctx.player.setMuted(false)
+              ctx.player.setVolume(val / 100)
+            },
+          }),
+          h(
+            'button',
+            {
+              type: 'button',
+              'aria-label': muted ? '恢复声音' : '静音',
+              title: muted ? '恢复声音' : '静音',
+              onClick: () => ctx.player.setMuted(!muted),
+              style: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 28,
+                height: 28,
+                borderRadius: tokens.radius.pill,
+                border: 'none',
+                background: muted ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
+                color: muted ? '#F87171' : 'rgba(255, 255, 255, 0.7)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              },
+            },
+            muted ? renderMuteIcon(16) : renderVolumeIcon(volume, false, 16),
+          ),
+        )
+      : null,
+  )
 }
 
 export interface NowPlayingBarProps {
@@ -253,7 +730,8 @@ export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): Re
       },
       h(
         'div',
-        { style: { display: 'flex', alignItems: 'center', gap: tokens.space[2] } },
+        { style: { display: 'flex', alignItems: 'center', gap: tokens.space[3] } },
+        h(PlayModeButton, { ctx, mode: state.playMode }),
         h(IconButton, {
           icon: '⏮',
           accessibilityLabel: 'Previous track',
@@ -275,6 +753,7 @@ export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): Re
           disabled: !can.canNext,
           onPress: () => void ctx.player.next(),
         }),
+        h(VolumeControl, { ctx, volume: state.volume, muted: state.muted }),
       ),
       h(
         'div',
@@ -336,17 +815,6 @@ export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): Re
         },
       },
       h(DesktopLyricsToggle, { ctx }),
-      h(IconButton, {
-        icon: state.muted ? '🔇' : '🔊',
-        accessibilityLabel: state.muted ? 'Unmute' : 'Mute',
-        onPress: () => ctx.player.setMuted(!state.muted),
-      }),
-      h(Slider, {
-        value: Math.round(state.volume * 100),
-        max: 100,
-        accessibilityLabel: 'Volume',
-        onCommit: (value: number) => ctx.player.setVolume(value / 100),
-      }),
     ),
   )
 }
@@ -531,6 +999,7 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
         h(
           'div',
           { style: { display: 'flex', alignItems: 'center', gap: tokens.space[4] } },
+          h(PlayModeButton, { ctx, mode: state.playMode }),
           h(IconButton, {
             icon: '⏮',
             accessibilityLabel: 'Previous track',
@@ -551,6 +1020,7 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
             disabled: !can.canNext,
             onPress: () => void ctx.player.next(),
           }),
+          h(VolumeControl, { ctx, volume: state.volume, muted: state.muted }),
         ),
       )
 

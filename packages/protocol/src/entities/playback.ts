@@ -2,6 +2,8 @@
 
 export type RepeatMode = 'off' | 'all' | 'one'
 
+export type PlayMode = 'shuffle' | 'sequence' | 'single-loop' | 'list-loop'
+
 export type PlaybackStatus =
   | 'idle'
   | 'loading'
@@ -47,6 +49,7 @@ export interface TransportState {
   muted: boolean
   repeat: RepeatMode
   shuffle: boolean
+  playMode: PlayMode
   error?: { code: string; message: string; retryable: boolean }
   nowPlaying?: NowPlayingMeta
 }

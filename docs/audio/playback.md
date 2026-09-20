@@ -5,6 +5,7 @@
 ## 2. `ctx.player` — transport and queue
 
 ```ts
+export type PlayMode = 'shuffle' | 'sequence' | 'single-loop' | 'list-loop'
 export type RepeatMode = 'off' | 'all' | 'one'
 
 export interface QueueItem {
@@ -26,6 +27,7 @@ export interface TransportState {
   muted: boolean
   repeat: RepeatMode
   shuffle: boolean
+  playMode: PlayMode
   error?: { code: string; message: string; retryable: boolean }
 }
 
@@ -44,6 +46,8 @@ export interface PlayerService {
   setMuted(m: boolean): void
   setRepeat(m: RepeatMode): void
   setShuffle(on: boolean): void
+  setPlayMode(mode: PlayMode): void
+  cyclePlayMode(): PlayMode
 
   // Queue
   readonly queue: readonly QueueItem[]
@@ -100,6 +104,20 @@ Behaviours worth pinning down, because they are where players feel wrong:
   *pending* only while the element is actually moving there: `play(0)` on a fresh element moves
   nowhere and fires no `seeked`, so recording it as pending left the progress bar at zero for the
   whole track.
+
+### Playback Modes (`PlayMode`)
+
+The player unifies queue traversal and repeating into four explicit playback modes:
+
+| Mode | Key | `shuffle` | `repeat` | Queue Traversal Behaviour |
+|---|---|---|---|---|
+| **顺序播放** (Sequence) | `'sequence'` | `false` | `'off'` | Traverses queue in order, stops playback upon reaching queue end. |
+| **单曲循环** (Single Loop) | `'single-loop'` | `false` | `'one'` | Replays the current track repeatedly without re-resolving streams. |
+| **列表循环** (List Loop) | `'list-loop'` | `false` | `'all'` | Traverses queue in order and wraps around to the beginning indefinitely. |
+| **随机播放** (Shuffle) | `'shuffle'` | `true` | `'all'` | Shuffles queue with a stable seeded permutation and loops indefinitely. |
+
+- **Mode Cycling**: `cyclePlayMode()` advances modes in the standard order: `sequence` $\to$ `single-loop` $\to$ `list-loop` $\to$ `shuffle` $\to$ `sequence`.
+- **Backward Compatibility**: Calling `setRepeat()` or `setShuffle()` automatically synchronizes `state.playMode` through `derivePlayMode()`. Similarly, calling `setPlayMode()` automatically configures the underlying `repeat` and `shuffle` properties on the queue.
 
 ### Resolution pipeline
 

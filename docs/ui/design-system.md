@@ -158,8 +158,10 @@ The scale relies on **"weight follows size"**:
     top-level scopes (`All`, `Local`, `Favorites`) and content views (`Tracks`, `Albums`).
   - **Persistent bottom playback bar (sunken `#000000` / `#181818`)**: Spans the entire window width.
     Left: current track artwork thumbnail, track title (`#FFFFFF`), artist subtitle (`#B3B3B3`),
-    save button. Center: transport buttons (shuffle, previous, oversized circular play/pause button,
-    next, repeat) and time scrubber. Right: volume slider and utility toggles (queue, lyrics,
+    save button. Center: transport controls (current playback mode button to the left of previous,
+    previous track, oversized circular play/pause button, next track, sound status icon to the right
+    of next with mute 'x' / loudness wave tiers that toggles a vertical volume slider popover with
+    a bottom mute toggle) and time scrubber. Right: utility toggles (desktop lyrics toggle, queue,
     device picker).
 - **Mobile Shell**:
   - Clean full-bleed dark views with bottom navigation tab bar (Library, Search) and scoped library

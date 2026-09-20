@@ -79,6 +79,7 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 - Controls are **pill-shaped (`radius.pill: 999`)**; buttons grow slightly on hover (`scale(1.04)` over 120ms).
 - Track rows: 56px height, show play toggle on hover, active playing track glows green (`#1DB954`) with an equalizer icon.
 - Sliders: subtle grey track, filled with green (`#1DB954`), circular thumb.
+- Bottom player bar: Center cluster order is `[PlayMode] [Previous] [Play/Pause] [Next] [Volume]`. Play mode cycles sequence/single-loop/list-loop/shuffle. Volume icon indicates sound state (muted 'x' or loudness waves) and clicks to pop up a vertical volume bar with a bottom mute toggle.
 
 ### Artwork & Fallback
 - Artwork renders `blurhash` first, then falls back to `artworks.dominant_color`.

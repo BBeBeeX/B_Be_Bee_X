@@ -16,6 +16,7 @@ import type {
   NowPlayingMeta,
   PlayHistoryHeatmapDay,
   PlayHistoryStats,
+  PlayMode,
   PlayRecord,
   PlayerService,
   QueueItem,
@@ -32,6 +33,12 @@ export function useTransport(ctx: Context): TransportState {
     ['player/state-changed', 'player/track-changed'],
     () => ctx.player.state,
   )
+}
+
+/** The current playback mode (shuffle, sequence, single-loop, list-loop). */
+export function usePlayMode(ctx: Context): PlayMode {
+  const state = useTransport(ctx)
+  return state.playMode
 }
 
 /** The currently playing track's metadata (artwork, title, artist, album). */

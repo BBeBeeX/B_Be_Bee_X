@@ -5,6 +5,7 @@
 ## 2. `ctx.player` —— 播放控制与队列
 
 ```ts
+export type PlayMode = 'shuffle' | 'sequence' | 'single-loop' | 'list-loop'
 export type RepeatMode = 'off' | 'all' | 'one'
 
 export interface QueueItem {
@@ -26,6 +27,7 @@ export interface TransportState {
   muted: boolean
   repeat: RepeatMode
   shuffle: boolean
+  playMode: PlayMode
   error?: { code: string; message: string; retryable: boolean }
 }
 
@@ -44,6 +46,8 @@ export interface PlayerService {
   setMuted(m: boolean): void
   setRepeat(m: RepeatMode): void
   setShuffle(on: boolean): void
+  setPlayMode(mode: PlayMode): void
+  cyclePlayMode(): PlayMode
 
   // Queue
   readonly queue: readonly QueueItem[]
@@ -81,6 +85,20 @@ stateDiagram-v2
 - **随机播放（shuffle）** 持久化的是**一个种子加上一个排列**，而不是每次现选的随机结果。这让乱序在重启后保持稳定，让 `previous()` 仍有意义，也让即将播放的队列能够如实展示。
 - **单曲循环**不重新解析流，而是复用已加载的缓冲。
 - **`stalled`** 与 `paused` 是两回事。UI 显示的是转圈，而不是播放按钮，并且 `ctx.mediaSession` 继续上报 `playing`，以免锁屏界面闪烁。
+
+### 播放模式 (`PlayMode`)
+
+播放器将队列遍历与循环控制统一收敛为 4 种明确的播放模式：
+
+| 模式 | 键值 | `shuffle` | `repeat` | 队列行为说明 |
+|---|---|---|---|---|
+| **顺序播放** | `'sequence'` | `false` | `'off'` | 按队列顺序逐曲播放，播至队尾停止播放。 |
+| **单曲循环** | `'single-loop'` | `false` | `'one'` | 单曲循环重放，复用已加载音频缓冲，不重新解析媒体流。 |
+| **列表循环** | `'list-loop'` | `false` | `'all'` | 按队列顺序逐曲播放，队尾自动循环回到第一首。 |
+| **随机播放** | `'shuffle'` | `true` | `'all'` | 基于伪随机种子排列乱序播放并无限循环。 |
+
+- **模式循环**：`cyclePlayMode()` 按业界标准次序切换：`顺序播放 (sequence)` $\to$ `单曲循环 (single-loop)` $\to$ `列表循环 (list-loop)` $\to$ `随机播放 (shuffle)` $\to$ `顺序播放`。
+- **双向兼容**：调用旧版 `setRepeat()` 或 `setShuffle()` 会通过 `derivePlayMode()` 自动联动更新 `state.playMode`；反之调用 `setPlayMode()` 会同步配置底层队列的 `repeat` 与 `shuffle` 状态。
 
 ### 解析流水线
 

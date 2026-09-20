@@ -1351,5 +1351,80 @@ describe('lifecycle', () => {
     const clearedStats = await player.getHistoryStats()
     expect(clearedStats.totalPlays).toBe(0)
   })
+
+  describe('playback modes', () => {
+    it('initializes in sequence mode and cycles through all 4 modes', async () => {
+      const { player } = await harness()
+      expect(player.state.playMode).toBe('sequence')
+      expect(player.state.shuffle).toBe(false)
+      expect(player.state.repeat).toBe('off')
+
+      // cycle 1: sequence -> list-loop
+      expect(player.cyclePlayMode()).toBe('list-loop')
+      expect(player.state.playMode).toBe('list-loop')
+      expect(player.state.shuffle).toBe(false)
+      expect(player.state.repeat).toBe('all')
+
+      // cycle 2: list-loop -> single-loop
+      expect(player.cyclePlayMode()).toBe('single-loop')
+      expect(player.state.playMode).toBe('single-loop')
+      expect(player.state.shuffle).toBe(false)
+      expect(player.state.repeat).toBe('one')
+
+      // cycle 3: single-loop -> shuffle
+      expect(player.cyclePlayMode()).toBe('shuffle')
+      expect(player.state.playMode).toBe('shuffle')
+      expect(player.state.shuffle).toBe(true)
+
+      // cycle 4: shuffle -> sequence
+      expect(player.cyclePlayMode()).toBe('sequence')
+      expect(player.state.playMode).toBe('sequence')
+      expect(player.state.shuffle).toBe(false)
+      expect(player.state.repeat).toBe('off')
+    })
+
+    it('setPlayMode switches directly to target mode', async () => {
+      const { player } = await harness()
+
+      player.setPlayMode('single-loop')
+      expect(player.state.playMode).toBe('single-loop')
+      expect(player.state.repeat).toBe('one')
+      expect(player.state.shuffle).toBe(false)
+
+      player.setPlayMode('shuffle')
+      expect(player.state.playMode).toBe('shuffle')
+      expect(player.state.shuffle).toBe(true)
+
+      player.setPlayMode('list-loop')
+      expect(player.state.playMode).toBe('list-loop')
+      expect(player.state.repeat).toBe('all')
+      expect(player.state.shuffle).toBe(false)
+
+      player.setPlayMode('sequence')
+      expect(player.state.playMode).toBe('sequence')
+      expect(player.state.repeat).toBe('off')
+      expect(player.state.shuffle).toBe(false)
+    })
+
+    it('syncs playMode when setRepeat or setShuffle is called directly', async () => {
+      const { player } = await harness()
+
+      player.setRepeat('one')
+      expect(player.state.playMode).toBe('single-loop')
+
+      player.setRepeat('all')
+      expect(player.state.playMode).toBe('list-loop')
+
+      player.setShuffle(true)
+      expect(player.state.playMode).toBe('shuffle')
+
+      player.setShuffle(false)
+      expect(player.state.playMode).toBe('list-loop')
+
+      player.setRepeat('off')
+      expect(player.state.playMode).toBe('sequence')
+    })
+  })
 })
+
 

@@ -10,12 +10,17 @@
  * than about how it is mounted.
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createElement as h } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { Context, Service } from 'cordis'
 import type { QueueItem, Track, TransportState } from '@BBeBee/protocol'
 import { NowPlayingBar, NowPlayingScreen } from './index.js'
+
+afterEach(() => {
+  cleanup()
+})
 
 const IDLE: TransportState = {
   status: 'idle',
@@ -26,6 +31,7 @@ const IDLE: TransportState = {
   muted: false,
   repeat: 'off',
   shuffle: false,
+  playMode: 'sequence',
 }
 
 /** A `ctx.player` with just what the views read and call, and an optional `ctx.sources`. */
@@ -53,6 +59,13 @@ async function harness(
     seek = async (ms: number) => void calls.push(`seek:${ms}`)
     setVolume = (v: number) => void calls.push(`volume:${v}`)
     setMuted = (m: boolean) => void calls.push(`muted:${m}`)
+    setRepeat = (r: any) => void calls.push(`repeat:${r}`)
+    setShuffle = (s: boolean) => void calls.push(`shuffle:${s}`)
+    setPlayMode = (m: any) => void calls.push(`playMode:${m}`)
+    cyclePlayMode = () => {
+      calls.push('cyclePlayMode')
+      return 'list-loop'
+    }
     playNow = async (urns: string[]) => void calls.push(`playNow:${urns.join(',')}`)
     playFromContext = async (urn: string, contextUrns: readonly string[] = []) =>
       void calls.push(`jump:${urn}${contextUrns.length ? `|${contextUrns.join(',')}` : ''}`)
@@ -190,6 +203,103 @@ describe('NowPlayingBar', () => {
     const out = html(h(NowPlayingBar, { ctx }))
     expect(out).toContain('aria-label="显示桌面歌词"')
     expect(out).toContain('词')
+  })
+
+  it('places play mode button to the left of previous track and volume control to the right of next track', async () => {
+    const { ctx } = await harness({ status: 'playing', playMode: 'sequence' })
+    const out = html(h(NowPlayingBar, { ctx }))
+    const playModeIdx = out.indexOf('播放模式: 顺序播放')
+    const prevIdx = out.indexOf('aria-label="Previous track"')
+    const nextIdx = out.indexOf('aria-label="Next track"')
+    const volIdx = out.indexOf('aria-label="Volume"')
+
+    expect(playModeIdx).toBeGreaterThan(-1)
+    expect(prevIdx).toBeGreaterThan(playModeIdx)
+    expect(nextIdx).toBeGreaterThan(prevIdx)
+    expect(volIdx).toBeGreaterThan(nextIdx)
+  })
+
+  it('renders distinct labels and icons for each play mode', async () => {
+    for (const mode of ['sequence', 'single-loop', 'list-loop', 'shuffle'] as const) {
+      const { ctx } = await harness({ status: 'playing', playMode: mode })
+      const out = html(h(NowPlayingBar, { ctx }))
+      if (mode === 'single-loop') {
+        expect(out).toContain('播放模式: 单曲循环')
+        expect(out).toContain('>1<')
+      } else if (mode === 'sequence') {
+        expect(out).toContain('播放模式: 顺序播放')
+      } else if (mode === 'list-loop') {
+        expect(out).toContain('播放模式: 列表循环')
+      } else if (mode === 'shuffle') {
+        expect(out).toContain('播放模式: 随机播放')
+      }
+    }
+  })
+
+  it('renders mute icon with x when muted', async () => {
+    const { ctx } = await harness({ status: 'playing', muted: true, volume: 0.8 })
+    const out = html(h(NowPlayingBar, { ctx }))
+    expect(out).toContain('x1="23"')
+    expect(out).toContain('y1="9"')
+    expect(out).toContain('title="已静音 (点击展开调节栏)"')
+  })
+
+  it('renders volume waves corresponding to volume level when unmuted', async () => {
+    // 0 volume: no wave
+    const { ctx: ctx0 } = await harness({ status: 'playing', muted: false, volume: 0 })
+    const out0 = html(h(NowPlayingBar, { ctx: ctx0 }))
+    expect(out0).not.toContain('M15.54')
+
+    // Low volume: 1 wave
+    const { ctx: ctxLow } = await harness({ status: 'playing', muted: false, volume: 0.2 })
+    const outLow = html(h(NowPlayingBar, { ctx: ctxLow }))
+    expect(outLow).toContain('M15.54')
+    expect(outLow).not.toContain('M18.36')
+
+    // Medium volume: 2 waves
+    const { ctx: ctxMed } = await harness({ status: 'playing', muted: false, volume: 0.5 })
+    const outMed = html(h(NowPlayingBar, { ctx: ctxMed }))
+    expect(outMed).toContain('M15.54')
+    expect(outMed).toContain('M18.36')
+    expect(outMed).not.toContain('M21.19')
+
+    // High volume: 3 waves
+    const { ctx: ctxHigh } = await harness({ status: 'playing', muted: false, volume: 0.9 })
+    const outHigh = html(h(NowPlayingBar, { ctx: ctxHigh }))
+    expect(outHigh).toContain('M15.54')
+    expect(outHigh).toContain('M18.36')
+    expect(outHigh).toContain('M21.19')
+  })
+
+  it('cycles play mode when clicking play mode button', async () => {
+    const { ctx, calls } = await harness({ status: 'playing', playMode: 'sequence' })
+    const { container } = render(h(NowPlayingBar, { ctx }))
+    const btn = container.querySelector('button[aria-label^="播放模式"]') as HTMLButtonElement
+    expect(btn).not.toBeNull()
+    fireEvent.click(btn)
+    expect(calls).toContain('cyclePlayMode')
+  })
+
+  it('toggles volume popover and toggles mute from popover', async () => {
+    const { ctx, calls } = await harness({ status: 'playing', muted: false, volume: 0.6 })
+    const { container } = render(h(NowPlayingBar, { ctx }))
+    const volBtn = container.querySelector('button[aria-label="Volume"]') as HTMLButtonElement
+    expect(volBtn).not.toBeNull()
+
+    // Popover is initially not open
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+
+    // Click volume button to open popover
+    fireEvent.click(volBtn)
+    const dialog = container.querySelector('[role="dialog"]')
+    expect(dialog).not.toBeNull()
+    expect(dialog?.textContent).toContain('60%')
+
+    // Mute toggle inside dialog
+    const muteBtn = container.querySelector('button[aria-label="静音"]') as HTMLButtonElement
+    expect(muteBtn).not.toBeNull()
+    fireEvent.click(muteBtn)
+    expect(calls).toContain('muted:true')
   })
 })
 

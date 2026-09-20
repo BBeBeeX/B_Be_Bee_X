@@ -23,6 +23,7 @@ import type {
   NowPlayingMeta,
   PlayHistoryHeatmapDay,
   PlayHistoryStats,
+  PlayMode,
   PlayNowOptions,
   PlayRecord,
   PlayerService,
@@ -36,6 +37,15 @@ import type {
 import { QueueModel, type QueueEntry } from './queue.js'
 import { PlayerStore } from './store.js'
 import { PLAYER_COMMANDS } from './contributions.js'
+
+export function derivePlayMode(shuffle: boolean, repeat: RepeatMode): PlayMode {
+  if (shuffle) return 'shuffle'
+  if (repeat === 'one') return 'single-loop'
+  if (repeat === 'all') return 'list-loop'
+  return 'sequence'
+}
+
+export const PLAY_MODES: readonly PlayMode[] = ['sequence', 'list-loop', 'single-loop', 'shuffle']
 
 export type Transition = 'gapless' | 'crossfade' | 'neither'
 
@@ -136,6 +146,7 @@ export class Player extends Service implements PlayerService {
     muted: false,
     repeat: 'off',
     shuffle: false,
+    playMode: 'sequence',
   }
 
   private source?: AudioSourceHandle
@@ -617,16 +628,53 @@ export class Player extends Service implements PlayerService {
 
   setRepeat(mode: RepeatMode): void {
     this.ownCtx.logger.info('player: setRepeat to %s', mode)
-    this.set({ repeat: mode })
+    const playMode = derivePlayMode(this.transport.shuffle, mode)
+    this.set({ repeat: mode, playMode })
     void this.persist(true)
   }
 
   setShuffle(on: boolean): void {
     this.ownCtx.logger.info('player: setShuffle to %s', on)
     this.model.setShuffle(on)
-    this.set({ shuffle: on })
+    const playMode = derivePlayMode(on, this.transport.repeat)
+    this.set({ shuffle: on, playMode })
     this.emitQueueChanged()
     void this.persist(true)
+  }
+
+  setPlayMode(mode: PlayMode): void {
+    this.ownCtx.logger.info('player: setPlayMode to %s', mode)
+    switch (mode) {
+      case 'shuffle':
+        this.model.setShuffle(true)
+        this.set({ shuffle: true, repeat: 'all', playMode: 'shuffle' })
+        this.emitQueueChanged()
+        break
+      case 'sequence':
+        this.model.setShuffle(false)
+        this.set({ shuffle: false, repeat: 'off', playMode: 'sequence' })
+        this.emitQueueChanged()
+        break
+      case 'single-loop':
+        this.model.setShuffle(false)
+        this.set({ shuffle: false, repeat: 'one', playMode: 'single-loop' })
+        this.emitQueueChanged()
+        break
+      case 'list-loop':
+        this.model.setShuffle(false)
+        this.set({ shuffle: false, repeat: 'all', playMode: 'list-loop' })
+        this.emitQueueChanged()
+        break
+    }
+    void this.persist(true)
+  }
+
+  cyclePlayMode(): PlayMode {
+    const current = this.transport.playMode ?? derivePlayMode(this.transport.shuffle, this.transport.repeat)
+    const idx = PLAY_MODES.indexOf(current)
+    const next = PLAY_MODES[(idx + 1) % PLAY_MODES.length]!
+    this.setPlayMode(next)
+    return next
   }
 
   /* ── queue ─────────────────────────────────────────────────────────── */
@@ -1505,6 +1553,7 @@ export class Player extends Service implements PlayerService {
         ...this.transport,
         repeat: state.repeat,
         shuffle: state.shuffle,
+        playMode: derivePlayMode(state.shuffle, state.repeat),
         volume: state.volume,
         muted: state.muted,
       }

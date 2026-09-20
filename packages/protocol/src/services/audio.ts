@@ -15,6 +15,7 @@ import type { Disposable, Uri } from '../common.js'
 import type {
   PlayHistoryHeatmapDay,
   PlayHistoryStats,
+  PlayMode,
   PlayRecord,
   QueueItem,
   QueueSourceContext,
@@ -122,6 +123,8 @@ export interface PlayerService {
   setMuted(m: boolean): void
   setRepeat(m: RepeatMode): void
   setShuffle(on: boolean): void
+  setPlayMode(mode: PlayMode): void
+  cyclePlayMode(): PlayMode
 
   readonly queue: readonly QueueItem[]
   playNow(urns: string[], opts?: PlayNowOptions): Promise<void>
