@@ -21,13 +21,13 @@ import { LimiterEffect } from './limiter.js'
 import type { EffectDefinition } from '@BBeBee/protocol'
 
 export const BUILTIN_EFFECTS: EffectDefinition<never>[] = [
-  PreampEffect,
-  Eq10Effect,
-  NormalizeEffect,
-  CompressorEffect,
-  ReverbEffect,
-  WidenerEffect,
-  CrossfeedEffect,
-  TempoPitchEffect,
-  LimiterEffect,
+  PreampEffect as unknown as EffectDefinition<never>,
+  Eq10Effect as unknown as EffectDefinition<never>,
+  NormalizeEffect as unknown as EffectDefinition<never>,
+  CompressorEffect as unknown as EffectDefinition<never>,
+  ReverbEffect as unknown as EffectDefinition<never>,
+  WidenerEffect as unknown as EffectDefinition<never>,
+  CrossfeedEffect as unknown as EffectDefinition<never>,
+  TempoPitchEffect as unknown as EffectDefinition<never>,
+  LimiterEffect as unknown as EffectDefinition<never>,
 ]

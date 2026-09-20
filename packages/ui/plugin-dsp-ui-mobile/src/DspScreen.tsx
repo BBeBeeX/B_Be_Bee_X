@@ -329,6 +329,36 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                 ),
               ),
 
+            entry.effectId === 'normalize' &&
+              h(
+                native.View as never,
+                { style: { flexDirection: 'row', alignItems: 'center', gap: 12 } },
+                h(Text, { variant: 'xs', children: `增益: ${params.gainDb ?? 0}dB` }),
+                h(
+                  native.View as never,
+                  { style: { flex: 1 } },
+                  h(Slider, {
+                    value: (Number(params.gainDb ?? 0)) + 12,
+                    max: 24,
+                    accessibilityLabel: '标准化增益',
+                    onChange: (v) => void setParam('normalize', 'gainDb', Math.round(v - 12)),
+                  }),
+                ),
+                def.presets &&
+                  h(
+                    native.View as never,
+                    { style: { flexDirection: 'row', gap: 4 } },
+                    def.presets.map((preset) =>
+                      h(Button, {
+                        key: preset.name,
+                        variant: 'secondary',
+                        onPress: () => void applyPreset('normalize', preset.name),
+                        children: preset.name.split(' ')[0] ?? preset.name,
+                      }),
+                    ),
+                  ),
+              ),
+
             entry.effectId === 'compressor' &&
               h(
                 native.View as never,

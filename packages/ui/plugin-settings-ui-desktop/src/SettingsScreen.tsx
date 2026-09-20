@@ -43,10 +43,14 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
   const { settings, update, reset } = useAppSettings(ctx)
   const { usage, clear } = useCacheStats(ctx)
-  const { chain, latencyMs, setEnabled, applyPreset } = useDsp(ctx)
+  const { chain, latencyMs, setEnabled, applyPreset, getParams, setParam } = useDsp(ctx)
   const eqEntry = chain.find((c) => c.effectId === 'eq10')
+  const normEntry = chain.find((c) => c.effectId === 'normalize')
   const compEntry = chain.find((c) => c.effectId === 'compressor')
-  const widenerEntry = chain.find((c) => c.effectId === 'widener')
+  const reverbEntry = chain.find((c) => c.effectId === 'reverb')
+  const normParams = getParams('normalize')
+  const compParams = getParams('compressor')
+  const reverbParams = getParams('reverb')
   const [clearingCache, setClearingCache] = useState(false)
   const [resetting, setResetting] = useState(false)
 
@@ -263,9 +267,10 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
           ),
           h(
             SettingsSection,
-            { title: '音频效果与均衡器 (DSP)', description: '图示均衡器、动态压缩与声学扩展配置' },
+            { title: '音频效果与均衡器 (DSP)', description: '图示均衡器、响度标准化、动态压缩与空间混响配置' },
+            // 1. EQ
             h(SettingsRow, {
-              title: '10 频段均衡器 (10-Band EQ)',
+              title: '10 频段图示均衡器 (10-Band EQ)',
               description: '调整各频段增益，塑造更加适合耳机或音响的声音曲线',
               action: h(Switch, {
                 checked: eqEntry?.enabled ?? false,
@@ -283,8 +288,8 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
                     [
                       { id: '原声 (Flat)', label: '原声' },
                       { id: '低音增强 (Bass Boost)', label: '低音增强' },
-                      { id: '人声清晰 (Vocal Boost)', label: '清晰人声' },
-                      { id: '明亮高音 (Treble Boost)', label: '明亮高音' },
+                      { id: '清晰人声 (Vocal)', label: '清晰人声' },
+                      { id: '清亮高音 (Treble)', label: '清亮高音' },
                     ].map((p) =>
                       h(Button, {
                         key: p.id,
@@ -296,27 +301,155 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
                   ),
                 })
               : null,
+
+            // 2. Normalize
             h(SettingsRow, {
-              title: '夜间压缩模式 (Night Mode)',
-              description: '压缩大动态范围，降低突然的高音量并提升微弱细节',
+              title: '音量响度标准化 (Normalization)',
+              description: '基于 EBU R128 标准匹配目标电平，平衡不同音源之间的音量差异',
+              action: h(Switch, {
+                checked: normEntry?.enabled ?? false,
+                accessibilityLabel: '启用响度标准化',
+                onChange: (checked) => void setEnabled('normalize', checked),
+              }),
+            }),
+            normEntry?.enabled
+              ? h(SettingsRow, {
+                  title: '标准化目标响度预设',
+                  description: '根据收听环境切换标准目标电平',
+                  action: h(
+                    'div',
+                    { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+                    [
+                      { id: '流媒体标准 (-14 LUFS)', label: '流媒体 (-14)' },
+                      { id: '古典安静 (-18 LUFS)', label: '安静 (-18)' },
+                      { id: '高响度 (-11 LUFS)', label: '高响度 (-11)' },
+                    ].map((p) =>
+                      h(Button, {
+                        key: p.id,
+                        variant: 'secondary',
+                        onPress: () => void applyPreset('normalize', p.id),
+                        children: p.label,
+                      }),
+                    ),
+                  ),
+                })
+              : null,
+            normEntry?.enabled
+              ? h(SettingsRow, {
+                  title: '标准化增益微调',
+                  description: `当前微调增益: ${normParams.gainDb ?? 0} dB`,
+                  action: h(
+                    'div',
+                    { style: { width: 180 } },
+                    h(Slider, {
+                      value: Number(normParams.gainDb ?? 0) + 12,
+                      max: 24,
+                      accessibilityLabel: '标准化增益微调',
+                      onChange: (v) => void setParam('normalize', 'gainDb', Math.round(v - 12)),
+                    }),
+                  ),
+                })
+              : null,
+
+            // 3. Compressor
+            h(SettingsRow, {
+              title: '动态范围压缩器 (Compressor)',
+              description: '抑制突发的高音量并提升微弱细节，平抑动态范围',
               action: h(Switch, {
                 checked: compEntry?.enabled ?? false,
-                accessibilityLabel: '夜间压缩模式',
-                onChange: (checked) => {
-                  void setEnabled('compressor', checked)
-                  if (checked) void applyPreset('compressor', '夜间模式 (Night Mode)')
-                },
+                accessibilityLabel: '启用动态压缩器',
+                onChange: (checked) => void setEnabled('compressor', checked),
               }),
             }),
+            compEntry?.enabled
+              ? h(SettingsRow, {
+                  title: '压缩模式风格',
+                  description: '选择适合夜间收听或强劲动态的压缩曲线',
+                  action: h(
+                    'div',
+                    { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+                    [
+                      { id: '夜间模式 (Night Mode)', label: '🌙 夜间模式' },
+                      { id: '温和顺滑 (Subtle)', label: '温和顺滑' },
+                      { id: '强劲动态 (Heavy)', label: '强劲动态' },
+                    ].map((p) =>
+                      h(Button, {
+                        key: p.id,
+                        variant: 'secondary',
+                        onPress: () => void applyPreset('compressor', p.id),
+                        children: p.label,
+                      }),
+                    ),
+                  ),
+                })
+              : null,
+            compEntry?.enabled
+              ? h(SettingsRow, {
+                  title: '压缩阈值 (Threshold)',
+                  description: `触发压缩的信号电平上限: ${compParams.threshold ?? -24} dB`,
+                  action: h(
+                    'div',
+                    { style: { width: 180 } },
+                    h(Slider, {
+                      value: Number(compParams.threshold ?? -24) + 60,
+                      max: 60,
+                      accessibilityLabel: '压缩阈值',
+                      onChange: (v) => void setParam('compressor', 'threshold', Math.round(v - 60)),
+                    }),
+                  ),
+                })
+              : null,
+
+            // 4. Reverb
             h(SettingsRow, {
-              title: '立体声扩宽 (Stereo Widener)',
-              description: '扩展中侧声场，营造开阔立体的临场空间感',
+              title: '空间混响效果 (Reverb)',
+              description: '合成自然空间声学反射与混响尾音，营造沉浸式空间氛围',
               action: h(Switch, {
-                checked: widenerEntry?.enabled ?? false,
-                accessibilityLabel: '立体声扩宽',
-                onChange: (checked) => void setEnabled('widener', checked),
+                checked: reverbEntry?.enabled ?? false,
+                accessibilityLabel: '启用空间混响',
+                onChange: (checked) => void setEnabled('reverb', checked),
               }),
             }),
+            reverbEntry?.enabled
+              ? h(SettingsRow, {
+                  title: '混响空间类型',
+                  description: '切换不同声学空间的脉冲反射模型',
+                  action: h(
+                    'div',
+                    { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+                    [
+                      { id: '小型房间 (Small Room)', label: '小型房间' },
+                      { id: '音乐大厅 (Concert Hall)', label: '音乐大厅' },
+                      { id: '板式混响 (Plate)', label: '板式混响' },
+                    ].map((p) =>
+                      h(Button, {
+                        key: p.id,
+                        variant: 'secondary',
+                        onPress: () => void applyPreset('reverb', p.id),
+                        children: p.label,
+                      }),
+                    ),
+                  ),
+                })
+              : null,
+            reverbEntry?.enabled
+              ? h(SettingsRow, {
+                  title: '混响干湿比 (Mix)',
+                  description: `湿声比例: ${Math.round(Number(reverbParams.mix ?? 0.25) * 100)}%`,
+                  action: h(
+                    'div',
+                    { style: { width: 180 } },
+                    h(Slider, {
+                      value: Math.round(Number(reverbParams.mix ?? 0.25) * 100),
+                      max: 100,
+                      accessibilityLabel: '混响比例',
+                      onChange: (v) => void setParam('reverb', 'mix', Math.round(v) / 100),
+                    }),
+                  ),
+                })
+              : null,
+
+            // 5. Advanced DSP Link
             h(SettingsRow, {
               title: '高级效果器调音与编排',
               description: `当前效果链包含 ${chain.length} 个处理节点，延迟: ${latencyMs}ms`,

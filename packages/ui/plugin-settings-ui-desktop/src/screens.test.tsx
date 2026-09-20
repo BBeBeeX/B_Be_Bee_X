@@ -98,11 +98,15 @@ async function harness(initialSettings: Partial<AppSettings> = {}) {
   class DspStub extends Service {
     public chain = [
       { effectId: 'eq10', enabled: true, ordinal: 20 },
-      { effectId: 'compressor', enabled: false, ordinal: 30 },
+      { effectId: 'normalize', enabled: true, ordinal: 30 },
+      { effectId: 'compressor', enabled: true, ordinal: 40 },
+      { effectId: 'reverb', enabled: true, ordinal: 50 },
     ]
     public definitions = [
       { id: 'eq10', displayName: '10频段均衡器', defaultOrder: 20 },
-      { id: 'compressor', displayName: '压缩器', defaultOrder: 30 },
+      { id: 'normalize', displayName: '响度标准化', defaultOrder: 30 },
+      { id: 'compressor', displayName: '动态压缩器', defaultOrder: 40 },
+      { id: 'reverb', displayName: '空间混响', defaultOrder: 50 },
     ]
     public latencyMs = 2
 
@@ -116,6 +120,10 @@ async function harness(initialSettings: Partial<AppSettings> = {}) {
 
     applyPreset = async (id: string, name: string) => {
       calls.push(`dsp:applyPreset:${id}:${name}`)
+    }
+
+    setParam = async (id: string, name: string, value: unknown) => {
+      calls.push(`dsp:setParam:${id}:${name}:${value}`)
     }
 
     getParams = () => ({})
@@ -216,7 +224,7 @@ describe('SettingsScreen', () => {
     expect(getByText('微内核架构')).toBeTruthy()
   })
 
-  it('displays DSP settings in playback tab and switches to DSP tab', async () => {
+  it('displays and modifies EQ, normalize, compressor, reverb in playback tab and switches to DSP tab', async () => {
     const { ctx, calls } = await harness()
     // Register mock DSP view
     ;(ctx.ui as any).registerView('settings.dsp', () => h('div', null, 'Mock DSP Screen Content'))
@@ -228,15 +236,36 @@ describe('SettingsScreen', () => {
     fireEvent.click(playbackTab)
 
     expect(await findByText('音频效果与均衡器 (DSP)')).toBeTruthy()
-    expect(getByText('10 频段均衡器 (10-Band EQ)')).toBeTruthy()
-    expect(getByText('均衡器预设风格')).toBeTruthy()
 
-    // Click Flat preset
+    // 1. Check EQ
+    expect(getByText('10 频段图示均衡器 (10-Band EQ)')).toBeTruthy()
+    expect(getByText('均衡器预设风格')).toBeTruthy()
     const flatButton = getByText('原声')
     fireEvent.click(flatButton)
     expect(calls.some((c) => c.includes('dsp:applyPreset:eq10:原声 (Flat)'))).toBe(true)
 
-    // Switch to DSP tab
+    // 2. Check Normalize
+    expect(getByText('音量响度标准化 (Normalization)')).toBeTruthy()
+    expect(getByText('标准化目标响度预设')).toBeTruthy()
+    const lufsButton = getByText('流媒体 (-14)')
+    fireEvent.click(lufsButton)
+    expect(calls.some((c) => c.includes('dsp:applyPreset:normalize:流媒体标准 (-14 LUFS)'))).toBe(true)
+
+    // 3. Check Compressor
+    expect(getByText('动态范围压缩器 (Compressor)')).toBeTruthy()
+    expect(getByText('压缩模式风格')).toBeTruthy()
+    const nightButton = getByText('🌙 夜间模式')
+    fireEvent.click(nightButton)
+    expect(calls.some((c) => c.includes('dsp:applyPreset:compressor:夜间模式 (Night Mode)'))).toBe(true)
+
+    // 4. Check Reverb
+    expect(getByText('空间混响效果 (Reverb)')).toBeTruthy()
+    expect(getByText('混响空间类型')).toBeTruthy()
+    const hallButton = getByText('音乐大厅')
+    fireEvent.click(hallButton)
+    expect(calls.some((c) => c.includes('dsp:applyPreset:reverb:音乐大厅 (Concert Hall)'))).toBe(true)
+
+    // 5. Switch to DSP tab
     const dspTab = await findByText('音效均衡器')
     fireEvent.click(dspTab)
 

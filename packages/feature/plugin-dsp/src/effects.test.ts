@@ -317,7 +317,7 @@ describe('DSP effects offline-render determinism', () => {
   })
 
   it('widener builds and adjusts mid-side stereo width', () => {
-    const seg = WidenerEffect.build(ctx, { width: 1.5 })
+    const seg = WidenerEffect.build(ctx, { width: 1.5, delayMs: 12 })
     expect(seg.input).toBeDefined()
     expect(seg.output).toBeDefined()
 
@@ -326,7 +326,7 @@ describe('DSP effects offline-render determinism', () => {
   })
 
   it('crossfeed builds and adjusts binaural crossfeed amount', () => {
-    const seg = CrossfeedEffect.build(ctx, { amount: 0.4 })
+    const seg = CrossfeedEffect.build(ctx, { amount: 0.4, cutoffHz: 700 })
     expect(seg.input).toBeDefined()
     expect(seg.output).toBeDefined()
 

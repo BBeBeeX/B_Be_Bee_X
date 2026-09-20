@@ -26,10 +26,12 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
   const native = nativePrimitives()
   const { settings, update, reset } = useAppSettings(ctx)
   const { usage, clear } = useCacheStats(ctx)
-  const { chain, latencyMs, setEnabled, applyPreset } = useDsp(ctx)
+  const { chain, latencyMs, setEnabled, applyPreset, getParams, setParam } = useDsp(ctx)
   const eqEntry = chain.find((c) => c.effectId === 'eq10')
+  const normEntry = chain.find((c) => c.effectId === 'normalize')
   const compEntry = chain.find((c) => c.effectId === 'compressor')
-  const widenerEntry = chain.find((c) => c.effectId === 'widener')
+  const reverbEntry = chain.find((c) => c.effectId === 'reverb')
+  const reverbParams = getParams('reverb')
   const [clearingCache, setClearingCache] = useState(false)
   const [confirmingReset, setConfirmingReset] = useState(false)
 
@@ -230,11 +232,12 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
     ]),
 
     // 3. Audio & DSP Section
-    renderSectionHeader('音频效果与均衡器 (DSP)', '实时效果链与声音风格调教'),
+    renderSectionHeader('音频效果与均衡器 (DSP)', '图示均衡器、响度标准化、动态压缩与空间混响'),
     renderCard([
+      // 1. EQ
       renderRow(
         '10 频段均衡器 (EQ)',
-        '调节各频段增益，优化听音体验',
+        '调节各频段增益，塑造适宜听感',
         renderToggle(eqEntry?.enabled ?? false, () =>
           void setEnabled('eq10', !(eqEntry?.enabled ?? false)),
         ),
@@ -246,8 +249,8 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             [
               { id: '原声 (Flat)', label: '原声' },
               { id: '低音增强 (Bass Boost)', label: '低音' },
-              { id: '人声清晰 (Vocal Boost)', label: '人声' },
-              { id: '明亮高音 (Treble Boost)', label: '高音' },
+              { id: '清晰人声 (Vocal)', label: '人声' },
+              { id: '清亮高音 (Treble)', label: '高音' },
             ].map((p) =>
               h(Button, {
                 key: p.id,
@@ -258,24 +261,106 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             ),
           )
         : null,
+
+      // 2. Normalize
       renderRow(
-        '夜间压缩模式',
-        '降低过大爆发音量，提升微弱细节',
-        renderToggle(compEntry?.enabled ?? false, () => {
-          const next = !(compEntry?.enabled ?? false)
-          void setEnabled('compressor', next)
-          if (next) void applyPreset('compressor', '夜间模式 (Night Mode)')
-        }),
-      ),
-      renderRow(
-        '立体声扩宽',
-        '扩展声场宽度，强化沉浸感',
-        renderToggle(widenerEntry?.enabled ?? false, () =>
-          void setEnabled('widener', !(widenerEntry?.enabled ?? false)),
+        '音量响度标准化 (Normalize)',
+        '消除不同曲目之间的音量落差',
+        renderToggle(normEntry?.enabled ?? false, () =>
+          void setEnabled('normalize', !(normEntry?.enabled ?? false)),
         ),
       ),
+      normEntry?.enabled
+        ? h(
+            native.View as never,
+            { style: { flexDirection: 'row', flexWrap: 'wrap', gap: tokens.space[1], paddingVertical: 2 } },
+            [
+              { id: '流媒体标准 (-14 LUFS)', label: '流媒体 (-14)' },
+              { id: '古典安静 (-18 LUFS)', label: '古典 (-18)' },
+              { id: '高响度 (-11 LUFS)', label: '高响度 (-11)' },
+            ].map((p) =>
+              h(Button, {
+                key: p.id,
+                variant: 'secondary',
+                onPress: () => void applyPreset('normalize', p.id),
+                children: p.label,
+              }),
+            ),
+          )
+        : null,
+
+      // 3. Compressor
       renderRow(
-        '高级效果器调音',
+        '动态压缩器 (Compressor)',
+        '抑制大爆发音量，提升微弱细节',
+        renderToggle(compEntry?.enabled ?? false, () =>
+          void setEnabled('compressor', !(compEntry?.enabled ?? false)),
+        ),
+      ),
+      compEntry?.enabled
+        ? h(
+            native.View as never,
+            { style: { flexDirection: 'row', flexWrap: 'wrap', gap: tokens.space[1], paddingVertical: 2 } },
+            [
+              { id: '夜间模式 (Night Mode)', label: '夜间模式' },
+              { id: '温和顺滑 (Subtle)', label: '温和顺滑' },
+              { id: '强劲动态 (Heavy)', label: '强劲动态' },
+            ].map((p) =>
+              h(Button, {
+                key: p.id,
+                variant: 'secondary',
+                onPress: () => void applyPreset('compressor', p.id),
+                children: p.label,
+              }),
+            ),
+          )
+        : null,
+
+      // 4. Reverb
+      renderRow(
+        '空间混响效果 (Reverb)',
+        '合成自然空间反射与混响尾音',
+        renderToggle(reverbEntry?.enabled ?? false, () =>
+          void setEnabled('reverb', !(reverbEntry?.enabled ?? false)),
+        ),
+      ),
+      reverbEntry?.enabled
+        ? h(
+            native.View as never,
+            { style: { gap: tokens.space[1] } },
+            h(
+              native.View as never,
+              { style: { flexDirection: 'row', flexWrap: 'wrap', gap: tokens.space[1], paddingVertical: 2 } },
+              [
+                { id: '小型房间 (Small Room)', label: '小型房间' },
+                { id: '音乐大厅 (Concert Hall)', label: '音乐大厅' },
+                { id: '板式混响 (Plate)', label: '板式混响' },
+              ].map((p) =>
+                h(Button, {
+                  key: p.id,
+                  variant: 'secondary',
+                  onPress: () => void applyPreset('reverb', p.id),
+                  children: p.label,
+                }),
+              ),
+            ),
+            h(Text, {
+              variant: 'xs',
+              tone: 'muted',
+              children: `混响比例: ${Math.round(Number(reverbParams.mix ?? 0.25) * 100)}%`,
+            }),
+            h(Slider, {
+              value: Math.round(Number(reverbParams.mix ?? 0.25) * 100),
+              max: 100,
+              accessibilityLabel: '混响比例',
+              onChange: (v) => void setParam('reverb', 'mix', Math.round(v) / 100),
+            }),
+          )
+        : null,
+
+      // 5. Advanced Panel Link
+      renderRow(
+        '高级效果器调音与编排',
         `处理节点: ${chain.length} · 延迟: ${latencyMs}ms`,
         h(Button, {
           children: '效果器面板',
