@@ -33,9 +33,18 @@ export function InspectorPanel({ ctx }: { ctx: Context }): ReactElement {
   const [snap, setSnap] = useState<InspectorSnapshot>(() => ctx.inspector.snapshot())
 
   // The fiber tree has no change event — plugins load and unload without
-  // telling anyone — so the inspector polls. Cheap, and it is a dev tool.
+  // telling anyone — so the inspector polls. Guarded with state signature
+  // to avoid redundant re-renders when nothing has changed.
   useEffect(() => {
-    const timer = setInterval(() => setSnap(ctx.inspector.snapshot()), 1000)
+    let lastSig = ''
+    const timer = setInterval(() => {
+      const next = ctx.inspector.snapshot()
+      const sig = `${next.counts.ACTIVE}:${next.counts.PENDING}:${next.counts.FAILED}:${next.stalled.length}:${next.root.children.length}`
+      if (sig !== lastSig) {
+        lastSig = sig
+        setSnap(next)
+      }
+    }, 1000)
     return () => clearInterval(timer)
   }, [ctx])
 

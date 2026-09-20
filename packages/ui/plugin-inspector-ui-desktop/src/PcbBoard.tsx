@@ -42,9 +42,17 @@ export function PcbBoard({
   onPanChange,
 }: PcbBoardProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
+  const canvasGroupRef = useRef<SVGGElement>(null)
   const isDraggingRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
+  const currentPanRef = useRef(pan)
+  const rafIdRef = useRef<number | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+
+  // Keep currentPanRef in sync with external pan updates
+  useEffect(() => {
+    currentPanRef.current = pan
+  }, [pan])
 
   const handleMouseDown = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
@@ -53,11 +61,11 @@ export function PcbBoard({
       dragStartRef.current = {
         x: e.clientX,
         y: e.clientY,
-        panX: pan.x,
-        panY: pan.y,
+        panX: currentPanRef.current.x,
+        panY: currentPanRef.current.y,
       }
     },
-    [pan],
+    [],
   )
 
   const handleMouseMove = useCallback(
@@ -65,17 +73,37 @@ export function PcbBoard({
       if (!isDraggingRef.current) return
       const dx = e.clientX - dragStartRef.current.x
       const dy = e.clientY - dragStartRef.current.y
-      onPanChange({
+      currentPanRef.current = {
         x: dragStartRef.current.panX + dx,
         y: dragStartRef.current.panY + dy,
-      })
+      }
+
+      // 120fps direct hardware transform without triggering React re-renders
+      if (rafIdRef.current === null) {
+        rafIdRef.current = requestAnimationFrame(() => {
+          rafIdRef.current = null
+          if (canvasGroupRef.current) {
+            canvasGroupRef.current.setAttribute(
+              'transform',
+              `translate(${currentPanRef.current.x}, ${currentPanRef.current.y}) scale(${zoom})`,
+            )
+          }
+        })
+      }
     },
-    [onPanChange],
+    [zoom],
   )
 
   const handleMouseUp = useCallback(() => {
-    isDraggingRef.current = false
-  }, [])
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current)
+        rafIdRef.current = null
+      }
+      onPanChange(currentPanRef.current)
+    }
+  }, [onPanChange])
 
   const handleWheel = useCallback(
     (e: ReactWheelEvent<HTMLDivElement>) => {
@@ -227,8 +255,9 @@ export function PcbBoard({
       h(
         'g',
         {
+          ref: canvasGroupRef,
           transform: `translate(${pan.x}, ${pan.y}) scale(${zoom})`,
-          style: { transformOrigin: '0 0' },
+          style: { transformOrigin: '0 0', willChange: 'transform' },
         },
 
         // ═══════════════════════════════════════════════════════
@@ -248,7 +277,6 @@ export function PcbBoard({
               stroke: baseColor,
               strokeWidth: (trace.width ?? 2) + 4,
               strokeOpacity: isTraceActive ? (activeNodeId ? 0.35 : 0.18) : 0.05,
-              filter: 'url(#pcb-glow)',
             })
           }),
 
@@ -280,7 +308,7 @@ export function PcbBoard({
         // ═══════════════════════════════════════════════════════
         h(
           'g',
-          { className: 'trace-layer' },
+          { className: 'trace-layer', pointerEvents: 'none' },
           ...traces.map((trace) => {
             const isTraceActive = activeNodeId ? connectedTraceIds.has(trace.id) : true
             const baseColor = RELATION_COLORS[trace.relationType] ?? '#6474FF'
@@ -333,7 +361,7 @@ export function PcbBoard({
         // ═══════════════════════════════════════════════════════
         h(
           'g',
-          { className: 'pin-layer' },
+          { className: 'pin-layer', pointerEvents: 'none' },
           ...pins.map((pin) =>
             h(
               'g',
