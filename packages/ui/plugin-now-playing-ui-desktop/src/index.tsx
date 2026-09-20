@@ -25,10 +25,69 @@ import {
 } from '@BBeBee/plugin-player/hooks'
 import { Artwork, IconButton, Slider, Text } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
-import type { ArtworkProps } from '@BBeBee/ui-core'
+import { serviceOf, useServiceState, type ArtworkProps } from '@BBeBee/ui-core'
+import type { DesktopLyricsService } from '@BBeBee/protocol'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
 
 const p = () => palettes.dark
+
+/**
+ * Toggle button for floating desktop lyrics.
+ */
+function DesktopLyricsToggle({ ctx }: { ctx: Context }): ReactElement {
+  const isVisible = useServiceState<boolean>(
+    ctx,
+    ['desktop-lyrics/changed'],
+    () => serviceOf<DesktopLyricsService>(ctx, 'desktopLyrics')?.state.visible ?? false,
+  )
+
+  const handleToggle = () => {
+    const service = serviceOf<DesktopLyricsService>(ctx, 'desktopLyrics')
+    if (service) {
+      service.toggleVisible()
+    } else {
+      void ctx.ui?.runCommand?.('desktop-lyrics.toggle')
+    }
+  }
+
+  return h(
+    'button',
+    {
+      type: 'button',
+      'aria-label': isVisible ? '隐藏桌面歌词' : '显示桌面歌词',
+      title: isVisible ? '隐藏桌面歌词' : '显示桌面歌词',
+      onClick: handleToggle,
+      style: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 30,
+        height: 30,
+        borderRadius: tokens.radius.sm,
+        border: isVisible ? '1px solid #A78BFA' : '1px solid rgba(255, 255, 255, 0.16)',
+        background: isVisible ? 'rgba(124, 58, 237, 0.3)' : 'transparent',
+        color: isVisible ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)',
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: 'pointer',
+        transition: 'all 0.15s ease',
+        outline: 'none',
+        flexShrink: 0,
+      },
+      onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+        e.currentTarget.style.borderColor = isVisible ? '#A78BFA' : 'rgba(255, 255, 255, 0.4)'
+        e.currentTarget.style.color = '#FFFFFF'
+        e.currentTarget.style.transform = 'scale(1.05)'
+      },
+      onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+        e.currentTarget.style.borderColor = isVisible ? '#A78BFA' : 'rgba(255, 255, 255, 0.16)'
+        e.currentTarget.style.color = isVisible ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)'
+        e.currentTarget.style.transform = 'scale(1)'
+      },
+    },
+    '词',
+  )
+}
 
 /**
  * `<Artwork>`, with the cover resolved through `ctx.cache` first.
@@ -276,6 +335,7 @@ export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): Re
           minWidth: 180,
         },
       },
+      h(DesktopLyricsToggle, { ctx }),
       h(IconButton, {
         icon: state.muted ? '🔇' : '🔊',
         accessibilityLabel: state.muted ? 'Unmute' : 'Mute',
@@ -305,6 +365,14 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
   const duration = useDuration(ctx)
   const can = useTransportAvailability(ctx)
   const displayPosition = seekingPosition ?? position
+
+  const PanelComponent = useServiceState(ctx, ['ui/changed'], () => {
+    const panelSlots = ctx.ui?.slotsFor?.('now-playing.panel') ?? []
+    if (panelSlots[0]) {
+      return (ctx.ui?.viewFor?.(panelSlots[0].id) as React.ComponentType<{ ctx: Context }> | undefined) ?? null
+    }
+    return (ctx.ui?.viewFor?.('lyrics.panel') as React.ComponentType<{ ctx: Context }> | undefined) ?? null
+  })
 
   return h(
     'div',
@@ -374,11 +442,6 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
       ),
     ),
     (() => {
-      const panelSlots = ctx.ui?.slotsFor?.('now-playing.panel') ?? []
-      const PanelComponent = panelSlots[0]
-        ? (ctx.ui?.viewFor?.(panelSlots[0].id) as React.ComponentType<{ ctx: Context }> | undefined)
-        : undefined
-
       const playerMain = h(
         'div',
         {

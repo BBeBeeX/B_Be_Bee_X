@@ -31,6 +31,11 @@ export async function apply(ctx: Context) {
 
   return ctx.effect(function* () {
     yield ctx.ui.registerView('lyrics.panel', bound(ctx, LyricsPanel))
+    yield ctx.ui.contribute({
+      kind: 'slot',
+      id: 'lyrics.panel',
+      slot: 'now-playing.panel',
+    })
   }, 'lyrics-ui-desktop')
 }
 

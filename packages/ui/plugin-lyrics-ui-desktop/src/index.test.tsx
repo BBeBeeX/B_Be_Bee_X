@@ -136,7 +136,7 @@ describe('LyricsPanel', () => {
     lyrics.setState({ status: 'no-lyrics', lyrics: undefined })
 
     const html = renderToStaticMarkup(h(LyricsPanel, { ctx }))
-    expect(html).toContain('No lyrics available')
+    expect(html).toContain('暂无歌词')
   })
 
   it('displays error state with retry option on failure', async () => {

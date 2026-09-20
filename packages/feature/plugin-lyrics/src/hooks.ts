@@ -7,9 +7,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Context } from 'cordis'
-import type { Lyrics, LyricsState, LyricsStatus, TransportState } from '@BBeBee/protocol'
+import type {
+  Lyrics,
+  LyricsService,
+  LyricsState,
+  LyricsStatus,
+  PlayerService,
+  TransportState,
+} from '@BBeBee/protocol'
 import { findActiveLyricIndex, parseLrc, type LyricLine, type ParsedLyrics } from '@BBeBee/toolkit'
-import { useServiceState } from '@BBeBee/ui-core'
+import { serviceOf, useServiceState } from '@BBeBee/ui-core'
 
 export interface UseLyricsResult {
   status: LyricsStatus
@@ -32,10 +39,12 @@ const EMPTY_PARSED: ParsedLyrics = {
  * Updates when the track changes or lyrics state updates.
  */
 export function useLyrics(ctx: Context): UseLyricsResult {
+  const getLyrics = () => serviceOf<LyricsService>(ctx, 'lyrics')
+
   const state = useServiceState<LyricsState>(
     ctx,
     ['lyrics/changed'],
-    () => ctx.lyrics?.state ?? { status: 'idle', offsetMs: 0 },
+    () => getLyrics()?.state ?? { status: 'idle', offsetMs: 0 },
   )
 
   const parsed = useMemo(() => {
@@ -44,12 +53,12 @@ export function useLyrics(ctx: Context): UseLyricsResult {
   }, [state.lyrics?.content, state.offsetMs])
 
   const retry = useCallback(async () => {
-    await ctx.lyrics?.retry?.()
+    await getLyrics()?.retry?.()
   }, [ctx])
 
   const setOffset = useCallback(
     (offsetMs: number) => {
-      ctx.lyrics?.setOffset?.(offsetMs)
+      getLyrics()?.setOffset?.(offsetMs)
     },
     [ctx],
   )
@@ -77,7 +86,8 @@ export function useActiveLyricIndex(
   lines: readonly LyricLine[],
   offsetMs = 0,
 ): number {
-  const initialPos = ctx.player?.state?.positionMs ?? 0
+  const getPlayer = () => serviceOf<PlayerService>(ctx, 'player')
+  const initialPos = getPlayer()?.state?.positionMs ?? 0
   const [activeIndex, setActiveIndex] = useState<number>(() =>
     findActiveLyricIndex(lines, initialPos, offsetMs),
   )
@@ -88,16 +98,17 @@ export function useActiveLyricIndex(
   const anchor = useRef({
     positionMs: initialPos,
     at: performance.now(),
-    status: ctx.player?.state?.status ?? ('idle' as TransportState['status']),
+    status: getPlayer()?.state?.status ?? ('idle' as TransportState['status']),
   })
 
   useEffect(() => {
     // Re-anchor on position or state changes
-    if (ctx.player?.state) {
+    const currentPlayer = getPlayer()
+    if (currentPlayer?.state) {
       anchor.current = {
-        positionMs: ctx.player.state.positionMs,
+        positionMs: currentPlayer.state.positionMs,
         at: performance.now(),
-        status: ctx.player.state.status,
+        status: currentPlayer.state.status,
       }
     }
 
@@ -187,10 +198,11 @@ export function useCurrentLyric(ctx: Context): CurrentLyricInfo {
   const { status, parsed, offsetMs } = useLyrics(ctx)
   const activeIndex = useActiveLyricIndex(ctx, parsed.lines, offsetMs)
 
+  const getPlayer = () => serviceOf<PlayerService>(ctx, 'player')
   const transport = useServiceState<TransportState>(
     ctx,
     ['player/state-changed', 'player/track-changed'],
-    () => ctx.player?.state ?? { status: 'idle', positionMs: 0, durationMs: 0 } as TransportState,
+    () => getPlayer()?.state ?? ({ status: 'idle', positionMs: 0, durationMs: 0 } as TransportState),
   )
 
   const currentLine = activeIndex >= 0 ? parsed.lines[activeIndex] : undefined

@@ -259,8 +259,8 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
           )
         : null,
 
-      // State: No Lyrics
-      status === 'no-lyrics' || (status === 'ready' && parsed.lines.length === 0)
+      // State: Idle / No Lyrics
+      status === 'idle' || status === 'no-lyrics' || (status === 'ready' && parsed.lines.length === 0)
         ? h(
             'div',
             {
@@ -276,7 +276,11 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
               },
             },
             h('span', { style: { fontSize: 36, opacity: 0.6 } }, '♪'),
-            h('span', { style: { fontSize: 16 } }, 'No lyrics available for this song'),
+            h(
+              'span',
+              { style: { fontSize: 16 } },
+              status === 'idle' ? '暂无播放歌曲' : '暂无歌词',
+            ),
           )
         : null,
 

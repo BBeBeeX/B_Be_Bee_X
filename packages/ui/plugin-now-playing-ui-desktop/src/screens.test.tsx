@@ -66,8 +66,39 @@ async function harness(
       urns.map((urn) => catalogue[urn]).filter((t): t is Track => t !== undefined)
   }
 
+  class UiStub extends Service {
+    views = new Map<string, unknown>()
+    slots = new Map<string, { id: string; slot: string }[]>()
+
+    constructor(ctx: Context) {
+      super(ctx, 'ui')
+    }
+
+    registerView(id: string, view: unknown) {
+      this.views.set(id, view)
+      return () => void this.views.delete(id)
+    }
+
+    viewFor(id: string) {
+      return this.views.get(id)
+    }
+
+    slotsFor(slot: string) {
+      return this.slots.get(slot) ?? []
+    }
+
+    contribute(c: { kind: string; id: string; slot?: string }) {
+      if (c.kind === 'slot' && c.slot) {
+        const list = this.slots.get(c.slot) ?? []
+        list.push({ id: c.id, slot: c.slot })
+        this.slots.set(c.slot, list)
+      }
+    }
+  }
+
   const ctx = new Context()
   await ctx.plugin(PlayerStub)
+  await ctx.plugin(UiStub)
   if (Object.keys(catalogue).length > 0) await ctx.plugin(SourcesStub)
   return { ctx, calls }
 }
@@ -153,6 +184,13 @@ describe('NowPlayingBar', () => {
     const out = html(h(NowPlayingBar, { ctx }))
     expect(out).toContain('aria-label="Open now playing"')
   })
+
+  it('renders a toggle button for desktop lyrics to the left of volume control', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    const out = html(h(NowPlayingBar, { ctx }))
+    expect(out).toContain('aria-label="显示桌面歌词"')
+    expect(out).toContain('词')
+  })
 })
 
 describe('NowPlayingScreen', () => {
@@ -181,5 +219,15 @@ describe('NowPlayingScreen', () => {
     const { ctx } = await harness({ status: 'playing' })
     const out = html(h(NowPlayingScreen, { ctx }))
     expect(out).toContain('aria-label="Close now playing"')
+  })
+
+  it('renders lyrics panel slot when available', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    ctx.ui.registerView('lyrics.panel', () =>
+      h('div', { 'data-testid': 'mock-lyrics-panel' }, 'Mock Lyrics'),
+    )
+    const out = html(h(NowPlayingScreen, { ctx }))
+    expect(out).toContain('data-testid="mock-lyrics-panel"')
+    expect(out).toContain('Mock Lyrics')
   })
 })
