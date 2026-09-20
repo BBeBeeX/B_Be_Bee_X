@@ -7,6 +7,10 @@ export interface DesktopLyricsPayload {
   playing: boolean
   title?: string
   artist?: string
+  align?: 'left' | 'center' | 'right'
+  fontFamily?: string
+  textColor?: string
+  lineMode?: 'single' | 'double'
 }
 
 export type DesktopLyricsAction =

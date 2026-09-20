@@ -37,7 +37,6 @@ import { LyricsPreview } from './components/LyricsPreview.js'
 export type SettingsTab =
   | 'general'
   | 'playback'
-  | 'dsp'
   | 'lyrics'
   | 'shortcuts'
   | 'network'
@@ -51,9 +50,8 @@ export interface TabItem {
 }
 
 export const TABS: readonly TabItem[] = [
-  { id: 'general', label: '常规与外观' },
+  { id: 'general', label: '常规与语言' },
   { id: 'playback', label: '播放与音频' },
-  { id: 'dsp', label: '音效均衡器' },
   { id: 'lyrics', label: '桌面歌词' },
   { id: 'shortcuts', label: '全局快捷键' },
   { id: 'network', label: '网络与代理' },
@@ -70,8 +68,21 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
 }
 
+function cleanDisplayPath(rawPath?: string): string {
+  if (!rawPath) return ''
+  let p = rawPath
+  if (p.startsWith('file://')) {
+    p = decodeURIComponent(p.replace(/^file:\/\//, ''))
+    if (/^\/[a-zA-Z]:/.test(p)) {
+      p = p.slice(1)
+    }
+  }
+  return p
+}
+
 export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
   const isClickNavigatingRef = useRef(false)
 
   const { settings, update, reset } = useAppSettings(ctx)
@@ -273,7 +284,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
       window as unknown as { BBeBee?: { shell?: { openPath: (p: string) => Promise<string> } } }
     ).BBeBee
     if (bridge?.shell?.openPath) {
-      await bridge.shell.openPath(currentDownloadsDir)
+      await bridge.shell.openPath(cleanDisplayPath(currentDownloadsDir))
     }
   }
 
@@ -294,7 +305,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
       window as unknown as { BBeBee?: { shell?: { openPath: (p: string) => Promise<string> } } }
     ).BBeBee
     if (bridge?.shell?.openPath) {
-      await bridge.shell.openPath(currentCacheDir)
+      await bridge.shell.openPath(cleanDisplayPath(currentCacheDir))
     }
   }
 
@@ -490,23 +501,9 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
         h(
           SettingsSection,
           {
-            title: '外观与个性化',
-            description: '调整应用程序界面的视觉呈现方式与语言选项',
+            title: '常规与界面语言',
+            description: '设置应用程序的界面语言与显示偏好',
           },
-          h(SettingsRow, {
-            title: '外观主题',
-            description: '选择应用的主题风格或与操作系统外观同步',
-            action: h(Select<'dark' | 'light' | 'system'>, {
-              value: settings.theme,
-              options: [
-                { value: 'dark', label: '深色模式' },
-                { value: 'light', label: '浅色模式' },
-                { value: 'system', label: '跟随系统' },
-              ],
-              accessibilityLabel: '外观主题',
-              onChange: (theme) => void update({ theme }),
-            }),
-          }),
           h(SettingsRow, {
             title: '界面语言',
             description: '设置显示的语言选项',
@@ -871,37 +868,12 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             description: `当前效果链包含 ${chain.length} 个处理节点，延迟: ${latencyMs}ms`,
             borderBottom: false,
             action: h(Button, {
-              children: '打开音效面板',
-              onPress: () => handleTabClick('dsp'),
+              children: '打开音效面板 →',
+              onPress: () => {
+                serviceOf<UiService>(ctx, 'ui')?.navigate?.('dsp.view')
+              },
             }),
           }),
-        ),
-      ),
-
-      // 3. DSP Category Anchor
-      h(
-        'div',
-        { id: 'section-dsp' },
-        h(
-          SettingsSection,
-          {
-            title: '高级音效面板 (DSP)',
-            description: '完整的专业音频效果器图拓扑调音与处理链路',
-          },
-          (() => {
-            const ui = serviceOf<UiService>(ctx, 'ui')
-            const DspComponent = ui?.viewFor?.('settings.dsp') as
-              | React.ComponentType<{ ctx: Context }>
-              | undefined
-            if (DspComponent) {
-              return h(DspComponent, { ctx })
-            }
-            return h(
-              'div',
-              { style: { color: '#8E8E93', fontSize: 13, padding: '16px 4px' } },
-              '效果器视图加载中或未安装。',
-            )
-          })(),
         ),
       ),
 
@@ -1194,7 +1166,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
                       variant: 'secondary',
                       disabled: proxyTesting || !proxy.host || !proxy.port,
                       loading: proxyTesting,
-                      children: '测试连接',
+                      children: '测试 Google 连接',
                       onPress: handleTestProxy,
                     }),
                   ),
@@ -1218,43 +1190,56 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
                         },
                       },
                       proxyTestResult.ok
-                        ? `✓ 代理连通正常，响应延迟: ${proxyTestResult.latencyMs ?? 0}ms`
+                        ? `✓ Google 探测节点连通正常，响应延迟: ${proxyTestResult.latencyMs ?? 0}ms`
                         : `✕ 代理连接失败: ${proxyTestResult.error || '连接超时或服务器无响应'}`,
                     )
                   : null,
+                // Third-party Sources individual proxy management (Nested inside proxy section)
+                h(
+                  'div',
+                  {
+                    style: {
+                      marginTop: 16,
+                      paddingTop: 16,
+                      borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                    },
+                  },
+                  h(
+                    'div',
+                    { style: { marginBottom: 12 } },
+                    h('div', { style: { fontSize: 14, fontWeight: 600, color: '#F8FAFC' } }, '第三方音源代理独立分流'),
+                    h(
+                      'div',
+                      { style: { fontSize: 12, color: '#8E8E93', marginTop: 2 } },
+                      '为已安装的每个第三方音乐来源单独指定是否启用网络代理',
+                    ),
+                  ),
+                  thirdPartySources.length > 0
+                    ? thirdPartySources.map((s, index, arr) => {
+                        const isEnabled = proxy.sourceRules[s.id] ?? false
+                        return h(SettingsRow, {
+                          key: s.id,
+                          title: s.name || s.id,
+                          description: s.group ? `分组: ${s.group} · ${s.sourceUrl}` : s.sourceUrl,
+                          borderBottom: index < arr.length - 1,
+                          action: h(Switch, {
+                            checked: isEnabled,
+                            accessibilityLabel: `${s.name || s.id} 启用代理`,
+                            onChange: (checked) => {
+                              const nextRules = { ...proxy.sourceRules, [s.id]: checked }
+                              void update({ proxy: { ...proxy, sourceRules: nextRules } })
+                            },
+                          }),
+                        })
+                      })
+                    : h(
+                        'div',
+                        { style: { color: '#8E8E93', fontSize: 13, padding: '8px 0' } },
+                        '当前尚未安装第三方音乐源。导入源规则后即可在此处单独开启代理。',
+                      ),
+                ),
               )
             : null,
-        ),
-        // Third-party Sources individual proxy management (Requirement 8)
-        h(
-          SettingsSection,
-          {
-            title: '第三方音源代理独立分流',
-            description: '为已安装的每个第三方音乐来源单独指定是否启用网络代理',
-          },
-          thirdPartySources.length > 0
-            ? thirdPartySources.map((s, index, arr) => {
-                const isEnabled = proxy.sourceRules[s.id] ?? false
-                return h(SettingsRow, {
-                  key: s.id,
-                  title: s.name || s.id,
-                  description: s.group ? `分组: ${s.group} · ${s.sourceUrl}` : s.sourceUrl,
-                  borderBottom: index < arr.length - 1,
-                  action: h(Switch, {
-                    checked: isEnabled,
-                    accessibilityLabel: `${s.name || s.id} 启用代理`,
-                    onChange: (checked) => {
-                      const nextRules = { ...proxy.sourceRules, [s.id]: checked }
-                      void update({ proxy: { ...proxy, sourceRules: nextRules } })
-                    },
-                  }),
-                })
-              })
-            : h(
-                'div',
-                { style: { color: '#8E8E93', fontSize: 13, padding: '12px 4px' } },
-                '当前尚未安装第三方音乐源。导入源规则后即可在此处单独开启代理。',
-              ),
         ),
       ),
 
@@ -1305,7 +1290,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
           // Download Directory row with 更改目录 and 打开文件夹 buttons (Requirement 4)
           h(SettingsRow, {
             title: '下载目录',
-            description: currentDownloadsDir,
+            description: cleanDisplayPath(currentDownloadsDir),
             action: h(
               'div',
               { style: { display: 'flex', gap: 8 } },
@@ -1342,7 +1327,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
           // Cache Directory row with 更改目录 and 打开文件夹 buttons (Requirement 5)
           h(SettingsRow, {
             title: '歌曲缓存目录',
-            description: currentCacheDir,
+            description: cleanDisplayPath(currentCacheDir),
             action: h(
               'div',
               { style: { display: 'flex', gap: 8 } },
@@ -1438,38 +1423,95 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             borderBottom: false,
           }),
         ),
+        // Advanced Settings Checkbox Toggle (Requirement 7)
         h(
-          SettingsSection,
+          'div',
           {
-            title: '危险区域',
-            description: '配置重置选项',
+            style: {
+              padding: '12px 4px 16px',
+              display: 'flex',
+              alignItems: 'center',
+            },
           },
-          h(SettingsRow, {
-            title: '重置所有设置',
-            description: '将所有偏好项恢复为初始默认值（不会删除已下载的歌曲或歌单）',
-            borderBottom: false,
-            action: resetting
-              ? h(
-                  'div',
-                  { style: { display: 'flex', gap: 8 } },
-                  h(Button, {
-                    variant: 'primary',
-                    children: '确认重置',
-                    onPress: handleReset,
-                  }),
-                  h(Button, {
-                    variant: 'ghost',
-                    children: '取消',
-                    onPress: () => setResetting(false),
-                  }),
-                )
-              : h(Button, {
-                  variant: 'secondary',
-                  children: '恢复默认设置',
-                  onPress: () => setResetting(true),
-                }),
-          }),
+          h(
+            'label',
+            {
+              style: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                fontSize: 13,
+                color: showAdvancedSettings ? '#F8FAFC' : '#94A3B8',
+                userSelect: 'none',
+                padding: '6px 14px',
+                borderRadius: 6,
+                background: showAdvancedSettings ? 'rgba(124, 58, 237, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                border: `1px solid ${showAdvancedSettings ? 'rgba(124, 58, 237, 0.35)' : 'rgba(255, 255, 255, 0.08)'}`,
+                transition: 'all 0.15s ease',
+              },
+            },
+            h('input', {
+              type: 'checkbox',
+              checked: showAdvancedSettings,
+              onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+                setShowAdvancedSettings(e.target.checked),
+              style: {
+                cursor: 'pointer',
+                accentColor: '#7C3AED',
+                width: 15,
+                height: 15,
+              },
+            }),
+            h('span', { style: { fontWeight: 500 } }, '高级设置'),
+          ),
         ),
+        // Danger zone appears only when advanced settings is enabled
+        showAdvancedSettings
+          ? h(
+              SettingsSection,
+              {
+                title: '危险区域',
+                description: '底层调试与配置重置选项',
+              },
+              h(SettingsRow, {
+                title: '调试与诊断中心 (Debug)',
+                description: '进入应用调试页面，查看运行环境、Discover 系统日志与音源 HTTP 网络请求',
+                action: h(Button, {
+                  variant: 'secondary',
+                  children: '进入 Debug 页 →',
+                  onPress: () => {
+                    serviceOf<UiService>(ctx, 'ui')?.navigate?.('debug.view')
+                  },
+                }),
+              }),
+              h(SettingsRow, {
+                title: '重置所有设置',
+                description: '将所有偏好项恢复为初始默认值（不会删除已下载的歌曲或歌单）',
+                borderBottom: false,
+                action: resetting
+                  ? h(
+                      'div',
+                      { style: { display: 'flex', gap: 8 } },
+                      h(Button, {
+                        variant: 'primary',
+                        children: '确认重置',
+                        onPress: handleReset,
+                      }),
+                      h(Button, {
+                        variant: 'ghost',
+                        children: '取消',
+                        onPress: () => setResetting(false),
+                      }),
+                    )
+                  : h(Button, {
+                      variant: 'secondary',
+                      children: '恢复默认设置',
+                      onPress: () => setResetting(true),
+                    }),
+              }),
+            )
+          : null,
       ),
     ),
   )

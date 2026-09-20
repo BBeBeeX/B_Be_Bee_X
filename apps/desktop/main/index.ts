@@ -34,6 +34,7 @@ import {
 } from './window-policy.js'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { existsSync, mkdirSync } from 'node:fs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -130,9 +131,15 @@ function createWindow(): BrowserWindow {
    * better than that.
    */
   window.on('close', (event) => {
-    if (!shouldHideOnClose(closeContext())) return
-    event.preventDefault()
-    window.hide()
+    if (shouldHideOnClose(closeContext())) {
+      event.preventDefault()
+      window.hide()
+      return
+    }
+    if (!quitting) {
+      quitting = true
+      app.quit()
+    }
   })
 
   window.on('closed', () => {
@@ -344,12 +351,32 @@ function registerHandlers(): void {
 
   ipcMain.handle('shell:openPath', async (_event, fullPath: string) => {
     if (typeof fullPath !== 'string' || !fullPath) return ''
-    return shell.openPath(fullPath)
+    let localPath = fullPath
+    if (localPath.startsWith('file://')) {
+      try {
+        localPath = fileURLToPath(localPath)
+      } catch {
+        localPath = decodeURIComponent(localPath.replace(/^file:\/\/\/?/, ''))
+      }
+    }
+    if (localPath === 'cache' || localPath.includes('默认缓存目录')) {
+      localPath = join(app.getPath('userData'), 'Cache')
+    } else if (localPath === 'downloads' || localPath.includes('默认下载目录')) {
+      localPath = join(app.getPath('downloads'), 'BBeBee')
+    }
+    try {
+      if (!existsSync(localPath)) {
+        mkdirSync(localPath, { recursive: true })
+      }
+    } catch {
+      // ignore
+    }
+    return shell.openPath(localPath)
   })
 
   ipcMain.handle('proxy:test', async (_event, config: { protocol: string; host: string; port: number }) => {
     const start = Date.now()
-    const testUrl = 'https://music.163.com'
+    const testUrl = 'https://www.google.com/generate_204'
     try {
       const proxyRule = `${config.protocol}://${config.host}:${config.port}`
       const testSession = session.fromPartition('proxy-test-' + Date.now())

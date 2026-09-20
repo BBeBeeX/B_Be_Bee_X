@@ -7,6 +7,12 @@
 export const SETTINGS_VIEWS = {
   /** The main settings dashboard. */
   main: 'settings.view',
+  /** Debug info dashboard. */
+  debug: 'debug.view',
+  /** System logs viewer. */
+  logs: 'debug.logs',
+  /** Source HTTP requests logs viewer. */
+  httpLogs: 'debug.http-logs',
 } as const
 
 /** Routes are the same ids, because a route is what the shells navigate to. */

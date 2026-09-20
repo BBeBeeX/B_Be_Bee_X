@@ -301,6 +301,7 @@ export class HttpNode extends Service {
       assertHost(this[Service.resolveConfig](), url)
 
       const cookieHeader = jar ? await cookieHeaderFor(jar, url) : undefined
+      const startTime = Date.now()
       const response = await this.config.fetch(url, {
         method: req.method ?? 'GET',
         headers: {
@@ -315,6 +316,8 @@ export class HttpNode extends Service {
         redirect: 'manual',
         signal: controller.signal,
       })
+      const durationMs = Date.now() - startTime
+      this.ctx.logger.info(`[HTTP] ${req.method ?? 'GET'} ${url} -> ${response.status} (${durationMs}ms)`)
 
       // Before the redirect branch: a login flow sets its session cookie *on*
       // the 302, and reading it only from the final response drops it.

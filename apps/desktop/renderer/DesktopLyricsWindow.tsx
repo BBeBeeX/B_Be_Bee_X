@@ -9,6 +9,10 @@ const DEFAULT_PAYLOAD: DesktopLyricsPayload = {
   opacity: 0.95,
   locked: false,
   playing: false,
+  align: 'center',
+  fontFamily: 'system-ui',
+  textColor: '#FFFFFF',
+  lineMode: 'double',
 }
 
 export function DesktopLyricsWindow(): ReactElement {
@@ -35,7 +39,18 @@ export function DesktopLyricsWindow(): ReactElement {
     void window.BBeBee?.desktopLyrics?.sendAction?.(action)
   }
 
-  const { currentLine, nextLine, fontSize, opacity, locked, playing } = data
+  const {
+    currentLine,
+    nextLine,
+    fontSize,
+    opacity,
+    locked,
+    playing,
+    align = 'center',
+    fontFamily = 'system-ui',
+    textColor = '#FFFFFF',
+    lineMode = 'double',
+  } = data
 
   return h(
     'div',
@@ -46,7 +61,7 @@ export function DesktopLyricsWindow(): ReactElement {
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
+        alignItems: align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center',
         justifyContent: 'center',
         padding: '8px 16px',
         userSelect: 'none',
@@ -167,15 +182,14 @@ export function DesktopLyricsWindow(): ReactElement {
       {
         style: {
           fontSize,
+          fontFamily,
           fontWeight: 700,
-          textAlign: 'center',
+          textAlign: align,
           lineHeight: 1.3,
           letterSpacing: '0.04em',
           opacity,
-          background: 'linear-gradient(180deg, #FFFFFF 15%, #DDD6FE 60%, #A78BFA 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 12px rgba(124, 58, 237, 0.45))',
+          color: textColor,
+          textShadow: '0 2px 4px rgba(0, 0, 0, 0.95), 0 0 12px rgba(124, 58, 237, 0.45)',
           maxWidth: '92%',
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
@@ -185,19 +199,21 @@ export function DesktopLyricsWindow(): ReactElement {
       },
       currentLine || '...',
     ),
-    // Next Line (if available)
-    nextLine &&
+    // Next Line (if available and double line mode)
+    lineMode !== 'single' &&
+      nextLine &&
       h(
         'div',
         {
           style: {
             fontSize: Math.round(fontSize * 0.68),
+            fontFamily,
             fontWeight: 500,
-            textAlign: 'center',
+            textAlign: align,
             lineHeight: 1.2,
             marginTop: 4,
             opacity: opacity * 0.75,
-            color: 'rgba(255, 255, 255, 0.85)',
+            color: textColor,
             filter: 'drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9))',
             maxWidth: '85%',
             whiteSpace: 'nowrap',

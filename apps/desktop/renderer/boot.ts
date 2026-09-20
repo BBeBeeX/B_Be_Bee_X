@@ -65,6 +65,8 @@ declare global {
         maximize(): Promise<void>
         close(): Promise<void>
         isMaximized(): Promise<boolean>
+        setCloseToTray?(enabled: boolean): Promise<void>
+        toggle?(): Promise<void>
       }
       desktopLyrics?: {
         setVisible(visible: boolean): Promise<void>
@@ -268,5 +270,20 @@ export async function boot(): Promise<App> {
    * the list of what was registered is known.
    */
   await app.ready([...BOOTSTRAP_SERVICES], { timeoutMs: 15_000 })
+
+  // Sync closeToTray preference to Electron main process
+  app.inject(['settings'], (scoped) => {
+    void scoped.settings.get().then((s) => {
+      if (s && s.closeToTray !== undefined) {
+        void window.BBeBee?.window?.setCloseToTray?.(s.closeToTray)
+      }
+    })
+    scoped.on('settings/changed', (s) => {
+      if (s && s.closeToTray !== undefined) {
+        void window.BBeBee?.window?.setCloseToTray?.(s.closeToTray)
+      }
+    })
+  })
+
   return app
 }

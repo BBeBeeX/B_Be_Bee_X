@@ -10,6 +10,9 @@ import { Context, Service } from 'cordis'
 import type { AppSettings, SettingsService, CacheClass, CacheStats } from '@BBeBee/protocol'
 import { DEFAULT_APP_SETTINGS } from '@BBeBee/protocol'
 import { SettingsScreen } from './SettingsScreen.js'
+import { DebugScreen } from './DebugScreen.js'
+import { LogsScreen } from './LogsScreen.js'
+import { HttpLogsScreen } from './HttpLogsScreen.js'
 
 afterEach(() => {
   cleanup()
@@ -18,6 +21,50 @@ afterEach(() => {
 async function harness(initialSettings: Partial<AppSettings> = {}) {
   let currentSettings: AppSettings = { ...DEFAULT_APP_SETTINGS, ...initialSettings }
   const calls: string[] = []
+
+  class LogBufferStub extends Service {
+    public entries = [
+      {
+        sn: 1,
+        time: Date.now() - 5000,
+        level: 'info' as const,
+        scope: 'kernel',
+        message: 'kernel: cordis booted successfully',
+      },
+      {
+        sn: 2,
+        time: Date.now() - 3000,
+        level: 'info' as const,
+        scope: 'http',
+        message: '[HTTP] GET https://api.example.com/search?q=test -> 200 (45ms)',
+      },
+      {
+        sn: 3,
+        time: Date.now() - 1000,
+        level: 'error' as const,
+        scope: 'source-runtime',
+        message: 'source-runtime: custom source request failed with 500',
+      },
+    ]
+
+    constructor(ctx: Context) {
+      super(ctx, 'logBuffer')
+    }
+
+    get all() {
+      return this.entries
+    }
+
+    clear = () => {
+      calls.push('clearLogBuffer')
+      this.entries = []
+    }
+
+    toNdjson = () => {
+      calls.push('toNdjson')
+      return this.entries.map((e) => JSON.stringify(e)).join('\n')
+    }
+  }
 
   class SettingsStub extends Service implements Partial<SettingsService> {
     private appCtx: Context
@@ -134,6 +181,7 @@ async function harness(initialSettings: Partial<AppSettings> = {}) {
   await root.plugin(CacheStub)
   await root.plugin(UiStub)
   await root.plugin(DspStub)
+  await root.plugin(LogBufferStub)
 
   let scoped: Context | undefined
   root.inject(['ui', 'settings'], (s) => void (scoped = s))
@@ -148,13 +196,12 @@ describe('SettingsScreen', () => {
     const { ctx } = await harness()
     const { getByText, findByText } = render(h(SettingsScreen, { ctx }))
 
-    expect(await findByText('常规与外观')).toBeTruthy()
+    expect(await findByText('常规与语言')).toBeTruthy()
     expect(getByText('播放与音频')).toBeTruthy()
     expect(getByText('曲库与来源')).toBeTruthy()
     expect(getByText('存储与缓存')).toBeTruthy()
     expect(getByText('关于应用')).toBeTruthy()
 
-    expect(getByText('外观主题')).toBeTruthy()
     expect(getByText('界面语言')).toBeTruthy()
     expect(getByText('关闭主窗口时最小化到系统托盘')).toBeTruthy()
   })
@@ -197,14 +244,32 @@ describe('SettingsScreen', () => {
     })
   })
 
-  it('resets settings on reset button click', async () => {
-    const { ctx, calls } = await harness({ theme: 'light' })
-    const { findByText } = render(h(SettingsScreen, { ctx }))
+  it('reveals danger zone on advanced settings toggle and resets settings', async () => {
+    const { ctx, calls } = await harness()
+    const { findByText, getByText, queryByText } = render(h(SettingsScreen, { ctx }))
 
     // Switch to about tab where reset button is located
     const aboutTab = await findByText('关于应用')
     fireEvent.click(aboutTab)
 
+    // Initially danger zone is hidden
+    expect(queryByText('危险区域')).toBeNull()
+
+    // Check "高级设置"
+    const advCheckbox = document.querySelector('input[type="checkbox"]') as HTMLInputElement
+    expect(advCheckbox).toBeTruthy()
+    fireEvent.click(advCheckbox)
+
+    // Now danger zone is visible
+    expect(await findByText('危险区域')).toBeTruthy()
+    expect(getByText('调试与诊断中心 (Debug)')).toBeTruthy()
+
+    // Click "进入 Debug 页 →"
+    const debugBtn = getByText('进入 Debug 页 →')
+    fireEvent.click(debugBtn)
+    expect(calls.includes('navigate:debug.view')).toBe(true)
+
+    // Test Reset
     const resetButton = await findByText('恢复默认设置')
     fireEvent.click(resetButton)
 
@@ -227,11 +292,8 @@ describe('SettingsScreen', () => {
     expect(getByText('微内核架构')).toBeTruthy()
   })
 
-  it('displays and modifies EQ, normalize, compressor, reverb in playback tab and switches to DSP tab', async () => {
+  it('displays and modifies EQ, normalize, compressor, reverb in playback tab and navigates to dsp.view', async () => {
     const { ctx, calls } = await harness()
-    // Register mock DSP view
-    ;(ctx.ui as any).registerView('settings.dsp', () => h('div', null, 'Mock DSP Screen Content'))
-
     const { findByText, getByText } = render(h(SettingsScreen, { ctx }))
 
     // Switch to playback tab
@@ -268,22 +330,20 @@ describe('SettingsScreen', () => {
     fireEvent.click(hallButton)
     expect(calls.some((c) => c.includes('dsp:applyPreset:reverb:音乐大厅 (Concert Hall)'))).toBe(true)
 
-    // 5. Switch to DSP tab
-    const dspTab = await findByText('音效均衡器')
-    fireEvent.click(dspTab)
-
-    expect(await findByText('Mock DSP Screen Content')).toBeTruthy()
+    // 5. Click "打开音效面板 →" to navigate to dsp.view
+    const dspBtn = getByText('打开音效面板 →')
+    fireEvent.click(dspBtn)
+    expect(calls.includes('navigate:dsp.view')).toBe(true)
   })
 
   it('renders all sections simultaneously in the DOM with no icons in tabs', async () => {
     const { ctx } = await harness()
     const { container } = render(h(SettingsScreen, { ctx }))
 
-    // All 9 section anchors exist concurrently in DOM
+    // All 8 section anchors exist concurrently in DOM (DSP is routed to dsp.view)
     const sectionIds = [
       'section-general',
       'section-playback',
-      'section-dsp',
       'section-lyrics',
       'section-shortcuts',
       'section-network',
@@ -297,7 +357,7 @@ describe('SettingsScreen', () => {
 
     // Tab buttons have no emoji / icons
     const tabButtons = container.querySelectorAll('aside button[role="tab"]')
-    expect(tabButtons.length).toBe(9)
+    expect(tabButtons.length).toBe(8)
     for (const btn of Array.from(tabButtons)) {
       expect(btn.querySelector('svg')).toBeNull()
       expect(btn.textContent).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u)
@@ -307,18 +367,9 @@ describe('SettingsScreen', () => {
     expect(container.textContent).not.toContain('默认音量')
   })
 
-  it('updates theme and language via Select dropdowns', async () => {
-    const { ctx, calls } = await harness({ theme: 'dark', language: 'zh' })
+  it('updates language via Select dropdown', async () => {
+    const { ctx, calls } = await harness({ language: 'zh' })
     const { container } = render(h(SettingsScreen, { ctx }))
-
-    // Theme select
-    const themeSelect = container.querySelector('select[aria-label="外观主题"]') as HTMLSelectElement
-    expect(themeSelect).toBeTruthy()
-    expect(themeSelect.value).toBe('dark')
-    fireEvent.change(themeSelect, { target: { value: 'light' } })
-    await waitFor(() => {
-      expect(calls.some((c) => c.includes('"theme":"light"'))).toBe(true)
-    })
 
     // Language select
     const langSelect = container.querySelector('select[aria-label="界面语言"]') as HTMLSelectElement
@@ -454,10 +505,69 @@ describe('SettingsScreen', () => {
     expect(getByText('服务器主机与端口')).toBeTruthy()
     expect(getByText('第三方音源代理独立分流')).toBeTruthy()
 
-    const testBtn = getByText('测试连接')
+    const testBtn = getByText('测试 Google 连接')
     expect(testBtn).toBeTruthy()
     fireEvent.click(testBtn)
 
-    expect(await findByText(/代理连通正常|代理连接/)).toBeTruthy()
+    expect(await findByText(/Google 探测节点连通正常|代理连通/)).toBeTruthy()
+  })
+
+  it('renders DebugScreen and navigates to discover and http logs', async () => {
+    const { ctx, calls } = await harness()
+    const { getByText, findByText } = render(h(DebugScreen, { ctx }))
+
+    expect(await findByText('调试与诊断 (Debug)')).toBeTruthy()
+    expect(getByText('当前调试状态')).toBeTruthy()
+    expect(getByText('当前运行环境')).toBeTruthy()
+    expect(getByText('系统日志 (Discover)')).toBeTruthy()
+    expect(getByText('第三方源网络日志 (HTTP Logs)')).toBeTruthy()
+
+    // Test navigation to Discover logs
+    const discoverBtn = getByText('进入 Discover 日志页 →')
+    fireEvent.click(discoverBtn)
+    expect(calls.includes('navigate:debug.logs')).toBe(true)
+
+    // Test navigation to HTTP logs
+    const httpLogsBtn = getByText('进入 HTTP Logs 页面 →')
+    fireEvent.click(httpLogsBtn)
+    expect(calls.includes('navigate:debug.http-logs')).toBe(true)
+
+    // Test back button
+    const backBtn = getByText('← 返回设置')
+    fireEvent.click(backBtn)
+    expect(calls.includes('navigate:settings.view')).toBe(true)
+  })
+
+  it('renders LogsScreen and handles actions', async () => {
+    const { ctx, calls } = await harness()
+    const { getByText, findByText } = render(h(LogsScreen, { ctx }))
+
+    expect(await findByText('系统日志 (Discover Logs)')).toBeTruthy()
+    expect(await findByText('kernel: cordis booted successfully')).toBeTruthy()
+
+    // Test clear logs
+    const clearBtn = getByText('清空日志')
+    fireEvent.click(clearBtn)
+    expect(calls.includes('clearLogBuffer')).toBe(true)
+
+    // Test back button
+    const backBtn = getByText('← 返回调试')
+    fireEvent.click(backBtn)
+    expect(calls.includes('navigate:debug.view')).toBe(true)
+  })
+
+  it('renders HttpLogsScreen and displays HTTP requests', async () => {
+    const { ctx, calls } = await harness()
+    const { getByText, findByText } = render(h(HttpLogsScreen, { ctx }))
+
+    expect(await findByText('第三方源 HTTP 日志 (HTTP Logs)')).toBeTruthy()
+    expect(await findByText('https://api.example.com/search?q=test')).toBeTruthy()
+    expect(getByText('GET')).toBeTruthy()
+    expect(getByText('200')).toBeTruthy()
+
+    // Test back button
+    const backBtn = getByText('← 返回调试')
+    fireEvent.click(backBtn)
+    expect(calls.includes('navigate:debug.view')).toBe(true)
   })
 })

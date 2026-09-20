@@ -1,0 +1,320 @@
+/**
+ * Desktop Debug Screen for `@BBeBee/plugin-settings-ui-desktop`.
+ * Shows debug status, environment details, and navigation to discover/HTTP logs.
+ */
+
+import { createElement as h, useState, useEffect } from 'react'
+import type { ReactElement } from 'react'
+import type { Context } from 'cordis'
+import { serviceOf } from '@BBeBee/ui-core'
+import type { UiService } from '@BBeBee/protocol'
+import { Button } from '@BBeBee/ui-kit-desktop'
+
+export function DebugScreen({ ctx }: { ctx: Context }): ReactElement {
+  const ui = serviceOf<UiService>(ctx, 'ui')
+  const [platformInfo, setPlatformInfo] = useState({
+    platform: 'unknown',
+    arch: 'unknown',
+    node: 'unknown',
+    electron: 'unknown',
+    chrome: 'unknown',
+    userAgent: '',
+  })
+
+  useEffect(() => {
+    if (typeof process !== 'undefined') {
+      setPlatformInfo({
+        platform: process.platform ?? 'unknown',
+        arch: process.arch ?? 'unknown',
+        node: process.versions?.node ?? 'unknown',
+        electron: (process.versions as Record<string, string>)?.electron ?? 'N/A',
+        chrome: (process.versions as Record<string, string>)?.chrome ?? 'N/A',
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      })
+    }
+  }, [])
+
+  const isDebugMode =
+    typeof process !== 'undefined' &&
+    (process.env?.NODE_ENV !== 'production' || Boolean(process.env?.DEBUG))
+
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        width: '100%',
+        background: '#0D0E15',
+        color: '#E2E8F0',
+        padding: '32px 48px',
+        boxSizing: 'border-box',
+        overflowY: 'auto',
+      },
+    },
+    // Top bar / Back navigation
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          marginBottom: 28,
+        },
+      },
+      h(Button, {
+        variant: 'secondary',
+        children: '← 返回设置',
+        onPress: () => ui?.navigate?.('settings.view'),
+      }),
+      h(
+        'h1',
+        {
+          style: {
+            fontSize: 22,
+            fontWeight: 700,
+            margin: 0,
+            color: '#F8FAFC',
+            letterSpacing: '-0.02em',
+          },
+        },
+        '调试与诊断 (Debug)',
+      ),
+    ),
+
+    // Card 1: Debug Status
+    h(
+      'div',
+      {
+        style: cardStyle,
+      },
+      h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 16,
+          },
+        },
+        h(
+          'div',
+          null,
+          h('div', { style: cardTitleStyle }, '当前调试状态'),
+          h('div', { style: cardSubtitleStyle }, '检查内核与渲染进程的调试运行标志位'),
+        ),
+        h(
+          'span',
+          {
+            style: {
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 12px',
+              borderRadius: 16,
+              fontSize: 12,
+              fontWeight: 600,
+              background: isDebugMode ? 'rgba(34, 197, 94, 0.15)' : 'rgba(148, 163, 184, 0.15)',
+              color: isDebugMode ? '#4ADE80' : '#94A3B8',
+              border: `1px solid ${isDebugMode ? 'rgba(34, 197, 94, 0.3)' : 'rgba(148, 163, 184, 0.2)'}`,
+            },
+          },
+          h('span', {
+            style: {
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: isDebugMode ? '#22C55E' : '#94A3B8',
+            },
+          }),
+          isDebugMode ? 'Debug 模式已激活' : '生产环境 (Production)',
+        ),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: 12,
+            background: 'rgba(255, 255, 255, 0.02)',
+            padding: 16,
+            borderRadius: 8,
+            border: '1px solid rgba(255, 255, 255, 0.04)',
+          },
+        },
+        renderInfoItem('Node 环境', process.env?.NODE_ENV || 'production'),
+        renderInfoItem('日志输出', 'RingBuffer (2000 lines)'),
+        renderInfoItem('隔离沙箱', 'QuickJS Realm Isolation'),
+      ),
+    ),
+
+    // Card 2: Environment Details
+    h(
+      'div',
+      {
+        style: cardStyle,
+      },
+      h(
+        'div',
+        { style: { marginBottom: 16 } },
+        h('div', { style: cardTitleStyle }, '当前运行环境'),
+        h('div', { style: cardSubtitleStyle }, '硬件平台、引擎与宿主容器版本'),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 12,
+            background: 'rgba(255, 255, 255, 0.02)',
+            padding: 16,
+            borderRadius: 8,
+            border: '1px solid rgba(255, 255, 255, 0.04)',
+          },
+        },
+        renderInfoItem('操作系统平台', platformInfo.platform),
+        renderInfoItem('处理器架构', platformInfo.arch),
+        renderInfoItem('Node.js 版本', platformInfo.node),
+        renderInfoItem('Electron 版本', platformInfo.electron),
+        renderInfoItem('Chromium 版本', platformInfo.chrome),
+        renderInfoItem('应用构建版本', '0.1.0-alpha'),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            marginTop: 12,
+            padding: '8px 12px',
+            background: 'rgba(0, 0, 0, 0.25)',
+            borderRadius: 6,
+            fontSize: 12,
+            fontFamily: 'monospace',
+            color: '#94A3B8',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          },
+        },
+        `UA: ${platformInfo.userAgent || 'Desktop App Shell'}`,
+      ),
+    ),
+
+    // Card 3: Diagnostic tools navigation
+    h(
+      'div',
+      {
+        style: cardStyle,
+      },
+      h(
+        'div',
+        { style: { marginBottom: 20 } },
+        h('div', { style: cardTitleStyle }, '日志面板与诊断工具'),
+        h('div', { style: cardSubtitleStyle }, '实时排查内核事件与第三方源网络流量'),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 20,
+          },
+        },
+        // Discover Card
+        h(
+          'div',
+          {
+            style: actionCardStyle,
+          },
+          h(
+            'div',
+            null,
+            h('div', { style: { fontSize: 16, fontWeight: 600, color: '#F8FAFC', marginBottom: 4 } }, '系统日志 (Discover)'),
+            h(
+              'div',
+              { style: { fontSize: 13, color: '#94A3B8', lineHeight: 1.5, marginBottom: 16 } },
+              '查看 Cordis 微内核生命周期、服务装配及所有已注册插件输出的实时日志流。',
+            ),
+          ),
+          h(Button, {
+            variant: 'primary',
+            children: '进入 Discover 日志页 →',
+            onPress: () => ui?.navigate?.('debug.logs'),
+          }),
+        ),
+        // HTTP Logs Card
+        h(
+          'div',
+          {
+            style: actionCardStyle,
+          },
+          h(
+            'div',
+            null,
+            h('div', { style: { fontSize: 16, fontWeight: 600, color: '#F8FAFC', marginBottom: 4 } }, '第三方源网络日志 (HTTP Logs)'),
+            h(
+              'div',
+              { style: { fontSize: 13, color: '#94A3B8', lineHeight: 1.5, marginBottom: 16 } },
+              '捕获由第三方音源插件发起的所有网络请求，实时分析请求方法、状态码及往返耗时。',
+            ),
+          ),
+          h(Button, {
+            variant: 'primary',
+            children: '进入 HTTP Logs 页面 →',
+            onPress: () => ui?.navigate?.('debug.http-logs'),
+          }),
+        ),
+      ),
+    ),
+  )
+}
+
+function renderInfoItem(label: string, value: string): ReactElement {
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+      },
+    },
+    h('span', { style: { fontSize: 12, color: '#64748B' } }, label),
+    h('span', { style: { fontSize: 13, fontWeight: 500, color: '#E2E8F0', fontFamily: 'monospace' } }, value),
+  )
+}
+
+const cardStyle: React.CSSProperties = {
+  background: 'rgba(255, 255, 255, 0.03)',
+  border: '1px solid rgba(255, 255, 255, 0.06)',
+  borderRadius: 12,
+  padding: 24,
+  marginBottom: 20,
+}
+
+const cardTitleStyle: React.CSSProperties = {
+  fontSize: 16,
+  fontWeight: 600,
+  color: '#F8FAFC',
+}
+
+const cardSubtitleStyle: React.CSSProperties = {
+  fontSize: 13,
+  color: '#94A3B8',
+  marginTop: 4,
+}
+
+const actionCardStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'space-between',
+  background: 'rgba(255, 255, 255, 0.02)',
+  border: '1px solid rgba(255, 255, 255, 0.06)',
+  borderRadius: 8,
+  padding: 20,
+}
