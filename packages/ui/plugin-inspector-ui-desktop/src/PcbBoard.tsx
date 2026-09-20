@@ -29,6 +29,78 @@ const RELATION_COLORS: Record<string, string> = {
   waiting: '#FFB020',
 }
 
+/**
+ * Splits a plugin/scope display name across multiple lines so it fits neatly inside
+ * geometric shapes (circle, square, triangle).
+ */
+export function splitDisplayName(name: string, maxLen = 14): string[] {
+  if (name.length <= maxLen) return [name]
+
+  if (name.includes(' (')) {
+    const idx = name.indexOf(' (')
+    return [name.slice(0, idx), name.slice(idx + 1)]
+  }
+
+  if (name.includes(' ')) {
+    return name.split(' ')
+  }
+
+  if (name.includes('-')) {
+    const parts = name.split('-')
+    const lines: string[] = []
+    let current = ''
+    for (const p of parts) {
+      if (!current) {
+        current = p
+      } else if ((current + '-' + p).length <= maxLen) {
+        current += '-' + p
+      } else {
+        lines.push(current + '-')
+        current = p
+      }
+    }
+    if (current) lines.push(current)
+    return lines
+  }
+
+  const lines: string[] = []
+  for (let i = 0; i < name.length; i += maxLen) {
+    lines.push(name.slice(i, i + maxLen))
+  }
+  return lines
+}
+
+/**
+ * Renders an array of text lines centered vertically around cy.
+ */
+function renderTextLines(
+  lines: string[],
+  cx: number,
+  cy: number,
+  baseFontSize = 11.5,
+): ReactElement[] {
+  const lineHeight = 13.5
+  const totalOffset = ((lines.length - 1) * lineHeight) / 2
+  return lines.map((line, i) => {
+    const y = cy - totalOffset + i * lineHeight + 4
+    return h(
+      'text',
+      {
+        key: `line-${i}-${line}`,
+        x: cx,
+        y,
+        textAnchor: 'middle',
+        fill: '#0A1220',
+        fontSize: baseFontSize,
+        fontWeight: 700,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+        letterSpacing: -0.2,
+      },
+      line,
+    )
+  })
+}
+
 export function PcbBoard({
   nodes,
   traces,
@@ -280,25 +352,61 @@ export function PcbBoard({
             })
           }),
 
-          // Glow halo for selected chip node
+          // Glow halo for selected chip node (Circle, Square, or Triangle matching role)
           selectedNodeId
             ? (() => {
                 const node = nodes.find((n) => n.id === selectedNodeId)
                 if (!node) return null
-                return h('rect', {
-                  className: 'selected-halo',
-                  x: node.x - 6,
-                  y: node.y - 6,
-                  width: node.width + 12,
-                  height: node.height + 12,
-                  rx: 10,
-                  ry: 10,
-                  fill: 'none',
-                  stroke: '#D4F658',
-                  strokeWidth: 2.5,
-                  strokeOpacity: 0.85,
-                  filter: 'url(#pcb-glow)',
-                })
+                const cx = node.x + node.width / 2
+                const cy = node.y + node.height / 2
+
+                if (node.role === 'root' || node.role === 'plugin') {
+                  const r = node.width / 2 + 7
+                  return h('circle', {
+                    key: 'selected-halo',
+                    className: 'selected-halo',
+                    cx,
+                    cy,
+                    r,
+                    fill: 'none',
+                    stroke: '#D4F658',
+                    strokeWidth: 2.5,
+                    strokeOpacity: 0.85,
+                    filter: 'url(#pcb-glow)',
+                  })
+                } else if (node.role === 'service') {
+                  return h('rect', {
+                    key: 'selected-halo',
+                    className: 'selected-halo',
+                    x: node.x - 7,
+                    y: node.y - 7,
+                    width: node.width + 14,
+                    height: node.height + 14,
+                    rx: 8,
+                    ry: 8,
+                    fill: 'none',
+                    stroke: '#D4F658',
+                    strokeWidth: 2.5,
+                    strokeOpacity: 0.85,
+                    filter: 'url(#pcb-glow)',
+                  })
+                } else {
+                  // scope - triangle halo
+                  const p1 = `${cx},${node.y - 8}`
+                  const p2 = `${node.x + node.width + 8},${node.y + node.height + 6}`
+                  const p3 = `${node.x - 8},${node.y + node.height + 6}`
+                  return h('polygon', {
+                    key: 'selected-halo',
+                    className: 'selected-halo',
+                    points: `${p1} ${p2} ${p3}`,
+                    fill: 'none',
+                    stroke: '#D4F658',
+                    strokeWidth: 2.5,
+                    strokeLinejoin: 'round',
+                    strokeOpacity: 0.85,
+                    filter: 'url(#pcb-glow)',
+                  })
+                }
               })()
             : null,
         ),
@@ -379,7 +487,10 @@ export function PcbBoard({
         ),
 
         // ═══════════════════════════════════════════════════════
-        // LAYER 4: NODE LAYER (Real IC Chips with Actual Names)
+        // LAYER 4: NODE LAYER (Geometric IC Shapes based on Role)
+        // [ROOT] & [PLUGIN] -> Circle
+        // [SERVICE] -> Square / Matrix IC package
+        // [SCOPE] -> Triangle Delta
         // ═══════════════════════════════════════════════════════
         h(
           'g',
@@ -389,18 +500,342 @@ export function PcbBoard({
             const isHovered = node.id === hoveredNodeId
             const isStalled = node.fiber.state === 'PENDING' || node.fiber.state === 'FAILED'
 
-            const fillColor = isStalled ? '#B86B7D' : node.kind === 'root' ? '#7A8CA3' : '#8598B2'
+            const fillColor = isStalled
+              ? '#B86B7D'
+              : node.role === 'root'
+                ? '#72859E'
+                : node.role === 'service'
+                  ? '#7492A0'
+                  : node.role === 'scope'
+                    ? '#8A91B0'
+                    : '#8598B2'
+
             const strokeColor = isSelected
               ? '#D4F658'
               : isHovered
                 ? '#E2ECFF'
                 : '#AAB9D0'
 
+            const cx = node.x + node.width / 2
+            const cy = node.y + node.height / 2
+            const lines = splitDisplayName(node.displayName)
+
+            let shapeElements: ReactElement[]
+
+            if (node.role === 'root' || node.role === 'plugin') {
+              // ─── CIRCLE (Ordinary Plugin & Root Kernel) ───
+              const r = node.width / 2
+              shapeElements = [
+                // 1. Circle body
+                h('circle', {
+                  key: 'body',
+                  cx,
+                  cy,
+                  r,
+                  fill: fillColor,
+                  stroke: strokeColor,
+                  strokeWidth: isSelected ? 2.5 : 1.6,
+                  filter: isHovered ? 'url(#pcb-glow)' : undefined,
+                  transition: 'stroke 0.2s, stroke-width 0.2s',
+                }),
+                // 2. Inner circular concentric ring
+                h('circle', {
+                  key: 'bevel',
+                  cx,
+                  cy,
+                  r: r - 5,
+                  fill: 'none',
+                  stroke: 'rgba(10, 18, 32, 0.25)',
+                  strokeWidth: 1,
+                  strokeDasharray: node.role === 'root' ? '4 2' : undefined,
+                }),
+                // 3. Polar solder terminal pads
+                h('circle', {
+                  key: 'pin-top',
+                  cx,
+                  cy: node.y,
+                  r: 3,
+                  fill: '#05070D',
+                  stroke: strokeColor,
+                  strokeWidth: 1.2,
+                }),
+                h('circle', {
+                  key: 'pin-bottom',
+                  cx,
+                  cy: node.y + node.height,
+                  r: 3,
+                  fill: '#05070D',
+                  stroke: strokeColor,
+                  strokeWidth: 1.2,
+                }),
+                // 4. Role badge
+                h(
+                  'text',
+                  {
+                    key: 'role',
+                    x: cx,
+                    y: cy - 28,
+                    textAnchor: 'middle',
+                    fill: node.role === 'root' ? '#1E3A8A' : '#1E293B',
+                    fontSize: 9,
+                    fontWeight: 800,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    letterSpacing: 0.8,
+                  },
+                  node.role === 'root' ? '[ROOT]' : '[PLUGIN]',
+                ),
+                // 5. Centered name lines
+                ...renderTextLines(lines, cx, cy),
+                // 6. Subtitle
+                node.fiber.children && node.fiber.children.length > 0
+                  ? h(
+                      'text',
+                      {
+                        key: 'subtitle',
+                        x: cx,
+                        y: cy + 33,
+                        textAnchor: 'middle',
+                        fill: '#1E293B',
+                        fontSize: 9.5,
+                        fontWeight: 600,
+                        fontFamily: 'ui-monospace, monospace',
+                      },
+                      `${node.fiber.children.length} plugins`,
+                    )
+                  : isStalled
+                    ? h(
+                        'text',
+                        {
+                          key: 'stalled',
+                          x: cx,
+                          y: cy + 33,
+                          textAnchor: 'middle',
+                          fill: '#991B1B',
+                          fontSize: 9.5,
+                          fontWeight: 700,
+                          fontFamily: 'ui-monospace, monospace',
+                        },
+                        node.fiber.state,
+                      )
+                    : null,
+              ].filter(Boolean) as ReactElement[]
+            } else if (node.role === 'service') {
+              // ─── SQUARE / MATRIX IC PACKAGE (Service Instance) ───
+              const w = node.width
+              const h_dim = node.height
+              const pinOffsets = [-24, -8, 8, 24]
+              const icPins: ReactElement[] = [
+                ...pinOffsets.map((dy, i) =>
+                  h('rect', {
+                    key: `pin-l-${i}`,
+                    x: node.x - 4,
+                    y: cy + dy - 2,
+                    width: 4,
+                    height: 4,
+                    fill: '#8EA4CE',
+                    stroke: '#05070D',
+                    strokeWidth: 0.8,
+                  }),
+                ),
+                ...pinOffsets.map((dy, i) =>
+                  h('rect', {
+                    key: `pin-r-${i}`,
+                    x: node.x + w,
+                    y: cy + dy - 2,
+                    width: 4,
+                    height: 4,
+                    fill: '#8EA4CE',
+                    stroke: '#05070D',
+                    strokeWidth: 0.8,
+                  }),
+                ),
+                ...pinOffsets.map((dx, i) =>
+                  h('rect', {
+                    key: `pin-t-${i}`,
+                    x: cx + dx - 2,
+                    y: node.y - 4,
+                    width: 4,
+                    height: 4,
+                    fill: '#8EA4CE',
+                    stroke: '#05070D',
+                    strokeWidth: 0.8,
+                  }),
+                ),
+                ...pinOffsets.map((dx, i) =>
+                  h('rect', {
+                    key: `pin-b-${i}`,
+                    x: cx + dx - 2,
+                    y: node.y + h_dim,
+                    width: 4,
+                    height: 4,
+                    fill: '#8EA4CE',
+                    stroke: '#05070D',
+                    strokeWidth: 0.8,
+                  }),
+                ),
+              ]
+
+              shapeElements = [
+                ...icPins,
+                // 1. Square chip body
+                h('rect', {
+                  key: 'body',
+                  x: node.x,
+                  y: node.y,
+                  width: w,
+                  height: h_dim,
+                  rx: 4,
+                  ry: 4,
+                  fill: fillColor,
+                  stroke: strokeColor,
+                  strokeWidth: isSelected ? 2.5 : 1.6,
+                  filter: isHovered ? 'url(#pcb-glow)' : undefined,
+                  transition: 'stroke 0.2s, stroke-width 0.2s',
+                }),
+                // 2. Inner matrix border
+                h('rect', {
+                  key: 'bevel',
+                  x: node.x + 5,
+                  y: node.y + 5,
+                  width: w - 10,
+                  height: h_dim - 10,
+                  rx: 2,
+                  ry: 2,
+                  fill: 'none',
+                  stroke: 'rgba(10, 18, 32, 0.25)',
+                  strokeWidth: 1,
+                }),
+                // 3. Pin 1 orientation index notch dot
+                h('circle', {
+                  key: 'pin-1-dot',
+                  cx: node.x + 12,
+                  cy: node.y + 12,
+                  r: 2.5,
+                  fill: '#064E3B',
+                  opacity: 0.75,
+                }),
+                // 4. Role badge
+                h(
+                  'text',
+                  {
+                    key: 'role',
+                    x: cx,
+                    y: cy - 28,
+                    textAnchor: 'middle',
+                    fill: '#064E3B',
+                    fontSize: 9,
+                    fontWeight: 800,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    letterSpacing: 0.8,
+                  },
+                  '[SERVICE]',
+                ),
+                // 5. Centered service name
+                ...renderTextLines(lines, cx, cy),
+                // 6. Subtitle
+                h(
+                  'text',
+                  {
+                    key: 'subtitle',
+                    x: cx,
+                    y: cy + 33,
+                    textAnchor: 'middle',
+                    fill: '#065F46',
+                    fontSize: 9.5,
+                    fontWeight: 700,
+                    fontFamily: 'ui-monospace, monospace',
+                    letterSpacing: 0.5,
+                  },
+                  isStalled ? node.fiber.state : 'ACTIVE SERVICE',
+                ),
+              ].filter(Boolean) as ReactElement[]
+            } else {
+              // ─── TRIANGLE DELTA (Injected Sub-Scope) ───
+              const pTop = `${cx},${node.y}`
+              const pRight = `${node.x + node.width},${node.y + node.height}`
+              const pLeft = `${node.x},${node.y + node.height}`
+
+              const pInnerTop = `${cx},${node.y + 10}`
+              const pInnerRight = `${node.x + node.width - 8},${node.y + node.height - 4}`
+              const pInnerLeft = `${node.x + 8},${node.y + node.height - 4}`
+
+              const textCenterY = node.y + node.height * 0.68
+
+              shapeElements = [
+                // 1. Triangle polygon body
+                h('polygon', {
+                  key: 'body',
+                  points: `${pTop} ${pRight} ${pLeft}`,
+                  fill: fillColor,
+                  stroke: strokeColor,
+                  strokeWidth: isSelected ? 2.5 : 1.6,
+                  strokeLinejoin: 'round',
+                  filter: isHovered ? 'url(#pcb-glow)' : undefined,
+                  transition: 'stroke 0.2s, stroke-width 0.2s',
+                }),
+                // 2. Inner offset triangle border
+                h('polygon', {
+                  key: 'bevel',
+                  points: `${pInnerTop} ${pInnerRight} ${pInnerLeft}`,
+                  fill: 'none',
+                  stroke: 'rgba(10, 18, 32, 0.25)',
+                  strokeWidth: 1,
+                  strokeLinejoin: 'round',
+                }),
+                // 3. Top apex via
+                h('circle', {
+                  key: 'apex-via',
+                  cx,
+                  cy: node.y,
+                  r: 3,
+                  fill: '#05070D',
+                  stroke: strokeColor,
+                  strokeWidth: 1.2,
+                }),
+                // 4. Role badge
+                h(
+                  'text',
+                  {
+                    key: 'role',
+                    x: cx,
+                    y: node.y + 44,
+                    textAnchor: 'middle',
+                    fill: '#581C87',
+                    fontSize: 9,
+                    fontWeight: 800,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    letterSpacing: 0.8,
+                  },
+                  '[SCOPE]',
+                ),
+                // 5. Centered name
+                ...renderTextLines(lines, cx, textCenterY),
+                // 6. Subtitle
+                h(
+                  'text',
+                  {
+                    key: 'subtitle',
+                    x: cx,
+                    y: node.y + node.height - 10,
+                    textAnchor: 'middle',
+                    fill: '#581C87',
+                    fontSize: 8.5,
+                    fontWeight: 600,
+                    fontFamily: 'ui-monospace, monospace',
+                    letterSpacing: 0.5,
+                  },
+                  isStalled ? node.fiber.state : 'INJECTED SCOPE',
+                ),
+              ].filter(Boolean) as ReactElement[]
+            }
+
             return h(
               'g',
               {
                 key: node.id,
                 'data-testid': `node-${node.id}`,
+                'data-name': node.displayName,
+                'data-plugin': node.name,
                 onClick: (e: ReactMouseEvent) => {
                   e.stopPropagation()
                   onSelectNode(node)
@@ -419,84 +854,8 @@ export function PcbBoard({
                 onMouseLeave: () => setHoveredNodeId(null),
                 style: { cursor: 'pointer' },
               },
-              // Real IC Chip Body (Surface-mount Flatpack Package)
-              h('rect', {
-                x: node.x,
-                y: node.y,
-                width: node.width,
-                height: node.height,
-                rx: 6,
-                ry: 6,
-                fill: fillColor,
-                stroke: strokeColor,
-                strokeWidth: isSelected ? 2.5 : 1.6,
-                filter: isHovered ? 'url(#pcb-glow)' : undefined,
-                transition: 'stroke 0.2s, stroke-width 0.2s',
-              }),
-              // Inner technical bevel line
-              h('rect', {
-                x: node.x + 3,
-                y: node.y + 3,
-                width: node.width - 6,
-                height: node.height - 6,
-                rx: 4,
-                ry: 4,
-                fill: 'none',
-                stroke: 'rgba(10, 18, 32, 0.22)',
-                strokeWidth: 1,
-              }),
-              // Centered concrete plugin name
-              h(
-                'text',
-                {
-                  x: node.x + node.width / 2,
-                  y:
-                    node.fiber.children && node.fiber.children.length > 0
-                      ? node.y + node.height / 2 - 2
-                      : node.y + node.height / 2 + 5,
-                  textAnchor: 'middle',
-                  fill: '#0A1220',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  fontFamily:
-                    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                  letterSpacing: -0.3,
-                },
-                node.displayName,
-              ),
-              // Subtitle badge showing loaded child plugins count
-              node.fiber.children && node.fiber.children.length > 0
-                ? h(
-                    'text',
-                    {
-                      x: node.x + node.width / 2,
-                      y: node.y + node.height / 2 + 13,
-                      textAnchor: 'middle',
-                      fill: '#152542',
-                      fontSize: 10,
-                      fontWeight: 600,
-                      fontFamily: 'ui-monospace, monospace',
-                      opacity: 0.85,
-                    },
-                    `${node.fiber.children.length} plugins loaded`,
-                  )
-                : null,
-              // State badge on hover or if stalled
-              isStalled
-                ? h(
-                    'text',
-                    {
-                      x: node.x + node.width / 2,
-                      y: node.y + node.height + 16,
-                      textAnchor: 'middle',
-                      fill: '#FFB020',
-                      fontSize: 10,
-                      fontWeight: 600,
-                      fontFamily: 'ui-monospace, monospace',
-                    },
-                    node.fiber.state,
-                  )
-                : null,
+              h('title', null, `${node.displayName} (${node.role.toUpperCase()})`),
+              ...shapeElements,
             )
           }),
         ),

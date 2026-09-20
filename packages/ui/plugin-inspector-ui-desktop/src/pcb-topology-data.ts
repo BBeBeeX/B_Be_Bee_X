@@ -1,5 +1,11 @@
 import type { FiberNode, InspectorSnapshot } from '@BBeBee/plugin-inspector'
-import type { PcbNode, PcbPin, PcbTopologyData, PcbTrace } from './pcb-topology-types.js'
+import type {
+  PcbNode,
+  PcbPin,
+  PcbTopologyData,
+  PcbTrace,
+  ServiceDependencyInfo,
+} from './pcb-topology-types.js'
 
 /**
  * Trims long package prefixes like '@BBeBee/' for cleaner technical chip labels
@@ -15,8 +21,8 @@ export function getDisplayPluginName(fullName: string): string {
 /**
  * Dynamically constructs the real PCB circuit topology from the Cordis fiber snapshot.
  *
- * All nodes represent concrete runtime fibers.
- * All traces represent real relationships (service dependencies and fiber hierarchy).
+ * Distinguishes roles (root, service instance, plugin package, inject sub-scope)
+ * and tracks loaded-in parentage, service dependencies, and consumer plugins.
  */
 export function buildRealPcbTopology(snap: InspectorSnapshot): PcbTopologyData {
   // 1. Flatten all fibers from snap.root
@@ -44,13 +50,9 @@ export function buildRealPcbTopology(snap: InspectorSnapshot): PcbTopologyData {
   }
 
   // 3. Compute topological ranks for layout
-  // Rank 0: root
-  // Rank 1: direct children of root or primary providers
-  // Higher ranks: consumers of earlier services or deeper children
   const fiberRank = new Map<FiberNode, number>()
   fiberRank.set(snap.root, 0)
 
-  // Iterative rank assignment based on tree depth and service dependencies
   for (let pass = 0; pass < 4; pass++) {
     for (const { fiber, parent, depth } of allFibers) {
       if (fiber === snap.root) continue
@@ -78,42 +80,93 @@ export function buildRealPcbTopology(snap: InspectorSnapshot): PcbTopologyData {
 
   const sortedRanks = Array.from(rankGroups.keys()).sort((a, b) => a - b)
 
-  // 4. Calculate 2D coordinates for each real node
+  // 4. Calculate 2D coordinates and metadata for each real node
   const nodes: PcbNode[] = []
   const nodeById = new Map<string, PcbNode>()
   const startY = 80
-  const rowHeight = 170
+  const rowHeight = 220
 
-  // Calculate maximum row width to center all ranks nicely
   let maxRowWidth = 1000
   for (const r of sortedRanks) {
     const list = rankGroups.get(r)!
-    const rowW = list.length * 200 + (list.length - 1) * 40
+    const rowW = list.length * 135 + (list.length - 1) * 48
     if (rowW > maxRowWidth) maxRowWidth = rowW
   }
 
   for (const r of sortedRanks) {
     const list = rankGroups.get(r)!
     const y = startY + r * rowHeight
-    const totalRowWidth = list.length * 190 + (list.length - 1) * 36
+    const totalRowWidth = list.length * 135 + (list.length - 1) * 48
     let currentX = Math.max(60, (maxRowWidth - totalRowWidth) / 2)
 
     for (const f of list) {
-      const displayName = getDisplayPluginName(f.name)
-      const width = Math.max(160, Math.min(240, displayName.length * 9.5 + 40))
-      const height = f.children.length > 0 ? 62 : 52
+      const fiberItem = allFibers.find((item) => item.fiber === f)
+      const parent = fiberItem?.parent ?? null
+      const depth = fiberItem?.depth ?? 0
+
+      // Distinguish role and disambiguate names
+      let role: PcbNode['role'] = 'plugin'
+      let displayName = getDisplayPluginName(f.name)
+
+      if (f === snap.root) {
+        role = 'root'
+        displayName = 'root'
+      } else if (f.name === 'root' && depth > 0) {
+        role = 'scope'
+        displayName = 'root (shell scope)'
+      } else if (f.provides.includes(f.name)) {
+        // e.g. sources providing ctx.sources, inspector providing ctx.inspector
+        role = 'service'
+        displayName = f.name
+      } else if (parent && parent.name === f.name) {
+        // e.g. plugin-album calling ctx.inject(['ui']) creates child scope of same name
+        role = 'scope'
+        displayName = `${getDisplayPluginName(f.name)} (scope)`
+      }
+
+      // Calculate dependencies with concrete provider info
+      const dependencies: ServiceDependencyInfo[] = f.inject.map((svc) => {
+        const prov = serviceToProvider.get(svc)
+        return {
+          service: svc,
+          providerName: prov ? getDisplayPluginName(prov.name) : undefined,
+          providerId: prov ? (prov.uid !== null ? `${prov.name}:${prov.uid}` : prov.name) : undefined,
+          providerState: prov ? prov.state : undefined,
+          isWaiting: f.waitingFor.includes(svc),
+        }
+      })
+
+      // Calculate which other plugins consume services provided by this fiber
+      const consumerSet = new Set<string>()
+      for (const svc of f.provides) {
+        for (const other of allFibers) {
+          if (other.fiber !== f && other.fiber.inject.includes(svc)) {
+            consumerSet.add(getDisplayPluginName(other.fiber.name))
+          }
+        }
+      }
+      const consumedBy = Array.from(consumerSet)
+
+      // Geometrical dimensions: Circle (130x130), Square (130x130), Triangle (140x120)
+      const width = role === 'scope' ? 140 : 130
+      const height = role === 'scope' ? 120 : 130
       const id = f.uid !== null ? `${f.name}:${f.uid}` : f.name
 
       const node: PcbNode = {
         id,
         name: f.name,
         displayName,
+        role,
+        parentName: parent ? getDisplayPluginName(parent.name) : null,
+        parentId: parent ? (parent.uid !== null ? `${parent.name}:${parent.uid}` : parent.name) : null,
         kind: f === snap.root ? 'root' : 'chip',
         x: currentX,
         y,
         width,
         height,
         rank: r,
+        dependencies,
+        consumedBy,
         fiber: {
           name: f.name,
           state: f.state,
@@ -128,7 +181,7 @@ export function buildRealPcbTopology(snap: InspectorSnapshot): PcbTopologyData {
 
       nodes.push(node)
       nodeById.set(id, node)
-      currentX += width + 36
+      currentX += width + 48
     }
   }
 
@@ -137,7 +190,6 @@ export function buildRealPcbTopology(snap: InspectorSnapshot): PcbTopologyData {
   const pins: PcbPin[] = []
   const createdPairs = new Set<string>()
 
-  // Helper to find PcbNode from FiberNode
   const getPcbNode = (f: FiberNode): PcbNode | undefined => {
     const id = f.uid !== null ? `${f.name}:${f.uid}` : f.name
     return nodeById.get(id)
@@ -160,7 +212,6 @@ export function buildRealPcbTopology(snap: InspectorSnapshot): PcbTopologyData {
         if (createdPairs.has(pairKey)) continue
         createdPairs.add(pairKey)
 
-        // Route orthogonal trace from provider to consumer
         const trace = routeOrthogonalTrace(
           providerNode,
           consumerNode,
@@ -181,7 +232,6 @@ export function buildRealPcbTopology(snap: InspectorSnapshot): PcbTopologyData {
     const childNode = getPcbNode(fiber)
     if (!parentNode || !childNode) continue
 
-    // If no service dependency already connects parent -> child, add hierarchy trace
     const hierarchyKey = `${parentNode.id}->${childNode.id}`
     const hasServiceLink = Array.from(createdPairs).some((k) => k.startsWith(hierarchyKey))
 
@@ -216,7 +266,6 @@ function routeOrthogonalTrace(
   const isDownstream = toNode.rank > fromNode.rank
   const isSameRank = toNode.rank === fromNode.rank
 
-  // Calculate start pin (fromNode) and end pin (toNode)
   let startX: number
   let startY: number
   let endX: number
@@ -224,15 +273,19 @@ function routeOrthogonalTrace(
   let startDir: PcbPin['direction']
   let endDir: PcbPin['direction']
 
-  // Multi-lane pin distribution along node borders
-  const laneOffset = ((index % 5) - 2) * 12
+  const laneOffset = ((index % 3) - 1) * 8
 
   if (isDownstream) {
-    startX = fromNode.x + fromNode.width / 2 + laneOffset
+    // Circle bottoms use small offset; triangle bases can use standard offset
+    const fromOffset = fromNode.role === 'root' || fromNode.role === 'plugin' ? laneOffset * 0.5 : laneOffset
+    // Triangle apex connects strictly at center top (cx, y)
+    const toOffset = toNode.role === 'scope' ? 0 : toNode.role === 'root' || toNode.role === 'plugin' ? laneOffset * 0.5 : laneOffset
+
+    startX = fromNode.x + fromNode.width / 2 + fromOffset
     startY = fromNode.y + fromNode.height
     startDir = 'bottom'
 
-    endX = toNode.x + toNode.width / 2 + laneOffset
+    endX = toNode.x + toNode.width / 2 + toOffset
     endY = toNode.y
     endDir = 'top'
   } else if (isSameRank) {
@@ -254,7 +307,6 @@ function routeOrthogonalTrace(
       endDir = 'right'
     }
   } else {
-    // Upstream feedback route
     startX = fromNode.x + fromNode.width / 2 + laneOffset
     startY = fromNode.y
     startDir = 'top'
@@ -268,15 +320,12 @@ function routeOrthogonalTrace(
   const vias: { x: number; y: number }[] = []
 
   if (isDownstream) {
-    // Intermediate horizontal bus track between the two rows
-    const channelY = fromNode.y + fromNode.height + 24 + (index % 6) * 14
+    const channelY = fromNode.y + fromNode.height + 22 + (index % 5) * 12
     const dx = endX - startX
 
     if (Math.abs(dx) < 8) {
-      // Direct vertical trace
       pathStr = `M ${startX} ${startY} L ${endX} ${endY}`
     } else {
-      // Orthogonal trace with 45° chamfers
       const sign = dx > 0 ? 1 : -1
       pathStr = [
         `M ${startX} ${startY}`,
@@ -301,7 +350,6 @@ function routeOrthogonalTrace(
     vias.push({ x: startX, y: channelY })
     vias.push({ x: endX, y: channelY })
   } else {
-    // Upstream route around the outside
     const sideX = Math.max(fromNode.x + fromNode.width, toNode.x + toNode.width) + 30 + (index % 4) * 14
     pathStr = [
       `M ${startX} ${startY}`,
