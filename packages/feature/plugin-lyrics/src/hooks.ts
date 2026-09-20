@@ -1,0 +1,214 @@
+/**
+ * View hooks for `ctx.lyrics`.
+ *
+ * Provides reactive bindings for lyrics state and active line synchronization,
+ * decoupled from high-frequency transport position updates.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Context } from 'cordis'
+import type { Lyrics, LyricsState, LyricsStatus, TransportState } from '@BBeBee/protocol'
+import { findActiveLyricIndex, parseLrc, type LyricLine, type ParsedLyrics } from '@BBeBee/toolkit'
+import { useServiceState } from '@BBeBee/ui-core'
+
+export interface UseLyricsResult {
+  status: LyricsStatus
+  trackUrn?: string
+  lyrics?: Lyrics
+  parsed: ParsedLyrics
+  error?: string
+  offsetMs: number
+  retry: () => Promise<void>
+  setOffset: (offsetMs: number) => void
+}
+
+const EMPTY_PARSED: ParsedLyrics = {
+  lines: [],
+  synced: false,
+}
+
+/**
+ * Returns current lyrics state and parsed lines.
+ * Updates when the track changes or lyrics state updates.
+ */
+export function useLyrics(ctx: Context): UseLyricsResult {
+  const state = useServiceState<LyricsState>(
+    ctx,
+    ['lyrics/changed'],
+    () => ctx.lyrics?.state ?? { status: 'idle', offsetMs: 0 },
+  )
+
+  const parsed = useMemo(() => {
+    if (!state.lyrics?.content) return EMPTY_PARSED
+    return parseLrc(state.lyrics.content, { offsetMs: state.offsetMs })
+  }, [state.lyrics?.content, state.offsetMs])
+
+  const retry = useCallback(async () => {
+    await ctx.lyrics?.retry?.()
+  }, [ctx])
+
+  const setOffset = useCallback(
+    (offsetMs: number) => {
+      ctx.lyrics?.setOffset?.(offsetMs)
+    },
+    [ctx],
+  )
+
+  return {
+    status: state.status,
+    trackUrn: state.trackUrn,
+    lyrics: state.lyrics,
+    parsed,
+    error: state.error,
+    offsetMs: state.offsetMs,
+    retry,
+    setOffset,
+  }
+}
+
+/**
+ * High-performance hook for active lyric line index.
+ *
+ * Interpolates playback position smoothly, but strictly updates React state
+ * ONLY when the active line index transitions, preventing 60Hz full-page re-renders.
+ */
+export function useActiveLyricIndex(
+  ctx: Context,
+  lines: readonly LyricLine[],
+  offsetMs = 0,
+): number {
+  const initialPos = ctx.player?.state?.positionMs ?? 0
+  const [activeIndex, setActiveIndex] = useState<number>(() =>
+    findActiveLyricIndex(lines, initialPos, offsetMs),
+  )
+  const lastIndexRef = useRef<number>(activeIndex)
+  lastIndexRef.current = activeIndex
+
+  // Transport state and position interpolation anchor
+  const anchor = useRef({
+    positionMs: initialPos,
+    at: performance.now(),
+    status: ctx.player?.state?.status ?? ('idle' as TransportState['status']),
+  })
+
+  useEffect(() => {
+    // Re-anchor on position or state changes
+    if (ctx.player?.state) {
+      anchor.current = {
+        positionMs: ctx.player.state.positionMs,
+        at: performance.now(),
+        status: ctx.player.state.status,
+      }
+    }
+
+    const offPosition = ctx.on('player/position', (positionMs: number) => {
+      anchor.current.positionMs = positionMs
+      anchor.current.at = performance.now()
+      const nextIdx = findActiveLyricIndex(lines, positionMs, offsetMs)
+      if (nextIdx !== lastIndexRef.current) {
+        lastIndexRef.current = nextIdx
+        setActiveIndex(nextIdx)
+      }
+    })
+
+    const offState = ctx.on('player/state-changed', (transport: TransportState) => {
+      anchor.current.positionMs = transport.positionMs
+      anchor.current.at = performance.now()
+      anchor.current.status = transport.status
+      const nextIdx = findActiveLyricIndex(lines, transport.positionMs, offsetMs)
+      if (nextIdx !== lastIndexRef.current) {
+        lastIndexRef.current = nextIdx
+        setActiveIndex(nextIdx)
+      }
+    })
+
+    const offActiveChanged = ctx.on('lyrics/active-changed', (idx: number) => {
+      if (idx !== lastIndexRef.current) {
+        lastIndexRef.current = idx
+        setActiveIndex(idx)
+      }
+    })
+
+    return () => {
+      offPosition()
+      offState()
+      offActiveChanged()
+    }
+  }, [ctx, lines, offsetMs])
+
+  // RAF interpolation for frame-accurate lyric line boundary transitions
+  useEffect(() => {
+    if (!lines || lines.length === 0) {
+      if (lastIndexRef.current !== -1) {
+        lastIndexRef.current = -1
+        setActiveIndex(-1)
+      }
+      return
+    }
+
+    let frame = 0
+    const tick = () => {
+      if (anchor.current.status === 'playing') {
+        const elapsed = performance.now() - anchor.current.at
+        const currentMs = anchor.current.positionMs + elapsed
+        const nextIdx = findActiveLyricIndex(lines, currentMs, offsetMs)
+        if (nextIdx !== lastIndexRef.current) {
+          lastIndexRef.current = nextIdx
+          setActiveIndex(nextIdx)
+        }
+      }
+      frame = requestAnimationFrame(tick)
+    }
+
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [lines, offsetMs])
+
+  return activeIndex
+}
+
+export interface CurrentLyricInfo {
+  status: LyricsStatus
+  currentLine?: LyricLine
+  nextLine?: LyricLine
+  synced: boolean
+  title?: string
+  artist?: string
+  album?: string
+  durationMs: number
+  positionMs: number
+  isPlaying: boolean
+}
+
+/**
+ * High-level hook returning the current and next line for desktop lyrics.
+ */
+export function useCurrentLyric(ctx: Context): CurrentLyricInfo {
+  const { status, parsed, offsetMs } = useLyrics(ctx)
+  const activeIndex = useActiveLyricIndex(ctx, parsed.lines, offsetMs)
+
+  const transport = useServiceState<TransportState>(
+    ctx,
+    ['player/state-changed', 'player/track-changed'],
+    () => ctx.player?.state ?? { status: 'idle', positionMs: 0, durationMs: 0 } as TransportState,
+  )
+
+  const currentLine = activeIndex >= 0 ? parsed.lines[activeIndex] : undefined
+  const nextLine =
+    activeIndex >= 0 && activeIndex + 1 < parsed.lines.length
+      ? parsed.lines[activeIndex + 1]
+      : undefined
+
+  return {
+    status,
+    currentLine,
+    nextLine,
+    synced: parsed.synced,
+    title: transport.nowPlaying?.title,
+    artist: transport.nowPlaying?.artist,
+    album: transport.nowPlaying?.album,
+    durationMs: transport.durationMs,
+    positionMs: transport.positionMs,
+    isPlaying: transport.status === 'playing',
+  }
+}

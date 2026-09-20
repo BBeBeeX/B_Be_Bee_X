@@ -373,102 +373,179 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
         h('polyline', { points: '6 9 12 15 18 9' }),
       ),
     ),
-    h(CachedArtwork, { ctx,
-      artwork: state.nowPlaying?.artwork,
-      seed: state.trackUrn,
-      size: 280,
-      radius: tokens.radius.lg,
-    }),
-    h(
-      'div',
-      {
-        style: {
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: tokens.space[1],
-          maxWidth: 480,
-          textAlign: 'center',
-        },
-      },
-      h(Text, {
-        variant: 'xl',
-        numberOfLines: 1,
-        children: state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'Nothing playing'),
-      }),
-      state.nowPlaying?.artist
-        ? h(Text, {
-            variant: 'md',
-            tone: 'muted',
-            numberOfLines: 1,
-            children: state.nowPlaying.artist,
-          })
-        : null,
-      state.nowPlaying?.album
-        ? h(Text, {
-            variant: 'sm',
-            tone: 'muted',
-            numberOfLines: 1,
-            children: state.nowPlaying.album,
-          })
-        : null,
-    ),
-    state.status === 'stalled'
-      ? h(Text, { variant: 'sm', tone: 'muted', children: 'Buffering…' })
-      : null,
-    h(
-      'div',
-      {
-        style: {
-          width: '100%',
-          maxWidth: 480,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: tokens.space[1],
-        },
-      },
-      h(Slider, {
-        value: duration ? Math.min(displayPosition, duration) : displayPosition,
-        max: duration ?? 0,
-        disabled: !can.canSeek,
-        accessibilityLabel: 'Seek',
-        onChange: (value: number) => setSeekingPosition(value),
-        onCommit: (value: number) => {
-          setSeekingPosition(undefined)
-          void ctx.player.seek(value)
-        },
-      }),
-      h(
+    (() => {
+      const panelSlots = ctx.ui?.slotsFor?.('now-playing.panel') ?? []
+      const PanelComponent = panelSlots[0]
+        ? (ctx.ui?.viewFor?.(panelSlots[0].id) as React.ComponentType<{ ctx: Context }> | undefined)
+        : undefined
+
+      const playerMain = h(
         'div',
-        { style: { display: 'flex', justifyContent: 'space-between' } },
-        h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(displayPosition) }),
-        h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(duration) }),
-      ),
-    ),
-    h(
-      'div',
-      { style: { display: 'flex', alignItems: 'center', gap: tokens.space[4] } },
-      h(IconButton, {
-        icon: '⏮',
-        accessibilityLabel: 'Previous track',
-        disabled: !can.canPrevious,
-        onPress: () => void ctx.player.previous(),
-      }),
-      h(IconButton, {
-        icon: can.canPause ? '⏸' : '▶',
-        accessibilityLabel: can.canPause ? 'Pause' : 'Play',
-        variant: 'primary',
-        size: tokens.size.iconLarge,
-        disabled: !can.canPlay && !can.canPause,
-        onPress: () => ctx.player.togglePlay(),
-      }),
-      h(IconButton, {
-        icon: '⏭',
-        accessibilityLabel: 'Next track',
-        disabled: !can.canNext,
-        onPress: () => void ctx.player.next(),
-      }),
-    ),
+        {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: tokens.space[5],
+            maxWidth: 480,
+            width: '100%',
+          },
+        },
+        h(CachedArtwork, {
+          ctx,
+          artwork: state.nowPlaying?.artwork,
+          seed: state.trackUrn,
+          size: PanelComponent ? 240 : 280,
+          radius: tokens.radius.lg,
+        }),
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: tokens.space[1],
+              maxWidth: 480,
+              textAlign: 'center',
+            },
+          },
+          h(Text, {
+            variant: 'xl',
+            numberOfLines: 1,
+            children: state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'Nothing playing'),
+          }),
+          state.nowPlaying?.artist
+            ? h(Text, {
+                variant: 'md',
+                tone: 'muted',
+                numberOfLines: 1,
+                children: state.nowPlaying.artist,
+              })
+            : null,
+          state.nowPlaying?.album
+            ? h(Text, {
+                variant: 'sm',
+                tone: 'muted',
+                numberOfLines: 1,
+                children: state.nowPlaying.album,
+              })
+            : null,
+        ),
+        state.status === 'stalled'
+          ? h(Text, { variant: 'sm', tone: 'muted', children: 'Buffering…' })
+          : null,
+        h(
+          'div',
+          {
+            style: {
+              width: '100%',
+              maxWidth: 480,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: tokens.space[1],
+            },
+          },
+          h(Slider, {
+            value: duration ? Math.min(displayPosition, duration) : displayPosition,
+            max: duration ?? 0,
+            disabled: !can.canSeek,
+            accessibilityLabel: 'Seek',
+            onChange: (value: number) => setSeekingPosition(value),
+            onCommit: (value: number) => {
+              setSeekingPosition(undefined)
+              void ctx.player.seek(value)
+            },
+          }),
+          h(
+            'div',
+            { style: { display: 'flex', justifyContent: 'space-between' } },
+            h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(displayPosition) }),
+            h(Text, { variant: 'sm', tone: 'muted', children: formatDuration(duration) }),
+          ),
+        ),
+        h(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: tokens.space[4] } },
+          h(IconButton, {
+            icon: '⏮',
+            accessibilityLabel: 'Previous track',
+            disabled: !can.canPrevious,
+            onPress: () => void ctx.player.previous(),
+          }),
+          h(IconButton, {
+            icon: can.canPause ? '⏸' : '▶',
+            accessibilityLabel: can.canPause ? 'Pause' : 'Play',
+            variant: 'primary',
+            size: tokens.size.iconLarge,
+            disabled: !can.canPlay && !can.canPause,
+            onPress: () => ctx.player.togglePlay(),
+          }),
+          h(IconButton, {
+            icon: '⏭',
+            accessibilityLabel: 'Next track',
+            disabled: !can.canNext,
+            onPress: () => void ctx.player.next(),
+          }),
+        ),
+      )
+
+      if (!PanelComponent) {
+        return playerMain
+      }
+
+      return h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            maxWidth: 1100,
+            gap: tokens.space[6],
+            flex: 1,
+            minHeight: 0,
+            height: '100%',
+            boxSizing: 'border-box',
+          },
+        },
+        h(
+          'div',
+          {
+            style: {
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: 320,
+              maxWidth: 460,
+            },
+          },
+          playerMain,
+        ),
+        h(
+          'div',
+          {
+            style: {
+              flex: 1.2,
+              display: 'flex',
+              height: '80vh',
+              maxHeight: '80vh',
+              minWidth: 340,
+              maxWidth: 600,
+              minHeight: 0,
+              borderRadius: tokens.radius.lg,
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+            },
+          },
+          h(PanelComponent, { ctx }),
+        ),
+      )
+    })(),
   )
 }
 

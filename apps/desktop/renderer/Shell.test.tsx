@@ -363,4 +363,17 @@ describe('the desktop shell', () => {
     expect(container.textContent).toContain('Home Screen')
     expect(backBtn.disabled).toBe(false)
   })
+
+  it('renders desktop-lyrics.floating view if contributed', async () => {
+    const { container } = await mount((ui) => {
+      ui.routes = [route('home', 'Home')]
+      ui.views.set('home', () => h('p', null, 'Home Screen'))
+      ui.views.set('desktop-lyrics.floating', () =>
+        h('div', { 'data-testid': 'desktop-lyrics-widget' }, 'floating lyrics'),
+      )
+    })
+    expect(container.querySelector('[data-testid="desktop-lyrics-widget"]')).not.toBeNull()
+    expect(container.textContent).toContain('floating lyrics')
+  })
 })
+

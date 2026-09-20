@@ -203,6 +203,9 @@ export function Shell({ ctx }: { ctx: Context }) {
   const BottomBar = ctx.ui.viewFor('now-playing.bar') as
     | ComponentType<{ ctx: Context; onOpenNowPlaying?: () => void }>
     | undefined
+  const DesktopLyrics = ctx.ui.viewFor('desktop-lyrics.floating') as
+    | ComponentType<{ ctx: Context }>
+    | undefined
 
   if (isFullscreenNowPlaying) {
     const NowPlayingView = ctx.ui.viewFor('now-playing.view') as
@@ -314,6 +317,7 @@ export function Shell({ ctx }: { ctx: Context }) {
             ),
           )
         : null,
+      DesktopLyrics ? h(DesktopLyrics, { ctx }) : null,
     )
   }
 
@@ -478,5 +482,6 @@ export function Shell({ ctx }: { ctx: Context }) {
           }),
         )
       : null,
+    DesktopLyrics ? h(DesktopLyrics, { ctx }) : null,
   )
 }

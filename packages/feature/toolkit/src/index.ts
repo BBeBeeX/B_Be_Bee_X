@@ -19,3 +19,10 @@ export { splitArtists } from './text.js'
 export { formatDuration } from './time.js'
 export { formatBytes } from './bytes.js'
 export { permute } from './shuffle.js'
+export {
+  parseLrc,
+  findActiveLyricIndex,
+  type LyricLine,
+  type LyricWord,
+  type ParsedLyrics,
+} from './lyrics.js'

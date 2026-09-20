@@ -44,11 +44,16 @@ import type { SourceError } from './errors.js'
 import type { ScanSpecifiedDir, ScanSummary } from './services/scanner.js'
 import type { AppSettings } from './services/settings.js'
 import type { SleepTimerState } from './services/sleep-timer.js'
+import type { DesktopLyricsState, LyricsState } from './services/lyrics.js'
 import type { UrnKind } from './urn.js'
 
 declare module 'cordis' {
   interface Events {
     'settings/changed'(settings: AppSettings): void
+    /* ── lyrics ──────────────────────────────────────── emit ── */
+    'lyrics/changed'(state: LyricsState): void
+    'lyrics/active-changed'(activeIndex: number): void
+    'desktop-lyrics/changed'(state: DesktopLyricsState): void
     /* ── player ─────────────────────────────────────── emit ── */
     'player/state-changed'(state: TransportState): void
     'player/track-changed'(trackUrn: string | undefined, previous?: string): void

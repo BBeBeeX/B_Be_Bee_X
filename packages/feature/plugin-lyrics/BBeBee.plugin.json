@@ -1,0 +1,24 @@
+{
+  "id": "@BBeBee/plugin-lyrics",
+  "version": "0.0.0",
+  "displayName": "Lyrics",
+  "description": "ctx.lyrics — lyric retrieval, caching, synchronization and unified state.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js",
+    "ui": {
+      "desktop": "./dist/index.js"
+    }
+  },
+  "capabilities": [
+    "db:read:core",
+    "db:write:core"
+  ],
+  "contributes": {
+    "services": [
+      "lyrics"
+    ]
+  }
+}

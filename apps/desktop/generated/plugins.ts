@@ -13,6 +13,8 @@ import coreSecretsNode from '@BBeBee/core-secrets-node'
 import pluginAlbum from '@BBeBee/plugin-album'
 import pluginAlbumUi from '@BBeBee/plugin-album-ui-desktop'
 import pluginCache from '@BBeBee/plugin-cache'
+import pluginDesktopLyrics from '@BBeBee/plugin-desktop-lyrics'
+import pluginDesktopLyricsUi from '@BBeBee/plugin-desktop-lyrics-ui-desktop'
 import pluginDownload from '@BBeBee/plugin-download'
 import pluginDownloadUi from '@BBeBee/plugin-download-ui-desktop'
 import pluginHistory from '@BBeBee/plugin-history'
@@ -23,6 +25,8 @@ import pluginLibrary from '@BBeBee/plugin-library'
 import pluginLibraryUi from '@BBeBee/plugin-library-ui-desktop'
 import pluginLocalScanner from '@BBeBee/plugin-local-scanner'
 import pluginLocalScannerUi from '@BBeBee/plugin-local-scanner-ui-desktop'
+import pluginLyrics from '@BBeBee/plugin-lyrics'
+import pluginLyricsUi from '@BBeBee/plugin-lyrics-ui-desktop'
 import pluginNowPlaying from '@BBeBee/plugin-now-playing'
 import pluginNowPlayingUi from '@BBeBee/plugin-now-playing-ui-desktop'
 import pluginPlayer from '@BBeBee/plugin-player'
@@ -96,6 +100,16 @@ export const bundled: PluginRegistry = {
     manifest: {"id":"@BBeBee/plugin-cache","version":"0.0.0","displayName":"Cache","description":"ctx.cache — covers and remote audio streams are served from disk, and fetched only on a miss.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","db:read:core","db:write:core"],"contributes":{"services":["cache"]}},
     builtin: true,
   },
+  "@BBeBee/plugin-desktop-lyrics": {
+    plugin: pluginDesktopLyrics,
+    manifest: {"id":"@BBeBee/plugin-desktop-lyrics","version":"0.0.0","displayName":"Desktop Lyrics","description":"Floating desktop lyrics state and command contributions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[]},
+    builtin: true,
+  },
+  "@BBeBee/plugin-desktop-lyrics-ui-desktop": {
+    plugin: pluginDesktopLyricsUi,
+    manifest: {"id":"@BBeBee/plugin-desktop-lyrics-ui-desktop","version":"0.0.0","displayName":"Desktop Lyrics (desktop views)","description":"Floating desktop lyrics state and command contributions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
+    builtin: true,
+  },
   "@BBeBee/plugin-download": {
     plugin: pluginDownload,
     manifest: {"id":"@BBeBee/plugin-download","version":"0.0.0","displayName":"Downloads","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","fs:read:downloads","fs:write:downloads","db:read:core","db:write:core"],"contributes":{"services":["downloads"]}},
@@ -144,6 +158,16 @@ export const bundled: PluginRegistry = {
   "@BBeBee/plugin-local-scanner-ui-desktop": {
     plugin: pluginLocalScannerUi,
     manifest: {"id":"@BBeBee/plugin-local-scanner-ui-desktop","version":"0.0.0","displayName":"Local Scanner (desktop views)","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["scanner"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-lyrics": {
+    plugin: pluginLyrics,
+    manifest: {"id":"@BBeBee/plugin-lyrics","version":"0.0.0","displayName":"Lyrics","description":"ctx.lyrics — lyric retrieval, caching, synchronization and unified state.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["lyrics"]}},
+    builtin: true,
+  },
+  "@BBeBee/plugin-lyrics-ui-desktop": {
+    plugin: pluginLyricsUi,
+    manifest: {"id":"@BBeBee/plugin-lyrics-ui-desktop","version":"0.0.0","displayName":"Lyrics (desktop views)","description":"ctx.lyrics — lyric retrieval, caching, synchronization and unified state.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["lyrics"]}},
     builtin: true,
   },
   "@BBeBee/plugin-now-playing": {
