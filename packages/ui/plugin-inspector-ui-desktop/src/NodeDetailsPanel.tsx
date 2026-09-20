@@ -12,6 +12,15 @@ export const STATE_COLOR: Record<string, string> = {
   UNKNOWN: '#5A5A68',
 }
 
+function filterEffects(nodes: EffectNode[]): EffectNode[] {
+  return nodes
+    .filter((node) => !node.label.startsWith('ctx.plugin'))
+    .map((node) => ({
+      ...node,
+      children: filterEffects(node.children),
+    }))
+}
+
 function EffectsList({ nodes, depth }: { nodes: EffectNode[]; depth: number }): ReactElement {
   return h(
     'ul',
@@ -109,7 +118,7 @@ export function NodeDetailsPanel({ node, onClose }: NodeDetailsPanelProps): Reac
               borderRadius: 3,
             },
           },
-          node.code.toUpperCase(),
+          node.displayName,
         ),
         h(
           'span',
@@ -247,22 +256,85 @@ export function NodeDetailsPanel({ node, onClose }: NodeDetailsPanelProps): Reac
           ),
         )
       : null,
-    // Labelled Effects
-    h(
-      'div',
-      { style: { marginTop: 14 } },
-      h(
-        'div',
-        { style: { fontSize: 10, color: 'rgba(142, 164, 206, 0.6)', marginBottom: 6 } },
-        `EFFECTS (${fiber?.effects?.length ?? 0})`,
-      ),
-      fiber?.effects && fiber.effects.length > 0
-        ? h(EffectsList, { nodes: fiber.effects, depth: 0 })
-        : h(
+    // Loaded child plugins (replaces raw ctx.plugin() calls with actual plugin names)
+    fiber?.children && fiber.children.length > 0
+      ? h(
+          'div',
+          { style: { marginTop: 14 } },
+          h(
             'div',
-            { style: { fontSize: 11, color: 'rgba(142, 164, 206, 0.4)', fontStyle: 'italic' } },
-            'No active side-effects registered',
+            {
+              style: {
+                fontSize: 10,
+                color: 'rgba(142, 164, 206, 0.6)',
+                marginBottom: 6,
+                fontWeight: 700,
+                letterSpacing: 0.5,
+              },
+            },
+            `LOADED PLUGINS (${fiber.children.length})`,
           ),
-    ),
+          h(
+            'div',
+            { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+            ...fiber.children.map((child, idx) =>
+              h(
+                'div',
+                {
+                  key: `${child.name}-${idx}`,
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '5px 8px',
+                    background: 'rgba(100, 116, 255, 0.08)',
+                    border: '1px solid rgba(100, 116, 255, 0.25)',
+                    borderRadius: 3,
+                    fontSize: 11,
+                  },
+                },
+                h('span', { style: { fontWeight: 600, color: '#E2ECFF' } }, child.name),
+                h(
+                  'span',
+                  {
+                    style: {
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: STATE_COLOR[child.state] ?? '#8EA4CE',
+                    },
+                  },
+                  child.state,
+                ),
+              ),
+            ),
+          ),
+        )
+      : null,
+    // Meaningful Labelled Effects (with internal ctx.plugin() calls cleanly filtered out)
+    (() => {
+      const meaningfulEffects = filterEffects(fiber?.effects ?? [])
+      return h(
+        'div',
+        { style: { marginTop: 14 } },
+        h(
+          'div',
+          { style: { fontSize: 10, color: 'rgba(142, 164, 206, 0.6)', marginBottom: 6 } },
+          `EFFECTS (${meaningfulEffects.length})`,
+        ),
+        meaningfulEffects.length > 0
+          ? h(EffectsList, { nodes: meaningfulEffects, depth: 0 })
+          : h(
+              'div',
+              {
+                style: {
+                  fontSize: 11,
+                  color: 'rgba(142, 164, 206, 0.4)',
+                  fontStyle: 'italic',
+                },
+              },
+              'No active side-effects registered',
+            ),
+      )
+    })(),
   )
 }

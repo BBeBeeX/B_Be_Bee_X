@@ -133,15 +133,25 @@ describe('the inspector view', () => {
     expect(renderToStaticMarkup(h(InspectorPanel, { ctx }))).toContain('Plugin graph')
   })
 
-  it('renders the 5 PCB visual layers and hardware HUD elements', async () => {
+  it('renders the 5 PCB visual layers with real plugin nodes and removed obsolete HUD badges', async () => {
     const { shellCtx } = await harness()
     const html = renderAsShell(shellCtx)
 
-    // Hardware HUD identifiers
-    expect(html).toContain('EVSERFL12–347')
-    expect(html).toContain('EC1')
-    expect(html).toContain('EC2')
-    expect(html).toContain('CORE VCC')
+    // Obsolete HUD badges and dummy CSxx IDs are removed
+    expect(html).not.toContain('EVSERFL12–347')
+    expect(html).not.toContain('EVSERFL12-347')
+    expect(html).not.toContain('EC1')
+    expect(html).not.toContain('EC2')
+    expect(html).not.toContain('CORE VCC')
+    expect(html).not.toContain('cs20')
+    expect(html).not.toContain('cs30')
+
+    // Enlarged Plugin graph header
+    expect(html).toContain('Plugin graph')
+
+    // Real plugin nodes rendered
+    expect(html).toContain('root')
+    expect(html).toContain('plugin-inspector')
 
     // 5 Visual Layers
     expect(html).toContain('glow-layer')
@@ -149,12 +159,6 @@ describe('the inspector view', () => {
     expect(html).toContain('pin-layer')
     expect(html).toContain('node-layer')
     expect(html).toContain('signal-flow-layer')
-
-    // Key reference nodes
-    expect(html).toContain('cs20')
-    expect(html).toContain('cs30')
-    expect(html).toContain('Level 4')
-    expect(html).toContain('Level 5')
 
     // Orthogonal trace path markers & filters
     expect(html).toContain('pcb-glow')

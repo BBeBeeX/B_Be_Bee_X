@@ -93,6 +93,12 @@ importers:
       '@BBeBee/plugin-download-ui-desktop':
         specifier: workspace:*
         version: link:../../packages/ui/plugin-download-ui-desktop
+      '@BBeBee/plugin-dsp':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-dsp
+      '@BBeBee/plugin-dsp-ui-desktop':
+        specifier: workspace:*
+        version: link:../../packages/ui/plugin-dsp-ui-desktop
       '@BBeBee/plugin-history':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-history
@@ -259,6 +265,12 @@ importers:
       '@BBeBee/plugin-download-ui-mobile':
         specifier: workspace:*
         version: link:../../packages/ui/plugin-download-ui-mobile
+      '@BBeBee/plugin-dsp':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-dsp
+      '@BBeBee/plugin-dsp-ui-mobile':
+        specifier: workspace:*
+        version: link:../../packages/ui/plugin-dsp-ui-mobile
       '@BBeBee/plugin-history':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-history
@@ -919,6 +931,28 @@ importers:
       '@BBeBee/plugin-cache':
         specifier: workspace:*
         version: link:../plugin-cache
+
+  packages/feature/plugin-dsp:
+    dependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@BBeBee/ui-core':
+        specifier: workspace:*
+        version: link:../../ui/ui-core
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
 
   packages/feature/plugin-history:
     dependencies:
@@ -1643,6 +1677,92 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@22.20.1)(jsdom@30.0.1)(vite@7.3.6(@types/node@22.20.1)(lightningcss@1.33.0)(terser@5.51.2)(yaml@2.9.0))
 
+  packages/ui/plugin-dsp-ui-desktop:
+    dependencies:
+      '@BBeBee/plugin-dsp':
+        specifier: workspace:*
+        version: link:../../feature/plugin-dsp
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@BBeBee/ui-core':
+        specifier: workspace:*
+        version: link:../ui-core
+      '@BBeBee/ui-kit-desktop':
+        specifier: workspace:*
+        version: link:../ui-kit-desktop
+      '@BBeBee/ui-tokens':
+        specifier: workspace:*
+        version: link:../ui-tokens
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    devDependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.2.7(@types/react@19.2.18)
+      react-dom:
+        specifier: 19.2.3
+        version: 19.2.3(react@19.2.3)
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.1)(jsdom@30.0.1)(vite@7.3.6(@types/node@22.20.1)(lightningcss@1.33.0)(terser@5.51.2)(yaml@2.9.0))
+
+  packages/ui/plugin-dsp-ui-mobile:
+    dependencies:
+      '@BBeBee/plugin-dsp':
+        specifier: workspace:*
+        version: link:../../feature/plugin-dsp
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@BBeBee/ui-core':
+        specifier: workspace:*
+        version: link:../ui-core
+      '@BBeBee/ui-kit-mobile':
+        specifier: workspace:*
+        version: link:../ui-kit-mobile
+      '@BBeBee/ui-tokens':
+        specifier: workspace:*
+        version: link:../ui-tokens
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    devDependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.2.7(@types/react@19.2.18)
+      react-dom:
+        specifier: 19.2.3
+        version: 19.2.3(react@19.2.3)
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.1)(jsdom@30.0.1)(vite@7.3.6(@types/node@22.20.1)(lightningcss@1.33.0)(terser@5.51.2)(yaml@2.9.0))
+
   packages/ui/plugin-history-ui-desktop:
     dependencies:
       '@BBeBee/plugin-cache':
@@ -2272,6 +2392,9 @@ importers:
       '@BBeBee/plugin-cache':
         specifier: workspace:*
         version: link:../../feature/plugin-cache
+      '@BBeBee/plugin-dsp':
+        specifier: workspace:*
+        version: link:../../feature/plugin-dsp
       '@BBeBee/plugin-settings':
         specifier: workspace:*
         version: link:../../feature/plugin-settings
@@ -2318,6 +2441,9 @@ importers:
       '@BBeBee/plugin-cache':
         specifier: workspace:*
         version: link:../../feature/plugin-cache
+      '@BBeBee/plugin-dsp':
+        specifier: workspace:*
+        version: link:../../feature/plugin-dsp
       '@BBeBee/plugin-settings':
         specifier: workspace:*
         version: link:../../feature/plugin-settings

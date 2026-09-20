@@ -23,12 +23,10 @@ export interface PcbBoardProps {
   onPanChange: (pan: { x: number; y: number }) => void
 }
 
-const TRACE_COLORS: Record<string, string> = {
-  primary: '#6474FF',
-  secondary: '#8EA4CE',
-  accent: '#B86B7D',
-  warning: '#FFB020',
-  inactive: '#2A3550',
+const RELATION_COLORS: Record<string, string> = {
+  service: '#6474FF',
+  hierarchy: '#8EA4CE',
+  waiting: '#FFB020',
 }
 
 export function PcbBoard({
@@ -50,7 +48,6 @@ export function PcbBoard({
 
   const handleMouseDown = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
-      // Only drag with primary mouse button
       if (e.button !== 0) return
       isDraggingRef.current = true
       dragStartRef.current = {
@@ -95,7 +92,6 @@ export function PcbBoard({
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
 
-      // Zoom towards mouse pointer
       const newPanX = mouseX - ((mouseX - pan.x) / zoom) * newZoom
       const newPanY = mouseY - ((mouseY - pan.y) / zoom) * newZoom
 
@@ -109,7 +105,7 @@ export function PcbBoard({
     onHoverNode?.(hoveredNodeId)
   }, [hoveredNodeId, onHoverNode])
 
-  // Determine connected traces for focus graph
+  // Focus graph: connected traces for active node
   const activeNodeId = hoveredNodeId ?? selectedNodeId
   const connectedTraceIds = new Set<string>()
   if (activeNodeId) {
@@ -118,21 +114,6 @@ export function PcbBoard({
         connectedTraceIds.add(t.id)
       }
     }
-  }
-
-  // Cloud path for Level 4 & Level 5 (organic cloud SVG shape)
-  const getCloudPath = (x: number, y: number, w: number, h: number) => {
-    const rx = w / 2
-    const ry = h / 2
-    return `
-      M ${x - rx + 30} ${y + ry}
-      A 28 28 0 0 1 ${x - rx + 20} ${y - ry + 25}
-      A 35 35 0 0 1 ${x - 10} ${y - ry + 10}
-      A 42 42 0 0 1 ${x + rx - 20} ${y - ry + 15}
-      A 32 32 0 0 1 ${x + rx} ${y + ry - 10}
-      A 28 28 0 0 1 ${x + rx - 35} ${y + ry}
-      Z
-    `
   }
 
   return h(
@@ -155,7 +136,7 @@ export function PcbBoard({
         userSelect: 'none',
       },
     },
-    // CSS Keyframes for smooth Signal Flow pulse animation and breath glow
+    // Keyframes for signal pulses & breathing halos
     h(
       'style',
       null,
@@ -184,11 +165,10 @@ export function PcbBoard({
         height: '100%',
         style: { display: 'block', width: '100%', height: '100%' },
       },
-      // Layer 0: Definitions, Filters & Grid Patterns
+      // Definitions: Filters & Background Grid Pattern
       h(
         'defs',
         null,
-        // High-tech PCB Grid Pattern
         h(
           'pattern',
           {
@@ -210,7 +190,6 @@ export function PcbBoard({
             fill: 'rgba(142, 164, 206, 0.08)',
           }),
         ),
-        // Controlled, non-blinding PCB Glow Filter
         h(
           'filter',
           {
@@ -228,7 +207,6 @@ export function PcbBoard({
             h('feMergeNode', { in: 'SourceGraphic' }),
           ),
         ),
-        // Ambient backlight radial gradient
         h(
           'radialGradient',
           { id: 'ambient-glow-1', cx: '50%', cy: '50%', r: '50%' },
@@ -254,31 +232,15 @@ export function PcbBoard({
         },
 
         // ═══════════════════════════════════════════════════════
-        // LAYER 1: GLOW LAYER (Ambient Light & Trace Bloom)
+        // LAYER 1: GLOW LAYER (Ambient Backlight & Trace Bloom)
         // ═══════════════════════════════════════════════════════
         h(
           'g',
           { className: 'glow-layer', pointerEvents: 'none' },
-          // Ambient circuit cluster backlights
-          h('ellipse', {
-            cx: 970,
-            cy: 450,
-            rx: 600,
-            ry: 400,
-            fill: 'url(#ambient-glow-1)',
-          }),
-          h('ellipse', {
-            cx: 350,
-            cy: 500,
-            rx: 400,
-            ry: 300,
-            fill: 'url(#ambient-glow-1)',
-          }),
-
-          // Diffused soft bloom along PCB traces
+          // Diffused soft trace bloom
           ...traces.map((trace) => {
             const isTraceActive = activeNodeId ? connectedTraceIds.has(trace.id) : true
-            const baseColor = TRACE_COLORS[trace.colorType] ?? '#6474FF'
+            const baseColor = RELATION_COLORS[trace.relationType] ?? '#6474FF'
             return h('path', {
               key: `glow-${trace.id}`,
               d: trace.path,
@@ -290,16 +252,19 @@ export function PcbBoard({
             })
           }),
 
-          // Glow halo for selected node (matching reference image cs30)
+          // Glow halo for selected chip node
           selectedNodeId
             ? (() => {
                 const node = nodes.find((n) => n.id === selectedNodeId)
                 if (!node) return null
-                return h('circle', {
+                return h('rect', {
                   className: 'selected-halo',
-                  cx: node.x,
-                  cy: node.y,
-                  r: node.radius + 8,
+                  x: node.x - 6,
+                  y: node.y - 6,
+                  width: node.width + 12,
+                  height: node.height + 12,
+                  rx: 10,
+                  ry: 10,
                   fill: 'none',
                   stroke: '#D4F658',
                   strokeWidth: 2.5,
@@ -311,19 +276,19 @@ export function PcbBoard({
         ),
 
         // ═══════════════════════════════════════════════════════
-        // LAYER 2: TRACE LAYER (Orthogonal PCB Traces & Vias)
+        // LAYER 2: TRACE LAYER (Real Relationship Orthogonal Traces)
         // ═══════════════════════════════════════════════════════
         h(
           'g',
           { className: 'trace-layer' },
           ...traces.map((trace) => {
             const isTraceActive = activeNodeId ? connectedTraceIds.has(trace.id) : true
-            const baseColor = TRACE_COLORS[trace.colorType] ?? '#6474FF'
+            const baseColor = RELATION_COLORS[trace.relationType] ?? '#6474FF'
             const strokeColor = isTraceActive
               ? activeNodeId
                 ? '#8598FF'
                 : baseColor
-              : 'rgba(60, 75, 105, 0.3)'
+              : 'rgba(60, 75, 105, 0.25)'
 
             return h(
               'g',
@@ -338,7 +303,7 @@ export function PcbBoard({
                 opacity: isTraceActive ? 1 : 0.25,
                 transition: 'stroke 0.2s, opacity 0.2s',
               }),
-              // Via solder pads along this trace
+              // Via pads at orthogonal bends
               ...(trace.vias ?? []).map((via, vi) =>
                 h(
                   'g',
@@ -346,15 +311,15 @@ export function PcbBoard({
                   h('circle', {
                     cx: via.x,
                     cy: via.y,
-                    r: 4,
+                    r: 3.5,
                     fill: '#05070D',
                     stroke: strokeColor,
-                    strokeWidth: 1.5,
+                    strokeWidth: 1.4,
                   }),
                   h('circle', {
                     cx: via.x,
                     cy: via.y,
-                    r: 1.6,
+                    r: 1.4,
                     fill: strokeColor,
                   }),
                 ),
@@ -364,48 +329,13 @@ export function PcbBoard({
         ),
 
         // ═══════════════════════════════════════════════════════
-        // LAYER 3: PIN LAYER (Connector Pins & Solder Buses)
+        // LAYER 3: PIN LAYER (Connector Pins & Solder Dots)
         // ═══════════════════════════════════════════════════════
         h(
           'g',
           { className: 'pin-layer' },
-          ...pins.map((pin) => {
-            if (pin.type === 'bus') {
-              // Vertical parallel pin bus between stacked chips (cs47 <-> cs59, cs22 <-> cs39)
-              return h(
-                'g',
-                { key: pin.id },
-                h('line', {
-                  x1: pin.x,
-                  y1: pin.y,
-                  x2: pin.x,
-                  y2: pin.y + (pin.length ?? 80),
-                  stroke: '#6474FF',
-                  strokeWidth: 1.8,
-                }),
-                // Top solder pad
-                h('circle', {
-                  cx: pin.x,
-                  cy: pin.y + 3,
-                  r: pin.padSize ?? 4,
-                  fill: '#8598B2',
-                  stroke: '#0A1220',
-                  strokeWidth: 1,
-                }),
-                // Bottom solder pad
-                h('circle', {
-                  cx: pin.x,
-                  cy: pin.y + (pin.length ?? 80) - 3,
-                  r: pin.padSize ?? 4,
-                  fill: '#8598B2',
-                  stroke: '#0A1220',
-                  strokeWidth: 1,
-                }),
-              )
-            }
-
-            // Radial connector pin pad
-            return h(
+          ...pins.map((pin) =>
+            h(
               'g',
               { key: pin.id },
               h('circle', {
@@ -416,12 +346,12 @@ export function PcbBoard({
                 stroke: '#05070D',
                 strokeWidth: 1.2,
               }),
-            )
-          }),
+            ),
+          ),
         ),
 
         // ═══════════════════════════════════════════════════════
-        // LAYER 4: NODE LAYER (IC Chips & Cloud Modules)
+        // LAYER 4: NODE LAYER (Real IC Chips with Actual Names)
         // ═══════════════════════════════════════════════════════
         h(
           'g',
@@ -429,55 +359,9 @@ export function PcbBoard({
           ...nodes.map((node) => {
             const isSelected = node.id === selectedNodeId
             const isHovered = node.id === hoveredNodeId
-            const isStalled = node.fiber?.state === 'PENDING' || node.fiber?.state === 'FAILED'
+            const isStalled = node.fiber.state === 'PENDING' || node.fiber.state === 'FAILED'
 
-            if (node.kind === 'cloud') {
-              const cloudPath = getCloudPath(
-                node.x,
-                node.y,
-                node.width ?? 160,
-                node.height ?? 75,
-              )
-              return h(
-                'g',
-                {
-                  key: node.id,
-                  'data-testid': `node-${node.id}`,
-                  onClick: (e: ReactMouseEvent) => {
-                    e.stopPropagation()
-                    onSelectNode(node)
-                  },
-                  onMouseEnter: () => setHoveredNodeId(node.id),
-                  onMouseLeave: () => setHoveredNodeId(null),
-                  style: { cursor: 'pointer' },
-                },
-                h('path', {
-                  d: cloudPath,
-                  fill: '#8598B2',
-                  stroke: isSelected ? '#D4F658' : '#687C99',
-                  strokeWidth: isSelected ? 2.5 : 1.5,
-                  filter: isHovered || isSelected ? 'url(#pcb-glow)' : undefined,
-                  transition: 'stroke 0.2s',
-                }),
-                h(
-                  'text',
-                  {
-                    x: node.x,
-                    y: node.y + 5,
-                    textAnchor: 'middle',
-                    fill: '#0A1220',
-                    fontSize: 16,
-                    fontWeight: 600,
-                    fontFamily:
-                      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                  },
-                  node.code,
-                ),
-              )
-            }
-
-            // Circular IC Chip Node
-            const fillColor = isStalled ? '#B86B7D' : '#8598B2'
+            const fillColor = isStalled ? '#B86B7D' : node.kind === 'root' ? '#7A8CA3' : '#8598B2'
             const strokeColor = isSelected
               ? '#D4F658'
               : isHovered
@@ -495,12 +379,11 @@ export function PcbBoard({
                 },
                 onDoubleClick: (e: ReactMouseEvent) => {
                   e.stopPropagation()
-                  // Center view on this node
                   if (containerRef.current) {
                     const rect = containerRef.current.getBoundingClientRect()
                     onPanChange({
-                      x: rect.width / 2 - node.x * zoom,
-                      y: rect.height / 2 - node.y * zoom,
+                      x: rect.width / 2 - (node.x + node.width / 2) * zoom,
+                      y: rect.height / 2 - (node.y + node.height / 2) * zoom,
                     })
                   }
                 },
@@ -508,56 +391,82 @@ export function PcbBoard({
                 onMouseLeave: () => setHoveredNodeId(null),
                 style: { cursor: 'pointer' },
               },
-              // Chip outer border
-              h('circle', {
-                cx: node.x,
-                cy: node.y,
-                r: node.radius,
+              // Real IC Chip Body (Surface-mount Flatpack Package)
+              h('rect', {
+                x: node.x,
+                y: node.y,
+                width: node.width,
+                height: node.height,
+                rx: 6,
+                ry: 6,
                 fill: fillColor,
                 stroke: strokeColor,
-                strokeWidth: isSelected ? 3 : 1.8,
+                strokeWidth: isSelected ? 2.5 : 1.6,
                 filter: isHovered ? 'url(#pcb-glow)' : undefined,
                 transition: 'stroke 0.2s, stroke-width 0.2s',
               }),
-              // Chip inner technical ring
-              h('circle', {
-                cx: node.x,
-                cy: node.y,
-                r: node.radius - 5,
+              // Inner technical bevel line
+              h('rect', {
+                x: node.x + 3,
+                y: node.y + 3,
+                width: node.width - 6,
+                height: node.height - 6,
+                rx: 4,
+                ry: 4,
                 fill: 'none',
-                stroke: 'rgba(10, 18, 32, 0.25)',
+                stroke: 'rgba(10, 18, 32, 0.22)',
                 strokeWidth: 1,
               }),
-              // Centered Monospace Technical ID (e.g. cs20, cs30, cs51)
+              // Centered concrete plugin name
               h(
                 'text',
                 {
-                  x: node.x,
-                  y: node.y + 5,
+                  x: node.x + node.width / 2,
+                  y:
+                    node.fiber.children && node.fiber.children.length > 0
+                      ? node.y + node.height / 2 - 2
+                      : node.y + node.height / 2 + 5,
                   textAnchor: 'middle',
                   fill: '#0A1220',
-                  fontSize: 16,
-                  fontWeight: 600,
+                  fontSize: 13,
+                  fontWeight: 700,
                   fontFamily:
                     'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                  letterSpacing: -0.5,
+                  letterSpacing: -0.3,
                 },
-                node.code,
+                node.displayName,
               ),
-              // Secondary fiber name on hover (subtle tech overlay)
-              isHovered && node.fiber
+              // Subtitle badge showing loaded child plugins count
+              node.fiber.children && node.fiber.children.length > 0
                 ? h(
                     'text',
                     {
-                      x: node.x,
-                      y: node.y + node.radius + 18,
+                      x: node.x + node.width / 2,
+                      y: node.y + node.height / 2 + 13,
                       textAnchor: 'middle',
-                      fill: '#8EA4CE',
-                      fontSize: 11,
-                      fontWeight: 500,
+                      fill: '#152542',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      fontFamily: 'ui-monospace, monospace',
+                      opacity: 0.85,
+                    },
+                    `${node.fiber.children.length} plugins loaded`,
+                  )
+                : null,
+              // State badge on hover or if stalled
+              isStalled
+                ? h(
+                    'text',
+                    {
+                      x: node.x + node.width / 2,
+                      y: node.y + node.height + 16,
+                      textAnchor: 'middle',
+                      fill: '#FFB020',
+                      fontSize: 10,
+                      fontWeight: 600,
                       fontFamily: 'ui-monospace, monospace',
                     },
-                    node.fiber.name,
+                    node.fiber.state,
                   )
                 : null,
             )
@@ -565,7 +474,7 @@ export function PcbBoard({
         ),
 
         // ═══════════════════════════════════════════════════════
-        // LAYER 5: SIGNAL FLOW LAYER (Restrained Data Pulses)
+        // LAYER 5: SIGNAL FLOW LAYER (Real Dependency Packet Flow)
         // ═══════════════════════════════════════════════════════
         h(
           'g',

@@ -1,15 +1,15 @@
 /**
  * Desktop view for the plugin inspector.
  *
- * Renders the fiber tree with labelled effects as a high-tech
+ * Renders the real Cordis fiber tree with labelled effects as a high-tech
  * Orthogonal PCB Circuit & Chip Topology Network.
  *
  * Implements the 5 distinct visual layers:
  * 1. Glow Layer (ambient backlight & trace bloom)
- * 2. Trace Layer (orthogonal PCB traces with 90° bends and 45° chamfers)
- * 3. Pin Layer (connector pins & vertical solder buses)
- * 4. Node Layer (IC chip circles & cloud modules)
- * 5. Signal Flow Layer (traveling data pulses)
+ * 2. Trace Layer (orthogonal PCB traces representing real service & hierarchy relationships)
+ * 3. Pin Layer (connector pins & solder pads)
+ * 4. Node Layer (real IC chip packages displaying actual plugin names)
+ * 5. Signal Flow Layer (traveling data pulses along active service dependency traces)
  */
 
 import {
@@ -23,14 +23,8 @@ import type { Context } from 'cordis'
 // Pulls the service augmentations into this program.
 import type {} from '@BBeBee/protocol'
 import type { EffectNode, FiberNode, InspectorSnapshot } from '@BBeBee/plugin-inspector'
-import {
-  BASE_NODES,
-  generateBasePins,
-  generateBaseTraces,
-  mapSnapshotToTopology,
-} from './pcb-topology-data.js'
+import { buildRealPcbTopology } from './pcb-topology-data.js'
 import { PcbBoard } from './PcbBoard.js'
-import { StatusMeter } from './StatusMeter.js'
 import { NodeDetailsPanel } from './NodeDetailsPanel.js'
 
 export const INSPECTOR_VIEW = 'inspector.panel'
@@ -45,25 +39,22 @@ export function InspectorPanel({ ctx }: { ctx: Context }): ReactElement {
     return () => clearInterval(timer)
   }, [ctx])
 
-  // Map snapshot to topology nodes
-  const nodes = useMemo(() => mapSnapshotToTopology(snap, BASE_NODES), [snap])
-  const traces = useMemo(() => generateBaseTraces(), [])
-  const pins = useMemo(() => generateBasePins(), [])
+  // Build real topology directly from Cordis snapshot
+  const { nodes, traces, pins } = useMemo(() => buildRealPcbTopology(snap), [snap])
 
-  // Default selected node is cs30 (matching the reference image's active halo)
-  // or a stalled node if one exists
+  // Default selected node: stalled node if one exists, otherwise root or first plugin
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() => {
     if (snap.stalled.length > 0) {
-      const stalledNode = nodes.find((n) => n.fiber?.name === snap.stalled[0]?.name)
+      const stalledNode = nodes.find((n) => n.fiber.name === snap.stalled[0]?.name)
       if (stalledNode) return stalledNode.id
     }
-    return 'cs30'
+    return nodes[0]?.id ?? null
   })
 
   // Synchronize selection when a stalled node appears
   useEffect(() => {
     if (snap.stalled.length > 0) {
-      const stalledNode = nodes.find((n) => n.fiber?.name === snap.stalled[0]?.name)
+      const stalledNode = nodes.find((n) => n.fiber.name === snap.stalled[0]?.name)
       if (stalledNode) {
         setSelectedNodeId(stalledNode.id)
       }
@@ -71,8 +62,8 @@ export function InspectorPanel({ ctx }: { ctx: Context }): ReactElement {
   }, [snap.stalled, nodes])
 
   // Pan and Zoom viewport state
-  const [zoom, setZoom] = useState(0.85)
-  const [pan, setPan] = useState({ x: 30, y: 20 })
+  const [zoom, setZoom] = useState(0.9)
+  const [pan, setPan] = useState({ x: 40, y: 30 })
 
   const selectedNode = useMemo(
     () => nodes.find((n) => n.id === selectedNodeId) ?? null,
@@ -84,20 +75,15 @@ export function InspectorPanel({ ctx }: { ctx: Context }): ReactElement {
     .map(([state, n]) => `${n} ${state.toLowerCase()}`)
     .join(' · ')
 
-  // System load/health percentage for StatusMeter
-  const totalFibers = Object.values(snap.counts).reduce((a, b) => a + b, 0)
-  const activeFibers = snap.counts.ACTIVE ?? 0
-  const systemHealth = totalFibers > 0 ? Math.round((activeFibers / totalFibers) * 100) : 100
-
   const handleZoomIn = () => setZoom((z) => Math.min(2.5, z * 1.2))
   const handleZoomOut = () => setZoom((z) => Math.max(0.35, z * 0.8))
   const handleReset = () => {
-    setZoom(0.85)
-    setPan({ x: 30, y: 20 })
+    setZoom(0.9)
+    setPan({ x: 40, y: 30 })
   }
   const handleFit = () => {
-    setZoom(0.7)
-    setPan({ x: 60, y: 40 })
+    setZoom(0.75)
+    setPan({ x: 50, y: 30 })
   }
 
   return h(
@@ -114,80 +100,69 @@ export function InspectorPanel({ ctx }: { ctx: Context }): ReactElement {
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       },
     },
-    // Top-Left HUD: Vertical StatusMeter & System ID
+    // Top-Left Header: Enlarged "Plugin graph" Title & Diagnostic Summary
     h(
       'div',
       {
         style: {
           position: 'absolute',
-          top: 20,
-          left: 24,
+          top: 24,
+          left: 28,
           zIndex: 40,
           display: 'flex',
-          alignItems: 'flex-start',
-          gap: 16,
+          flexDirection: 'column',
           pointerEvents: 'none',
         },
       },
-      // Status Meter (0% to 100% segmented gauge)
-      h(StatusMeter, { value: systemHealth, label: 'CORE VCC' }),
-      // System ID & Diagnostics
+      h(
+        'h1',
+        {
+          style: {
+            margin: 0,
+            fontSize: 26,
+            fontWeight: 800,
+            letterSpacing: 1.2,
+            color: '#F0F4FF',
+            textShadow: '0 0 12px rgba(100, 116, 255, 0.45)',
+            lineHeight: 1.15,
+          },
+        },
+        'Plugin graph',
+      ),
       h(
         'div',
-        { style: { display: 'flex', flexDirection: 'column' } },
-        h(
-          'h1',
-          {
-            style: {
-              margin: 0,
-              fontSize: 26,
-              fontWeight: 800,
-              fontStyle: 'italic',
-              letterSpacing: 1.5,
-              color: '#F0F4FF',
-              textShadow: '0 0 10px rgba(100, 116, 255, 0.4)',
-              lineHeight: 1.1,
-            },
+        {
+          style: {
+            fontSize: 12,
+            color: '#8EA4CE',
+            marginTop: 6,
+            letterSpacing: 0.5,
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
           },
-          'EVSERFL12–347',
-        ),
-        h(
-          'div',
-          {
-            style: {
-              fontSize: 11,
-              color: '#8EA4CE',
-              marginTop: 4,
-              letterSpacing: 0.5,
-              display: 'flex',
-              gap: 8,
-              alignItems: 'center',
-            },
-          },
-          h('span', { style: { fontWeight: 600, color: '#6474FF' } }, 'Plugin graph'),
-          h('span', { style: { opacity: 0.5 } }, '·'),
-          h('span', null, summary),
-        ),
-        // Stalled warnings indicator
-        snap.stalled.length > 0
-          ? h(
-              'div',
-              {
-                style: {
-                  marginTop: 6,
-                  padding: '3px 8px',
-                  borderRadius: 3,
-                  background: 'rgba(255, 92, 92, 0.15)',
-                  border: '1px solid rgba(255, 92, 92, 0.4)',
-                  fontSize: 11,
-                  color: '#FF5C5C',
-                  fontWeight: 600,
-                },
-              },
-              `⚠️ ${snap.stalled.length} STALLED FIBER(S)`,
-            )
-          : null,
+        },
+        h('span', null, summary),
       ),
+      // Stalled warnings indicator
+      snap.stalled.length > 0
+        ? h(
+            'div',
+            {
+              style: {
+                marginTop: 8,
+                padding: '4px 10px',
+                borderRadius: 3,
+                background: 'rgba(255, 92, 92, 0.15)',
+                border: '1px solid rgba(255, 92, 92, 0.4)',
+                fontSize: 11,
+                color: '#FF5C5C',
+                fontWeight: 600,
+              },
+            },
+            `⚠️ ${snap.stalled.length} STALLED FIBER(S)`,
+          )
+        : null,
     ),
 
     // Main Interactive PCB Board Viewport
@@ -203,62 +178,14 @@ export function InspectorPanel({ ctx }: { ctx: Context }): ReactElement {
       onPanChange: setPan,
     }),
 
-    // Bottom-Left Technical Badges (EC1, EC2)
-    h(
-      'div',
-      {
-        style: {
-          position: 'absolute',
-          bottom: 20,
-          left: 24,
-          zIndex: 40,
-          display: 'flex',
-          gap: 6,
-          pointerEvents: 'none',
-        },
-      },
-      h(
-        'div',
-        {
-          style: {
-            background: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid #10B981',
-            color: '#10B981',
-            fontSize: 10,
-            fontWeight: 700,
-            padding: '2px 6px',
-            borderRadius: 2,
-            letterSpacing: 1,
-          },
-        },
-        'EC1',
-      ),
-      h(
-        'div',
-        {
-          style: {
-            background: 'rgba(56, 189, 248, 0.15)',
-            border: '1px solid #38BDF8',
-            color: '#38BDF8',
-            fontSize: 10,
-            fontWeight: 700,
-            padding: '2px 6px',
-            borderRadius: 2,
-            letterSpacing: 1,
-          },
-        },
-        'EC2',
-      ),
-    ),
-
     // Bottom-Right Cybernetic View Controls (+, −, Fit, Reset)
     h(
       'div',
       {
         style: {
           position: 'absolute',
-          bottom: 20,
-          right: 24,
+          bottom: 24,
+          right: 28,
           zIndex: 40,
           display: 'flex',
           gap: 6,
@@ -350,8 +277,6 @@ export function InspectorPanel({ ctx }: { ctx: Context }): ReactElement {
     }),
 
     // Fiber Diagnostic Telemetry (Accessible & Test-Complete DOM Representation)
-    // Ensures tests and tools checking HTML markup for fiber names, states,
-    // and stalled "waiting ..." conditions find them accurately.
     h(
       'div',
       {
@@ -369,7 +294,6 @@ export function InspectorPanel({ ctx }: { ctx: Context }): ReactElement {
       },
       ...nodes.map((node) => {
         const f = node.fiber
-        if (!f) return null
         return h(
           'div',
           { key: node.id },
