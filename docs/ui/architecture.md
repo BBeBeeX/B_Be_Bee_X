@@ -382,11 +382,11 @@ The desktop shell organizes primary navigation between the left sidebar and the 
      - Structured as a 2-row × 2-column grid:
        - **Row 1**: Left header: "搜索范围" (`Search Scope`); Right header: "搜索历史" (`Search History`) accompanied by a subtle, high-transparency "清空" (`Clear`) button (`rgba(255, 255, 255, 0.4)`).
        - **Row 2**:
-         - *Left cell (Search Scope)*: Third-party music source toggle buttons connected to `useSearchSourceSelection(ctx)`. Renders individual source interface chips (styled with active green `#1DB954` fill and black text) alongside "全部" (All) and "重置" (None) batch toggles. Source selections are persisted as exclusions in `localStorage` (`bbebee_search_sources_excluded`) so newly installed sources participate automatically.
-         - *Right cell (Search History)*: Interactive history tags stored in `localStorage` (`bbebee_search_history`, max 10 entries). Clicking any tag immediately executes that query. When history is empty, a subtle "暂无搜索历史" fallback is displayed.
-   - **Search Submission & Screen Routing**:
-     - Pressing `Enter`, clicking the shifted right search icon, or clicking a history tag commits the query into history, closes the matrix panel, and calls `navigate('sources.search', { query })`.
-     - `SearchScreen` (`plugin-sources-ui-desktop`) watches incoming `query` props via `useEffect` and automatically executes `search.searchAll(query)`.
+          - *Left cell (Search Scope)*: Third-party music source toggle buttons connected to `useSearchSourceSelection(ctx)`. Renders individual source interface chips (styled with active green `#1DB954` fill and black text) alongside "全部" (All) and "重置" (None) batch toggles. Source selections are maintained in a shared store backed by `useSyncExternalStore` and persisted as exclusions in `localStorage` (`bbebee_search_sources_excluded`) so that TopBar and `SearchScreen` stay strictly synchronized bi-directionally, and newly installed sources participate automatically.
+          - *Right cell (Search History)*: Interactive history tags stored in `localStorage` (`bbebee_search_history`, max 10 entries). Clicking any tag immediately executes that query. When history is empty, a subtle "暂无搜索历史" fallback is displayed.
+    - **Search Submission & Screen Routing**:
+      - Pressing `Enter`, clicking the shifted right search icon, or clicking a history tag commits the query into history, closes the matrix panel, and calls `navigate('sources.search', { query, sourceIds, typesBySource, searchTimestamp })`.
+      - `SearchScreen` (`plugin-sources-ui-desktop`) watches incoming `query`, `sourceIds`, `typesBySource`, and `searchTimestamp` props via `useEffect` and automatically executes `search.searchAll(query, { sourceIds, typesBySource })`, ensuring search scope restrictions chosen in TopBar take immediate effect on the search screen.
 
 3. **TopBar User Profile & Settings Access**:
    - The user profile avatar icon is anchored in the right cluster of the TopBar.

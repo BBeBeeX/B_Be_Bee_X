@@ -17,7 +17,7 @@ import {
 } from 'react'
 import type { Context } from 'cordis'
 import type { RouteContribution, SettingsContribution } from '@BBeBee/protocol'
-import { TopBar, WindowControls, type ElectronCSSProperties } from './TopBar.js'
+import { TopBar, WindowControls, type ElectronCSSProperties, type TopBarProps } from './TopBar.js'
 
 /** What the sidebar can navigate to: a route, or a settings page. */
 interface Entry {
@@ -384,8 +384,11 @@ export function Shell({ ctx }: { ctx: Context }) {
       onBack: handleBack,
       onForward: handleForward,
       onHome: handleHome,
-      onSearch: (query: string) => {
-        navigateTo('sources.search', { query })
+      onSearch: (
+        query: string,
+        opts?: Parameters<NonNullable<TopBarProps['onSearch']>>[1],
+      ) => {
+        navigateTo('sources.search', { query, ...opts, searchTimestamp: Date.now() })
       },
       onOpenSettings: () => {
         navigateTo('settings.view')

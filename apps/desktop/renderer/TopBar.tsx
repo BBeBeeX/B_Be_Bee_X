@@ -12,7 +12,7 @@
 
 import { createElement as h, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import type { Context } from 'cordis'
-import { useSearchSourceSelection } from '@BBeBee/plugin-sources/hooks'
+import { useSearchSourceSelection, type SearchInterfaceKind } from '@BBeBee/plugin-sources/hooks'
 
 export interface ElectronCSSProperties extends CSSProperties {
   WebkitAppRegion?: 'drag' | 'no-drag'
@@ -217,7 +217,13 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
 export interface TopBarProps {
   ctx: Context
   onHome?: () => void
-  onSearch?: (query: string) => void
+  onSearch?: (
+    query: string,
+    opts?: {
+      sourceIds?: readonly string[]
+      typesBySource?: Readonly<Record<string, readonly SearchInterfaceKind[]>>
+    },
+  ) => void
   onOpenSettings?: () => void
   canGoBack?: boolean
   canGoForward?: boolean
@@ -281,7 +287,10 @@ export function TopBar({
       // ignore storage errors
     }
     setSearchActive(false)
-    onSearch?.(trimmed)
+    onSearch?.(trimmed, {
+      sourceIds: selection.selectedIds,
+      typesBySource: selection.typesBySource,
+    })
   }
 
   const handleClearHistory = () => {
@@ -918,28 +927,36 @@ export function TopBar({
                               border: `1px solid ${
                                 selected ? 'transparent' : 'rgba(255, 255, 255, 0.15)'
                               }`,
-                              background: selected ? '#6C5CE7' : 'rgba(255, 255, 255, 0.05)',
+                              background: selected ? '#1DB954' : 'rgba(255, 255, 255, 0.05)',
                               color: selected
-                                ? '#FFFFFF'
+                                ? '#000000'
                                 : disabled
                                   ? 'rgba(255, 255, 255, 0.3)'
                                   : 'rgba(255, 255, 255, 0.75)',
                               fontSize: 11,
-                              fontWeight: 500,
+                              fontWeight: selected ? 700 : 500,
                               cursor: disabled ? 'not-allowed' : 'pointer',
                               opacity: disabled ? 0.5 : 1,
                               transition: 'all 0.15s ease',
                             },
                             onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-                              if (!disabled && !selected) {
-                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)'
-                                e.currentTarget.style.color = '#FFFFFF'
+                              if (!disabled) {
+                                if (selected) {
+                                  e.currentTarget.style.backgroundColor = '#1ED760'
+                                } else {
+                                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)'
+                                  e.currentTarget.style.color = '#FFFFFF'
+                                }
                               }
                             },
                             onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-                              if (!disabled && !selected) {
-                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)'
-                                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.75)'
+                              if (!disabled) {
+                                if (selected) {
+                                  e.currentTarget.style.backgroundColor = '#1DB954'
+                                } else {
+                                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)'
+                                  e.currentTarget.style.color = 'rgba(255, 255, 255, 0.75)'
+                                }
                               }
                             },
                           },

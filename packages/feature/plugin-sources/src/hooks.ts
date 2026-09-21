@@ -7,7 +7,7 @@
  * blank pane and tells the user nothing.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import { SourceFormatError } from '@BBeBee/protocol'
@@ -468,9 +468,64 @@ export interface SearchSourceSelection {
  * instead of silently being left out. Toggling records only what the user
  * turned off, which cannot go stale when the source list changes underneath.
  */
+export const SEARCH_SOURCES_EXCLUDED_STORAGE_KEY = 'bbebee_search_sources_excluded'
+
+function loadExcludedFromStorage(): ReadonlySet<string> {
+  if (typeof window === 'undefined' || !window.localStorage) return new Set()
+  try {
+    const raw = window.localStorage.getItem(SEARCH_SOURCES_EXCLUDED_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        return new Set(parsed.filter((item): item is string => typeof item === 'string'))
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return new Set()
+}
+
+function saveExcludedToStorage(excluded: ReadonlySet<string>): void {
+  if (typeof window === 'undefined' || !window.localStorage) return
+  try {
+    window.localStorage.setItem(SEARCH_SOURCES_EXCLUDED_STORAGE_KEY, JSON.stringify([...excluded]))
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+let memoryExcluded: ReadonlySet<string> = loadExcludedFromStorage()
+const excludedListeners = new Set<() => void>()
+
+function updateExcluded(next: ReadonlySet<string> | ((prev: ReadonlySet<string>) => ReadonlySet<string>)): void {
+  const resolved = typeof next === 'function' ? next(memoryExcluded) : next
+  memoryExcluded = resolved
+  saveExcludedToStorage(resolved)
+  for (const listener of excludedListeners) {
+    listener()
+  }
+}
+
+function subscribeExcluded(listener: () => void): () => void {
+  excludedListeners.add(listener)
+  return () => {
+    excludedListeners.delete(listener)
+  }
+}
+
+function getExcludedSnapshot(): ReadonlySet<string> {
+  return memoryExcluded
+}
+
+/** Reset helper for testing or storage clearing. */
+export function resetSearchSourceSelection(next?: ReadonlySet<string>): void {
+  updateExcluded(next ?? loadExcludedFromStorage())
+}
+
 export function useSearchSourceSelection(ctx: Context): SearchSourceSelection {
   const options = useSearchSourceOptions(ctx)
-  const [excluded, setExcluded] = useState<ReadonlySet<string>>(() => new Set())
+  const excluded = useSyncExternalStore(subscribeExcluded, getExcludedSnapshot, getExcludedSnapshot)
 
   const interfaces = useMemo(() => options.flatMap((option) => option.interfaces), [options])
   const searchable = useMemo(() => interfaces.filter((iface) => iface.searchable), [interfaces])
@@ -501,7 +556,7 @@ export function useSearchSourceSelection(ctx: Context): SearchSourceSelection {
   const allSelected = searchable.length > 0 && searchable.every((iface) => !excluded.has(iface.id))
 
   const toggleInterface = useCallback((id: string) => {
-    setExcluded((prev) => {
+    updateExcluded((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -510,7 +565,7 @@ export function useSearchSourceSelection(ctx: Context): SearchSourceSelection {
   }, [])
 
   const toggleAll = useCallback(() => {
-    setExcluded(allSelected ? new Set(searchable.map((iface) => iface.id)) : new Set())
+    updateExcluded(allSelected ? new Set(searchable.map((iface) => iface.id)) : new Set())
   }, [allSelected, searchable])
 
   return {

@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { act, createElement as h } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Context, Service } from 'cordis'
+import { resetSearchSourceSelection } from '@BBeBee/plugin-sources/hooks'
 import { Shell } from './Shell.js'
 
 /** Just the slice of `ctx.ui` the shell reads. */
@@ -34,10 +35,18 @@ class UiStub extends Service {
 class SourcesStub extends Service {
   sources = [
     { id: 'bilibili', name: 'Bilibili', enabled: true },
+    { id: 'netease', name: 'Netease', enabled: true },
   ]
   providers = [
     {
       sourceId: 'bilibili',
+      search: vi.fn(),
+      capabilities: {
+        search: { tracks: true, artists: false, albums: false, playlists: false },
+      },
+    },
+    {
+      sourceId: 'netease',
       search: vi.fn(),
       capabilities: {
         search: { tracks: true, artists: false, albums: false, playlists: false },
@@ -522,13 +531,18 @@ describe('the desktop shell', () => {
 
   it('opens 2x2 matrix under topbar search with source toggle buttons and search history, and submits search', async () => {
     window.localStorage?.clear()
+    resetSearchSourceSelection(new Set())
 
     const { container } = await mount(
       (ui) => {
         ui.routes = [route('library.home', 'Library'), route('sources.search', 'Search Result Screen')]
         ui.views.set('library.home', () => h('p', null, 'Library Screen'))
-        ui.views.set('sources.search', ({ query }: { query?: string }) =>
-          h('div', { 'data-testid': 'search-screen' }, `Search Results for: ${query}`),
+        ui.views.set('sources.search', ({ query, sourceIds }: { query?: string; sourceIds?: readonly string[] }) =>
+          h(
+            'div',
+            { 'data-testid': 'search-screen', 'data-source-ids': sourceIds?.join(',') },
+            `Search Results for: ${query}`,
+          ),
         )
       },
       async (ctx) => {
@@ -557,22 +571,19 @@ describe('the desktop shell', () => {
     expect(matrix.textContent).toContain('暂无搜索历史')
 
     // Source toggle button exists from SourcesStub
-    const sourceToggle = container.querySelector('[data-testid="search-source-toggle-bilibili:track"]') as HTMLButtonElement
-    expect(sourceToggle).not.toBeNull()
-    expect(sourceToggle.getAttribute('aria-pressed')).toBe('true')
-    // Click to toggle off
-    await act(async () => {
-      sourceToggle.click()
-    })
-    expect(sourceToggle.getAttribute('aria-pressed')).toBe('false')
+    const bilibiliToggle = container.querySelector('[data-testid="search-source-toggle-bilibili:track"]') as HTMLButtonElement
+    const neteaseToggle = container.querySelector('[data-testid="search-source-toggle-netease:track"]') as HTMLButtonElement
+    expect(bilibiliToggle).not.toBeNull()
+    expect(neteaseToggle).not.toBeNull()
+    expect(bilibiliToggle.getAttribute('aria-pressed')).toBe('true')
+    expect(neteaseToggle.getAttribute('aria-pressed')).toBe('true')
 
-    // Toggle-all button exists
-    const toggleAllBtn = container.querySelector('[data-testid="search-source-toggle-all"]') as HTMLButtonElement
-    expect(toggleAllBtn).not.toBeNull()
+    // Click netease to toggle off
     await act(async () => {
-      toggleAllBtn.click()
+      neteaseToggle.click()
     })
-    expect(sourceToggle.getAttribute('aria-pressed')).toBe('true')
+    expect(neteaseToggle.getAttribute('aria-pressed')).toBe('false')
+    expect(bilibiliToggle.getAttribute('aria-pressed')).toBe('true')
 
     // 3. Click outside -> closes matrix and icon returns to left
     await act(async () => {
@@ -581,7 +592,7 @@ describe('the desktop shell', () => {
     expect(container.querySelector('[data-testid="search-matrix-panel"]')).toBeNull()
     expect(container.querySelector('button[aria-label="Submit search"]')).toBeNull()
 
-    // 4. Focus again, type query and press Enter -> submits search, navigates to sources.search
+    // 4. Focus again, type query and press Enter -> submits search, navigates to sources.search with restricted sources
     await act(async () => {
       searchInput.focus()
       const tracker = (searchInput as any)._valueTracker
@@ -601,9 +612,11 @@ describe('the desktop shell', () => {
       searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     })
 
-    // Navigated to search results screen
+    // Navigated to search results screen with restricted sources (only bilibili)
     expect(container.querySelector('[data-testid="search-matrix-panel"]')).toBeNull()
-    expect(container.querySelector('[data-testid="search-screen"]')).not.toBeNull()
+    const searchScreen = container.querySelector('[data-testid="search-screen"]') as HTMLElement
+    expect(searchScreen).not.toBeNull()
+    expect(searchScreen.getAttribute('data-source-ids')).toBe('bilibili')
     expect(container.textContent).toContain('Search Results for: Chopin')
 
     // 5. Open search again -> search history now has 'Chopin'

@@ -26,12 +26,16 @@ import type {
 } from '@BBeBee/protocol'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
+import { resetSearchSourceSelection } from '@BBeBee/plugin-sources/hooks'
 import { ImportScreen, SearchScreen, SourcesListScreen, TestScreen, inject } from './index.js'
 
 // Testing Library auto-cleans only with vitest globals, which this repo does
 // not enable. Without this every render stacks up in one document and
 // `screen` queries find the previous test's screen.
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  resetSearchSourceSelection(new Set())
+})
 
 /**
  * The context a view actually gets — scoped, not root.
@@ -463,6 +467,27 @@ describe('SearchScreen', () => {
 
       expect(seen).toHaveLength(1)
       expect(seen[0]!.types, 'artist half turned off').toEqual(['track'])
+    })
+  })
+
+  it('automatically searches and filters by query and sourceIds from external navigation', async () => {
+    const { ctx, admin } = await harness()
+    await withTwoSources(admin)
+    const [alpha, beta] = admin.sources.sources
+    registerHits(admin, alpha!.id, 'Alpha Song')
+    registerHits(admin, beta!.id, 'Beta Song')
+    await tick()
+
+    await withListLayout(async () => {
+      render(h(SearchScreen, { ctx, query: 'song', sourceIds: [beta!.id] }))
+      await act(async () => {
+        await tick()
+        await tick()
+      })
+
+      const shown = document.body.textContent ?? ''
+      expect(shown).toContain('Beta Song')
+      expect(shown, 'only the specified source was asked').not.toContain('Alpha Song')
     })
   })
 })

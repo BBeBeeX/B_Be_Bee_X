@@ -12,7 +12,7 @@
  * blank pane and tells the user nothing about which one they are looking at.
  */
 
-import { createElement as h, Fragment, useEffect, useState } from 'react'
+import { createElement as h, Fragment, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
@@ -30,6 +30,7 @@ import {
   useSourceSearch,
   useSourceTrace,
   useSources,
+  type SearchInterfaceKind,
   type SearchResultRow,
 } from '@BBeBee/plugin-sources/hooks'
 import {
@@ -76,10 +77,16 @@ function CachedTrackRow({ ctx, ...props }: TrackRowProps & { ctx: Context }): Re
 export function SearchScreen({
   ctx,
   query,
+  sourceIds: initialSourceIds,
+  typesBySource: initialTypesBySource,
+  searchTimestamp,
   onOpenAlbum,
 }: {
   ctx: Context
   query?: string
+  sourceIds?: readonly string[]
+  typesBySource?: Readonly<Record<string, readonly SearchInterfaceKind[]>>
+  searchTimestamp?: number
   onOpenAlbum?: (urn: string) => void
 }): ReactElement {
   const scheme = p()
@@ -88,19 +95,24 @@ export function SearchScreen({
   const selection = useSearchSourceSelection(ctx)
   const [text, setText] = useState(query ?? '')
   const menu = useTrackMenu(ctx)
+  const lastSearchKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (query && query.trim().length > 0) {
       const trimmed = query.trim()
       setText(trimmed)
-      if (selection.selectedIds.length > 0) {
+      const targetSourceIds = initialSourceIds ?? selection.selectedIds
+      const targetTypesBySource = initialTypesBySource ?? selection.typesBySource
+      const searchKey = `${trimmed}:${searchTimestamp ?? ''}:${targetSourceIds.join(',')}`
+      if (targetSourceIds.length > 0 && lastSearchKeyRef.current !== searchKey) {
+        lastSearchKeyRef.current = searchKey
         search.run(trimmed, {
-          sourceIds: selection.selectedIds,
-          typesBySource: selection.typesBySource,
+          sourceIds: targetSourceIds,
+          typesBySource: targetTypesBySource,
         })
       }
     }
-  }, [query])
+  }, [query, searchTimestamp, initialSourceIds, initialTypesBySource, selection.selectedIds, selection.typesBySource])
 
   const submitted = search.status !== 'idle'
   const busy = search.status === 'loading'
@@ -151,8 +163,14 @@ export function SearchScreen({
       'div',
       { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[2] } },
       h(
-        'div',
-        { style: { display: 'flex', alignItems: 'center', gap: tokens.space[2] } },
+        'form',
+        {
+          onSubmit: (e: { preventDefault: () => void }) => {
+            e.preventDefault()
+            submit()
+          },
+          style: { display: 'flex', alignItems: 'center', gap: tokens.space[2] },
+        },
         h(
           'div',
           { style: { flex: 1, minWidth: 0 } },

@@ -11,7 +11,7 @@
 
 import { act, render } from '@testing-library/react'
 import { createElement as h, type ReactElement } from 'react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { PathsNode } from '@BBeBee/core-paths-node'
 import { FsNode } from '@BBeBee/core-fs-node'
@@ -19,10 +19,14 @@ import { DbNode } from '@BBeBee/core-db-node'
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import plugin from './index.js'
 import {
+  useSearchSourceSelection,
+  resetSearchSourceSelection,
+  SEARCH_SOURCES_EXCLUDED_STORAGE_KEY,
   useSourceImport,
   useTracks,
   type ImportState,
   type PagedState,
+  type SearchSourceSelection,
 } from './hooks.js'
 
 async function harness(): Promise<Context> {
@@ -190,5 +194,118 @@ describe('paging, when two reads overlap', () => {
 
     const urns = state.items.map((t) => t.urn)
     expect(new Set(urns).size, 'no page appended twice').toBe(urns.length)
+  })
+})
+
+describe('useSearchSourceSelection', () => {
+  const store = new Map<string, string>()
+  const mockStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      store.set(k, String(v))
+    },
+    removeItem: (k: string) => {
+      store.delete(k)
+    },
+    clear: () => store.clear(),
+  }
+
+  beforeEach(() => {
+    Object.defineProperty(window, 'localStorage', {
+      value: mockStorage,
+      writable: true,
+      configurable: true,
+    })
+    store.clear()
+    resetSearchSourceSelection(new Set())
+  })
+
+  afterEach(() => {
+    store.clear()
+    resetSearchSourceSelection(new Set())
+  })
+
+  it('syncs exclusions across multiple instances and persists to localStorage', async () => {
+    const ctx = await harness()
+    await ctx.sources.import(
+      JSON.stringify([
+        {
+          sourceUrl: 'https://alpha.example',
+          sourceName: 'Alpha',
+          ruleStream: { url: '={{source.url}}/s' },
+        },
+        {
+          sourceUrl: 'https://beta.example',
+          sourceName: 'Beta',
+          ruleStream: { url: '={{source.url}}/s' },
+        },
+      ]),
+    )
+    const [alpha, beta] = ctx.sources.sources
+    const fakeSearchProvider = (sourceId: string): any => ({
+      sourceId,
+      displayName: sourceId,
+      capabilities: {
+        search: { tracks: true, albums: false, artists: false, playlists: false, fullText: false },
+        browse: false,
+        lyrics: false,
+        artwork: false,
+        library: { read: false, save: false, playlistWrite: false, playlistReorder: false },
+        streaming: { qualities: ['normal'], transcoding: false, seekable: true, urlExpiry: false },
+        regional: false,
+      },
+      auth: {
+        flow: { kind: 'none' },
+        status: { state: 'authenticated' },
+        async signIn() {},
+        async signOut() {},
+        onStatusChange: () => () => {},
+      },
+      search: async () => ({ tracks: { items: [], hasMore: false } }),
+      getTrack: async (id: string) => ({ urn: `BBeBee:${sourceId}:track:${id}` }),
+      resolveStream: async () => ({ kind: 'remote', target: '', seekable: true }),
+      ping: async () => true,
+    })
+    ctx.sources.register(fakeSearchProvider(alpha!.id))
+    ctx.sources.register(fakeSearchProvider(beta!.id))
+    await tick()
+
+    let sel1!: SearchSourceSelection
+    let sel2!: SearchSourceSelection
+    const probe1 = harnessFor(() => (sel1 = useSearchSourceSelection(ctx)))
+    const probe2 = harnessFor(() => (sel2 = useSearchSourceSelection(ctx)))
+
+    expect(sel1.options.length).toBe(2)
+    expect(sel1.allSelected).toBe(true)
+    expect(sel2.allSelected).toBe(true)
+
+    const alphaTrackId = sel1.interfaces[0]!.id
+
+    await act(async () => {
+      sel1.toggleInterface(alphaTrackId)
+    })
+    probe1.rerender()
+    probe2.rerender()
+
+    // Both instances are synchronized immediately
+    expect(sel1.isInterfaceSelected(alphaTrackId)).toBe(false)
+    expect(sel2.isInterfaceSelected(alphaTrackId)).toBe(false)
+    expect(sel1.allSelected).toBe(false)
+    expect(sel2.allSelected).toBe(false)
+
+    // Saved to localStorage
+    const saved = JSON.parse(window.localStorage.getItem(SEARCH_SOURCES_EXCLUDED_STORAGE_KEY) ?? '[]')
+    expect(saved).toContain(alphaTrackId)
+
+    // Toggle again re-enables
+    await act(async () => {
+      sel2.toggleInterface(alphaTrackId)
+    })
+    probe1.rerender()
+    probe2.rerender()
+
+    expect(sel1.isInterfaceSelected(alphaTrackId)).toBe(true)
+    expect(sel2.isInterfaceSelected(alphaTrackId)).toBe(true)
+    expect(sel1.allSelected).toBe(true)
   })
 })
