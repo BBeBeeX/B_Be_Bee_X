@@ -317,7 +317,7 @@ descriptors, nothing about them is privileged.
 | **Source list** | Enable, disable, reorder, group, and see each source's health badge; delete asks once and takes the cached catalogue with it ([06 §4.1](../sources/runtime.md#41-a-sources-lifetime)). The local-files row shows the scanner's folders with the same use/delete controls as **Music folders** | Ordinary list; parity is free |
 | **Import review** | Show what a pasted string contains — added / updated / rejected, and the host allowlist — before anything is written ([06 §9](../sources/authoring.md#9-importing-updating-and-sharing)) | The one screen that must never be skipped, so it is a modal route on both, not a slot |
 | **Test a source** | Run one feature — search, browse, album, artist, playlist, lyrics, library, stream, a raw HTTP request, or arbitrary script — and show every rule's input, output and timing ([06 §10](../sources/authoring.md#10-diagnosing-a-broken-source)) | The list of test areas is the source's derived capability list, so the screen shows what that source can actually do; the trace is a long scrollable log, the closest thing in the app to a developer tool, and the reason a user can fix a source themselves |
-| **Search** | One query fanned out over the selected sources with `searchAll`, one result section per source ([06 §4.1](../sources/runtime.md#41-a-sources-lifetime)) | Before the first search the bar and the interface toggles are a hero; afterwards both collapse to the top and the results take the height. **One toggle per interface, not per source** — a backend with a separate artist search shows `Source · Songs` and `Source · Artists` independently, and the selection reaches `searchAll` as `typesBySource`. Selections are stored as *exclusions*, so a source imported later joins the next search instead of being silently missed — and a source that failed, timed out or matched nothing keeps its own header instead of vanishing into a merged list |
+| **Search** | One query fanned out over the selected sources with `searchAll`, one result section per source ([06 §4.1](../sources/runtime.md#41-a-sources-lifetime)) | Before the first search the bar and the interface toggles are a hero; afterwards both collapse to the top and the results take the height. On desktop, search can also be executed directly from the persistent TopBar interactive input with its 2×2 matrix dropdown. The search screen (`sources.search`) accepts incoming `query` parameters and triggers `searchAll` automatically. **One toggle per interface, not per source** — a backend with a separate artist search shows `Source · Songs` and `Source · Artists` independently, and the selection reaches `searchAll` as `typesBySource`. Selections are stored as *exclusions*, so a source imported later joins the next search instead of being silently missed — and a source that failed, timed out or matched nothing keeps its own header instead of vanishing into a merged list |
 | **DSP & Equalizer** | 10-band graphic equalizer with preset switching (Flat, Bass Boost, Vocal, Treble), effect chain ordering, individual effect bypass toggles, and parameter editing (normalize, compressor, reverb, etc.). Contributed as `dsp.view`. Opened directly from the player or via an action button in the playback settings card. | Descriptors in `plugin-dsp-ui-*`. Desktop renders a dedicated view with vertical sliders; mobile provides touch-friendly vertical sliders, chip selectors, and full chain navigation |
 | **Settings Center** | All-in-one single-page scrolling settings center (`settings.view`) with text anchor tabs: General & Language, Playback & Audio, Desktop Lyrics (line mode, alignment, font, size, color picker, opacity, live preview), Global Hotkeys (master toggle + 10 keybindings), Network & Proxy (HTTP/HTTPS/SOCKS5, Google latency probe, per-source routing switches), Storage & Cache (directory badges with change/open folder buttons), and About with an Advanced Settings toggle guarding the Danger Zone. | Descriptors in `plugin-settings` and rendered by `plugin-settings-ui-*`. |
 | **Debug & Diagnostics** | Dedicated diagnostic hub comprising three views: `debug.view` (Debug status, environment specs for Node, Electron, OS, Chromium), `debug.logs` (Discover live ring-buffer logs with search, level filters, NDJSON copy, clear), and `debug.http-logs` (live inspection of third-party source network requests with method, status badge, latency, and URL). | Descriptors in `plugin-settings` and views in `plugin-settings-ui-desktop`. |
@@ -338,16 +338,13 @@ four above are the ones the string model added.
 | | Mobile | Desktop |
 |---|---|---|
 | Router | Expo Router (file-based) | A small in-memory router in `ui-kit-desktop` |
-| Primary chrome | Bottom tab bar + stack | Persistent sidebar + content pane |
-| Contributed routes | Registered as dynamic routes; `placement` decides tab bar vs. more-menu | Sidebar entries ordered by `order` |
+| Primary chrome | Bottom tab bar + stack | Persistent sidebar + content pane + TopBar |
+| Contributed routes | Registered as dynamic routes; `placement` decides tab bar vs. more-menu | Sidebar entries ordered by `order` (excluding Search & Settings, which use TopBar) |
 | Back | OS gesture / hardware button | In-app history, plus `Cmd/Ctrl+[` |
 | Deep links | `BBeBee://` scheme via `expo-linking` | Same scheme registered with the OS by `main` |
 
 Both shells implement the same `navigate(routeId, params)` used by commands, so a command works on
 either target without knowing which router is underneath.
-
----
-
 
 ---
 
@@ -358,7 +355,7 @@ The shells are thin. Everything below is genuinely platform-specific and belongs
 | | `apps/mobile` | `apps/desktop/renderer` |
 |---|---|---|
 | Boot | Create context, register `core-*-expo`, mount inside `ctx.inject(['ui'], …)` | Same with `core-*-node` |
-| Chrome | Tab bar, stack headers, safe-area insets | Sidebar, title bar, window controls, resizable panes |
+| Chrome | Tab bar, stack headers, safe-area insets | Sidebar, TopBar (central search + 2×2 matrix, profile avatar), window controls, resizable panes |
 | Player surface | Mini player above the tab bar; expands to full screen | Persistent bottom bar; optional detached mini-player window |
 | Platform-only | Gestures, haptics, pull-to-refresh | Right-click menus, drag-and-drop, keyboard shortcuts, tray, command palette |
 | Absent | No keyboard shortcuts, no tray | No gestures, no haptics |
@@ -366,6 +363,38 @@ The shells are thin. Everything below is genuinely platform-specific and belongs
 The desktop **command palette** (`Cmd/Ctrl+K`) is worth calling out: it renders
 `ctx.ui.commands` directly, so every plugin command is reachable with zero UI work from the plugin
 author. It is the highest-leverage piece of shell code in the project.
+
+### 7.1 Desktop Shell Navigation & TopBar Interaction
+
+The desktop shell organizes primary navigation between the left sidebar and the top bar:
+
+1. **Left Sidebar Filtering**:
+   - The left navigation rail is dedicated to browsing user content and collections (`library.view`, `history.view`, user playlists).
+   - Global utility entries — specifically `settings.view` (Settings Center) and `sources.search` (Search) — are intentionally excluded from sidebar route rendering to avoid visual clutter and maintain Spotify-style navigation parity.
+
+2. **TopBar Interactive Search & 2×2 Matrix Dropdown**:
+   - **Dynamic Search Icon Shift**:
+     - *Idle state*: The search icon (`🔍`) rests at the left padding (`left: 12px`).
+     - *Active / Focused state*: The icon smoothly slides across to the far right (`right: 12px`, with transition `all 200ms cubic-bezier(0.4, 0, 0.2, 1)`) and functions as an interactive submit button (`cursor: pointer`).
+     - *Dismissal*: Clicking outside the search area or pressing `Escape` unfocuses the input, dismisses the dropdown, and resets the icon back to the left edge.
+   - **2×2 Matrix Floating Dropdown Panel**:
+     - Automatically reveals directly beneath the input (`top: calc(100% + 8px)`, width 600px, z-index 1000) when the input is focused or query text is entered.
+     - Structured as a 2-row × 2-column grid:
+       - **Row 1**: Left header: "搜索范围" (`Search Scope`); Right header: "搜索历史" (`Search History`) accompanied by a subtle, high-transparency "清空" (`Clear`) button (`rgba(255, 255, 255, 0.4)`).
+       - **Row 2**:
+         - *Left cell (Search Scope)*: Third-party music source toggle buttons connected to `useSearchSourceSelection(ctx)`. Renders individual source interface chips (styled with active green `#1DB954` fill and black text) alongside "全部" (All) and "重置" (None) batch toggles. Source selections are persisted as exclusions in `localStorage` (`bbebee_search_sources_excluded`) so newly installed sources participate automatically.
+         - *Right cell (Search History)*: Interactive history tags stored in `localStorage` (`bbebee_search_history`, max 10 entries). Clicking any tag immediately executes that query. When history is empty, a subtle "暂无搜索历史" fallback is displayed.
+   - **Search Submission & Screen Routing**:
+     - Pressing `Enter`, clicking the shifted right search icon, or clicking a history tag commits the query into history, closes the matrix panel, and calls `navigate('sources.search', { query })`.
+     - `SearchScreen` (`plugin-sources-ui-desktop`) watches incoming `query` props via `useEffect` and automatically executes `search.searchAll(query)`.
+
+3. **TopBar User Profile & Settings Access**:
+   - The user profile avatar icon is anchored in the right cluster of the TopBar.
+   - Clicking the avatar navigates directly to `settings.view` (Settings Center).
+
+4. **Safe Service Access in UI Hooks**:
+   - Cordis Context instances are strictly scoped (`ctx.inject`). Accessing an un-injected property throws an error at runtime (`cannot get property "<name>" without inject`).
+   - Hooks in UI view layers inspecting optional services (e.g., `useSources`, `useLiveSourceIds`, and `useSearchSourceOptions`) must always access service instances safely using `serviceOf<T>(ctx, key)` instead of raw member access `(ctx as any)[key]`.
 
 ### Secondary windows and single-kernel preservation
 

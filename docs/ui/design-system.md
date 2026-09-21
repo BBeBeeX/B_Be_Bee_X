@@ -129,10 +129,36 @@ The scale relies on **"weight follows size"**:
     and quick actions (heart/loved toggle button `♥`/`♡` via `onToggleLoved`, context menu `···`) become visible.
   - When actively playing, the track title, track number, and equalizer icon illuminate in
     signature green (`#1DB954`).
-- **Scrubbers & sliders (`Slider`)**:
-  - Horizontal bar (`4px` height) with a subtle grey background track.
+- **Scrubbers & sliders (`Slider`, `VerticalSlider`)**:
+  - Horizontal & vertical bars with a slim `3px` track height/width and dark background track.
   - Played progress fill displays in `#FFFFFF` during passive display, but illuminates in signature
-    green (`#1DB954`) on pointer hover or active drag, accompanied by a circular thumb handle.
+    green (`#1DB954`) on pointer hover or active drag.
+  - **Hover-only knob affordance**: The circular thumb handle (`12px` diameter) is hidden during
+    idle state (`opacity: 0`) to preserve clean lines across dense views; it smoothly reveals
+    (`opacity: 1` over `150ms`) exclusively when the pointer hovers over the slider or during active drag.
+  - Progress bar (`ProgressBar`): Slim `3px` track matching slider dimensions.
+- **Global scrollbars**:
+  - Hidden track background (`background: transparent`) to prevent grey gutter bars from breaking
+    dark canvas continuity.
+  - Ultra-narrow width (`4px` width on desktop).
+  - High-transparency rounded thumb (`rgba(255, 255, 255, 0.2)` default, `rgba(255, 255, 255, 0.4)`
+    on hover, `border-radius: 999px`) ensuring effortless scrollbar dragging without visual clutter.
+- **TopBar search bar & dynamic icon shift**:
+  - Centered search input (`360px` default width, `max-width: 480px`, `height: 36px`, pill radius `radius.pill: 999`, background `#282828`).
+  - **Dynamic icon positioning**:
+    - *Idle state*: Search icon (`🔍`) sits at the left padding (`left: 12px`), with placeholder text `"搜索歌曲、专辑、艺人..."`.
+    - *Active / Focused state*: Search icon smoothly slides across the input to the far right (`right: 12px`, `all 200ms cubic-bezier(0.4, 0, 0.2, 1)`), functioning as a clickable search trigger.
+    - *Dismissal*: Clicking outside the search area or pressing `Escape` resets the icon back to the left.
+- **2×2 Search Matrix Floating Dropdown**:
+  - Positioned directly beneath the search input (`top: calc(100% + 8px)`, width `600px`, `z-index: 1000`).
+  - Elevated `#181818` card surface with `#282828` border, `12px` border-radius, and ambient drop shadow (`box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5)`).
+  - 2×2 Grid layout (`display: grid; grid-template-columns: 1fr 1fr; gap: 16px`):
+    - **Row 1 (Header row)**:
+      - Left column: "搜索范围" (`Search Scope`) section header (`xs: 11px`, `text.secondary`).
+      - Right column: "搜索历史" (`Search History`) section header (`xs: 11px`, `text.secondary`) with an adjacent high-transparency "清空" (`Clear`) button (`rgba(255, 255, 255, 0.4)`, hover `rgba(255, 255, 255, 0.8)`).
+    - **Row 2 (Content row)**:
+      - Left column (Sources): Interactive third-party music source toggle buttons connected to `useSearchSourceSelection(ctx)`. Renders individual source interface chips (active in signature green `#1DB954` fill with black text; inactive in `#282828` with grey text) alongside "全部" (All) and "重置" (None) batch toggles.
+      - Right column (History): Interactive search history tags stored in `localStorage` (`bbebee_search_history`, max 10 entries). Clicking any tag executes that search immediately. An empty state label ("暂无搜索历史") is displayed when history is empty.
 
 ### 6.5 Dynamic hero gradients & artwork presentation
 
@@ -150,8 +176,13 @@ The scale relies on **"weight follows size"**:
 ### 6.6 Shell structure & layout paradigms
 
 - **Desktop Shell**:
-  - **Left navigation rail / sidebar (sunken `#000000`)**: Persistent navigation shortcuts (Home,
-    Search, Your Library) and scrollable playlist list.
+  - **Left navigation rail / sidebar (sunken `#000000`)**: Dedicated to browsing user content and
+    collections (Home / Your Library, History, scrollable playlist list). Global utility routes
+    (Search and Settings) are intentionally excluded from the sidebar.
+  - **TopBar (sunken `#000000` / `#121212`)**: Spans window title chrome.
+    Left: Window navigation history buttons (Back/Forward).
+    Center: Search input with dynamic search icon shift and 2×2 matrix dropdown (Search Scope sources + Search History).
+    Right: User profile avatar button linking directly to Settings Center (`settings.view`).
   - **Center main content card (`#121212`, rounded corners)**: Scrollable canvas hosting the
     dynamic gradient hero header, action bar (large green circular play button, heart/save, `···`),
     and virtualized track list or media card grid. The Library view organizes items through

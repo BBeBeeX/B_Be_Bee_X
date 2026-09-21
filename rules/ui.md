@@ -78,7 +78,17 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 ### Controls & Micro-interactions
 - Controls are **pill-shaped (`radius.pill: 999`)**; buttons grow slightly on hover (`scale(1.04)` over 120ms).
 - Track rows: 56px height, show play toggle on hover, active playing track glows green (`#1DB954`) with an equalizer icon.
-- Sliders: subtle grey track, filled with green (`#1DB954`), circular thumb.
+- Sliders: slim 3px track height, subtle dark track, filled with green (`#1DB954`). Circular thumb handle is hidden on idle (`opacity: 0`) and smoothly reveals on hover or active dragging (`opacity: 1`).
+- Scrollbars: 4px width/height, transparent track background, high-transparency thumb (`rgba(255, 255, 255, 0.2)` default, `0.4` on hover).
+- TopBar Search & 2×2 Matrix:
+  - Centered input in TopBar with dynamic icon transition (idle: left `12px`; active/focused: slides to far right `12px` as a clickable submit button; resets on outside-click or Escape).
+  - 2×2 Matrix floating dropdown reveals below input:
+    - Row 1: "搜索范围" (`Search Scope`) | "搜索历史" (`Search History`) + high-transparency "清空" (`Clear`) button.
+    - Row 2: Third-party music source toggle buttons (via `useSearchSourceSelection(ctx)` with all/none toggles) | Search history tags (saved in `localStorage`, click to execute).
+  - Enter, clicking the right search icon, or selecting a history tag commits to history and routes to `sources.search` with `{ query }`. `SearchScreen` automatically runs `searchAll(query)`.
+- Sidebar & Navigation Exclusions:
+  - Left navigation rail strictly hosts content and library browsing (`library.view`, `history.view`, playlists).
+  - `settings.view` and `sources.search` are explicitly excluded from sidebar rendering. Settings is opened via the TopBar user avatar; Search is driven by the TopBar search bar.
 - Bottom player bar: Center cluster order is `[PlayMode] [Previous] [Play/Pause] [Next] [Volume]`. Play mode cycles sequence/single-loop/list-loop/shuffle. Volume icon indicates sound state (muted 'x' or loudness waves) and clicks to pop up a vertical volume bar with a bottom mute toggle.
 
 ### Artwork & Fallback
@@ -109,7 +119,7 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 - **Global Hotkeys**: Master toggle (enabled by default) and 10 standard media/navigation bindings (`togglePlay`, `prev`, `next`, `volumeUp`, `volumeDown`, `seekForward`, `seekBackward`, `toggleLyrics`, `toggleApp`, `favorite`), backed by `ctx.device.registerHotkey`.
 - **Network & Proxy**: Master toggle, protocol (HTTP/HTTPS/SOCKS5), host/port, latency probe button targeting Google (`https://www.google.com/generate_204`), and per-source proxy bypass switches embedded directly within the proxy card.
 - **Storage & Cache**: Download and Cache directories with path badges, native folder picker (`dialog.pickDirectory`), and directory opener (`shell.openPath`).
-- **About & Danger Zone**: App metadata, followed by an "Advanced Settings" checkbox-style toggle button that guards the Danger Zone (settings reset and navigation to `debug.view`).
+- **About & Advanced Settings (Diagnostics Guard)**: App metadata, followed by an "Advanced Settings" ("高级设置") expandable toggle button that houses Developer Diagnostics (`debug.view`, `debug.logs`, `debug.http-logs`) and the Danger Zone (settings reset), keeping primary settings clean.
 
 ### Diagnostics System
 - `debug.view`: Debug mode indicator, environment specs (Node, Electron, OS, Chromium, paths), and quick links to log screens.
