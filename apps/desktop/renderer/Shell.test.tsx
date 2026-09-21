@@ -412,5 +412,64 @@ describe('the desktop shell', () => {
     expect(nav?.textContent).not.toContain('音频效果与均衡器')
     expect(nav?.textContent).toContain('Custom Setting')
   })
+
+  it('toggles right-side queue aside panel without replacing the main view', async () => {
+    const { container, ctx } = await mount((ui) => {
+      ui.routes = [route('library.home', 'Library')]
+      ui.views.set('library.home', () => h('div', { 'data-testid': 'main-library' }, 'Main Library Content'))
+      ui.views.set('queue.view', ({ onClose }: { onClose?: () => void }) =>
+        h(
+          'div',
+          { 'data-testid': 'queue-content' },
+          'Queue Aside Content',
+          h('button', { 'aria-label': 'Close queue', onClick: onClose }, 'Close'),
+        ),
+      )
+      ui.views.set('now-playing.bar', () => h('div', null, 'Player Bar'))
+    })
+
+    const workspace = container.querySelector('nav')?.parentElement as HTMLElement
+    expect(workspace).not.toBeNull()
+    expect(workspace.style.gridTemplateColumns).toBe('240px 1fr')
+    expect(container.querySelector('[data-testid="queue-sidebar-panel"]')).toBeNull()
+    expect(container.textContent).toContain('Main Library Content')
+
+    // Navigate to queue.view toggles queue panel open
+    await act(async () => {
+      ctx.emit('ui/navigate', 'queue.view')
+    })
+
+    expect(workspace.style.gridTemplateColumns).toBe('240px 1fr minmax(260px, 28%)')
+    const aside = container.querySelector('[data-testid="queue-sidebar-panel"]') as HTMLElement
+    expect(aside).not.toBeNull()
+    expect(aside.textContent).toContain('Queue Aside Content')
+    // Main view is still mounted!
+    expect(container.querySelector('[data-testid="main-library"]')).not.toBeNull()
+    expect(container.textContent).toContain('Main Library Content')
+
+    // Clicking close in queue panel closes it
+    const closeBtn = aside.querySelector('button[aria-label="Close queue"]') as HTMLButtonElement
+    expect(closeBtn).not.toBeNull()
+    await act(async () => {
+      closeBtn.click()
+    })
+
+    expect(container.querySelector('[data-testid="queue-sidebar-panel"]')).toBeNull()
+    expect(workspace.style.gridTemplateColumns).toBe('240px 1fr')
+    expect(container.textContent).toContain('Main Library Content')
+
+    // Navigate to queue.view opens it again
+    await act(async () => {
+      ctx.emit('ui/navigate', 'queue.view')
+    })
+    expect(container.querySelector('[data-testid="queue-sidebar-panel"]')).not.toBeNull()
+
+    // Navigating to queue.view a second time toggles it closed
+    await act(async () => {
+      ctx.emit('ui/navigate', 'queue.view')
+    })
+    expect(container.querySelector('[data-testid="queue-sidebar-panel"]')).toBeNull()
+    expect(workspace.style.gridTemplateColumns).toBe('240px 1fr')
+  })
 })
 

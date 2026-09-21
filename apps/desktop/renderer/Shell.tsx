@@ -124,6 +124,7 @@ export function Shell({ ctx }: { ctx: Context }) {
   const defaultEntry = entries.find((e) => e.id !== 'now-playing.view') ?? entries[0]
   const [isFullscreenNowPlaying, setIsFullscreenNowPlaying] = useState(false)
   const [isBottomBarHovered, setIsBottomBarHovered] = useState(false)
+  const [isQueueOpen, setIsQueueOpen] = useState(false)
 
   const [navState, setNavState] = useState<{ history: HistoryItem[]; index: number }>({
     history: [],
@@ -188,6 +189,9 @@ export function Shell({ ctx }: { ctx: Context }) {
     const off = ctx.on('ui/navigate', (routeId: string, params?: Record<string, unknown>) => {
       if (routeId === 'now-playing.view') {
         setIsFullscreenNowPlaying(true)
+      } else if (routeId === 'queue.view') {
+        setIsFullscreenNowPlaying(false)
+        setIsQueueOpen((prev) => !prev)
       } else {
         navigateTo(routeId, params)
       }
@@ -212,6 +216,13 @@ export function Shell({ ctx }: { ctx: Context }) {
           }>
         | undefined)
     : undefined
+  const QueueView = ctx.ui.viewFor('queue.view') as
+    | ComponentType<{
+        ctx: Context
+        onClose?: () => void
+        [key: string]: unknown
+      }>
+    | undefined
   const BottomBar = ctx.ui.viewFor('now-playing.bar') as
     | ComponentType<{ ctx: Context; currentRoute?: string; onOpenNowPlaying?: () => void }>
     | undefined
@@ -325,7 +336,10 @@ export function Shell({ ctx }: { ctx: Context }) {
                   pointerEvents: isBottomBarHovered ? 'auto' : 'none',
                 },
               },
-              h(BottomBar, { ctx }),
+              h(BottomBar, {
+                ctx,
+                currentRoute: isQueueOpen ? 'queue.view' : currentId,
+              }),
             ),
           )
         : null,
@@ -366,7 +380,9 @@ export function Shell({ ctx }: { ctx: Context }) {
       {
         style: {
           display: 'grid',
-          gridTemplateColumns: '240px 1fr',
+          gridTemplateColumns: isQueueOpen
+            ? '240px 1fr minmax(260px, 28%)'
+            : '240px 1fr',
           gap: 8,
           padding: 8,
           flex: 1,
@@ -483,6 +499,34 @@ export function Shell({ ctx }: { ctx: Context }) {
                 : 'No plugin has contributed a route.',
             ),
       ),
+      isQueueOpen && QueueView
+        ? h(
+            'aside',
+            {
+              'data-testid': 'queue-sidebar-panel',
+              style: {
+                borderRadius: 8,
+                background: '#121212',
+                overflow: 'hidden',
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+              },
+            },
+            h(
+              ViewBoundary,
+              {
+                title: 'Queue',
+                onError: (error) =>
+                  ctx.logger.error(`ui: queue panel threw: ${error.stack ?? error.message}`),
+              },
+              h(QueueView, {
+                ctx,
+                onClose: () => setIsQueueOpen(false),
+              }),
+            ),
+          )
+        : null,
     ),
     BottomBar
       ? h(
@@ -490,7 +534,7 @@ export function Shell({ ctx }: { ctx: Context }) {
           { style: { background: '#000000' } },
           h(BottomBar, {
             ctx,
-            currentRoute: currentId,
+            currentRoute: isQueueOpen ? 'queue.view' : currentId,
             onOpenNowPlaying: () => setIsFullscreenNowPlaying(true),
           }),
         )

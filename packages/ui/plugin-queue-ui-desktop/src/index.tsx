@@ -521,7 +521,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        padding: '16px 24px',
+        padding: '16px 16px',
         boxSizing: 'border-box',
         overflowY: 'auto',
         background: '#121212',

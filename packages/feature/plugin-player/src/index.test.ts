@@ -1425,6 +1425,31 @@ describe('lifecycle', () => {
       expect(player.state.playMode).toBe('sequence')
     })
   })
+
+  describe('concurrency and race conditions', () => {
+    it('cancels in-flight start when playNow is called concurrently and keeps only the latest track', async () => {
+      const { player, audio } = await harness()
+      // Fire two rapid playNow calls concurrently
+      const p1 = player.playNow([urn('a')])
+      const p2 = player.playNow([urn('b')])
+      await Promise.all([p1, p2])
+
+      expect(player.state.trackUrn).toBe(urn('b'))
+      expect(player.state.status).toBe('playing')
+      expect(audio.playing?.src).toBe('file:///music/b.flac')
+    })
+
+    it('does not duplicate playback when play is invoked while loading', async () => {
+      const { player, audio } = await harness()
+      await player.playNow([urn('a')])
+      const p1 = player.play()
+      const p2 = player.play()
+      await Promise.all([p1, p2])
+      expect(player.state.trackUrn).toBe(urn('a'))
+      expect(player.state.status).toBe('playing')
+      expect(audio.playing?.src).toBe('file:///music/a.flac')
+    })
+  })
 })
 
 

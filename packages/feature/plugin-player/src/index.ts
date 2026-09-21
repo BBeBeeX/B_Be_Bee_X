@@ -203,6 +203,8 @@ export class Player extends Service implements PlayerService {
    */
   private fallbackDurationMs = 0
   private disposed = false
+  /** Monotonically increasing start token to cancel superseded in-flight loads. */
+  private startToken = 0
 
   /**
    * The plugin's own context, captured at construction.
@@ -487,7 +489,7 @@ export class Player extends Service implements PlayerService {
     )
     this.pausedByInterruption = false
     this.playIntent = true
-    if (this.transport.status === 'playing') return
+    if (this.transport.status === 'playing' || this.transport.status === 'loading') return
 
     const current = this.transport.currentItemId
       ? this.model.entry(this.transport.currentItemId)
@@ -536,6 +538,7 @@ export class Player extends Service implements PlayerService {
 
   stop(): void {
     this.ownCtx.logger.info('player: stop requested')
+    ++this.startToken
     this.pausedByInterruption = false
     this.playIntent = false
     void this.finishPlay({ completed: false, skipped: false })
@@ -700,9 +703,12 @@ export class Player extends Service implements PlayerService {
     }
 
     const items = deduplicated.map((urn) => this.newItem(urn, 'user', opts.context))
+    const token = ++this.startToken
     this.cancelPrefetch()
+    this.detachSource()
     this.model.replace(items)
     await this.store.replaceQueue(this.model.all)
+    if (this.disposed || this.startToken !== token) return
     this.emitQueueChanged()
 
     this.playIntent = true
@@ -879,15 +885,18 @@ export class Player extends Service implements PlayerService {
     entry: QueueEntry,
     opts: { positionMs?: number; autoplay: boolean },
   ): Promise<void> {
+    const token = ++this.startToken
     this.ownCtx.logger.info(
-      'player: starting track %s (itemId: %s, autoplay: %s, positionMs: %d)',
+      'player: starting track %s (itemId: %s, autoplay: %s, positionMs: %d, token: %d)',
       entry.item.trackUrn,
       entry.item.id,
       opts.autoplay,
       opts.positionMs ?? 0,
+      token,
     )
     const previousUrn = this.transport.trackUrn
     await this.finishPlay({ completed: false, skipped: true })
+    if (this.disposed || this.startToken !== token) return
     this.detachSource()
 
     this.set({
@@ -906,6 +915,10 @@ export class Player extends Service implements PlayerService {
     // resolve, no decode, no I/O between the two tracks.
     const ready = this.takePrefetched(entry.item.id)
     if (ready) {
+      if (this.disposed || this.startToken !== token) {
+        ready.dispose()
+        return
+      }
       this.ownCtx.logger.info('player: using prefetched source for %s', entry.item.trackUrn)
       this.attach(ready, entry, opts)
       return
@@ -922,13 +935,13 @@ export class Player extends Service implements PlayerService {
       // it beside the load costs nothing.
       const knownDuration = this.knownDurationMs(entry.item.trackUrn)
       const handle = await this.resolveStream(entry.item.trackUrn)
-      if (this.disposed || this.transport.currentItemId !== entry.item.id) return
+      if (this.disposed || this.startToken !== token || this.transport.currentItemId !== entry.item.id) return
       const source = await this.load(handle)
       const known = await knownDuration
       // Checked again after the second await: a start that begins while this
       // one is in flight has already claimed `currentItemId`, and attaching
       // here would play the wrong source.
-      if (this.disposed || this.transport.currentItemId !== entry.item.id) {
+      if (this.disposed || this.startToken !== token || this.transport.currentItemId !== entry.item.id) {
         source.dispose()
         return
       }
@@ -939,7 +952,8 @@ export class Player extends Service implements PlayerService {
       this.fallbackDurationMs = handle.seekable ? known : 0
       this.attach(source, entry, opts)
     } catch (error) {
-      await this.handleError(error, entry)
+      if (this.disposed || this.startToken !== token) return
+      await this.handleError(error, entry, token)
     }
   }
 
@@ -948,6 +962,9 @@ export class Player extends Service implements PlayerService {
     entry: QueueEntry,
     opts: { positionMs?: number; autoplay: boolean },
   ): void {
+    if (this.source && this.source !== source) {
+      this.detachSource()
+    }
     this.ownCtx.logger.info(
       'player: attached source for %s (durationMs: %d, willPlay: %s)',
       entry.item.trackUrn,
@@ -1332,7 +1349,7 @@ export class Player extends Service implements PlayerService {
 
   /* ── errors ────────────────────────────────────────────────────────── */
 
-  private async handleError(error: unknown, entry: QueueEntry): Promise<void> {
+  private async handleError(error: unknown, entry: QueueEntry, token: number): Promise<void> {
     const sourceError =
       error instanceof SourceError
         ? error
@@ -1350,6 +1367,7 @@ export class Player extends Service implements PlayerService {
       case 'auth':
         // Stop and let the source plugin re-authenticate. The queue survives.
         await this.ownCtx.serial('source/auth-expired', instanceOf(entry.item.trackUrn))
+        if (this.disposed || this.startToken !== token) return
         this.fail(sourceError, false)
         return
 
@@ -1358,11 +1376,12 @@ export class Player extends Service implements PlayerService {
         if (this.attempts === 0) {
           this.attempts++
           await delay(retryAfterMs)
-          if (this.transport.currentItemId !== entry.item.id) return
+          if (this.disposed || this.startToken !== token || this.transport.currentItemId !== entry.item.id) return
           await this.start(entry, { autoplay: true })
           return
         }
         this.attempts = 0
+        if (this.disposed || this.startToken !== token) return
         await this.skip(entry)
         return
       }
@@ -1371,19 +1390,21 @@ export class Player extends Service implements PlayerService {
         if (this.attempts < 3) {
           this.attempts++
           await delay(this.config.retryBackoffMs * 2 ** (this.attempts - 1))
-          if (this.transport.currentItemId !== entry.item.id) return
+          if (this.disposed || this.startToken !== token || this.transport.currentItemId !== entry.item.id) return
           await this.start(entry, { autoplay: true })
           return
         }
         // Out of attempts: pause with the queue intact so pressing play is all
         // it takes once connectivity is back.
         this.attempts = 0
+        if (this.disposed || this.startToken !== token) return
         this.fail(sourceError, true)
         return
       }
 
       case 'not-found':
         await this.store.markUnavailable(entry.item.trackUrn).catch(() => undefined)
+        if (this.disposed || this.startToken !== token) return
         await this.skip(entry)
         return
 
@@ -1392,6 +1413,7 @@ export class Player extends Service implements PlayerService {
       case 'unavailable':
       case 'provider':
       default:
+        if (this.disposed || this.startToken !== token) return
         await this.skip(entry)
     }
   }

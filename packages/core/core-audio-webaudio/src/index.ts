@@ -319,6 +319,11 @@ class StreamedHandle implements AudioSourceHandle {
     this.endedListeners.clear()
     this.stallListeners.clear()
     this.element.pause()
+    try {
+      this.element.src = ''
+    } catch {
+      // ignore in environments where setting src throws
+    }
     this.node.disconnect()
   }
 }

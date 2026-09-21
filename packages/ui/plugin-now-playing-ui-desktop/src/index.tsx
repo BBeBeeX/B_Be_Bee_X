@@ -137,11 +137,7 @@ function QueueButton({
   const isQueueActive = activeRoute === 'queue.view'
 
   const handleClick = () => {
-    if (isQueueActive) {
-      ctx.ui?.navigate?.('library.home')
-    } else {
-      ctx.ui?.navigate?.('queue.view')
-    }
+    ctx.ui?.navigate?.('queue.view')
   }
 
   return h(
