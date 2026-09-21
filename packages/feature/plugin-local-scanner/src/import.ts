@@ -101,12 +101,6 @@ export async function importTrack(
         now,
       ],
     )
-    await tx.exec(
-      `INSERT INTO library_items (urn, kind, source_id, added_at, pinned, sort_key)
-       VALUES (?, 'album', ?, ?, 0, ?)
-       ON CONFLICT(urn) DO UPDATE SET sort_key = excluded.sort_key`,
-      [albumUrn, sourceId, now, sortKey(meta.album) ?? null],
-    )
   }
 
   const trackUrn = urn(sourceId, 'track', trackId(input.uri))
@@ -144,13 +138,6 @@ export async function importTrack(
       artworkRef ?? null,
       now,
     ],
-  )
-
-  await tx.exec(
-    `INSERT INTO library_items (urn, kind, source_id, added_at, pinned, sort_key)
-     VALUES (?, 'track', ?, ?, 0, ?)
-     ON CONFLICT(urn) DO UPDATE SET sort_key = excluded.sort_key`,
-    [trackUrn, sourceId, now, sortKey(title) ?? null],
   )
 
   // A join with a role, not a string: "Artist feat. Other" as free text makes

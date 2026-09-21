@@ -160,6 +160,7 @@ export class Scanner extends Service implements ScannerService {
     )
 
     await this.ensureSourceRow()
+    await this.cleanUnlovedLibraryItems()
     this.specifiedDirList = await this.loadSpecifiedDirs()
     this.ownCtx.logger.info('scanner: initialised with %d specified dir(s)', this.specifiedDirList.length)
     await this.startWatching()
@@ -360,7 +361,6 @@ export class Scanner extends Service implements ScannerService {
         await this.scanSpecifiedDir(dir, summary, { full: opts.full ?? false, signal: abort.signal })
       }
       if (!abort.signal.aborted) {
-        await this.syncLibraryItems()
         await this.reconcileAvailability()
       }
     } finally {
@@ -663,23 +663,23 @@ export class Scanner extends Service implements ScannerService {
     if (removed.length > 0) this.ownCtx.emit('library/changed', 'track', removed)
   }
 
-  /** Ensure all scanned tracks and albums in the catalogue are recorded in library_items. */
-  private async syncLibraryItems(): Promise<void> {
-    await this.ownCtx.db.exec(
-      `INSERT OR IGNORE INTO library_items (urn, kind, source_id, added_at, pinned, sort_key)
-       SELECT t.urn, 'track', t.source_id, t.fetched_at, 0, t.sort_title
-       FROM tracks t
-       WHERE t.source_id = ?`,
-      [this.config.sourceId],
-    )
-    await this.ownCtx.db.exec(
-      `INSERT OR IGNORE INTO library_items (urn, kind, source_id, added_at, pinned, sort_key)
-       SELECT al.urn, 'album', al.source_id, al.fetched_at, 0, al.sort_title
-       FROM albums al
-       WHERE al.source_id = ?
-         AND EXISTS (SELECT 1 FROM tracks t WHERE t.album_urn = al.urn)`,
-      [this.config.sourceId],
-    )
+  /**
+   * Cleans up unloved local tracks that were mistakenly inserted into `library_items`
+   * by earlier scanner versions. `library_items` represents the user's curated favorites,
+   * so local tracks should only appear if explicitly favorited (track_stats.loved = 1).
+   */
+  private async cleanUnlovedLibraryItems(): Promise<void> {
+    try {
+      await this.ownCtx.db.exec(
+        `DELETE FROM library_items
+          WHERE kind = 'track'
+            AND (source_id = ? OR urn LIKE 'BBeBee:local:%')
+            AND urn NOT IN (SELECT urn FROM track_stats WHERE loved = 1)`,
+        [this.config.sourceId],
+      )
+    } catch (e) {
+      this.ownCtx.logger.warn(`scanner: failed to clean unloved library_items: ${String(e)}`)
+    }
   }
 
   /**

@@ -162,17 +162,10 @@ describe('scanning', () => {
     )
     expect(external?.value, 'recorded now so M2 can link on it').toBe('ISRC123')
 
-    const libraryTracks = await h.db.query<{ urn: string; kind: string; source_id: string }>(
-      "SELECT urn, kind, source_id FROM library_items WHERE kind = 'track'",
+    const libraryItems = await h.db.query<{ urn: string; kind: string; source_id: string }>(
+      'SELECT urn, kind, source_id FROM library_items',
     )
-    expect(libraryTracks).toHaveLength(2)
-    expect(libraryTracks[0]!.source_id).toBe('local')
-
-    const libraryAlbums = await h.db.query<{ urn: string; kind: string; source_id: string }>(
-      "SELECT urn, kind, source_id FROM library_items WHERE kind = 'album'",
-    )
-    expect(libraryAlbums).toHaveLength(1)
-    expect(libraryAlbums[0]!.source_id).toBe('local')
+    expect(libraryItems).toHaveLength(0)
 
     const artworkRow = await h.db.get<{ id: string; local_uri: string | null; bytes: number }>(
       'SELECT id, local_uri, bytes FROM artworks',
@@ -439,7 +432,7 @@ describe('scanning', () => {
       'a binding whose file is gone is deleted, not left to fail at play time',
     ).toHaveLength(0)
     expect(await h.db.query('SELECT uri FROM scan_entries WHERE uri = ?', [a])).toHaveLength(0)
-    expect(await h.db.query("SELECT urn FROM library_items WHERE kind = 'track'")).toHaveLength(1)
+    expect(await h.db.query('SELECT urn FROM library_items')).toHaveLength(0)
   })
 
   it('gives the same track the same URN on every scan', async () => {
@@ -456,7 +449,7 @@ describe('scanning', () => {
     expect(after[0]!.urn).toBe(before!.urn)
   })
 
-  it('manages library_items for scanned tracks and albums', async () => {
+  it('does not insert scanned items into library_items and cleans unloved items', async () => {
     const h = await harness()
     const t1 = await h.write('t1.mp3')
     const t2 = await h.write('t2.mp3')
@@ -467,30 +460,40 @@ describe('scanning', () => {
     await h.scanner.addSpecifiedDir(h.uri)
     await h.scanner.scan()
 
-    const itemsBefore = await h.db.query<{ urn: string; kind: string }>(
-      'SELECT urn, kind FROM library_items ORDER BY kind, urn',
+    expect(await h.db.query('SELECT urn FROM tracks')).toHaveLength(2)
+    expect(await h.db.query('SELECT urn FROM albums')).toHaveLength(1)
+    expect(await h.db.query('SELECT urn FROM library_items')).toHaveLength(0)
+
+    const b1 = await h.db.get<{ track_urn: string }>('SELECT track_urn FROM media_bindings WHERE uri = ?', [t1])
+    const b2 = await h.db.get<{ track_urn: string }>('SELECT track_urn FROM media_bindings WHERE uri = ?', [t2])
+    const urn1 = b1!.track_urn
+    const urn2 = b2!.track_urn
+
+    // Simulate an old database state where unloved track 1 and loved track 2 are in library_items
+    await h.db.exec(
+      `INSERT INTO library_items (urn, kind, source_id, added_at, pinned, sort_key)
+       VALUES (?, 'track', 'local', 1000, 0, 'Track 1'),
+              (?, 'track', 'local', 1000, 0, 'Track 2')`,
+      [urn1, urn2],
     )
-    expect(itemsBefore.filter((i) => i.kind === 'album')).toHaveLength(1)
-    expect(itemsBefore.filter((i) => i.kind === 'track')).toHaveLength(2)
-
-    // Remove one track: album should still be in library_items
-    await rm(new URL(t1))
-    await h.scanner.scan()
-
-    const itemsMid = await h.db.query<{ urn: string; kind: string }>(
-      'SELECT urn, kind FROM library_items ORDER BY kind, urn',
+    // Mark track 2 as loved in track_stats
+    await h.db.exec(
+      `INSERT INTO track_stats (urn, loved, play_count) VALUES (?, 1, 5)`,
+      [urn2],
     )
-    expect(itemsMid.filter((i) => i.kind === 'album')).toHaveLength(1)
-    expect(itemsMid.filter((i) => i.kind === 'track')).toHaveLength(1)
 
-    // Remove the remaining track: album should be removed from library_items
+    // Call cleanUnlovedLibraryItems
+    await (h.scanner as unknown as { cleanUnlovedLibraryItems(): Promise<void> }).cleanUnlovedLibraryItems()
+
+    const remaining = await h.db.query<{ urn: string }>('SELECT urn FROM library_items')
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0]!.urn).toBe(urn2)
+
+    // Removing the loved track file cleans up tracks and library_items
     await rm(new URL(t2))
     await h.scanner.scan()
-
-    const itemsAfter = await h.db.query<{ urn: string; kind: string }>(
-      'SELECT urn, kind FROM library_items',
-    )
-    expect(itemsAfter).toHaveLength(0)
+    expect(await h.db.query('SELECT urn FROM library_items')).toHaveLength(0)
+    expect(await h.db.query('SELECT urn FROM tracks WHERE urn = ?', [urn2])).toHaveLength(0)
   })
 
   it('checkpoints per batch and reports progress', async () => {

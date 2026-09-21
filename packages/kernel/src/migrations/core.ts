@@ -722,4 +722,14 @@ export const CORE_MIGRATIONS: Migration[] = [
     // whole bookkeeping table per track.
     up: [`CREATE INDEX idx_scan_entries_track ON scan_entries(track_urn)`],
   },
+  {
+    version: 5,
+    // Prune un-favorited local tracks mistakenly inserted into library_items
+    up: [
+      `DELETE FROM library_items
+        WHERE kind = 'track'
+          AND (source_id = 'local' OR urn LIKE 'BBeBee:local:%')
+          AND urn NOT IN (SELECT urn FROM track_stats WHERE loved = 1)`,
+    ],
+  },
 ]
