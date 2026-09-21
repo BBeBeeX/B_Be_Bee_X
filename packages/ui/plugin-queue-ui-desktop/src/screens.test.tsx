@@ -32,6 +32,7 @@ const IDLE: TransportState = {
   muted: false,
   repeat: 'off',
   shuffle: false,
+  playMode: 'sequence',
 }
 
 /** A `ctx.player` with just what the views read and call, and an optional `ctx.sources`. */

@@ -65,7 +65,19 @@ function useEntries(ctx: Context): { routes: readonly RouteContribution[]; entri
      * listing it advertises a screen that does not exist.
      */
     ...state.settings
-      .filter((s) => ctx.ui.viewFor(s.id) !== undefined)
+      .filter((s) => {
+        if (ctx.ui.viewFor(s.id) === undefined) return false
+        // Exclude settings pages managed inside the Settings dashboard (dsp, sources, scanner, downloads)
+        if (
+          s.id === 'dsp.settings' ||
+          s.id === 'sources.settings' ||
+          s.id === 'scanner.settings' ||
+          s.id === 'downloads.page'
+        ) {
+          return false
+        }
+        return true
+      })
       .map((s) => ({ id: s.id, title: s.title, group: 'settings' as const })),
   ]
   return { routes: state.routes, entries }

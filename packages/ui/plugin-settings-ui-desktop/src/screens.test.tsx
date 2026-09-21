@@ -530,6 +530,8 @@ describe('SettingsScreen', () => {
     expect(getByText('当前运行环境')).toBeTruthy()
     expect(getByText('系统日志 (Discover)')).toBeTruthy()
     expect(getByText('第三方源网络日志 (HTTP Logs)')).toBeTruthy()
+    expect(getByText('测试音源 (Test Sources)')).toBeTruthy()
+    expect(getByText('系统架构与插件拓扑 (Inspector)')).toBeTruthy()
 
     // Test navigation to Discover logs
     const discoverBtn = getByText('进入 Discover 日志页 →')
@@ -541,10 +543,42 @@ describe('SettingsScreen', () => {
     fireEvent.click(httpLogsBtn)
     expect(calls.includes('navigate:debug.http-logs')).toBe(true)
 
+    // Test navigation to Test Sources
+    const testSourcesBtn = getByText('进入音源测试 →')
+    fireEvent.click(testSourcesBtn)
+    expect(calls.includes('navigate:sources.test')).toBe(true)
+
+    // Test navigation to Inspector
+    const inspectorBtn = getByText('打开架构拓扑 (Inspector) →')
+    fireEvent.click(inspectorBtn)
+    expect(calls.includes('navigate:inspector.panel')).toBe(true)
+
     // Test back button
     const backBtn = getByText('← 返回设置')
     fireEvent.click(backBtn)
     expect(calls.includes('navigate:settings.view')).toBe(true)
+  })
+
+  it('renders SettingsScreen and navigates to import sources, history, and debug', async () => {
+    const { ctx, calls } = await harness()
+    const { getByText, findByText } = render(h(SettingsScreen, { ctx }))
+
+    expect(await findByText('常规与界面语言')).toBeTruthy()
+
+    // Test navigation to Import Sources
+    const importSourcesBtn = getByText('导入音源')
+    fireEvent.click(importSourcesBtn)
+    expect(calls.includes('navigate:sources.import')).toBe(true)
+
+    // Test navigation to Playback History
+    const historyBtn = getByText('查看播放历史')
+    fireEvent.click(historyBtn)
+    expect(calls.includes('navigate:history.view')).toBe(true)
+
+    // Test navigation to Debug center
+    const debugBtn = getByText('进入 Debug 调试中心 →')
+    fireEvent.click(debugBtn)
+    expect(calls.includes('navigate:debug.view')).toBe(true)
   })
 
   it('renders DebugScreen safely when process is undefined in browser sandbox', async () => {

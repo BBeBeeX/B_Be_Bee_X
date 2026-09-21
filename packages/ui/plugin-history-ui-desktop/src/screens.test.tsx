@@ -24,6 +24,7 @@ const IDLE: TransportState = {
   muted: false,
   repeat: 'off',
   shuffle: false,
+  playMode: 'sequence',
 }
 
 describe('PlayHeatmap logic', () => {

@@ -240,8 +240,8 @@ export function DebugScreen({ ctx }: { ctx: Context }): ReactElement {
       h(
         'div',
         { style: { marginBottom: 20 } },
-        h('div', { style: cardTitleStyle }, '日志面板与诊断工具'),
-        h('div', { style: cardSubtitleStyle }, '实时排查内核事件与第三方源网络流量'),
+        h('div', { style: cardTitleStyle }, '诊断工具与系统开发面板'),
+        h('div', { style: cardSubtitleStyle }, '排查内核事件、网络抓包、单步测试音源与监控系统架构拓扑'),
       ),
       h(
         'div',
@@ -294,6 +294,50 @@ export function DebugScreen({ ctx }: { ctx: Context }): ReactElement {
             variant: 'primary',
             children: '进入 HTTP Logs 页面 →',
             onPress: () => ui?.navigate?.('debug.http-logs'),
+          }),
+        ),
+        // Test Sources Card
+        h(
+          'div',
+          {
+            style: actionCardStyle,
+          },
+          h(
+            'div',
+            null,
+            h('div', { style: { fontSize: 16, fontWeight: 600, color: '#F8FAFC', marginBottom: 4 } }, '测试音源 (Test Sources)'),
+            h(
+              'div',
+              { style: { fontSize: 13, color: '#94A3B8', lineHeight: 1.5, marginBottom: 16 } },
+              '单步调试与验证第三方音源的搜索规则、播放流直链解析与内置 JS 沙箱执行。',
+            ),
+          ),
+          h(Button, {
+            variant: 'primary',
+            children: '进入音源测试 →',
+            onPress: () => ui?.navigate?.('sources.test'),
+          }),
+        ),
+        // Inspector Card
+        h(
+          'div',
+          {
+            style: actionCardStyle,
+          },
+          h(
+            'div',
+            null,
+            h('div', { style: { fontSize: 16, fontWeight: 600, color: '#F8FAFC', marginBottom: 4 } }, '系统架构与插件拓扑 (Inspector)'),
+            h(
+              'div',
+              { style: { fontSize: 13, color: '#94A3B8', lineHeight: 1.5, marginBottom: 16 } },
+              '以 PCB 电路主板与芯片走线视觉，实时监控系统 Layer 1~5 节点与 Cordis 服务装配。',
+            ),
+          ),
+          h(Button, {
+            variant: 'primary',
+            children: '打开架构拓扑 (Inspector) →',
+            onPress: () => ui?.navigate?.('inspector.panel'),
           }),
         ),
       ),

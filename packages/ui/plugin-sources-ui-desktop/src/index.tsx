@@ -1075,7 +1075,16 @@ export function TestScreen({ ctx, sourceId }: { ctx: Context; sourceId?: string 
           gap: tokens.space[3],
         },
       },
-      h(Text, { variant: 'lg' }, 'Test a source'),
+      h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+        h(Text, { variant: 'lg' }, 'Test a source'),
+        h(Button, {
+          variant: 'ghost',
+          children: '← 返回 Debug',
+          onPress: () => serviceOf<UiService>(ctx, 'ui')?.navigate?.('debug.view'),
+        }),
+      ),
     h(
       'label',
       { style: { display: 'flex', flexDirection: 'column', gap: tokens.space[1] } },

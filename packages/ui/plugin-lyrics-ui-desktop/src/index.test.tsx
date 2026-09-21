@@ -46,6 +46,7 @@ class PlayerStub extends Service {
     muted: false,
     repeat: 'off',
     shuffle: false,
+    playMode: 'sequence',
     nowPlaying: {
       title: 'Test Song',
       artist: 'Test Artist',

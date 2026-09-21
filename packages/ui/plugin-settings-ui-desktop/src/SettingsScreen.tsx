@@ -902,6 +902,24 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             }),
           }),
         ),
+        h(
+          SettingsSection,
+          {
+            title: '播放历史与听歌记录',
+            description: '查看历史听歌轨迹、播放次数统计与活跃热力图分布',
+          },
+          h(SettingsRow, {
+            title: '播放历史 (Playback History)',
+            description: '查看已播放曲目记录、按日期分布的听歌热力图及统计分析',
+            borderBottom: false,
+            action: h(Button, {
+              children: '查看播放历史',
+              onPress: () => {
+                serviceOf<UiService>(ctx, 'ui')?.navigate?.('history.view')
+              },
+            }),
+          }),
+        ),
       ),
 
       // 4. Desktop Lyrics Category Anchor (Requirement 6)
@@ -1295,11 +1313,21 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
           },
           h(SettingsRow, {
             title: '音乐来源配置 (Music Sources)',
-            description: '查看已启用的网络音源、进行源能力健康诊断或导入第三方源规则文件',
+            description: '查看已启用的网络音源、进行源能力健康诊断或管理第三方音源列表',
             action: h(Button, {
               children: '管理音乐源',
               onPress: () => {
                 serviceOf<UiService>(ctx, 'ui')?.navigate?.('sources.settings')
+              },
+            }),
+          }),
+          h(SettingsRow, {
+            title: '导入音源 (Import Sources)',
+            description: '从剪贴板文本、本地 JSON 规则文件或网络 URL 导入第三方音源脚本 (Legado 格式)',
+            action: h(Button, {
+              children: '导入音源',
+              onPress: () => {
+                serviceOf<UiService>(ctx, 'ui')?.navigate?.('sources.import')
               },
             }),
           }),
@@ -1463,6 +1491,25 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             borderBottom: false,
           }),
         ),
+        h(
+          SettingsSection,
+          {
+            title: '开发者与系统诊断',
+            description: '查看运行环境、Discover 实时日志、音源测试与微内核架构拓扑 (Inspector)',
+          },
+          h(SettingsRow, {
+            title: '调试与诊断中心 (Debug)',
+            description: '包含环境信息、Discover 系统日志、音源 HTTP 抓包、音源测试及 Inspector 架构拓扑',
+            borderBottom: false,
+            action: h(Button, {
+              variant: 'secondary',
+              children: '进入 Debug 调试中心 →',
+              onPress: () => {
+                serviceOf<UiService>(ctx, 'ui')?.navigate?.('debug.view')
+              },
+            }),
+          }),
+        ),
         // Advanced Settings Checkbox Toggle (Requirement 7)
         h(
           'div',
@@ -1512,19 +1559,8 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
               SettingsSection,
               {
                 title: '危险区域',
-                description: '底层调试与配置重置选项',
+                description: '底层配置重置选项',
               },
-              h(SettingsRow, {
-                title: '调试与诊断中心 (Debug)',
-                description: '进入应用调试页面，查看运行环境、Discover 系统日志与音源 HTTP 网络请求',
-                action: h(Button, {
-                  variant: 'secondary',
-                  children: '进入 Debug 页 →',
-                  onPress: () => {
-                    serviceOf<UiService>(ctx, 'ui')?.navigate?.('debug.view')
-                  },
-                }),
-              }),
               h(SettingsRow, {
                 title: '重置所有设置',
                 description: '将所有偏好项恢复为初始默认值（不会删除已下载的歌曲或歌单）',

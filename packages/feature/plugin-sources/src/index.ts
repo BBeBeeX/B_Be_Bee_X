@@ -327,6 +327,7 @@ export class Sources extends Service implements SourcesService {
           // Reached from the source list, not from the chrome: importing is
           // something you do once and then rarely, and a permanent tab for it
           // would sit unused next to the ones people press every day.
+          placement: [],
           order: 0,
         })
         yield scoped.ui.contribute({
@@ -334,6 +335,7 @@ export class Sources extends Service implements SourcesService {
           id: SOURCES_ROUTES.sourceTest,
           path: '/sources/test',
           title: 'Test a source',
+          placement: [],
           order: 0,
         })
       }, 'sources-ui-contributions'),

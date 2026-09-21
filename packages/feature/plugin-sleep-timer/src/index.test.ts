@@ -157,6 +157,7 @@ describe('plugin-sleep-timer', () => {
       muted: false,
       repeat: 'off',
       shuffle: false,
+      playMode: 'sequence',
     })
 
     expect(player.pauseCalls).toBe(1)

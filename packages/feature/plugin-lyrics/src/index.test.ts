@@ -13,6 +13,7 @@ class PlayerStub extends Service {
     muted: false,
     repeat: 'off',
     shuffle: false,
+    playMode: 'sequence',
   }
 
   constructor(ctx: Context) {

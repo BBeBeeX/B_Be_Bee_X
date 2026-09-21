@@ -17,7 +17,7 @@ export const name = 'plugin-history'
 /**
  * The route descriptor.
  *
- * `placement: ['sidebar', 'tab-bar']` places it in the desktop sidebar and mobile navigation.
+ * `placement: ['tab-bar']` places it in mobile navigation; on desktop it is accessed via Settings.
  */
 export async function apply(ctx: Context) {
   ctx.logger.info('plugin-history: loaded')
@@ -31,7 +31,7 @@ export async function apply(ctx: Context) {
         path: '/history',
         title: '播放历史',
         icon: 'history',
-        placement: ['sidebar', 'tab-bar'],
+        placement: ['tab-bar'],
         order: 25,
       })
     }, 'history-ui-contributions'),

@@ -19,8 +19,8 @@ import { Shell } from './Shell.js'
 /** Just the slice of `ctx.ui` the shell reads. */
 class UiStub extends Service {
   readonly views = new Map<string, unknown>()
-  routes: { kind: 'route'; id: string; path: string; title: string }[] = []
-  settings: never[] = []
+  routes: { kind: 'route'; id: string; path: string; title: string; placement?: string[] }[] = []
+  settings: { kind: 'settings'; id: string; section?: string; title: string }[] = []
 
   constructor(ctx: Context) {
     super(ctx, 'ui')
@@ -374,6 +374,43 @@ describe('the desktop shell', () => {
     })
     expect(container.querySelector('[data-testid="desktop-lyrics-widget"]')).not.toBeNull()
     expect(container.textContent).toContain('floating lyrics')
+  })
+
+  it('excludes dsp, music sources, music folders, downloads and non-sidebar routes from sidebar navigation', async () => {
+    const { container } = await mount((ui) => {
+      ui.routes = [
+        { kind: 'route', id: 'library.home', path: '/library', title: 'Library', placement: ['sidebar'] },
+        { kind: 'route', id: 'sources.import', path: '/sources/import', title: 'Import a source', placement: [] },
+        { kind: 'route', id: 'sources.test', path: '/sources/test', title: 'Test a source', placement: [] },
+        { kind: 'route', id: 'dsp', path: '/dsp', title: '音频效果 (DSP)', placement: [] },
+        { kind: 'route', id: 'inspector', path: '/inspector', title: 'Inspector', placement: [] },
+      ]
+      ui.views.set('library.home', () => h('p', null, 'Library Screen'))
+      ui.settings = [
+        { kind: 'settings', id: 'sources.settings', title: 'Music sources' },
+        { kind: 'settings', id: 'scanner.settings', title: 'Music folders' },
+        { kind: 'settings', id: 'downloads.page', title: 'Downloads' },
+        { kind: 'settings', id: 'dsp.settings', title: '音频效果与均衡器' },
+        { kind: 'settings', id: 'custom.settings', title: 'Custom Setting' },
+      ]
+      ui.views.set('sources.settings', () => h('p', null, 'sources'))
+      ui.views.set('scanner.settings', () => h('p', null, 'scanner'))
+      ui.views.set('downloads.page', () => h('p', null, 'downloads'))
+      ui.views.set('dsp.settings', () => h('p', null, 'dsp'))
+      ui.views.set('custom.settings', () => h('p', null, 'custom'))
+    })
+
+    const nav = container.querySelector('nav')
+    expect(nav?.textContent).toContain('Library')
+    expect(nav?.textContent).not.toContain('Import a source')
+    expect(nav?.textContent).not.toContain('Test a source')
+    expect(nav?.textContent).not.toContain('音频效果 (DSP)')
+    expect(nav?.textContent).not.toContain('Inspector')
+    expect(nav?.textContent).not.toContain('Music sources')
+    expect(nav?.textContent).not.toContain('Music folders')
+    expect(nav?.textContent).not.toContain('Downloads')
+    expect(nav?.textContent).not.toContain('音频效果与均衡器')
+    expect(nav?.textContent).toContain('Custom Setting')
   })
 })
 

@@ -479,6 +479,27 @@ function InspectorPanelInner({ ctx }: { ctx: Context }): ReactElement {
         h(
           'button',
           {
+            onClick: () => ctx.ui?.navigate?.('debug.view'),
+            title: '返回 Debug 调试页',
+            style: {
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              color: '#F0F4FF',
+              fontSize: 9.5,
+              fontWeight: 700,
+              padding: '3px 7px',
+              borderRadius: 3,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              letterSpacing: 0.6,
+              marginRight: 4,
+            },
+          },
+          '← DEBUG',
+        ),
+        h(
+          'button',
+          {
             onClick: () => handleSelectLayer(null),
             style: {
               background: activeLayerId === null ? 'rgba(89, 106, 255, 0.3)' : 'transparent',
@@ -833,7 +854,7 @@ export async function apply(ctx: Context) {
       path: '/inspector',
       title: 'Inspector',
       icon: 'bug',
-      placement: ['sidebar'],
+      placement: [],
       order: 900,
     })
   }, 'inspector-ui')
