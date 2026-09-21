@@ -52,7 +52,21 @@ function useEntries(ctx: Context): { routes: readonly RouteContribution[]; entri
 
   const entries: Entry[] = [
     ...state.routes
-      .filter((r) => r.placement?.includes('sidebar') ?? true)
+      .filter((r) => {
+        if (!(r.placement?.includes('sidebar') ?? true)) return false
+        if (
+          r.id === 'sources.search' ||
+          r.id === 'search' ||
+          r.id === 'settings.view' ||
+          r.id === 'settings.main' ||
+          r.id === 'settings' ||
+          r.title === 'Search' ||
+          r.title === '设置'
+        ) {
+          return false
+        }
+        return true
+      })
       .map((r) => ({ id: r.id, title: r.title, group: 'main' as const })),
     /*
      * Settings pages that actually have a view.
@@ -73,7 +87,11 @@ function useEntries(ctx: Context): { routes: readonly RouteContribution[]; entri
           s.id === 'settings.dsp' ||
           s.id === 'sources.settings' ||
           s.id === 'scanner.settings' ||
-          s.id === 'downloads.page'
+          s.id === 'downloads.page' ||
+          s.id === 'settings.view' ||
+          s.id === 'settings.main' ||
+          s.id === 'settings' ||
+          s.title === '设置'
         ) {
           return false
         }
@@ -367,10 +385,7 @@ export function Shell({ ctx }: { ctx: Context }) {
       onForward: handleForward,
       onHome: handleHome,
       onSearch: (query: string) => {
-        const libraryEntry = entries.find((e) => e.id === 'library.home') ?? defaultEntry
-        if (libraryEntry) {
-          navigateTo(libraryEntry.id, { query })
-        }
+        navigateTo('sources.search', { query })
       },
       onOpenSettings: () => {
         navigateTo('settings.view')

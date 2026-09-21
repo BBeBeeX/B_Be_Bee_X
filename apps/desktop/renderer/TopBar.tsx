@@ -10,8 +10,9 @@
  * while interactive controls opt out with no-drag.
  */
 
-import { createElement as h, useEffect, useState, type CSSProperties, type ReactElement } from 'react'
+import { createElement as h, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import type { Context } from 'cordis'
+import { useSearchSourceSelection } from '@BBeBee/plugin-sources/hooks'
 
 export interface ElectronCSSProperties extends CSSProperties {
   WebkitAppRegion?: 'drag' | 'no-drag'
@@ -225,7 +226,7 @@ export interface TopBarProps {
 }
 
 export function TopBar({
-  ctx: _ctx,
+  ctx,
   onHome,
   onSearch,
   onOpenSettings,
@@ -234,9 +235,63 @@ export function TopBar({
   onBack,
   onForward,
 }: TopBarProps): ReactElement {
+  const selection = useSearchSourceSelection(ctx)
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchFocused, setSearchFocused] = useState(false)
+  const [searchActive, setSearchActive] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const searchContainerRef = useRef<HTMLDivElement | null>(null)
+
+  const [history, setHistory] = useState<string[]>(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? window.localStorage?.getItem('bbebee_search_history') : null
+      return stored ? (JSON.parse(stored) as string[]) : []
+    } catch {
+      return []
+    }
+  })
+
+  useEffect(() => {
+    if (!searchActive) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setSearchActive(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSearchActive(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [searchActive])
+
+  const handleCommitSearch = (rawQuery: string) => {
+    const trimmed = rawQuery.trim()
+    if (!trimmed) return
+    const nextHistory = [trimmed, ...history.filter((item) => item !== trimmed)].slice(0, 10)
+    setHistory(nextHistory)
+    try {
+      window.localStorage?.setItem('bbebee_search_history', JSON.stringify(nextHistory))
+    } catch {
+      // ignore storage errors
+    }
+    setSearchActive(false)
+    onSearch?.(trimmed)
+  }
+
+  const handleClearHistory = () => {
+    setHistory([])
+    try {
+      window.localStorage?.removeItem('bbebee_search_history')
+    } catch {
+      // ignore storage errors
+    }
+  }
 
   const handleBack = () => {
     if (onBack) {
@@ -585,42 +640,46 @@ export function TopBar({
           h('polyline', { points: '9 22 9 12 15 12 15 22' }),
         ),
       ),
-      // Search Bar Container
+      // Search Bar Container with Dropdown
       h(
         'div',
         {
+          ref: searchContainerRef,
           style: {
+            position: 'relative',
             display: 'flex',
             alignItems: 'center',
             flex: 1,
             height: 36,
             borderRadius: 9999,
-            background: searchFocused ? '#282834' : '#1F1F28',
-            border: searchFocused ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid transparent',
-            paddingLeft: 12,
-            paddingRight: 10,
+            background: searchActive ? '#282834' : '#1F1F28',
+            border: searchActive ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid transparent',
+            paddingLeft: searchActive ? 14 : 12,
+            paddingRight: searchActive ? 6 : 10,
             gap: 8,
             transition: 'background-color 0.15s ease, border-color 0.15s ease',
           },
         },
-        // Search icon
-        h(
-          'svg',
-          {
-            width: 16,
-            height: 16,
-            viewBox: '0 0 24 24',
-            fill: 'none',
-            stroke: '#A0A0AE',
-            strokeWidth: 2.2,
-            strokeLinecap: 'round',
-            strokeLinejoin: 'round',
-            'aria-hidden': true,
-            style: { flexShrink: 0 },
-          },
-          h('circle', { cx: '11', cy: '11', r: '8' }),
-          h('line', { x1: '21', y1: '21', x2: '16.65', y2: '16.65' }),
-        ),
+        // When not active: Search icon at far left
+        !searchActive
+          ? h(
+              'svg',
+              {
+                width: 16,
+                height: 16,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: '#A0A0AE',
+                strokeWidth: 2.2,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round',
+                'aria-hidden': true,
+                style: { flexShrink: 0, pointerEvents: 'none' },
+              },
+              h('circle', { cx: '11', cy: '11', r: '8' }),
+              h('line', { x1: '21', y1: '21', x2: '16.65', y2: '16.65' }),
+            )
+          : null,
         // Search input
         h('input', {
           type: 'text',
@@ -629,10 +688,14 @@ export function TopBar({
           value: searchQuery,
           onChange: (e: { target: { value: string } }) => {
             setSearchQuery(e.target.value)
-            onSearch?.(e.target.value)
           },
-          onFocus: () => setSearchFocused(true),
-          onBlur: () => setSearchFocused(false),
+          onFocus: () => setSearchActive(true),
+          onClick: () => setSearchActive(true),
+          onKeyDown: (e: { key: string; currentTarget: HTMLInputElement }) => {
+            if (e.key === 'Enter') {
+              handleCommitSearch(e.currentTarget.value || searchQuery)
+            }
+          },
           style: {
             flex: 1,
             minWidth: 0,
@@ -651,9 +714,9 @@ export function TopBar({
               {
                 type: 'button',
                 'aria-label': 'Clear search',
-                onClick: () => {
+                onClick: (e: { stopPropagation: () => void }) => {
+                  e.stopPropagation()
                   setSearchQuery('')
-                  onSearch?.('')
                 },
                 style: {
                   background: 'transparent',
@@ -668,6 +731,321 @@ export function TopBar({
                 },
               },
               '×',
+            )
+          : null,
+        // When active: Search icon jumps to the far right as a clickable action button
+        searchActive
+          ? h(
+              'button',
+              {
+                type: 'button',
+                'aria-label': 'Submit search',
+                title: 'Search',
+                onClick: (e: { stopPropagation: () => void }) => {
+                  e.stopPropagation()
+                  const currentVal = (searchContainerRef.current?.querySelector('input') as HTMLInputElement)?.value
+                  handleCommitSearch(currentVal || searchQuery)
+                },
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: 'rgba(255, 255, 255, 0.12)',
+                  color: '#F5F5F7',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  transition: 'background-color 0.15s ease, transform 0.15s ease',
+                },
+                onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.22)'
+                  e.currentTarget.style.transform = 'scale(1.05)'
+                },
+                onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.12)'
+                  e.currentTarget.style.transform = 'scale(1)'
+                },
+              },
+              h(
+                'svg',
+                {
+                  width: 15,
+                  height: 15,
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: 2.2,
+                  strokeLinecap: 'round',
+                  strokeLinejoin: 'round',
+                  'aria-hidden': true,
+                },
+                h('circle', { cx: '11', cy: '11', r: '8' }),
+                h('line', { x1: '21', y1: '21', x2: '16.65', y2: '16.65' }),
+              ),
+            )
+          : null,
+        // 2×2 Matrix Dropdown Float
+        searchActive
+          ? h(
+              'div',
+              {
+                'data-testid': 'search-matrix-panel',
+                style: {
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  left: 0,
+                  right: 0,
+                  minWidth: 420,
+                  background: '#181822',
+                  borderRadius: 12,
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)',
+                  backdropFilter: 'blur(16px)',
+                  padding: 16,
+                  zIndex: 200,
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  columnGap: 20,
+                  rowGap: 12,
+                },
+              },
+              // Row 1 Left (1, 1): 搜索范围
+              h(
+                'div',
+                {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#A0A0AE',
+                    letterSpacing: 0.5,
+                  },
+                },
+                '搜索范围',
+              ),
+              // Row 1 Right (1, 2): 搜索历史 + 清空
+              h(
+                'div',
+                {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#A0A0AE',
+                    letterSpacing: 0.5,
+                  },
+                },
+                h('span', null, '搜索历史'),
+                history.length > 0
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        'aria-label': '清空搜索历史',
+                        onClick: (e: { stopPropagation: () => void }) => {
+                          e.stopPropagation()
+                          handleClearHistory()
+                        },
+                        style: {
+                          background: 'transparent',
+                          border: 'none',
+                          padding: '2px 6px',
+                          fontSize: 11,
+                          color: 'rgba(255, 255, 255, 0.4)',
+                          cursor: 'pointer',
+                          borderRadius: 4,
+                          transition: 'color 0.15s ease',
+                        },
+                        onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                          e.currentTarget.style.color = 'rgba(255, 255, 255, 0.85)'
+                        },
+                        onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                          e.currentTarget.style.color = 'rgba(255, 255, 255, 0.4)'
+                        },
+                      },
+                      '清空',
+                    )
+                  : null,
+              ),
+              // Row 2 Left (2, 1): 第三方源 toggle button
+              h(
+                'div',
+                {
+                  role: 'group',
+                  'aria-label': '第三方搜索源选择',
+                  style: {
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                    alignItems: 'flex-start',
+                    maxHeight: 180,
+                    overflowY: 'auto',
+                  },
+                },
+                selection.interfaces.length === 0
+                  ? h(
+                      'span',
+                      { style: { fontSize: 12, color: 'rgba(255, 255, 255, 0.35)', padding: '4px 0' } },
+                      '暂无第三方搜索源',
+                    )
+                  : [
+                      ...selection.interfaces.map((iface) => {
+                        const selected = selection.isInterfaceSelected(iface.id)
+                        const disabled = !iface.searchable
+                        const label = `${iface.sourceName} · ${iface.kind === 'track' ? '单曲' : '歌手'}`
+                        return h(
+                          'button',
+                          {
+                            key: iface.id,
+                            type: 'button',
+                            disabled,
+                            'aria-pressed': selected,
+                            'data-testid': `search-source-toggle-${iface.id}`,
+                            onClick: (e: { stopPropagation: () => void }) => {
+                              e.stopPropagation()
+                              if (!disabled) selection.toggleInterface(iface.id)
+                            },
+                            style: {
+                              minHeight: 24,
+                              padding: '2px 10px',
+                              borderRadius: 9999,
+                              border: `1px solid ${
+                                selected ? 'transparent' : 'rgba(255, 255, 255, 0.15)'
+                              }`,
+                              background: selected ? '#6C5CE7' : 'rgba(255, 255, 255, 0.05)',
+                              color: selected
+                                ? '#FFFFFF'
+                                : disabled
+                                  ? 'rgba(255, 255, 255, 0.3)'
+                                  : 'rgba(255, 255, 255, 0.75)',
+                              fontSize: 11,
+                              fontWeight: 500,
+                              cursor: disabled ? 'not-allowed' : 'pointer',
+                              opacity: disabled ? 0.5 : 1,
+                              transition: 'all 0.15s ease',
+                            },
+                            onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                              if (!disabled && !selected) {
+                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)'
+                                e.currentTarget.style.color = '#FFFFFF'
+                              }
+                            },
+                            onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                              if (!disabled && !selected) {
+                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)'
+                                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.75)'
+                              }
+                            },
+                          },
+                          label,
+                        )
+                      }),
+                      selection.interfaces.some((iface) => iface.searchable)
+                        ? h(
+                            'button',
+                            {
+                              key: 'toggle-all',
+                              type: 'button',
+                              'data-testid': 'search-source-toggle-all',
+                              onClick: (e: { stopPropagation: () => void }) => {
+                                e.stopPropagation()
+                                selection.toggleAll()
+                              },
+                              style: {
+                                minHeight: 24,
+                                padding: '2px 10px',
+                                borderRadius: 9999,
+                                border: '1px solid rgba(255, 255, 255, 0.15)',
+                                background: 'transparent',
+                                color: 'rgba(255, 255, 255, 0.6)',
+                                fontSize: 11,
+                                fontWeight: 500,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                              },
+                              onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)'
+                                e.currentTarget.style.color = '#FFFFFF'
+                              },
+                              onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)'
+                                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)'
+                              },
+                            },
+                            selection.allSelected ? '全不选' : '全选',
+                          )
+                        : null,
+                    ],
+              ),
+              // Row 2 Right (2, 2): 搜索历史 tags
+              h(
+                'div',
+                {
+                  role: 'group',
+                  'aria-label': '搜索历史列表',
+                  style: {
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                    alignItems: 'flex-start',
+                    maxHeight: 180,
+                    overflowY: 'auto',
+                  },
+                },
+                history.length === 0
+                  ? h(
+                      'span',
+                      { style: { fontSize: 12, color: 'rgba(255, 255, 255, 0.35)', padding: '4px 0' } },
+                      '暂无搜索历史',
+                    )
+                  : history.map((item) =>
+                      h(
+                        'button',
+                        {
+                          key: item,
+                          type: 'button',
+                          'data-testid': `search-history-item-${item}`,
+                          onClick: (e: { stopPropagation: () => void }) => {
+                            e.stopPropagation()
+                            setSearchQuery(item)
+                            handleCommitSearch(item)
+                          },
+                          style: {
+                            minHeight: 24,
+                            padding: '2px 10px',
+                            borderRadius: 9999,
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            background: 'rgba(255, 255, 255, 0.06)',
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            fontSize: 11,
+                            cursor: 'pointer',
+                            maxWidth: 160,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.15s ease',
+                          },
+                          onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)'
+                            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.12)'
+                            e.currentTarget.style.color = '#FFFFFF'
+                          },
+                          onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'
+                            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'
+                            e.currentTarget.style.color = 'rgba(255, 255, 255, 0.8)'
+                          },
+                        },
+                        item,
+                      ),
+                    ),
+              ),
             )
           : null,
       ),
@@ -690,6 +1068,7 @@ export function TopBar({
           type: 'button',
           'aria-label': 'User profile',
           title: 'Profile',
+          onClick: onOpenSettings,
           style: {
             display: 'flex',
             alignItems: 'center',

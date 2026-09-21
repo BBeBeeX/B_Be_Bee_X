@@ -31,9 +31,32 @@ class UiStub extends Service {
   }
 }
 
-async function mount(register: (ui: UiStub) => void) {
+class SourcesStub extends Service {
+  sources = [
+    { id: 'bilibili', name: 'Bilibili', enabled: true },
+  ]
+  providers = [
+    {
+      sourceId: 'bilibili',
+      search: vi.fn(),
+      capabilities: {
+        search: { tracks: true, artists: false, albums: false, playlists: false },
+      },
+    },
+  ]
+
+  constructor(ctx: Context) {
+    super(ctx, 'sources')
+  }
+}
+
+async function mount(
+  register: (ui: UiStub) => void,
+  setupCtx?: (ctx: Context) => void | Promise<void>,
+) {
   const ctx = new Context()
   await ctx.plugin(UiStub)
+  if (setupCtx) await setupCtx(ctx)
   await new Promise((resolve) => setTimeout(resolve, 10))
   register(ctx.ui as unknown as UiStub)
 
@@ -376,10 +399,12 @@ describe('the desktop shell', () => {
     expect(container.textContent).toContain('floating lyrics')
   })
 
-  it('excludes dsp, music sources, music folders, downloads and non-sidebar routes from sidebar navigation', async () => {
+  it('excludes dsp, music sources, music folders, downloads, settings and search from sidebar navigation', async () => {
     const { container } = await mount((ui) => {
       ui.routes = [
         { kind: 'route', id: 'library.home', path: '/library', title: 'Library', placement: ['sidebar'] },
+        { kind: 'route', id: 'sources.search', path: '/search', title: 'Search', placement: ['sidebar'] },
+        { kind: 'route', id: 'settings.view', path: '/settings', title: '设置', placement: ['sidebar'] },
         { kind: 'route', id: 'sources.import', path: '/sources/import', title: 'Import a source', placement: [] },
         { kind: 'route', id: 'sources.test', path: '/sources/test', title: 'Test a source', placement: [] },
         { kind: 'route', id: 'dsp', path: '/dsp', title: '音频效果 (DSP)', placement: [] },
@@ -392,6 +417,7 @@ describe('the desktop shell', () => {
         { kind: 'settings', id: 'downloads.page', title: 'Downloads' },
         { kind: 'settings', id: 'dsp.settings', title: '音频效果与均衡器' },
         { kind: 'settings', id: 'settings.dsp', title: '均衡器设置' },
+        { kind: 'settings', id: 'settings.view', title: '设置' },
         { kind: 'settings', id: 'custom.settings', title: 'Custom Setting' },
       ]
       ui.views.set('sources.settings', () => h('p', null, 'sources'))
@@ -399,11 +425,14 @@ describe('the desktop shell', () => {
       ui.views.set('downloads.page', () => h('p', null, 'downloads'))
       ui.views.set('dsp.settings', () => h('p', null, 'dsp'))
       ui.views.set('settings.dsp', () => h('p', null, 'dsp'))
+      ui.views.set('settings.view', () => h('p', null, 'settings'))
       ui.views.set('custom.settings', () => h('p', null, 'custom'))
     })
 
     const nav = container.querySelector('nav')
     expect(nav?.textContent).toContain('Library')
+    expect(nav?.textContent).not.toContain('Search')
+    expect(nav?.textContent).not.toContain('设置')
     expect(nav?.textContent).not.toContain('Import a source')
     expect(nav?.textContent).not.toContain('Test a source')
     expect(nav?.textContent).not.toContain('音频效果 (DSP)')
@@ -473,6 +502,135 @@ describe('the desktop shell', () => {
     })
     expect(container.querySelector('[data-testid="queue-sidebar-panel"]')).toBeNull()
     expect(workspace.style.gridTemplateColumns).toBe('240px 1fr')
+  })
+
+  it('navigates to settings.view when profile avatar is clicked', async () => {
+    const { container } = await mount((ui) => {
+      ui.routes = [route('home', 'Home'), route('settings.view', 'Settings Center')]
+      ui.views.set('home', () => h('p', null, 'Home Screen'))
+      ui.views.set('settings.view', () => h('div', { 'data-testid': 'settings-screen' }, 'Settings Center Content'))
+    })
+
+    const profileBtn = container.querySelector('button[aria-label="User profile"]') as HTMLButtonElement
+    expect(profileBtn).not.toBeNull()
+    await act(async () => {
+      profileBtn.click()
+    })
+    expect(container.querySelector('[data-testid="settings-screen"]')).not.toBeNull()
+    expect(container.textContent).toContain('Settings Center Content')
+  })
+
+  it('opens 2x2 matrix under topbar search with source toggle buttons and search history, and submits search', async () => {
+    window.localStorage?.clear()
+
+    const { container } = await mount(
+      (ui) => {
+        ui.routes = [route('library.home', 'Library'), route('sources.search', 'Search Result Screen')]
+        ui.views.set('library.home', () => h('p', null, 'Library Screen'))
+        ui.views.set('sources.search', ({ query }: { query?: string }) =>
+          h('div', { 'data-testid': 'search-screen' }, `Search Results for: ${query}`),
+        )
+      },
+      async (ctx) => {
+        await ctx.plugin(SourcesStub)
+      },
+    )
+
+    const searchInput = container.querySelector('input[aria-label="Search"]') as HTMLInputElement
+    expect(searchInput).not.toBeNull()
+
+    // 1. Initial state: search icon at left, submit button does not exist, matrix closed
+    expect(container.querySelector('button[aria-label="Submit search"]')).toBeNull()
+    expect(container.querySelector('[data-testid="search-matrix-panel"]')).toBeNull()
+
+    // 2. Focus search input -> search icon jumps to right, 2x2 matrix appears
+    await act(async () => {
+      searchInput.focus()
+    })
+
+    const submitBtn = container.querySelector('button[aria-label="Submit search"]') as HTMLButtonElement
+    expect(submitBtn).not.toBeNull()
+    const matrix = container.querySelector('[data-testid="search-matrix-panel"]') as HTMLElement
+    expect(matrix).not.toBeNull()
+    expect(matrix.textContent).toContain('搜索范围')
+    expect(matrix.textContent).toContain('搜索历史')
+    expect(matrix.textContent).toContain('暂无搜索历史')
+
+    // Source toggle button exists from SourcesStub
+    const sourceToggle = container.querySelector('[data-testid="search-source-toggle-bilibili:track"]') as HTMLButtonElement
+    expect(sourceToggle).not.toBeNull()
+    expect(sourceToggle.getAttribute('aria-pressed')).toBe('true')
+    // Click to toggle off
+    await act(async () => {
+      sourceToggle.click()
+    })
+    expect(sourceToggle.getAttribute('aria-pressed')).toBe('false')
+
+    // Toggle-all button exists
+    const toggleAllBtn = container.querySelector('[data-testid="search-source-toggle-all"]') as HTMLButtonElement
+    expect(toggleAllBtn).not.toBeNull()
+    await act(async () => {
+      toggleAllBtn.click()
+    })
+    expect(sourceToggle.getAttribute('aria-pressed')).toBe('true')
+
+    // 3. Click outside -> closes matrix and icon returns to left
+    await act(async () => {
+      document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    })
+    expect(container.querySelector('[data-testid="search-matrix-panel"]')).toBeNull()
+    expect(container.querySelector('button[aria-label="Submit search"]')).toBeNull()
+
+    // 4. Focus again, type query and press Enter -> submits search, navigates to sources.search
+    await act(async () => {
+      searchInput.focus()
+      const tracker = (searchInput as any)._valueTracker
+      if (tracker) {
+        tracker.setValue('')
+      }
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value',
+      )?.set
+      nativeInputValueSetter?.call(searchInput, 'Chopin')
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }))
+      searchInput.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    await act(async () => {
+      searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+
+    // Navigated to search results screen
+    expect(container.querySelector('[data-testid="search-matrix-panel"]')).toBeNull()
+    expect(container.querySelector('[data-testid="search-screen"]')).not.toBeNull()
+    expect(container.textContent).toContain('Search Results for: Chopin')
+
+    // 5. Open search again -> search history now has 'Chopin'
+    await act(async () => {
+      searchInput.click()
+    })
+    const historyItem = container.querySelector('[data-testid="search-history-item-Chopin"]') as HTMLButtonElement
+    expect(historyItem).not.toBeNull()
+
+    // 6. Test clicking history item searches again
+    await act(async () => {
+      historyItem.click()
+    })
+    expect(container.querySelector('[data-testid="search-matrix-panel"]')).toBeNull()
+    expect(container.textContent).toContain('Search Results for: Chopin')
+
+    // 7. Open search again and clear history
+    await act(async () => {
+      searchInput.click()
+    })
+    const clearHistoryBtn = container.querySelector('button[aria-label="清空搜索历史"]') as HTMLButtonElement
+    expect(clearHistoryBtn).not.toBeNull()
+    await act(async () => {
+      clearHistoryBtn.click()
+    })
+    expect(container.querySelector('[data-testid="search-history-item-Chopin"]')).toBeNull()
+    expect(container.textContent).toContain('暂无搜索历史')
   })
 })
 

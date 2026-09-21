@@ -20,6 +20,7 @@ import type {
   CatalogQuery,
   DebugStep,
   ImportReport,
+  MediaProvider,
   Paged,
   PlayerService,
   Playlist,
@@ -27,6 +28,7 @@ import type {
   ScanSpecifiedDir,
   ScannerService,
   SourceRecord,
+  SourcesService,
   Track,
   TraceEvent,
 } from '@BBeBee/protocol'
@@ -136,7 +138,7 @@ export function useSources(ctx: Context): readonly SourceRecord[] {
   return useServiceState(
     ctx,
     ['source/imported', 'source/changed', 'source/removed', 'source/registered', 'source/unregistered'],
-    () => ctx.sources.sources,
+    () => serviceOf<SourcesService>(ctx, 'sources')?.sources ?? [],
     { isEqual: shallowArrayEqual },
   )
 }
@@ -151,7 +153,7 @@ export function useLiveSourceIds(ctx: Context): readonly string[] {
   return useServiceState(
     ctx,
     ['source/registered', 'source/unregistered'],
-    () => ctx.sources.providers.map((p) => p.sourceId),
+    () => serviceOf<SourcesService>(ctx, 'sources')?.providers?.map((p) => p.sourceId) ?? [],
     { isEqual: shallowArrayEqual },
   )
 }
@@ -392,10 +394,10 @@ export interface SearchSourceOption {
  */
 export function useSearchSourceOptions(ctx: Context): readonly SearchSourceOption[] {
   const records = useSources(ctx)
-  const providers = useServiceState(
+  const providers = useServiceState<readonly MediaProvider[]>(
     ctx,
     ['source/registered', 'source/unregistered'],
-    () => ctx.sources.providers,
+    () => serviceOf<SourcesService>(ctx, 'sources')?.providers ?? [],
     { isEqual: shallowArrayEqual },
   )
   return useMemo(

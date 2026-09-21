@@ -84,10 +84,23 @@ export function SearchScreen({
 }): ReactElement {
   const scheme = p()
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
-  const selection = useSearchSourceSelection(ctx)
   const search = useSourceSearch(ctx)
+  const selection = useSearchSourceSelection(ctx)
   const [text, setText] = useState(query ?? '')
   const menu = useTrackMenu(ctx)
+
+  useEffect(() => {
+    if (query && query.trim().length > 0) {
+      const trimmed = query.trim()
+      setText(trimmed)
+      if (selection.selectedIds.length > 0) {
+        search.run(trimmed, {
+          sourceIds: selection.selectedIds,
+          typesBySource: selection.typesBySource,
+        })
+      }
+    }
+  }, [query])
 
   const submitted = search.status !== 'idle'
   const busy = search.status === 'loading'
