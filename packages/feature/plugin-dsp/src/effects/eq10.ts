@@ -1,9 +1,9 @@
 import type { EffectDefinition, EffectSegment } from '@BBeBee/protocol'
 import { createParamSchema } from './schema.js'
 
-export const EQ_BANDS = [60, 150, 400, 1000, 2400, 15000] as const
-export const EQ6_BANDS = EQ_BANDS
-export const EQ10_BANDS = EQ_BANDS
+export const EQ10_BANDS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000] as const
+export const EQ_BANDS = EQ10_BANDS
+export const EQ6_BANDS = EQ10_BANDS
 
 export interface Eq10Params {
   gains: number[]
@@ -14,14 +14,14 @@ const DEFAULT_PARAMS: Eq10Params = {
 }
 
 export const EQ_PRESETS = [
-  { name: '原声 (Flat)', params: { gains: [0, 0, 0, 0, 0, 0] }, builtin: true },
-  { name: '低音增强 (Bass Boost)', params: { gains: [6, 4, 1, 0, 0, 0] }, builtin: true },
-  { name: '清晰人声 (Vocal)', params: { gains: [-2, 0, 3, 2, 1, -1] }, builtin: true },
-  { name: '清亮高音 (Treble)', params: { gains: [0, 0, 0, 1, 3, 6] }, builtin: true },
-  { name: '摇滚 (Rock)', params: { gains: [5, 2, -1, 1, 3, 5] }, builtin: true },
-  { name: '流行 (Pop)', params: { gains: [-1, 2, 4, 1, 0, 3] }, builtin: true },
-  { name: '电子乐 (Electronic)', params: { gains: [5, 3, -1, 1, 3, 4] }, builtin: true },
-  { name: '古典 (Classical)', params: { gains: [4, 2, -1, 0, 2, 3] }, builtin: true },
+  { name: '原声 (Flat)', params: { gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }, builtin: true },
+  { name: '低音增强 (Bass Boost)', params: { gains: [6, 5, 4, 2, 1, 0, 0, 0, 0, 0] }, builtin: true },
+  { name: '清晰人声 (Vocal)', params: { gains: [-2, -1, 0, 2, 4, 3, 2, 1, 0, -1] }, builtin: true },
+  { name: '清亮高音 (Treble)', params: { gains: [0, 0, 0, 0, 0, 1, 2, 3, 5, 6] }, builtin: true },
+  { name: '摇滚 (Rock)', params: { gains: [5, 3, 2, 0, -1, -1, 1, 3, 4, 5] }, builtin: true },
+  { name: '流行 (Pop)', params: { gains: [-1, 1, 3, 4, 3, 1, -1, 0, 2, 3] }, builtin: true },
+  { name: '电子乐 (Electronic)', params: { gains: [5, 4, 2, 0, -2, 1, 2, 4, 5, 4] }, builtin: true },
+  { name: '古典 (Classical)', params: { gains: [4, 3, 2, 1, -1, -1, 0, 2, 3, 3] }, builtin: true },
 ]
 
 export const Eq10Effect: EffectDefinition<Eq10Params> = {

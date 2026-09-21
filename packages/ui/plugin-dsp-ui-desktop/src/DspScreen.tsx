@@ -18,7 +18,18 @@ export interface DspScreenProps {
   ctx: Context
 }
 
-const EQ_LABELS = ['60Hz', '150Hz', '400Hz', '1KHz', '2.4KHz', '15KHz']
+const EQ_LABELS = [
+  '31Hz',
+  '62Hz',
+  '125Hz',
+  '250Hz',
+  '500Hz',
+  '1KHz',
+  '2KHz',
+  '4KHz',
+  '8KHz',
+  '16KHz',
+]
 const STORAGE_KEY_CUSTOM_PRESETS = 'bbebee_custom_eq_presets'
 
 interface CustomPreset {
@@ -134,7 +145,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
   const eqEntry = chain.find((c) => c.effectId === 'eq10')
   const isEqEnabled = eqEntry?.enabled ?? false
   const eqParams = getParams('eq10')
-  const eqGains = [0, 1, 2, 3, 4, 5].map((i) => {
+  const eqGains = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => {
     if (typeof eqParams[`band${i}`] === 'number') {
       return eqParams[`band${i}`] as number
     }
@@ -175,7 +186,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
   }
 
   const handleReset = () => {
-    const flatGains = [0, 0, 0, 0, 0, 0]
+    const flatGains = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     setSelectedPresetName('原声 (Flat)')
     void applyPreset('eq10', '原声 (Flat)')
     void setParam('eq10', 'gains', flatGains)
@@ -222,7 +233,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
   // Center: y = 114 (0dB)
   // Bottom: y = 204 (-12dB)
   // Text: y = 238
-  const xs = [60, 240, 420, 600, 780, 960]
+  const xs = [60, 160, 260, 360, 460, 560, 660, 760, 860, 960]
   const points = eqGains.map((gain, i) => {
     const clamped = Math.max(-12, Math.min(12, gain))
     const y = 24 + ((12 - clamped) / 24) * 180
@@ -230,10 +241,9 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
   })
 
   const curveD = buildSplinePath(points)
-  const areaD = `${curveD} L ${xs[5]} 204 L ${xs[0]} 204 Z`
+  const areaD = `${curveD} L ${xs[xs.length - 1]} 204 L ${xs[0]} 204 Z`
 
   const handlePointerDown = (index: number, e: React.PointerEvent) => {
-    if (!isEqEnabled) return
     e.preventDefault()
     setDraggingIdx(index)
     try {
@@ -389,16 +399,35 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
             },
           },
           h(
-            'span',
-            {
-              style: {
-                fontSize: 18,
-                fontWeight: 700,
-                color: '#ffffff',
-                letterSpacing: 0.5,
+            'div',
+            { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            h(
+              'span',
+              {
+                style: {
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: '#ffffff',
+                  letterSpacing: 0.5,
+                },
               },
-            },
-            '均衡器',
+              '均衡器',
+            ),
+            h(
+              'span',
+              {
+                style: {
+                  fontSize: 12,
+                  color: isEqEnabled ? '#1DB954' : '#8E8E93',
+                  fontWeight: 500,
+                  background: isEqEnabled ? 'rgba(29, 185, 84, 0.12)' : 'rgba(255, 255, 255, 0.06)',
+                  padding: '2px 8px',
+                  borderRadius: 10,
+                  border: isEqEnabled ? '1px solid rgba(29, 185, 84, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
+                },
+              },
+              isEqEnabled ? '已启用' : '未启用（仍可调整参数与保存）',
+            ),
           ),
           h(Switch, {
             checked: isEqEnabled,
@@ -420,7 +449,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
               flexDirection: 'column',
               boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
               position: 'relative',
-              opacity: isEqEnabled ? 1 : 0.75,
+              opacity: 1,
               transition: 'opacity 0.2s ease',
             },
           },
@@ -711,7 +740,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                   width: '100%',
                   height: '100%',
                   overflow: 'visible',
-                  cursor: isEqEnabled ? 'crosshair' : 'default',
+                  cursor: 'crosshair',
                 },
               },
               h(
@@ -761,7 +790,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                 strokeWidth: 1,
               }),
 
-              // 6 Vertical Guide Lines
+              // 10 Vertical Guide Lines
               xs.map((x) =>
                 h('line', {
                   key: x,
@@ -775,18 +804,19 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
               ),
 
               // Gradient Fill Area underneath the curve
-              isEqEnabled &&
-                h('path', {
-                  d: areaD,
-                  fill: 'url(#eqGreenGradient)',
-                  pointerEvents: 'none',
-                }),
+              h('path', {
+                d: areaD,
+                fill: 'url(#eqGreenGradient)',
+                opacity: isEqEnabled ? 1 : 0.65,
+                pointerEvents: 'none',
+              }),
 
               // Smooth Equalizer Curve
               h('path', {
                 d: curveD,
                 fill: 'none',
-                stroke: isEqEnabled ? '#1DB954' : 'rgba(255, 255, 255, 0.25)',
+                stroke: '#1DB954',
+                opacity: isEqEnabled ? 1 : 0.85,
                 strokeWidth: 3,
                 strokeLinecap: 'round',
                 pointerEvents: 'none',
@@ -802,14 +832,13 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                   'g',
                   { key: idx },
                   h('rect', {
-                    x: pt.x - 30,
+                    x: pt.x - 20,
                     y: 24,
-                    width: 60,
+                    width: 40,
                     height: 180,
                     fill: 'transparent',
-                    style: { cursor: isEqEnabled ? 'pointer' : 'default' },
+                    style: { cursor: 'pointer' },
                     onPointerDown: (e) => {
-                      if (!isEqEnabled) return
                       handlePointerDown(idx, e)
                       const rect = svgRef.current?.getBoundingClientRect()
                       if (rect) {
@@ -829,7 +858,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                     r: isDragging || isHovered ? 8 : 5.5,
                     fill: '#ffffff',
                     style: {
-                      cursor: isEqEnabled ? 'grab' : 'default',
+                      cursor: 'grab',
                       transition: 'r 0.1s ease',
                       filter:
                         isDragging || isHovered
