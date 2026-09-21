@@ -1,40 +1,44 @@
 import type { EffectDefinition, EffectSegment } from '@BBeBee/protocol'
 import { createParamSchema } from './schema.js'
 
-export const EQ10_BANDS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000] as const
+export const EQ_BANDS = [60, 150, 400, 1000, 2400, 15000] as const
+export const EQ6_BANDS = EQ_BANDS
+export const EQ10_BANDS = EQ_BANDS
 
 export interface Eq10Params {
   gains: number[]
 }
 
 const DEFAULT_PARAMS: Eq10Params = {
-  gains: EQ10_BANDS.map(() => 0),
+  gains: EQ_BANDS.map(() => 0),
 }
+
+export const EQ_PRESETS = [
+  { name: '原声 (Flat)', params: { gains: [0, 0, 0, 0, 0, 0] }, builtin: true },
+  { name: '低音增强 (Bass Boost)', params: { gains: [6, 4, 1, 0, 0, 0] }, builtin: true },
+  { name: '清晰人声 (Vocal)', params: { gains: [-2, 0, 3, 2, 1, -1] }, builtin: true },
+  { name: '清亮高音 (Treble)', params: { gains: [0, 0, 0, 1, 3, 6] }, builtin: true },
+  { name: '摇滚 (Rock)', params: { gains: [5, 2, -1, 1, 3, 5] }, builtin: true },
+  { name: '流行 (Pop)', params: { gains: [-1, 2, 4, 1, 0, 3] }, builtin: true },
+  { name: '电子乐 (Electronic)', params: { gains: [5, 3, -1, 1, 3, 4] }, builtin: true },
+  { name: '古典 (Classical)', params: { gains: [4, 2, -1, 0, 2, 3] }, builtin: true },
+]
 
 export const Eq10Effect: EffectDefinition<Eq10Params> = {
   id: 'eq10',
-  displayName: '10频段均衡器 (10-Band EQ)',
+  displayName: '均衡器 (Equalizer)',
   defaultOrder: 20,
   Params: createParamSchema(DEFAULT_PARAMS),
-  presets: [
-    { name: '原声 (Flat)', params: { gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }, builtin: true },
-    { name: '低音增强 (Bass Boost)', params: { gains: [6, 5, 4, 2, 1, 0, 0, 0, 0, 0] }, builtin: true },
-    { name: '清晰人声 (Vocal)', params: { gains: [-2, -1, 0, 2, 4, 3, 2, 1, 0, -1] }, builtin: true },
-    { name: '清亮高音 (Treble)', params: { gains: [0, 0, 0, 0, 0, 1, 2, 3, 5, 6] }, builtin: true },
-    { name: '摇滚 (Rock)', params: { gains: [5, 3, 2, 0, -1, -1, 1, 3, 4, 5] }, builtin: true },
-    { name: '流行 (Pop)', params: { gains: [-1, 1, 3, 4, 3, 1, -1, 0, 2, 3] }, builtin: true },
-    { name: '电子乐 (Electronic)', params: { gains: [5, 4, 2, 0, -2, 1, 2, 4, 5, 4] }, builtin: true },
-    { name: '古典 (Classical)', params: { gains: [4, 3, 2, 1, -1, -1, 0, 2, 3, 3] }, builtin: true },
-  ],
+  presets: EQ_PRESETS,
   build(audioCtx: BaseAudioContext, params: Eq10Params): EffectSegment {
     const rawGains = Array.isArray(params.gains) ? params.gains : []
-    const gains = EQ10_BANDS.map((_, i) =>
+    const gains = EQ_BANDS.map((_, i) =>
       typeof rawGains[i] === 'number' ? Math.max(-12, Math.min(12, rawGains[i]!)) : 0,
     )
 
-    const filters: BiquadFilterNode[] = EQ10_BANDS.map((freq, i) => {
+    const filters: BiquadFilterNode[] = EQ_BANDS.map((freq, i) => {
       const node = audioCtx.createBiquadFilter()
-      node.type = i === 0 ? 'lowshelf' : i === EQ10_BANDS.length - 1 ? 'highshelf' : 'peaking'
+      node.type = i === 0 ? 'lowshelf' : i === EQ_BANDS.length - 1 ? 'highshelf' : 'peaking'
       node.frequency.value = freq
       node.Q.value = 1.41
       node.gain.value = gains[i] ?? 0
@@ -44,7 +48,7 @@ export const Eq10Effect: EffectDefinition<Eq10Params> = {
     const first = filters[0]!
     const last = filters[filters.length - 1]!
 
-    // Serial chain: filter[0] -> filter[1] -> ... -> filter[9]
+    // Serial chain: filter[0] -> filter[1] -> ... -> filter[N-1]
     for (let i = 0; i < filters.length - 1; i++) {
       const current = filters[i]
       const next = filters[i + 1]

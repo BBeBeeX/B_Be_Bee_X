@@ -70,6 +70,7 @@ function useEntries(ctx: Context): { routes: readonly RouteContribution[]; entri
         // Exclude settings pages managed inside the Settings dashboard (dsp, sources, scanner, downloads)
         if (
           s.id === 'dsp.settings' ||
+          s.id === 'settings.dsp' ||
           s.id === 'sources.settings' ||
           s.id === 'scanner.settings' ||
           s.id === 'downloads.page'

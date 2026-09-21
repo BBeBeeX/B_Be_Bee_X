@@ -264,8 +264,8 @@ describe('SettingsScreen', () => {
     expect(await findByText('危险区域')).toBeTruthy()
     expect(getByText('调试与诊断中心 (Debug)')).toBeTruthy()
 
-    // Click "进入 Debug 页 →"
-    const debugBtn = getByText('进入 Debug 页 →')
+    // Click "进入 Debug"
+    const debugBtn = getByText(/进入 Debug/)
     fireEvent.click(debugBtn)
     expect(calls.includes('navigate:debug.view')).toBe(true)
 

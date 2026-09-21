@@ -152,7 +152,7 @@ export interface PlayerService {
 
 /* ── ctx.dsp ────────────────────────────────────────────────────────────── */
 
-export type EffectParamValue = number | string | boolean
+export type EffectParamValue = number | string | boolean | number[]
 
 /** One effect's contribution to the chain: a sub-graph with an in and an out. */
 export interface EffectSegment {

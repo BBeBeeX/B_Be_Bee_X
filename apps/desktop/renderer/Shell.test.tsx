@@ -391,12 +391,14 @@ describe('the desktop shell', () => {
         { kind: 'settings', id: 'scanner.settings', title: 'Music folders' },
         { kind: 'settings', id: 'downloads.page', title: 'Downloads' },
         { kind: 'settings', id: 'dsp.settings', title: '音频效果与均衡器' },
+        { kind: 'settings', id: 'settings.dsp', title: '均衡器设置' },
         { kind: 'settings', id: 'custom.settings', title: 'Custom Setting' },
       ]
       ui.views.set('sources.settings', () => h('p', null, 'sources'))
       ui.views.set('scanner.settings', () => h('p', null, 'scanner'))
       ui.views.set('downloads.page', () => h('p', null, 'downloads'))
       ui.views.set('dsp.settings', () => h('p', null, 'dsp'))
+      ui.views.set('settings.dsp', () => h('p', null, 'dsp'))
       ui.views.set('custom.settings', () => h('p', null, 'custom'))
     })
 
@@ -410,6 +412,7 @@ describe('the desktop shell', () => {
     expect(nav?.textContent).not.toContain('Music folders')
     expect(nav?.textContent).not.toContain('Downloads')
     expect(nav?.textContent).not.toContain('音频效果与均衡器')
+    expect(nav?.textContent).not.toContain('均衡器设置')
     expect(nav?.textContent).toContain('Custom Setting')
   })
 
