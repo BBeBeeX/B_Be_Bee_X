@@ -20,9 +20,12 @@ import { findActiveLyricIndex, parseLrc, type ParsedLyrics } from '@BBeBee/toolk
 export interface LyricsConfig {
   /** In-memory cache size limit for lyrics documents. */
   cacheSize?: number
+  /** Negative cache TTL in ms for tracks without lyrics. Defaults to 24 hours (86_400_000 ms). */
+  negativeCacheTtlMs?: number
 }
 
 const DEFAULT_CACHE_SIZE = 100
+const DEFAULT_NEGATIVE_CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 1 day
 
 export class LyricsPlugin extends Service implements LyricsService {
   static inject = ['player', 'db', 'sources']
@@ -30,6 +33,9 @@ export class LyricsPlugin extends Service implements LyricsService {
   private readonly ownCtx: Context
   private readonly memoryCache = new Map<string, Lyrics>()
   private readonly parsedCache = new Map<string, ParsedLyrics>()
+  private readonly negativeCache = new Map<string, number>()
+  private readonly cacheSize: number
+  private readonly negativeCacheTtlMs: number
   private currentGeneration = 0
   private lastActiveIndex = -1
   private ticker?: ReturnType<typeof setInterval>
@@ -39,9 +45,11 @@ export class LyricsPlugin extends Service implements LyricsService {
     offsetMs: 0,
   }
 
-  constructor(ctx: Context, _config: LyricsConfig = {}) {
+  constructor(ctx: Context, config: LyricsConfig = {}) {
     super(ctx, 'lyrics')
     this.ownCtx = ctx
+    this.cacheSize = config.cacheSize ?? DEFAULT_CACHE_SIZE
+    this.negativeCacheTtlMs = config.negativeCacheTtlMs ?? DEFAULT_NEGATIVE_CACHE_TTL_MS
   }
 
   async [Service.init]() {
@@ -172,9 +180,18 @@ export class LyricsPlugin extends Service implements LyricsService {
   }
 
   async getLyricsForTrack(trackUrn: string): Promise<Lyrics | undefined> {
-    // 1. In-memory cache
+    // 1. In-memory positive cache
     if (this.memoryCache.has(trackUrn)) {
       return this.memoryCache.get(trackUrn)
+    }
+
+    // 1.5. In-memory negative cache (empty lyrics within TTL)
+    const negExpiresAt = this.negativeCache.get(trackUrn)
+    if (negExpiresAt !== undefined) {
+      if (Date.now() < negExpiresAt) {
+        return undefined
+      }
+      this.negativeCache.delete(trackUrn)
     }
 
     // 2. Persistent SQLite cache
@@ -186,20 +203,36 @@ export class LyricsPlugin extends Service implements LyricsService {
           synced: number
           offset_ms: number
           language: string
-        }>('SELECT format, content, synced, offset_ms, language FROM lyrics WHERE track_urn = ? LIMIT 1', [
-          trackUrn,
-        ])
+          fetched_at?: number
+        }>(
+          'SELECT format, content, synced, offset_ms, language, fetched_at FROM lyrics WHERE track_urn = ? LIMIT 1',
+          [trackUrn],
+        )
         if (rows.length > 0 && rows[0]) {
           const row = rows[0]
-          const lyrics: Lyrics = {
-            format: row.format as Lyrics['format'],
-            content: row.content,
-            synced: row.synced === 1,
-            offsetMs: row.offset_ms,
-            language: row.language || undefined,
+          // Check for negative cache marker in DB
+          if (row.format === 'none' || !row.content) {
+            const age = Date.now() - (row.fetched_at ?? 0)
+            if (age < this.negativeCacheTtlMs) {
+              this.rememberNegative(trackUrn, (row.fetched_at ?? Date.now()) + this.negativeCacheTtlMs)
+              return undefined
+            } else {
+              // Expired negative cache in DB — prune and fall through to re-fetch
+              void this.ownCtx.db
+                .exec('DELETE FROM lyrics WHERE track_urn = ? AND format = ?', [trackUrn, 'none'])
+                .catch(() => undefined)
+            }
+          } else {
+            const lyrics: Lyrics = {
+              format: row.format as Lyrics['format'],
+              content: row.content,
+              synced: row.synced === 1,
+              offsetMs: row.offset_ms,
+              language: row.language || undefined,
+            }
+            this.remember(trackUrn, lyrics)
+            return lyrics
           }
-          this.remember(trackUrn, lyrics)
-          return lyrics
         }
       } catch (e) {
         this.ownCtx.logger.debug(`lyrics: db lookup failed for ${trackUrn}: ${String(e)}`)
@@ -222,11 +255,17 @@ export class LyricsPlugin extends Service implements LyricsService {
       }
     }
 
+    // Online provider returned nothing (or has no lyrics).
+    // Store in negative cache for 1 day to prevent repeated network requests on loop/replay.
+    this.rememberNegative(trackUrn, Date.now() + this.negativeCacheTtlMs)
+    await this.persistNegativeCache(trackUrn)
+
     return undefined
   }
 
   private remember(urn: string, lyrics: Lyrics): void {
-    if (this.memoryCache.size >= DEFAULT_CACHE_SIZE) {
+    this.negativeCache.delete(urn)
+    if (this.memoryCache.size >= this.cacheSize) {
       const oldestKey = this.memoryCache.keys().next().value
       if (oldestKey) {
         this.memoryCache.delete(oldestKey)
@@ -234,6 +273,16 @@ export class LyricsPlugin extends Service implements LyricsService {
       }
     }
     this.memoryCache.set(urn, lyrics)
+  }
+
+  private rememberNegative(urn: string, expiresAt: number): void {
+    if (this.negativeCache.size >= this.cacheSize) {
+      const oldestKey = this.negativeCache.keys().next().value
+      if (oldestKey) {
+        this.negativeCache.delete(oldestKey)
+      }
+    }
+    this.negativeCache.set(urn, expiresAt)
   }
 
   private async persistLyrics(trackUrn: string, lyrics: Lyrics): Promise<void> {
@@ -261,6 +310,31 @@ export class LyricsPlugin extends Service implements LyricsService {
     }
   }
 
+  private async persistNegativeCache(trackUrn: string): Promise<void> {
+    if (!this.ownCtx.db) return
+    try {
+      const parsedUrn = tryParseUrn(trackUrn)
+      const instanceId = parsedUrn?.sourceId ?? 'default'
+      await this.ownCtx.db.exec(
+        `INSERT OR REPLACE INTO lyrics (track_urn, instance_id, format, content, synced, offset_ms, language, is_preferred, fetched_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          trackUrn,
+          instanceId,
+          'none',
+          '',
+          0,
+          0,
+          '',
+          0,
+          Date.now(),
+        ],
+      )
+    } catch (e) {
+      this.ownCtx.logger.debug(`lyrics: db negative cache persist failed for ${trackUrn}: ${String(e)}`)
+    }
+  }
+
   setOffset(offsetMs: number): void {
     this.updateState({ offsetMs })
   }
@@ -270,6 +344,12 @@ export class LyricsPlugin extends Service implements LyricsService {
     if (urn) {
       this.memoryCache.delete(urn)
       this.parsedCache.delete(urn)
+      this.negativeCache.delete(urn)
+      if (this.ownCtx.db) {
+        await this.ownCtx.db
+          .exec('DELETE FROM lyrics WHERE track_urn = ? AND format = ?', [urn, 'none'])
+          .catch(() => undefined)
+      }
       await this.handleTrackChanged(urn)
     }
   }
@@ -308,9 +388,9 @@ export class LyricsPlugin extends Service implements LyricsService {
 
 export const name = 'plugin-lyrics'
 
-export async function apply(ctx: Context) {
+export async function apply(ctx: Context, config?: LyricsConfig) {
   ctx.logger.info('plugin-lyrics: loaded')
-  const fiber = await ctx.plugin(LyricsPlugin)
+  const fiber = await ctx.plugin(LyricsPlugin, config)
   return () => {
     fiber.dispose()
   }

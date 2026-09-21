@@ -40,6 +40,7 @@ Layer 4（feature）— `ctx.lyrics`：歌词获取、多级缓存、进度同�
 1. **内存缓存**：快速应对列表来回切歌，默认容量限制，避免重复反序列化。
 2. **SQLite 存储**：在 `lyrics` 表中持久化字段 `(track_urn, format, content, synced, offset_ms, language)`，离线可用且避免浪费用户流量。
 3. **音源解析**：通过 `ctx.sources.forUrn(trackUrn)` 找到对应的音源提供者。若该提供者支持 `getLyrics(trackId)`，则发起请求解析（例如 Bilibili 字幕转 LRC 或 Subsonic 歌词接口），获取后自动回写数据库。
+4. **空值缓存（Negative Caching）**：若音源提供者无歌词或返回空内容，系统将在内存 `negativeCache` 及 SQLite 数据库中写入空值标记（`format: 'none'`），TTL 默认为 1 天（24 小时）。在有效期内重复播放该曲目时直接拦截网络请求，防止单曲循环或重播时造成多余的网络开销。调用 `retry()` 时会自动清除对应空值标记。
 
 ### 2. 播放进度与同步对齐
 
