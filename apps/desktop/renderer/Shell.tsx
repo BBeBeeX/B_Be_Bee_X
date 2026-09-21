@@ -213,7 +213,7 @@ export function Shell({ ctx }: { ctx: Context }) {
         | undefined)
     : undefined
   const BottomBar = ctx.ui.viewFor('now-playing.bar') as
-    | ComponentType<{ ctx: Context; onOpenNowPlaying?: () => void }>
+    | ComponentType<{ ctx: Context; currentRoute?: string; onOpenNowPlaying?: () => void }>
     | undefined
   const DesktopLyrics = ctx.ui.viewFor('desktop-lyrics.floating') as
     | ComponentType<{ ctx: Context }>
@@ -490,6 +490,7 @@ export function Shell({ ctx }: { ctx: Context }) {
           { style: { background: '#000000' } },
           h(BottomBar, {
             ctx,
+            currentRoute: currentId,
             onOpenNowPlaying: () => setIsFullscreenNowPlaying(true),
           }),
         )

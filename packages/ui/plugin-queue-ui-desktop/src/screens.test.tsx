@@ -11,14 +11,18 @@
  * screen goes through the DOM with `withListLayout`.
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createElement as h } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { act, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
 import { Context, Service } from 'cordis'
-import type { QueueItem, Track, TransportState } from '@BBeBee/protocol'
+import type { PlayRecord, QueueItem, Track, TransportState } from '@BBeBee/protocol'
 import { QueueScreen } from './index.js'
+
+afterEach(() => {
+  cleanup()
+})
 
 const html = (element: Parameters<typeof renderToStaticMarkup>[0]) =>
   renderToStaticMarkup(element)
@@ -40,6 +44,7 @@ async function harness(
   state: Partial<TransportState> = {},
   queue: QueueItem[] = [],
   catalogue: Record<string, Track> = {},
+  history: PlayRecord[] = [],
 ) {
   const calls: string[] = []
   const transport: TransportState = { ...IDLE, ...state }
@@ -63,6 +68,7 @@ async function harness(
     playNow = async (urns: string[]) => void calls.push(`playNow:${urns.join(',')}`)
     playFromContext = async (urn: string, contextUrns: readonly string[] = []) =>
       void calls.push(`jump:${urn}${contextUrns.length ? `|${contextUrns.join(',')}` : ''}`)
+    getHistory = async () => history
   }
 
   class SourcesStub extends Service {
@@ -96,7 +102,8 @@ describe('QueueScreen', () => {
     expect(container.querySelectorAll('[role="listitem"]')).toHaveLength(2)
     expect(container.querySelector('[role="list"]')).not.toBeNull()
 
-    const row = container.querySelector('[role="row"]') as HTMLElement
+    const rows = container.querySelectorAll('[role="row"]')
+    const row = (Array.from(rows).find((r) => r.getAttribute('data-track-urn') === 'BBeBee:local:track:a') ?? rows[1]) as HTMLElement
     expect(row, 'a queue row is tappable').toBeTruthy()
     row.click()
     // A tap means "play that one" — a jump, never a re-queue of one track.
@@ -154,6 +161,78 @@ describe('QueueScreen', () => {
     expect(container.textContent, 'the raw URN is gone once resolved').not.toContain(
       'BBeBee:local:track:a',
     )
+  })
+
+  it('displays 当前播放 and 下一首播放 with green highlight on playing track', async () => {
+    const { ctx } = await harness(
+      { currentItemId: 'a', nowPlaying: { title: 'Now Track', artist: 'Artist 1' } },
+      [
+        { id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' },
+        { id: 'b', trackUrn: 'BBeBee:local:track:b', addedBy: 'user' },
+      ],
+      {
+        'BBeBee:local:track:a': { urn: 'BBeBee:local:track:a', title: 'Now Track', artists: [] },
+        'BBeBee:local:track:b': { urn: 'BBeBee:local:track:b', title: 'Next Track', artists: [] },
+      },
+    )
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+    expect(container.textContent).toContain('当前播放')
+    expect(container.textContent).toContain('下一首播放')
+    const activeSpan = container.querySelector('span[data-active="true"]')
+    expect(activeSpan?.textContent).toBe('Now Track')
+    expect(activeSpan?.getAttribute('style')).toContain('29, 185, 84')
+  })
+
+  it('displays context label in next-up header when available', async () => {
+    const { ctx } = await harness(
+      { currentItemId: 'a' },
+      [
+        {
+          id: 'a',
+          trackUrn: 'BBeBee:local:track:a',
+          addedBy: 'user',
+          sourceContext: { kind: 'album', label: 'My Cool Album' },
+        },
+        { id: 'b', trackUrn: 'BBeBee:local:track:b', addedBy: 'user' },
+      ],
+      {
+        'BBeBee:local:track:a': { urn: 'BBeBee:local:track:a', title: 'Song A', artists: [] },
+        'BBeBee:local:track:b': { urn: 'BBeBee:local:track:b', title: 'Song B', artists: [] },
+      },
+    )
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+    expect(container.textContent).toContain('下一首歌来自：')
+    expect(container.textContent).toContain('My Cool Album')
+  })
+
+  it('switches to 最近播放 tab and lists play history', async () => {
+    const { ctx } = await harness(
+      {},
+      [{ id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' }],
+      {
+        'BBeBee:local:track:hist': { urn: 'BBeBee:local:track:hist', title: 'Historical Track', artists: [] },
+      },
+      [
+        {
+          id: 'hist-1',
+          trackUrn: 'BBeBee:local:track:hist',
+          startedAt: Date.now() - 60000,
+          msPlayed: 120000,
+          completed: true,
+          skipped: false,
+        },
+      ],
+    )
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+    const histTab = container.querySelector('button[aria-label="最近播放"]') as HTMLElement
+    act(() => {
+      fireEvent.click(histTab)
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(container.textContent).toContain('Historical Track')
+    expect(container.textContent).toContain('分钟前')
   })
 })
 

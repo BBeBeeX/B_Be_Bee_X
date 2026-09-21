@@ -100,6 +100,10 @@ async function harness(
       return this.slots.get(slot) ?? []
     }
 
+    navigate(id: string) {
+      calls.push(`navigate:${id}`)
+    }
+
     contribute(c: { kind: string; id: string; slot?: string }) {
       if (c.kind === 'slot' && c.slot) {
         const list = this.slots.get(c.slot) ?? []
@@ -127,6 +131,16 @@ describe('NowPlayingBar', () => {
     for (const label of ['Previous track', 'Next track', 'Seek', 'Volume']) {
       expect(out, label).toContain(`aria-label="${label}"`)
     }
+  })
+
+  it('renders queue button and navigates to queue.view on click', async () => {
+    const { ctx, calls } = await harness()
+    const { getByTestId } = render(h(NowPlayingBar, { ctx }))
+    const btn = getByTestId('queue-button')
+    expect(btn).toBeTruthy()
+    expect(btn.getAttribute('aria-label')).toBe('播放队列')
+    fireEvent.click(btn)
+    expect(calls).toContain('navigate:queue.view')
   })
 
   it('shows one play/pause control that reflects the state', async () => {

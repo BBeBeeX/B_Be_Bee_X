@@ -110,6 +110,95 @@ function DesktopLyricsToggle({ ctx }: { ctx: Context }): ReactElement {
 }
 
 /**
+ * Button on the bottom transport bar to open/toggle the queue panel.
+ */
+function QueueButton({
+  ctx,
+  currentRoute,
+}: {
+  ctx: Context
+  currentRoute?: string
+}): ReactElement {
+  const [activeRoute, setActiveRoute] = useState<string | undefined>(currentRoute)
+
+  useEffect(() => {
+    if (currentRoute !== undefined) {
+      setActiveRoute(currentRoute)
+    }
+  }, [currentRoute])
+
+  useEffect(() => {
+    const off = ctx.on('ui/navigate', (id: string) => {
+      setActiveRoute(id)
+    })
+    return () => void off()
+  }, [ctx])
+
+  const isQueueActive = activeRoute === 'queue.view'
+
+  const handleClick = () => {
+    if (isQueueActive) {
+      ctx.ui?.navigate?.('library.home')
+    } else {
+      ctx.ui?.navigate?.('queue.view')
+    }
+  }
+
+  return h(
+    'button',
+    {
+      type: 'button',
+      'aria-label': '播放队列',
+      title: '播放队列',
+      'data-testid': 'queue-button',
+      onClick: handleClick,
+      style: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 30,
+        height: 30,
+        borderRadius: tokens.radius.sm,
+        border: isQueueActive ? '1px solid #1DB954' : '1px solid rgba(255, 255, 255, 0.16)',
+        background: isQueueActive ? 'rgba(29, 185, 84, 0.2)' : 'transparent',
+        color: isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.7)',
+        cursor: 'pointer',
+        transition: 'all 0.15s ease',
+        outline: 'none',
+        flexShrink: 0,
+      },
+      onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+        e.currentTarget.style.borderColor = isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.4)'
+        e.currentTarget.style.color = isQueueActive ? '#1DB954' : '#FFFFFF'
+        e.currentTarget.style.transform = 'scale(1.05)'
+      },
+      onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+        e.currentTarget.style.borderColor = isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.16)'
+        e.currentTarget.style.color = isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.7)'
+        e.currentTarget.style.transform = 'scale(1)'
+      },
+    },
+    h(
+      'svg',
+      {
+        width: 16,
+        height: 16,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 2,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+      },
+      h('line', { x1: '3', y1: '6', x2: '21', y2: '6' }),
+      h('line', { x1: '3', y1: '12', x2: '21', y2: '12' }),
+      h('line', { x1: '3', y1: '18', x2: '13', y2: '18' }),
+      h('polyline', { points: '16 15 19 18 16 21' }),
+    ),
+  )
+}
+
+/**
  * `<Artwork>`, with the cover resolved through `ctx.cache` first.
  *
  * A component rather than a bare hook call at each site because both
@@ -601,11 +690,12 @@ function VolumeControl({
 
 export interface NowPlayingBarProps {
   ctx: Context
+  currentRoute?: string
   onOpenNowPlaying?: () => void
 }
 
 /** The persistent transport bar. Desktop's answer to "now playing". */
-export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): ReactElement {
+export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayingBarProps): ReactElement {
   const [coverHovered, setCoverHovered] = useState(false)
   const [seekingPosition, setSeekingPosition] = useState<number | undefined>(undefined)
   const state = useTransport(ctx)
@@ -836,6 +926,7 @@ export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): Re
         },
       },
       h(DesktopLyricsToggle, { ctx }),
+      h(QueueButton, { ctx, currentRoute }),
     ),
   )
 }

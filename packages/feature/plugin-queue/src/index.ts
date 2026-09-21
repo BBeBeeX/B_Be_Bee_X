@@ -40,7 +40,7 @@ export async function apply(ctx: Context) {
         path: '/queue',
         title: 'Queue',
         icon: 'list',
-        placement: ['tab-bar', 'sidebar'],
+        placement: ['tab-bar'],
         order: 20,
       })
     }, 'queue-ui-contributions'),
