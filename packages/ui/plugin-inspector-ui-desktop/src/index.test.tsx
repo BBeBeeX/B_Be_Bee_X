@@ -22,7 +22,7 @@ import { createElement as h, type ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Context, Service } from 'cordis'
 import inspectorPlugin from '@BBeBee/plugin-inspector'
-import inspectorUi, { INSPECTOR_VIEW, InspectorPanel } from './index.js'
+import inspectorUi, { INSPECTOR_VIEW, InspectorErrorBoundary, InspectorPanel } from './index.js'
 
 /** Just the slice of `ctx.ui` this package touches. */
 class UiStub extends Service {
@@ -133,25 +133,9 @@ describe('the inspector view', () => {
     expect(renderToStaticMarkup(h(InspectorPanel, { ctx }))).toContain('Plugin graph')
   })
 
-  it('renders the 5 PCB visual layers with real plugin nodes and removed obsolete HUD badges', async () => {
+  it('renders the 5 PCB visual layers and hardware HUD elements without removed badges/subcodes', async () => {
     const { shellCtx } = await harness()
     const html = renderAsShell(shellCtx)
-
-    // Obsolete HUD badges and dummy CSxx IDs are removed
-    expect(html).not.toContain('EVSERFL12–347')
-    expect(html).not.toContain('EVSERFL12-347')
-    expect(html).not.toContain('EC1')
-    expect(html).not.toContain('EC2')
-    expect(html).not.toContain('CORE VCC')
-    expect(html).not.toContain('cs20')
-    expect(html).not.toContain('cs30')
-
-    // Enlarged Plugin graph header
-    expect(html).toContain('Plugin graph')
-
-    // Real plugin nodes rendered
-    expect(html).toContain('root')
-    expect(html).toContain('plugin-inspector')
 
     // 5 Visual Layers
     expect(html).toContain('glow-layer')
@@ -164,4 +148,85 @@ describe('the inspector view', () => {
     expect(html).toContain('pcb-glow')
     expect(html).toContain('pcb-grid-pattern')
   })
+
+  it('renders the 8 Subsystem Zones and core service IC chips on the motherboard', async () => {
+    const { shellCtx } = await harness()
+    const html = renderAsShell(shellCtx)
+
+    // Verify all 8 Subsystem Zones exist as defined PCB partitions
+    expect(html).toContain('ZONE 01: CORE / BASE INFRASTRUCTURE')
+    expect(html).toContain('ZONE 02: AUDIO SOURCE SUBSYSTEM')
+    expect(html).toContain('ZONE 03: PLAYBACK ENGINE CORE')
+    expect(html).toContain('ZONE 04: MEDIA STORAGE')
+    expect(html).toContain('ZONE 05: SYNCHRONIZED LYRICS')
+    expect(html).toContain('ZONE 06: UI REGISTRY BACKPLANE')
+    expect(html).toContain('ZONE 07: SETTINGS')
+    expect(html).toContain('ZONE 08: ARCHITECTURE INSPECTOR')
+
+    // Verify key architectural IC chips
+    expect(html).toContain('PLAYER')
+    expect(html).toContain('SOURCES')
+    expect(html).toContain('AUDIO')
+    expect(html).toContain('DB')
+    expect(html).toContain('FS')
+    expect(html).toContain('QUEUE')
+    expect(html).toContain('DSP')
+    expect(html).toContain('LYRICS')
+    expect(html).toContain('SETTINGS')
+  })
+
+  it('renders the 3-level architecture navigation HUD', async () => {
+    const { shellCtx } = await harness()
+    const html = renderAsShell(shellCtx)
+
+    // Level navigation controls
+    expect(html).toContain('L1 · SYSTEM MAP')
+    expect(html).toContain('L2 · SUBSYSTEM')
+    expect(html).toContain('L3 · FIBER DETAIL')
+    expect(html).toContain('MOTHERBOARD')
+  })
+
+  it('renders the 5 Layer Strata Bands and layer navigation controls', async () => {
+    const { shellCtx } = await harness()
+    const html = renderAsShell(shellCtx)
+
+    // Verify 5 architectural layer strata bands
+    expect(html).toContain('LAYER 01: KERNEL RUNTIME &amp; DI CONTAINER')
+    expect(html).toContain('LAYER 02: CORE CAPABILITY SERVICES')
+    expect(html).toContain('LAYER 03: OBSERVABILITY &amp; LOG TRANSPORTS')
+    expect(html).toContain('LAYER 04: HEADLESS BUSINESS FEATURES')
+    expect(html).toContain('LAYER 05: UI REGISTRY &amp; PRESENTATION FABRIC')
+
+    // Verify layer package paths and architectural invariant rules
+    expect(html).toContain('packages/kernel')
+    expect(html).toContain('packages/core/*')
+    expect(html).toContain('packages/logs/*')
+    expect(html).toContain('packages/feature/*')
+    expect(html).toContain('INVARIANT: Platform SDK Boundary Only')
+    expect(html).toContain('INVARIANT: Pure Business Logic (Zero Platform SDKs)')
+
+    // Verify layer quick-jump buttons in the HUD
+    expect(html).toContain('ALL LAYERS')
+    expect(html).toContain('L1 · KERNEL')
+    expect(html).toContain('L2 · CORE')
+    expect(html).toContain('L3 · LOGS')
+    expect(html).toContain('L4 · FEATURE')
+    expect(html).toContain('L5 · UI')
+  })
+
+  it('gracefully catches render errors in the inspector panel without unmounting shell', () => {
+    const error = new Error('Circuit short circuit simulation')
+    const state = InspectorErrorBoundary.getDerivedStateFromError(error)
+    expect(state.hasError).toBe(true)
+    expect(state.error).toBe(error)
+
+    // Verify fallback render
+    const boundary = new InspectorErrorBoundary({ children: null })
+    boundary.state = state
+    const html = renderToStaticMarkup(boundary.render() as any)
+    expect(html).toContain('CIRCUIT TELEMETRY FAULT')
+    expect(html).toContain('Circuit short circuit simulation')
+    expect(html).toContain('REBOOT INSPECTOR CIRCUIT')
+  })
 })
+

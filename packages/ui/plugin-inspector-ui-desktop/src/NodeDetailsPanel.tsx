@@ -1,6 +1,6 @@
 import { createElement as h, type ReactElement } from 'react'
 import type { EffectNode } from '@BBeBee/plugin-inspector'
-import type { PcbNode } from './pcb-topology-types.js'
+import type { PcbNode, ViewLevel } from './pcb-topology-types.js'
 
 export const STATE_COLOR: Record<string, string> = {
   ACTIVE: '#3ECF8E',
@@ -10,15 +10,6 @@ export const STATE_COLOR: Record<string, string> = {
   UNLOADING: '#8EA4CE',
   DISPOSED: '#5A5A68',
   UNKNOWN: '#5A5A68',
-}
-
-function filterEffects(nodes: EffectNode[]): EffectNode[] {
-  return nodes
-    .filter((node) => !node.label.startsWith('ctx.plugin'))
-    .map((node) => ({
-      ...node,
-      children: filterEffects(node.children),
-    }))
 }
 
 function EffectsList({ nodes, depth }: { nodes: EffectNode[]; depth: number }): ReactElement {
@@ -44,7 +35,7 @@ function EffectsList({ nodes, depth }: { nodes: EffectNode[]; depth: number }): 
             fontFamily: 'ui-monospace, monospace',
           },
         },
-        h('span', { style: { color: '#6474FF', marginRight: 4 } }, '·'),
+        h('span', { style: { color: '#596AFF', marginRight: 4 } }, '·'),
         node.label,
         node.children.length ? h(EffectsList, { nodes: node.children, depth: depth + 1 }) : null,
       ),
@@ -54,19 +45,27 @@ function EffectsList({ nodes, depth }: { nodes: EffectNode[]; depth: number }): 
 
 export interface NodeDetailsPanelProps {
   node: PcbNode | null
+  viewLevel?: ViewLevel
+  onDrillDown?: (level: ViewLevel, nodeId: string) => void
   onClose: () => void
 }
 
 /**
  * High-tech side panel providing in-depth Cordis fiber inspection
- * when an IC chip node is clicked/selected.
+ * formatted strictly in the requested technical monospace PCB HUD style.
  */
-export function NodeDetailsPanel({ node, onClose }: NodeDetailsPanelProps): ReactElement | null {
+export function NodeDetailsPanel({
+  node,
+  viewLevel = 1,
+  onDrillDown,
+  onClose,
+}: NodeDetailsPanelProps): ReactElement | null {
   if (!node) return null
 
   const fiber = node.fiber
   const state = fiber?.state ?? 'UNKNOWN'
   const stateColor = STATE_COLOR[state] ?? '#8EA4CE'
+  const childrenCount = fiber?.childrenCount ?? 0
 
   return h(
     'aside',
@@ -76,14 +75,14 @@ export function NodeDetailsPanel({ node, onClose }: NodeDetailsPanelProps): Reac
         position: 'absolute',
         top: 24,
         right: 24,
-        width: 340,
+        width: 320,
         maxHeight: 'calc(100% - 48px)',
         overflowY: 'auto',
-        background: 'rgba(7, 10, 18, 0.94)',
-        backdropFilter: 'blur(14px)',
-        border: '1px solid rgba(100, 116, 255, 0.35)',
+        background: 'rgba(5, 7, 13, 0.94)',
+        backdropFilter: 'blur(16px)',
+        border: '1px solid rgba(89, 106, 255, 0.35)',
         borderRadius: 4,
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8), 0 0 16px rgba(100, 116, 255, 0.15)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.85), 0 0 16px rgba(89, 106, 255, 0.15)',
         padding: 18,
         color: '#D1DCF0',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
@@ -98,23 +97,33 @@ export function NodeDetailsPanel({ node, onClose }: NodeDetailsPanelProps): Reac
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          borderBottom: '1px solid rgba(142, 164, 206, 0.2)',
+          borderBottom: '1px solid rgba(89, 106, 255, 0.25)',
           paddingBottom: 10,
           marginBottom: 14,
         },
       },
       h(
         'div',
-        { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+        { style: { display: 'flex', alignItems: 'center', gap: 8 } },
         h(
           'span',
-          { style: { fontSize: 14, fontWeight: 700, color: '#F0F4FF' } },
-          node.displayName,
+          {
+            style: {
+              background: '#8598B2',
+              color: '#0A1220',
+              fontWeight: 800,
+              fontSize: 11,
+              padding: '2px 7px',
+              borderRadius: 2,
+              letterSpacing: 0.5,
+            },
+          },
+          node.code.toUpperCase(),
         ),
         h(
           'span',
-          { style: { fontSize: 11, color: '#8EA4CE' } },
-          fiber?.name ?? node.id,
+          { style: { fontSize: 13, fontWeight: 700, color: '#F0F4FF' } },
+          node.name ?? fiber?.name ?? node.id,
         ),
       ),
       h(
@@ -136,336 +145,240 @@ export function NodeDetailsPanel({ node, onClose }: NodeDetailsPanelProps): Reac
       ),
     ),
 
-    // Status, UID & Role Badges
-    h(
-      'div',
-      { style: { display: 'flex', gap: 14, marginBottom: 14, fontSize: 12 } },
-      h(
-        'div',
-        null,
-        h('span', { style: { color: 'rgba(142, 164, 206, 0.6)', fontSize: 10, display: 'block' } }, 'STATE'),
-        h('span', { style: { color: stateColor, fontWeight: 700 } }, state),
-      ),
-      h(
-        'div',
-        null,
-        h('span', { style: { color: 'rgba(142, 164, 206, 0.6)', fontSize: 10, display: 'block' } }, 'UID'),
-        h(
-          'span',
-          { style: { color: '#8EA4CE' } },
-          fiber?.uid !== null && fiber?.uid !== undefined ? `#${fiber.uid}` : 'N/A',
-        ),
-      ),
-      h(
-        'div',
-        null,
-        h('span', { style: { color: 'rgba(142, 164, 206, 0.6)', fontSize: 10, display: 'block' } }, 'ROLE'),
-        h(
-          'span',
-          {
-            style: {
-              color: node.role === 'service' ? '#38BDF8' : node.role === 'scope' ? '#A78BFA' : '#6474FF',
-              fontWeight: 600,
-            },
-          },
-          node.role.toUpperCase(),
-        ),
-      ),
-    ),
-
-    // 1. LOADED IN (Where this plugin is loaded / Parent Host)
-    h(
-      'div',
-      {
-        style: {
-          background: 'rgba(255, 255, 255, 0.03)',
-          border: '1px solid rgba(142, 164, 206, 0.18)',
-          borderRadius: 3,
-          padding: '8px 10px',
-          marginBottom: 14,
-        },
-      },
-      h(
-        'div',
-        {
-          style: {
-            fontSize: 10,
-            color: 'rgba(142, 164, 206, 0.6)',
-            marginBottom: 3,
-            fontWeight: 700,
-            letterSpacing: 0.5,
-          },
-        },
-        'LOADED IN (PARENT CONTEXT)',
-      ),
-      h(
-        'div',
-        { style: { fontSize: 12, fontWeight: 600, color: '#E2ECFF' } },
-        node.parentName ? node.parentName : 'Kernel Root (Root Application Context)',
-      ),
-      node.role === 'scope'
-        ? h(
-            'div',
-            { style: { fontSize: 10, color: '#A78BFA', marginTop: 3 } },
-            'Isolated child inject scope spawned by parent plugin',
-          )
-        : node.role === 'service'
-          ? h(
-              'div',
-              { style: { fontSize: 10, color: '#38BDF8', marginTop: 3 } },
-              'Service instance mounted by parent plugin',
-            )
-          : null,
-    ),
-
-    // Stalled notice (if waiting for services)
+    // Stalled / Waiting Notice
     fiber?.waitingFor && fiber.waitingFor.length > 0
       ? h(
           'div',
           {
             style: {
-              background: 'rgba(255, 176, 32, 0.12)',
-              border: '1px solid rgba(255, 176, 32, 0.45)',
+              background: 'rgba(255, 92, 92, 0.15)',
+              border: '1px solid rgba(255, 92, 92, 0.45)',
               borderRadius: 3,
               padding: '8px 10px',
               marginBottom: 14,
               fontSize: 11,
-              color: '#FFB020',
+              color: '#FF5C5C',
             },
           },
-          h('strong', null, 'STALLED (MISSING DEPENDENCY): '),
+          h('strong', null, 'STALLED: '),
           `waiting ${fiber.waitingFor.join(', ')}`,
         )
       : null,
 
-    // 2. REQUIRED DEPENDENCIES (What services & plugins this node needs)
+    // NODE / UID
     h(
       'div',
-      { style: { marginBottom: 14 } },
+      { style: { marginBottom: 12 } },
       h(
         'div',
-        {
-          style: {
-            fontSize: 10,
-            color: 'rgba(142, 164, 206, 0.6)',
-            marginBottom: 6,
-            fontWeight: 700,
-            letterSpacing: 0.5,
-          },
-        },
-        `DEPENDENCIES / REQUIRED SERVICES (${node.dependencies.length})`,
+        { style: { fontSize: 9, color: 'rgba(142, 164, 206, 0.5)', letterSpacing: 1.2 } },
+        'NODE',
       ),
-      node.dependencies.length > 0
-        ? h(
-            'div',
-            { style: { display: 'flex', flexDirection: 'column', gap: 5 } },
-            ...node.dependencies.map((dep) =>
-              h(
-                'div',
-                {
-                  key: dep.service,
-                  style: {
-                    padding: '6px 8px',
-                    background: dep.isWaiting
-                      ? 'rgba(255, 176, 32, 0.08)'
-                      : 'rgba(100, 116, 255, 0.06)',
-                    border: `1px solid ${
-                      dep.isWaiting ? 'rgba(255, 176, 32, 0.3)' : 'rgba(100, 116, 255, 0.25)'
-                    }`,
-                    borderRadius: 3,
-                    fontSize: 11,
-                  },
-                },
-                h(
-                  'div',
-                  { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-                  h('span', { style: { fontWeight: 700, color: '#6474FF' } }, `ctx.${dep.service}`),
-                  dep.isWaiting
-                    ? h('span', { style: { fontSize: 10, color: '#FFB020', fontWeight: 600 } }, 'WAITING')
-                    : h('span', { style: { fontSize: 10, color: '#3ECF8E', fontWeight: 600 } }, 'RESOLVED'),
-                ),
-                h(
-                  'div',
-                  { style: { fontSize: 10, color: '#8EA4CE', marginTop: 3 } },
-                  dep.providerName
-                    ? `Provided by plugin: ${dep.providerName}`
-                    : 'No registered plugin provides this service',
-                ),
-              ),
-            ),
-          )
-        : h(
-            'div',
-            { style: { fontSize: 11, color: 'rgba(142, 164, 206, 0.4)', fontStyle: 'italic' } },
-            'No external service dependencies required',
-          ),
+      h('div', { style: { fontSize: 13, fontWeight: 700, color: '#F0F4FF' } }, fiber?.name ?? node.id),
+      h(
+        'div',
+        { style: { fontSize: 11, color: '#8EA4CE' } },
+        fiber?.uid !== null && fiber?.uid !== undefined ? `UID ${fiber.uid}` : 'UID null',
+      ),
     ),
 
-    // 3. PROVIDES SERVICES (What services this plugin registers)
-    fiber?.provides && fiber.provides.length > 0
-      ? h(
+    // LAYER & SUBSYSTEM
+    h(
+      'div',
+      { style: { display: 'flex', gap: 20, marginBottom: 12 } },
+      h(
+        'div',
+        null,
+        h(
           'div',
-          { style: { marginBottom: 14 } },
-          h(
+          { style: { fontSize: 9, color: 'rgba(142, 164, 206, 0.5)', letterSpacing: 1.2 } },
+          'LAYER',
+        ),
+        h(
+          'div',
+          { style: { fontSize: 13, fontWeight: 700, color: '#596AFF' } },
+          node.layer ? `Layer ${node.layer}` : 'Layer 4',
+        ),
+      ),
+      h(
+        'div',
+        null,
+        h(
+          'div',
+          { style: { fontSize: 9, color: 'rgba(142, 164, 206, 0.5)', letterSpacing: 1.2 } },
+          'STATE',
+        ),
+        h('div', { style: { fontSize: 12, fontWeight: 700, color: stateColor } }, state),
+      ),
+      node.subsystem
+        ? h(
             'div',
-            {
-              style: {
-                fontSize: 10,
-                color: 'rgba(142, 164, 206, 0.6)',
-                marginBottom: 6,
-                fontWeight: 700,
-                letterSpacing: 0.5,
-              },
-            },
-            `PROVIDES SERVICES (${fiber.provides.length})`,
-          ),
-          h(
+            null,
+            h(
+              'div',
+              { style: { fontSize: 9, color: 'rgba(142, 164, 206, 0.5)', letterSpacing: 1.2 } },
+              'ZONE',
+            ),
+            h(
+              'div',
+              { style: { fontSize: 11, fontWeight: 600, color: '#8EA4CE' } },
+              node.subsystem.toUpperCase(),
+            ),
+          )
+        : null,
+    ),
+
+    // PROVIDES
+    h(
+      'div',
+      { style: { marginBottom: 12 } },
+      h(
+        'div',
+        { style: { fontSize: 9, color: 'rgba(142, 164, 206, 0.5)', letterSpacing: 1.2, marginBottom: 4 } },
+        'PROVIDES',
+      ),
+      fiber?.provides && fiber.provides.length > 0
+        ? h(
             'div',
-            { style: { display: 'flex', flexWrap: 'wrap', gap: 5 } },
+            { style: { display: 'flex', flexWrap: 'wrap', gap: 4 } },
             ...fiber.provides.map((p) =>
               h(
                 'span',
                 {
                   key: p,
                   style: {
-                    background: 'rgba(56, 189, 248, 0.12)',
-                    border: '1px solid rgba(56, 189, 248, 0.35)',
-                    color: '#38BDF8',
+                    background: 'rgba(89, 106, 255, 0.15)',
+                    border: '1px solid rgba(89, 106, 255, 0.4)',
+                    color: '#9AA6FF',
                     fontSize: 11,
-                    padding: '3px 7px',
-                    borderRadius: 2,
-                    fontWeight: 600,
-                  },
-                },
-                `ctx.${p}`,
-              ),
-            ),
-          ),
-        )
-      : null,
-
-    // 4. CONSUMED BY (Plugins that depend on this plugin's services)
-    node.consumedBy.length > 0
-      ? h(
-          'div',
-          { style: { marginBottom: 14 } },
-          h(
-            'div',
-            {
-              style: {
-                fontSize: 10,
-                color: 'rgba(142, 164, 206, 0.6)',
-                marginBottom: 6,
-                fontWeight: 700,
-                letterSpacing: 0.5,
-              },
-            },
-            `CONSUMED BY (${node.consumedBy.length} PLUGINS)`,
-          ),
-          h(
-            'div',
-            { style: { display: 'flex', flexWrap: 'wrap', gap: 4 } },
-            ...node.consumedBy.map((c) =>
-              h(
-                'span',
-                {
-                  key: c,
-                  style: {
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(142, 164, 206, 0.2)',
-                    color: '#8EA4CE',
-                    fontSize: 10,
                     padding: '2px 6px',
                     borderRadius: 2,
                   },
                 },
-                c,
+                p,
               ),
             ),
+          )
+        : h(
+            'div',
+            { style: { fontSize: 11, color: 'rgba(142, 164, 206, 0.4)' } },
+            'none',
           ),
-        )
-      : null,
+    ),
 
-    // 5. LOADED CHILD PLUGINS
-    fiber?.children && fiber.children.length > 0
-      ? h(
-          'div',
-          { style: { marginBottom: 14 } },
-          h(
+    // INJECTS
+    h(
+      'div',
+      { style: { marginBottom: 12 } },
+      h(
+        'div',
+        { style: { fontSize: 9, color: 'rgba(142, 164, 206, 0.5)', letterSpacing: 1.2, marginBottom: 4 } },
+        'INJECTS',
+      ),
+      fiber?.inject && fiber.inject.length > 0
+        ? h(
             'div',
-            {
-              style: {
-                fontSize: 10,
-                color: 'rgba(142, 164, 206, 0.6)',
-                marginBottom: 6,
-                fontWeight: 700,
-                letterSpacing: 0.5,
-              },
-            },
-            `LOADED PLUGINS (${fiber.children.length})`,
-          ),
-          h(
-            'div',
-            { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-            ...fiber.children.map((child, idx) =>
+            { style: { display: 'flex', flexWrap: 'wrap', gap: 4 } },
+            ...fiber.inject.map((inj) =>
               h(
-                'div',
+                'span',
                 {
-                  key: `${child.name}-${idx}`,
+                  key: inj,
                   style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '5px 8px',
-                    background: 'rgba(100, 116, 255, 0.08)',
-                    border: '1px solid rgba(100, 116, 255, 0.25)',
-                    borderRadius: 3,
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(142, 164, 206, 0.2)',
+                    color: '#8EA4CE',
                     fontSize: 11,
+                    padding: '2px 6px',
+                    borderRadius: 2,
                   },
                 },
-                h('span', { style: { fontWeight: 600, color: '#E2ECFF' } }, child.name),
-                h(
-                  'span',
-                  {
-                    style: {
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: STATE_COLOR[child.state] ?? '#8EA4CE',
-                    },
-                  },
-                  child.state,
-                ),
+                inj,
               ),
             ),
+          )
+        : h(
+            'div',
+            { style: { fontSize: 11, color: 'rgba(142, 164, 206, 0.4)' } },
+            'none',
           ),
-        )
-      : null,
+    ),
 
-    // 6. Meaningful Labelled Effects (internal ctx.plugin() calls filtered out)
-    (() => {
-      const meaningfulEffects = filterEffects(fiber?.effects ?? [])
-      return h(
+    // PARENT & CHILDREN
+    h(
+      'div',
+      { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 12 } },
+      h(
         'div',
-        { style: { marginTop: 14 } },
+        null,
         h(
           'div',
-          { style: { fontSize: 10, color: 'rgba(142, 164, 206, 0.6)', marginBottom: 6, fontWeight: 700 } },
-          `REGISTERED EFFECTS (${meaningfulEffects.length})`,
+          { style: { fontSize: 9, color: 'rgba(142, 164, 206, 0.5)', letterSpacing: 1.2 } },
+          'PARENT',
         ),
-        meaningfulEffects.length > 0
-          ? h(EffectsList, { nodes: meaningfulEffects, depth: 0 })
-          : h(
-              'div',
-              {
-                style: {
-                  fontSize: 11,
-                  color: 'rgba(142, 164, 206, 0.4)',
-                  fontStyle: 'italic',
-                },
-              },
-              'No active side-effects registered',
-            ),
-      )
-    })(),
+        h(
+          'div',
+          { style: { fontSize: 11, color: '#8EA4CE' } },
+          node.parentPluginId ?? 'root',
+        ),
+      ),
+      h(
+        'div',
+        null,
+        h(
+          'div',
+          { style: { fontSize: 9, color: 'rgba(142, 164, 206, 0.5)', letterSpacing: 1.2 } },
+          'CHILDREN',
+        ),
+        h(
+          'div',
+          { style: { fontSize: 12, fontWeight: 700, color: '#F0F4FF', textAlign: 'right' } },
+          childrenCount,
+        ),
+      ),
+    ),
+
+    // Action button to drill down into satellite child fibers (Level 3)
+    childrenCount > 0 && viewLevel !== 3
+      ? h(
+          'button',
+          {
+            onClick: () => onDrillDown?.(3, node.id),
+            style: {
+              width: '100%',
+              marginBottom: 14,
+              padding: '6px 12px',
+              background: 'rgba(89, 106, 255, 0.2)',
+              border: '1px solid #596AFF',
+              borderRadius: 3,
+              color: '#E2ECFF',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            },
+          },
+          `EXPAND ${childrenCount} CHILD FIBERS (L3)`,
+        )
+      : null,
+
+    // Labelled Effects
+    h(
+      'div',
+      { style: { marginTop: 12, borderTop: '1px solid rgba(89, 106, 255, 0.2)', paddingTop: 10 } },
+      h(
+        'div',
+        { style: { fontSize: 9, color: 'rgba(142, 164, 206, 0.5)', letterSpacing: 1.2, marginBottom: 6 } },
+        `EFFECTS (${fiber?.effects?.length ?? 0})`,
+      ),
+      fiber?.effects && fiber.effects.length > 0
+        ? h(EffectsList, { nodes: fiber.effects, depth: 0 })
+        : h(
+            'div',
+            { style: { fontSize: 11, color: 'rgba(142, 164, 206, 0.35)', fontStyle: 'italic' } },
+            'No active side-effects registered',
+          ),
+    ),
   )
 }
+

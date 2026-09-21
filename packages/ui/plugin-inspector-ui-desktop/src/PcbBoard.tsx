@@ -2,20 +2,36 @@ import {
   createElement as h,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
-  type WheelEvent as ReactWheelEvent,
 } from 'react'
-import type { PcbNode, PcbPin, PcbTrace } from './pcb-topology-types.js'
+import type {
+  LayerBand,
+  PcbNode,
+  PcbPin,
+  PcbTrace,
+  SubsystemId,
+  SubsystemZone,
+  ViewLevel,
+} from './pcb-topology-types.js'
 
 export interface PcbBoardProps {
   nodes: PcbNode[]
   traces: PcbTrace[]
   pins: PcbPin[]
+  zones: SubsystemZone[]
+  layerBands?: LayerBand[]
   selectedNodeId: string | null
+  activeSubsystemId?: SubsystemId | null
+  activeLayerId?: number | null
+  viewLevel?: ViewLevel
   onSelectNode: (node: PcbNode | null) => void
+  onSelectSubsystem?: (subsystem: SubsystemId | null) => void
+  onSelectLayer?: (layer: number | null) => void
+  onDrillDownLevel?: (level: ViewLevel, nodeId?: string) => void
   onHoverNode?: (nodeId: string | null) => void
   zoom: number
   pan: { x: number; y: number }
@@ -23,90 +39,30 @@ export interface PcbBoardProps {
   onPanChange: (pan: { x: number; y: number }) => void
 }
 
-const RELATION_COLORS: Record<string, string> = {
-  service: '#6474FF',
-  hierarchy: '#8EA4CE',
-  waiting: '#FFB020',
-}
-
-/**
- * Splits a plugin/scope display name across multiple lines so it fits neatly inside
- * geometric shapes (circle, square, triangle).
- */
-export function splitDisplayName(name: string, maxLen = 14): string[] {
-  if (name.length <= maxLen) return [name]
-
-  if (name.includes(' (')) {
-    const idx = name.indexOf(' (')
-    return [name.slice(0, idx), name.slice(idx + 1)]
-  }
-
-  if (name.includes(' ')) {
-    return name.split(' ')
-  }
-
-  if (name.includes('-')) {
-    const parts = name.split('-')
-    const lines: string[] = []
-    let current = ''
-    for (const p of parts) {
-      if (!current) {
-        current = p
-      } else if ((current + '-' + p).length <= maxLen) {
-        current += '-' + p
-      } else {
-        lines.push(current + '-')
-        current = p
-      }
-    }
-    if (current) lines.push(current)
-    return lines
-  }
-
-  const lines: string[] = []
-  for (let i = 0; i < name.length; i += maxLen) {
-    lines.push(name.slice(i, i + maxLen))
-  }
-  return lines
-}
-
-/**
- * Renders an array of text lines centered vertically around cy.
- */
-function renderTextLines(
-  lines: string[],
-  cx: number,
-  cy: number,
-  baseFontSize = 11.5,
-): ReactElement[] {
-  const lineHeight = 13.5
-  const totalOffset = ((lines.length - 1) * lineHeight) / 2
-  return lines.map((line, i) => {
-    const y = cy - totalOffset + i * lineHeight + 4
-    return h(
-      'text',
-      {
-        key: `line-${i}-${line}`,
-        x: cx,
-        y,
-        textAnchor: 'middle',
-        fill: '#0A1220',
-        fontSize: baseFontSize,
-        fontWeight: 700,
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-        letterSpacing: -0.2,
-      },
-      line,
-    )
-  })
+const TRACE_COLORS: Record<string, string> = {
+  primary: '#596AFF',
+  secondary: '#7D8DFF',
+  accent: '#B86B7D',
+  ui: '#C8A870',
+  control: '#A78BFA',
+  warning: '#FFB020',
+  inactive: '#1F293D',
 }
 
 export function PcbBoard({
   nodes,
   traces,
   pins,
+  zones,
+  layerBands,
   selectedNodeId,
+  activeSubsystemId,
+  activeLayerId,
+  viewLevel = 1,
   onSelectNode,
+  onSelectSubsystem,
+  onSelectLayer,
+  onDrillDownLevel,
   onHoverNode,
   zoom,
   pan,
@@ -114,30 +70,23 @@ export function PcbBoard({
   onPanChange,
 }: PcbBoardProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
-  const canvasGroupRef = useRef<SVGGElement>(null)
   const isDraggingRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
-  const currentPanRef = useRef(pan)
-  const rafIdRef = useRef<number | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
-
-  // Keep currentPanRef in sync with external pan updates
-  useEffect(() => {
-    currentPanRef.current = pan
-  }, [pan])
 
   const handleMouseDown = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
+      // Only drag with primary mouse button
       if (e.button !== 0) return
       isDraggingRef.current = true
       dragStartRef.current = {
         x: e.clientX,
         y: e.clientY,
-        panX: currentPanRef.current.x,
-        panY: currentPanRef.current.y,
+        panX: pan.x,
+        panY: pan.y,
       }
     },
-    [],
+    [pan],
   )
 
   const handleMouseMove = useCallback(
@@ -145,67 +94,50 @@ export function PcbBoard({
       if (!isDraggingRef.current) return
       const dx = e.clientX - dragStartRef.current.x
       const dy = e.clientY - dragStartRef.current.y
-      currentPanRef.current = {
+      onPanChange({
         x: dragStartRef.current.panX + dx,
         y: dragStartRef.current.panY + dy,
-      }
-
-      // 120fps direct hardware transform without triggering React re-renders
-      if (rafIdRef.current === null) {
-        rafIdRef.current = requestAnimationFrame(() => {
-          rafIdRef.current = null
-          if (canvasGroupRef.current) {
-            canvasGroupRef.current.setAttribute(
-              'transform',
-              `translate(${currentPanRef.current.x}, ${currentPanRef.current.y}) scale(${zoom})`,
-            )
-          }
-        })
-      }
+      })
     },
-    [zoom],
+    [onPanChange],
   )
 
   const handleMouseUp = useCallback(() => {
-    if (isDraggingRef.current) {
-      isDraggingRef.current = false
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current)
-        rafIdRef.current = null
-      }
-      onPanChange(currentPanRef.current)
-    }
-  }, [onPanChange])
+    isDraggingRef.current = false
+  }, [])
 
-  const handleWheel = useCallback(
-    (e: ReactWheelEvent<HTMLDivElement>) => {
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const handleWheelNative = (e: WheelEvent) => {
       e.preventDefault()
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9
-      const newZoom = Math.max(0.35, Math.min(2.5, zoom * zoomFactor))
+      const newZoom = Math.max(0.3, Math.min(3.0, zoom * zoomFactor))
 
-      if (!containerRef.current) {
-        onZoomChange(newZoom)
-        return
-      }
-
-      const rect = containerRef.current.getBoundingClientRect()
+      const rect = container.getBoundingClientRect()
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
 
+      // Zoom towards mouse pointer
       const newPanX = mouseX - ((mouseX - pan.x) / zoom) * newZoom
       const newPanY = mouseY - ((mouseY - pan.y) / zoom) * newZoom
 
       onZoomChange(newZoom)
       onPanChange({ x: newPanX, y: newPanY })
-    },
-    [zoom, pan, onZoomChange, onPanChange],
-  )
+    }
+
+    container.addEventListener('wheel', handleWheelNative, { passive: false })
+    return () => {
+      container.removeEventListener('wheel', handleWheelNative)
+    }
+  }, [zoom, pan, onZoomChange, onPanChange])
 
   useEffect(() => {
     onHoverNode?.(hoveredNodeId)
   }, [hoveredNodeId, onHoverNode])
 
-  // Focus graph: connected traces for active node
+  // Determine connected traces for focus graph
   const activeNodeId = hoveredNodeId ?? selectedNodeId
   const connectedTraceIds = new Set<string>()
   if (activeNodeId) {
@@ -214,6 +146,24 @@ export function PcbBoard({
         connectedTraceIds.add(t.id)
       }
     }
+  }
+
+  // Node lookup map
+  const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes])
+
+  // Cloud path for Level 4 & Level 5 (organic cloud SVG shape)
+  const getCloudPath = (x: number, y: number, w: number, h: number) => {
+    const rx = w / 2
+    const ry = h / 2
+    return `
+      M ${x - rx + 24} ${y + ry}
+      A 22 22 0 0 1 ${x - rx + 14} ${y - ry + 20}
+      A 28 28 0 0 1 ${x - 10} ${y - ry + 8}
+      A 34 34 0 0 1 ${x + rx - 16} ${y - ry + 12}
+      A 26 26 0 0 1 ${x + rx} ${y + ry - 8}
+      A 22 22 0 0 1 ${x + rx - 28} ${y + ry}
+      Z
+    `
   }
 
   return h(
@@ -225,7 +175,12 @@ export function PcbBoard({
       onMouseMove: handleMouseMove,
       onMouseUp: handleMouseUp,
       onMouseLeave: handleMouseUp,
-      onWheel: handleWheel,
+      onClick: (e: ReactMouseEvent) => {
+        // Deselect when clicking on empty canvas board
+        if (e.target === containerRef.current || (e.target as HTMLElement).tagName === 'svg') {
+          onSelectNode(null)
+        }
+      },
       style: {
         width: '100%',
         height: '100%',
@@ -236,7 +191,7 @@ export function PcbBoard({
         userSelect: 'none',
       },
     },
-    // Keyframes for signal pulses & breathing halos
+    // CSS Keyframes for smooth Signal Flow pulse animation and breath glow
     h(
       'style',
       null,
@@ -246,15 +201,22 @@ export function PcbBoard({
         100% { stroke-dashoffset: -400; }
       }
       @keyframes nodeBreathing {
-        0%, 100% { filter: drop-shadow(0 0 4px rgba(100, 116, 255, 0.3)); }
-        50% { filter: drop-shadow(0 0 12px rgba(100, 116, 255, 0.7)); }
+        0%, 100% { filter: drop-shadow(0 0 4px rgba(89, 106, 255, 0.4)); }
+        50% { filter: drop-shadow(0 0 14px rgba(125, 141, 255, 0.85)); }
       }
       .signal-flow-path {
-        stroke-dasharray: 12 180;
-        animation: pcbSignalPulse 10s linear infinite;
+        stroke-dasharray: 10 160;
+        animation: pcbSignalPulse 8s linear infinite;
       }
       .selected-halo {
-        animation: nodeBreathing 3s ease-in-out infinite;
+        animation: nodeBreathing 2.8s ease-in-out infinite;
+      }
+      .pcb-zone-rect {
+        transition: stroke 0.25s, fill 0.25s;
+      }
+      .pcb-zone-rect:hover {
+        stroke: rgba(125, 141, 255, 0.5) !important;
+        fill: rgba(16, 24, 48, 0.55) !important;
       }
     `,
     ),
@@ -264,11 +226,17 @@ export function PcbBoard({
         width: '100%',
         height: '100%',
         style: { display: 'block', width: '100%', height: '100%' },
+        onClick: (e: ReactMouseEvent) => {
+          if (e.target === e.currentTarget) {
+            onSelectNode(null)
+          }
+        },
       },
-      // Definitions: Filters & Background Grid Pattern
+      // Layer 0: Definitions, Filters & Grid Patterns
       h(
         'defs',
         null,
+        // High-tech PCB Grid Pattern
         h(
           'pattern',
           {
@@ -280,16 +248,17 @@ export function PcbBoard({
           h('path', {
             d: 'M 40 0 L 0 0 0 40',
             fill: 'none',
-            stroke: 'rgba(100, 116, 255, 0.04)',
+            stroke: 'rgba(89, 106, 255, 0.05)',
             strokeWidth: 1,
           }),
           h('circle', {
             cx: 0,
             cy: 0,
             r: 1,
-            fill: 'rgba(142, 164, 206, 0.08)',
+            fill: 'rgba(125, 141, 255, 0.12)',
           }),
         ),
+        // Controlled, non-blinding PCB Glow Filter
         h(
           'filter',
           {
@@ -307,10 +276,11 @@ export function PcbBoard({
             h('feMergeNode', { in: 'SourceGraphic' }),
           ),
         ),
+        // Ambient backlight radial gradient
         h(
           'radialGradient',
           { id: 'ambient-glow-1', cx: '50%', cy: '50%', r: '50%' },
-          h('stop', { offset: '0%', stopColor: 'rgba(74, 94, 218, 0.12)' }),
+          h('stop', { offset: '0%', stopColor: 'rgba(74, 94, 218, 0.14)' }),
           h('stop', { offset: '100%', stopColor: 'rgba(5, 7, 13, 0)' }),
         ),
       ),
@@ -327,104 +297,338 @@ export function PcbBoard({
       h(
         'g',
         {
-          ref: canvasGroupRef,
           transform: `translate(${pan.x}, ${pan.y}) scale(${zoom})`,
-          style: { transformOrigin: '0 0', willChange: 'transform' },
+          style: { transformOrigin: '0 0' },
         },
 
         // ═══════════════════════════════════════════════════════
-        // LAYER 1: GLOW LAYER (Ambient Backlight & Trace Bloom)
+        // LAYER 0.2: ARCHITECTURAL STRATA (Layer 1 to Layer 5)
+        // ═══════════════════════════════════════════════════════
+        h(
+          'g',
+          { className: 'layer-strata-layer' },
+          ...(layerBands ?? []).map((band) => {
+            const isLayerActive = activeLayerId === band.layer
+            const isLayerDimmed =
+              activeLayerId !== null && activeLayerId !== undefined && !isLayerActive
+
+            return h(
+              'g',
+              {
+                key: `layer-band-${band.layer}`,
+                className: 'pcb-layer-band-group',
+                opacity: isLayerDimmed ? 0.25 : 1,
+                style: { transition: 'opacity 0.25s' },
+              },
+              // Layer band background area
+              h('rect', {
+                className: 'pcb-layer-band-rect',
+                x: band.bounds.x,
+                y: band.bounds.y,
+                width: band.bounds.width,
+                height: band.bounds.height,
+                fill: isLayerActive ? `${band.color}15` : 'rgba(7, 10, 20, 0.45)',
+                stroke: isLayerActive ? band.color : `${band.color}35`,
+                strokeWidth: isLayerActive ? 1.6 : 1,
+                strokeDasharray: '8 6',
+                rx: 6,
+                cursor: 'pointer',
+                onClick: (e: ReactMouseEvent) => {
+                  e.stopPropagation()
+                  onSelectLayer?.(band.layer)
+                },
+              }),
+              // Layer Left Edge Heavy Bus Bar
+              h('rect', {
+                x: band.bounds.x,
+                y: band.bounds.y,
+                width: 6,
+                height: band.bounds.height,
+                fill: band.color,
+                opacity: isLayerActive ? 0.95 : 0.6,
+                rx: 3,
+              }),
+              // Corner bracket accents
+              h('path', {
+                d: `M ${band.bounds.x + 20} ${band.bounds.y} L ${band.bounds.x} ${band.bounds.y} L ${band.bounds.x} ${band.bounds.y + 20}`,
+                fill: 'none',
+                stroke: band.color,
+                strokeWidth: 2,
+                pointerEvents: 'none',
+              }),
+              h('path', {
+                d: `M ${band.bounds.x + band.bounds.width - 20} ${band.bounds.y} L ${band.bounds.x + band.bounds.width} ${band.bounds.y} L ${band.bounds.x + band.bounds.width} ${band.bounds.y + 20}`,
+                fill: 'none',
+                stroke: band.color,
+                strokeWidth: 2,
+                pointerEvents: 'none',
+              }),
+              h('path', {
+                d: `M ${band.bounds.x + 20} ${band.bounds.y + band.bounds.height} L ${band.bounds.x} ${band.bounds.y + band.bounds.height} L ${band.bounds.x} ${band.bounds.y + band.bounds.height - 20}`,
+                fill: 'none',
+                stroke: band.color,
+                strokeWidth: 2,
+                pointerEvents: 'none',
+              }),
+              h('path', {
+                d: `M ${band.bounds.x + band.bounds.width - 20} ${band.bounds.y + band.bounds.height} L ${band.bounds.x + band.bounds.width} ${band.bounds.y + band.bounds.height} L ${band.bounds.x + band.bounds.width} ${band.bounds.y + band.bounds.height - 20}`,
+                fill: 'none',
+                stroke: band.color,
+                strokeWidth: 2,
+                pointerEvents: 'none',
+              }),
+              // Layer Header Title Badge
+              h(
+                'text',
+                {
+                  x: band.bounds.x + 24,
+                  y: band.bounds.y + 22,
+                  fill: band.color,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                  letterSpacing: 1.5,
+                  pointerEvents: 'none',
+                },
+                `[ ${band.code}: ${band.title} ]`,
+              ),
+              // Layer Subtitle & Package Path
+              h(
+                'text',
+                {
+                  x: band.bounds.x + 24,
+                  y: band.bounds.y + 36,
+                  fill: 'rgba(226, 236, 255, 0.65)',
+                  fontSize: 9.5,
+                  fontWeight: 600,
+                  fontFamily: 'ui-monospace, monospace',
+                  letterSpacing: 0.8,
+                  pointerEvents: 'none',
+                },
+                `${band.subtitle} · ${band.packagePath}`,
+              ),
+              // Architectural Invariant Note (Right-aligned in layer band header)
+              h(
+                'text',
+                {
+                  x: band.bounds.x + band.bounds.width - 24,
+                  y: band.bounds.y + 22,
+                  textAnchor: 'end',
+                  fill: isLayerActive ? '#FFB020' : 'rgba(255, 176, 32, 0.7)',
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  fontFamily: 'ui-monospace, monospace',
+                  letterSpacing: 0.8,
+                  pointerEvents: 'none',
+                },
+                `RULE: ${band.invariant}`,
+              ),
+            )
+          }),
+        ),
+
+        // ═══════════════════════════════════════════════════════
+        // LAYER 0.5: SUBSYSTEM ZONES (Functional PCB Partitions)
+        // ═══════════════════════════════════════════════════════
+        h(
+          'g',
+          { className: 'subsystem-zones-layer' },
+          ...zones.map((zone) => {
+            const isZoneInActiveLayer = activeLayerId == null || zone.layer === activeLayerId
+            const isZoneActive = activeSubsystemId === zone.id
+            const isZoneDimmed =
+              (activeSubsystemId !== null && activeSubsystemId !== undefined && !isZoneActive) ||
+              (activeLayerId !== null && activeLayerId !== undefined && !isZoneInActiveLayer)
+
+            return h(
+              'g',
+              {
+                key: `zone-${zone.id}`,
+                className: 'pcb-zone-group',
+                opacity: isZoneDimmed ? 0.25 : 1,
+                style: { transition: 'opacity 0.25s' },
+              },
+              // Zone boundary box
+              h('rect', {
+                className: 'pcb-zone-rect',
+                x: zone.bounds.x,
+                y: zone.bounds.y,
+                width: zone.bounds.width,
+                height: zone.bounds.height,
+                fill: isZoneActive ? 'rgba(89, 106, 255, 0.08)' : 'rgba(8, 12, 22, 0.65)',
+                stroke: isZoneActive ? '#7D8DFF' : 'rgba(89, 106, 255, 0.22)',
+                strokeWidth: isZoneActive ? 1.8 : 1,
+                strokeDasharray: '6 4',
+                rx: 4,
+                cursor: 'pointer',
+                onClick: (e: ReactMouseEvent) => {
+                  e.stopPropagation()
+                  onSelectSubsystem?.(zone.id)
+                  if (viewLevel === 1) {
+                    onDrillDownLevel?.(2)
+                  }
+                },
+              }),
+              // Zone PCB Corner Bracket Markings (Top-Left, Top-Right, Bottom-Left, Bottom-Right)
+              h('path', {
+                d: `M ${zone.bounds.x + 8} ${zone.bounds.y} L ${zone.bounds.x} ${zone.bounds.y} L ${zone.bounds.x} ${zone.bounds.y + 8}`,
+                fill: 'none',
+                stroke: '#596AFF',
+                strokeWidth: 1.8,
+                pointerEvents: 'none',
+              }),
+              h('path', {
+                d: `M ${zone.bounds.x + zone.bounds.width - 8} ${zone.bounds.y} L ${zone.bounds.x + zone.bounds.width} ${zone.bounds.y} L ${zone.bounds.x + zone.bounds.width} ${zone.bounds.y + 8}`,
+                fill: 'none',
+                stroke: '#596AFF',
+                strokeWidth: 1.8,
+                pointerEvents: 'none',
+              }),
+              h('path', {
+                d: `M ${zone.bounds.x + 8} ${zone.bounds.y + zone.bounds.height} L ${zone.bounds.x} ${zone.bounds.y + zone.bounds.height} L ${zone.bounds.x} ${zone.bounds.y + zone.bounds.height - 8}`,
+                fill: 'none',
+                stroke: '#596AFF',
+                strokeWidth: 1.8,
+                pointerEvents: 'none',
+              }),
+              h('path', {
+                d: `M ${zone.bounds.x + zone.bounds.width - 8} ${zone.bounds.y + zone.bounds.height} L ${zone.bounds.x + zone.bounds.width} ${zone.bounds.y + zone.bounds.height} L ${zone.bounds.x + zone.bounds.width} ${zone.bounds.y + zone.bounds.height - 8}`,
+                fill: 'none',
+                stroke: '#596AFF',
+                strokeWidth: 1.8,
+                pointerEvents: 'none',
+              }),
+              // Zone Stencil Label
+              h(
+                'text',
+                {
+                  x: zone.bounds.x + 14,
+                  y: zone.bounds.y + 22,
+                  fill: isZoneActive ? '#9AA6FF' : '#7D8DFF',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                  letterSpacing: 1.2,
+                  pointerEvents: 'none',
+                },
+                `[ ${zone.code}: ${zone.title} ]`,
+              ),
+              // Zone Subtitle & Layer Badge
+              h(
+                'text',
+                {
+                  x: zone.bounds.x + 14,
+                  y: zone.bounds.y + 36,
+                  fill: 'rgba(142, 164, 206, 0.45)',
+                  fontSize: 9,
+                  fontWeight: 600,
+                  fontFamily: 'ui-monospace, monospace',
+                  letterSpacing: 0.8,
+                  pointerEvents: 'none',
+                },
+                zone.subtitle,
+              ),
+            )
+          }),
+        ),
+
+        // ═══════════════════════════════════════════════════════
+        // LAYER 1: GLOW LAYER (Ambient Light & Trace Bloom)
         // ═══════════════════════════════════════════════════════
         h(
           'g',
           { className: 'glow-layer', pointerEvents: 'none' },
-          // Diffused soft trace bloom
+          // Ambient circuit cluster backlights
+          h('ellipse', {
+            cx: 1030,
+            cy: 590,
+            rx: 650,
+            ry: 450,
+            fill: 'url(#ambient-glow-1)',
+          }),
+          h('ellipse', {
+            cx: 270,
+            cy: 565,
+            rx: 350,
+            ry: 300,
+            fill: 'url(#ambient-glow-1)',
+          }),
+
+          // Diffused soft bloom along PCB traces
           ...traces.map((trace) => {
+            const fromNode = trace.fromNodeId ? nodeMap.get(trace.fromNodeId) : null
+            const toNode = trace.toNodeId ? nodeMap.get(trace.toNodeId) : null
+            const isTraceInActiveLayer =
+              activeLayerId == null ||
+              fromNode?.layer === activeLayerId ||
+              toNode?.layer === activeLayerId
+
             const isTraceActive = activeNodeId ? connectedTraceIds.has(trace.id) : true
-            const baseColor = RELATION_COLORS[trace.relationType] ?? '#6474FF'
+            const baseColor = TRACE_COLORS[trace.colorType] ?? '#596AFF'
             return h('path', {
               key: `glow-${trace.id}`,
               d: trace.path,
               fill: 'none',
               stroke: baseColor,
-              strokeWidth: (trace.width ?? 2) + 4,
-              strokeOpacity: isTraceActive ? (activeNodeId ? 0.35 : 0.18) : 0.05,
+              strokeWidth: (trace.width ?? 2) + 3.5,
+              strokeOpacity: isTraceActive
+                ? activeNodeId
+                  ? 0.38
+                  : isTraceInActiveLayer
+                    ? 0.18
+                    : 0.05
+                : 0.04,
+              filter: 'url(#pcb-glow)',
             })
           }),
 
-          // Glow halo for selected chip node (Circle, Square, or Triangle matching role)
+          // Glow halo for selected node
           selectedNodeId
             ? (() => {
                 const node = nodes.find((n) => n.id === selectedNodeId)
                 if (!node) return null
-                const cx = node.x + node.width / 2
-                const cy = node.y + node.height / 2
-
-                if (node.role === 'root' || node.role === 'plugin') {
-                  const r = node.width / 2 + 7
-                  return h('circle', {
-                    key: 'selected-halo',
-                    className: 'selected-halo',
-                    cx,
-                    cy,
-                    r,
-                    fill: 'none',
-                    stroke: '#D4F658',
-                    strokeWidth: 2.5,
-                    strokeOpacity: 0.85,
-                    filter: 'url(#pcb-glow)',
-                  })
-                } else if (node.role === 'service') {
-                  return h('rect', {
-                    key: 'selected-halo',
-                    className: 'selected-halo',
-                    x: node.x - 7,
-                    y: node.y - 7,
-                    width: node.width + 14,
-                    height: node.height + 14,
-                    rx: 8,
-                    ry: 8,
-                    fill: 'none',
-                    stroke: '#D4F658',
-                    strokeWidth: 2.5,
-                    strokeOpacity: 0.85,
-                    filter: 'url(#pcb-glow)',
-                  })
-                } else {
-                  // scope - triangle halo
-                  const p1 = `${cx},${node.y - 8}`
-                  const p2 = `${node.x + node.width + 8},${node.y + node.height + 6}`
-                  const p3 = `${node.x - 8},${node.y + node.height + 6}`
-                  return h('polygon', {
-                    key: 'selected-halo',
-                    className: 'selected-halo',
-                    points: `${p1} ${p2} ${p3}`,
-                    fill: 'none',
-                    stroke: '#D4F658',
-                    strokeWidth: 2.5,
-                    strokeLinejoin: 'round',
-                    strokeOpacity: 0.85,
-                    filter: 'url(#pcb-glow)',
-                  })
-                }
+                return h('circle', {
+                  className: 'selected-halo',
+                  cx: node.x,
+                  cy: node.y,
+                  r: node.radius + 7,
+                  fill: 'none',
+                  stroke: '#9AA6FF',
+                  strokeWidth: 2.5,
+                  strokeOpacity: 0.9,
+                  filter: 'url(#pcb-glow)',
+                })
               })()
             : null,
         ),
 
         // ═══════════════════════════════════════════════════════
-        // LAYER 2: TRACE LAYER (Real Relationship Orthogonal Traces)
+        // LAYER 2: TRACE LAYER (Orthogonal PCB Traces & Vias)
         // ═══════════════════════════════════════════════════════
         h(
           'g',
-          { className: 'trace-layer', pointerEvents: 'none' },
+          { className: 'trace-layer' },
           ...traces.map((trace) => {
+            const fromNode = trace.fromNodeId ? nodeMap.get(trace.fromNodeId) : null
+            const toNode = trace.toNodeId ? nodeMap.get(trace.toNodeId) : null
+            const isTraceInActiveLayer =
+              activeLayerId == null ||
+              fromNode?.layer === activeLayerId ||
+              toNode?.layer === activeLayerId
+
             const isTraceActive = activeNodeId ? connectedTraceIds.has(trace.id) : true
-            const baseColor = RELATION_COLORS[trace.relationType] ?? '#6474FF'
+            const baseColor = TRACE_COLORS[trace.colorType] ?? '#596AFF'
             const strokeColor = isTraceActive
               ? activeNodeId
-                ? '#8598FF'
+                ? '#9AA6FF'
                 : baseColor
-              : 'rgba(60, 75, 105, 0.25)'
+              : 'rgba(50, 65, 95, 0.25)'
+
+            const traceOpacity = isTraceActive
+              ? isTraceInActiveLayer
+                ? 1
+                : 0.2
+              : 0.22
 
             return h(
               'g',
@@ -433,13 +637,13 @@ export function PcbBoard({
                 d: trace.path,
                 fill: 'none',
                 stroke: strokeColor,
-                strokeWidth: isTraceActive && activeNodeId ? (trace.width ?? 2) + 0.5 : trace.width ?? 2,
+                strokeWidth: isTraceActive && activeNodeId ? (trace.width ?? 2) + 0.6 : trace.width ?? 2,
                 strokeLinejoin: 'round',
                 strokeLinecap: 'round',
-                opacity: isTraceActive ? 1 : 0.25,
+                opacity: traceOpacity,
                 transition: 'stroke 0.2s, opacity 0.2s',
               }),
-              // Via pads at orthogonal bends
+              // Via solder pads along this trace
               ...(trace.vias ?? []).map((via, vi) =>
                 h(
                   'g',
@@ -447,15 +651,15 @@ export function PcbBoard({
                   h('circle', {
                     cx: via.x,
                     cy: via.y,
-                    r: 3.5,
+                    r: 4,
                     fill: '#05070D',
                     stroke: strokeColor,
-                    strokeWidth: 1.4,
+                    strokeWidth: 1.5,
                   }),
                   h('circle', {
                     cx: via.x,
                     cy: via.y,
-                    r: 1.4,
+                    r: 1.6,
                     fill: strokeColor,
                   }),
                 ),
@@ -465,32 +669,64 @@ export function PcbBoard({
         ),
 
         // ═══════════════════════════════════════════════════════
-        // LAYER 3: PIN LAYER (Connector Pins & Solder Dots)
+        // LAYER 3: PIN LAYER (Connector Pins & Solder Buses)
         // ═══════════════════════════════════════════════════════
         h(
           'g',
-          { className: 'pin-layer', pointerEvents: 'none' },
-          ...pins.map((pin) =>
-            h(
+          { className: 'pin-layer' },
+          ...pins.map((pin) => {
+            if (pin.type === 'bus') {
+              // Vertical parallel pin bus between stacked chips
+              return h(
+                'g',
+                { key: pin.id },
+                h('line', {
+                  x1: pin.x,
+                  y1: pin.y,
+                  x2: pin.x,
+                  y2: pin.y + (pin.length ?? 60),
+                  stroke: '#596AFF',
+                  strokeWidth: 1.8,
+                }),
+                // Top solder pad
+                h('circle', {
+                  cx: pin.x,
+                  cy: pin.y + 3,
+                  r: pin.padSize ?? 4,
+                  fill: '#8598B2',
+                  stroke: '#0A1220',
+                  strokeWidth: 1,
+                }),
+                // Bottom solder pad
+                h('circle', {
+                  cx: pin.x,
+                  cy: pin.y + (pin.length ?? 60) - 3,
+                  r: pin.padSize ?? 4,
+                  fill: '#8598B2',
+                  stroke: '#0A1220',
+                  strokeWidth: 1,
+                }),
+              )
+            }
+
+            // Radial connector pin pad around major IC
+            return h(
               'g',
               { key: pin.id },
               h('circle', {
                 cx: pin.x,
                 cy: pin.y,
                 r: pin.padSize ?? 3.5,
-                fill: '#8EA4CE',
+                fill: '#7D8DFF',
                 stroke: '#05070D',
                 strokeWidth: 1.2,
               }),
-            ),
-          ),
+            )
+          }),
         ),
 
         // ═══════════════════════════════════════════════════════
-        // LAYER 4: NODE LAYER (Geometric IC Shapes based on Role)
-        // [ROOT] & [PLUGIN] -> Circle
-        // [SERVICE] -> Square / Matrix IC package
-        // [SCOPE] -> Triangle Delta
+        // LAYER 4: NODE LAYER (IC Chips & Architecture Modules)
         // ═══════════════════════════════════════════════════════
         h(
           'g',
@@ -498,370 +734,215 @@ export function PcbBoard({
           ...nodes.map((node) => {
             const isSelected = node.id === selectedNodeId
             const isHovered = node.id === hoveredNodeId
-            const isStalled = node.fiber.state === 'PENDING' || node.fiber.state === 'FAILED'
+            const isStalled = node.fiber?.state === 'PENDING' || node.fiber?.state === 'FAILED'
+            const isNodeInActiveLayer = activeLayerId == null || node.layer === activeLayerId
+            const isNodeDimmed =
+              (activeSubsystemId !== null && activeSubsystemId !== undefined && node.subsystem !== activeSubsystemId) ||
+              (activeLayerId !== null && activeLayerId !== undefined && !isNodeInActiveLayer)
 
-            const fillColor = isStalled
-              ? '#B86B7D'
-              : node.role === 'root'
-                ? '#72859E'
-                : node.role === 'service'
-                  ? '#7492A0'
-                  : node.role === 'scope'
-                    ? '#8A91B0'
-                    : '#8598B2'
-
-            const strokeColor = isSelected
-              ? '#D4F658'
-              : isHovered
-                ? '#E2ECFF'
-                : '#AAB9D0'
-
-            const cx = node.x + node.width / 2
-            const cy = node.y + node.height / 2
-            const lines = splitDisplayName(node.displayName)
-
-            let shapeElements: ReactElement[]
-
-            if (node.role === 'root' || node.role === 'plugin') {
-              // ─── CIRCLE (Ordinary Plugin & Root Kernel) ───
-              const r = node.width / 2
-              shapeElements = [
-                // 1. Circle body
-                h('circle', {
-                  key: 'body',
-                  cx,
-                  cy,
-                  r,
-                  fill: fillColor,
-                  stroke: strokeColor,
-                  strokeWidth: isSelected ? 2.5 : 1.6,
-                  filter: isHovered ? 'url(#pcb-glow)' : undefined,
-                  transition: 'stroke 0.2s, stroke-width 0.2s',
+            // Cloud modules (Level 4 & Level 5 for architecture tags and test compatibility)
+            if (node.kind === 'cloud') {
+              const cloudPath = getCloudPath(
+                node.x,
+                node.y,
+                node.width ?? 140,
+                node.height ?? 56,
+              )
+              return h(
+                'g',
+                {
+                  key: node.id,
+                  'data-testid': `node-${node.id}`,
+                  onClick: (e: ReactMouseEvent) => {
+                    e.stopPropagation()
+                    onSelectNode(node)
+                  },
+                  onMouseEnter: () => setHoveredNodeId(node.id),
+                  onMouseLeave: () => setHoveredNodeId(null),
+                  opacity: isNodeDimmed ? 0.22 : 1,
+                  style: { cursor: 'pointer', transition: 'opacity 0.25s' },
+                },
+                h('path', {
+                  d: cloudPath,
+                  fill: '#8598B2',
+                  stroke: isSelected ? '#9AA6FF' : '#596AFF',
+                  strokeWidth: isSelected ? 2.5 : 1.5,
+                  filter: isHovered || isSelected ? 'url(#pcb-glow)' : undefined,
+                  transition: 'stroke 0.2s',
                 }),
-                // 2. Inner circular concentric ring
+                h(
+                  'text',
+                  {
+                    x: node.x,
+                    y: node.y + 5,
+                    textAnchor: 'middle',
+                    fill: '#0A1220',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    fontFamily:
+                      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                  },
+                  node.code,
+                ),
+              )
+            }
+
+            // Satellite Child Fiber Node (Level 3 Orbit)
+            if (node.kind === 'satellite') {
+              return h(
+                'g',
+                {
+                  key: node.id,
+                  'data-testid': `node-${node.id}`,
+                  onClick: (e: ReactMouseEvent) => {
+                    e.stopPropagation()
+                    onSelectNode(node)
+                  },
+                  onMouseEnter: () => setHoveredNodeId(node.id),
+                  onMouseLeave: () => setHoveredNodeId(null),
+                  opacity: isNodeDimmed ? 0.22 : 1,
+                  style: { cursor: 'pointer', transition: 'opacity 0.25s' },
+                },
                 h('circle', {
-                  key: 'bevel',
-                  cx,
-                  cy,
-                  r: r - 5,
-                  fill: 'none',
-                  stroke: 'rgba(10, 18, 32, 0.25)',
-                  strokeWidth: 1,
-                  strokeDasharray: node.role === 'root' ? '4 2' : undefined,
-                }),
-                // 3. Polar solder terminal pads
-                h('circle', {
-                  key: 'pin-top',
-                  cx,
+                  cx: node.x,
                   cy: node.y,
-                  r: 3,
-                  fill: '#05070D',
-                  stroke: strokeColor,
-                  strokeWidth: 1.2,
+                  r: node.radius,
+                  fill: isSelected ? '#9AA6FF' : '#8598B2',
+                  stroke: isSelected ? '#D4F658' : '#596AFF',
+                  strokeWidth: 1.5,
                 }),
-                h('circle', {
-                  key: 'pin-bottom',
-                  cx,
-                  cy: node.y + node.height,
-                  r: 3,
-                  fill: '#05070D',
-                  stroke: strokeColor,
-                  strokeWidth: 1.2,
-                }),
-                // 4. Role badge
                 h(
                   'text',
                   {
-                    key: 'role',
-                    x: cx,
-                    y: cy - 28,
+                    x: node.x,
+                    y: node.y + 3,
                     textAnchor: 'middle',
-                    fill: node.role === 'root' ? '#1E3A8A' : '#1E293B',
-                    fontSize: 9,
-                    fontWeight: 800,
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                    letterSpacing: 0.8,
-                  },
-                  node.role === 'root' ? '[ROOT]' : '[PLUGIN]',
-                ),
-                // 5. Centered name lines
-                ...renderTextLines(lines, cx, cy),
-                // 6. Subtitle
-                node.fiber.children && node.fiber.children.length > 0
-                  ? h(
-                      'text',
-                      {
-                        key: 'subtitle',
-                        x: cx,
-                        y: cy + 33,
-                        textAnchor: 'middle',
-                        fill: '#1E293B',
-                        fontSize: 9.5,
-                        fontWeight: 600,
-                        fontFamily: 'ui-monospace, monospace',
-                      },
-                      `${node.fiber.children.length} plugins`,
-                    )
-                  : isStalled
-                    ? h(
-                        'text',
-                        {
-                          key: 'stalled',
-                          x: cx,
-                          y: cy + 33,
-                          textAnchor: 'middle',
-                          fill: '#991B1B',
-                          fontSize: 9.5,
-                          fontWeight: 700,
-                          fontFamily: 'ui-monospace, monospace',
-                        },
-                        node.fiber.state,
-                      )
-                    : null,
-              ].filter(Boolean) as ReactElement[]
-            } else if (node.role === 'service') {
-              // ─── SQUARE / MATRIX IC PACKAGE (Service Instance) ───
-              const w = node.width
-              const h_dim = node.height
-              const pinOffsets = [-24, -8, 8, 24]
-              const icPins: ReactElement[] = [
-                ...pinOffsets.map((dy, i) =>
-                  h('rect', {
-                    key: `pin-l-${i}`,
-                    x: node.x - 4,
-                    y: cy + dy - 2,
-                    width: 4,
-                    height: 4,
-                    fill: '#8EA4CE',
-                    stroke: '#05070D',
-                    strokeWidth: 0.8,
-                  }),
-                ),
-                ...pinOffsets.map((dy, i) =>
-                  h('rect', {
-                    key: `pin-r-${i}`,
-                    x: node.x + w,
-                    y: cy + dy - 2,
-                    width: 4,
-                    height: 4,
-                    fill: '#8EA4CE',
-                    stroke: '#05070D',
-                    strokeWidth: 0.8,
-                  }),
-                ),
-                ...pinOffsets.map((dx, i) =>
-                  h('rect', {
-                    key: `pin-t-${i}`,
-                    x: cx + dx - 2,
-                    y: node.y - 4,
-                    width: 4,
-                    height: 4,
-                    fill: '#8EA4CE',
-                    stroke: '#05070D',
-                    strokeWidth: 0.8,
-                  }),
-                ),
-                ...pinOffsets.map((dx, i) =>
-                  h('rect', {
-                    key: `pin-b-${i}`,
-                    x: cx + dx - 2,
-                    y: node.y + h_dim,
-                    width: 4,
-                    height: 4,
-                    fill: '#8EA4CE',
-                    stroke: '#05070D',
-                    strokeWidth: 0.8,
-                  }),
-                ),
-              ]
-
-              shapeElements = [
-                ...icPins,
-                // 1. Square chip body
-                h('rect', {
-                  key: 'body',
-                  x: node.x,
-                  y: node.y,
-                  width: w,
-                  height: h_dim,
-                  rx: 4,
-                  ry: 4,
-                  fill: fillColor,
-                  stroke: strokeColor,
-                  strokeWidth: isSelected ? 2.5 : 1.6,
-                  filter: isHovered ? 'url(#pcb-glow)' : undefined,
-                  transition: 'stroke 0.2s, stroke-width 0.2s',
-                }),
-                // 2. Inner matrix border
-                h('rect', {
-                  key: 'bevel',
-                  x: node.x + 5,
-                  y: node.y + 5,
-                  width: w - 10,
-                  height: h_dim - 10,
-                  rx: 2,
-                  ry: 2,
-                  fill: 'none',
-                  stroke: 'rgba(10, 18, 32, 0.25)',
-                  strokeWidth: 1,
-                }),
-                // 3. Pin 1 orientation index notch dot
-                h('circle', {
-                  key: 'pin-1-dot',
-                  cx: node.x + 12,
-                  cy: node.y + 12,
-                  r: 2.5,
-                  fill: '#064E3B',
-                  opacity: 0.75,
-                }),
-                // 4. Role badge
-                h(
-                  'text',
-                  {
-                    key: 'role',
-                    x: cx,
-                    y: cy - 28,
-                    textAnchor: 'middle',
-                    fill: '#064E3B',
-                    fontSize: 9,
-                    fontWeight: 800,
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                    letterSpacing: 0.8,
-                  },
-                  '[SERVICE]',
-                ),
-                // 5. Centered service name
-                ...renderTextLines(lines, cx, cy),
-                // 6. Subtitle
-                h(
-                  'text',
-                  {
-                    key: 'subtitle',
-                    x: cx,
-                    y: cy + 33,
-                    textAnchor: 'middle',
-                    fill: '#065F46',
-                    fontSize: 9.5,
+                    fill: '#0A1220',
+                    fontSize: 8,
                     fontWeight: 700,
                     fontFamily: 'ui-monospace, monospace',
-                    letterSpacing: 0.5,
                   },
-                  isStalled ? node.fiber.state : 'ACTIVE SERVICE',
+                  node.code,
                 ),
-              ].filter(Boolean) as ReactElement[]
-            } else {
-              // ─── TRIANGLE DELTA (Injected Sub-Scope) ───
-              const pTop = `${cx},${node.y}`
-              const pRight = `${node.x + node.width},${node.y + node.height}`
-              const pLeft = `${node.x},${node.y + node.height}`
-
-              const pInnerTop = `${cx},${node.y + 10}`
-              const pInnerRight = `${node.x + node.width - 8},${node.y + node.height - 4}`
-              const pInnerLeft = `${node.x + 8},${node.y + node.height - 4}`
-
-              const textCenterY = node.y + node.height * 0.68
-
-              shapeElements = [
-                // 1. Triangle polygon body
-                h('polygon', {
-                  key: 'body',
-                  points: `${pTop} ${pRight} ${pLeft}`,
-                  fill: fillColor,
-                  stroke: strokeColor,
-                  strokeWidth: isSelected ? 2.5 : 1.6,
-                  strokeLinejoin: 'round',
-                  filter: isHovered ? 'url(#pcb-glow)' : undefined,
-                  transition: 'stroke 0.2s, stroke-width 0.2s',
-                }),
-                // 2. Inner offset triangle border
-                h('polygon', {
-                  key: 'bevel',
-                  points: `${pInnerTop} ${pInnerRight} ${pInnerLeft}`,
-                  fill: 'none',
-                  stroke: 'rgba(10, 18, 32, 0.25)',
-                  strokeWidth: 1,
-                  strokeLinejoin: 'round',
-                }),
-                // 3. Top apex via
-                h('circle', {
-                  key: 'apex-via',
-                  cx,
-                  cy: node.y,
-                  r: 3,
-                  fill: '#05070D',
-                  stroke: strokeColor,
-                  strokeWidth: 1.2,
-                }),
-                // 4. Role badge
-                h(
-                  'text',
-                  {
-                    key: 'role',
-                    x: cx,
-                    y: node.y + 44,
-                    textAnchor: 'middle',
-                    fill: '#581C87',
-                    fontSize: 9,
-                    fontWeight: 800,
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                    letterSpacing: 0.8,
-                  },
-                  '[SCOPE]',
-                ),
-                // 5. Centered name
-                ...renderTextLines(lines, cx, textCenterY),
-                // 6. Subtitle
-                h(
-                  'text',
-                  {
-                    key: 'subtitle',
-                    x: cx,
-                    y: node.y + node.height - 10,
-                    textAnchor: 'middle',
-                    fill: '#581C87',
-                    fontSize: 8.5,
-                    fontWeight: 600,
-                    fontFamily: 'ui-monospace, monospace',
-                    letterSpacing: 0.5,
-                  },
-                  isStalled ? node.fiber.state : 'INJECTED SCOPE',
-                ),
-              ].filter(Boolean) as ReactElement[]
+              )
             }
+
+            // Circular IC Chip Node
+            const isUiNode = node.kind === 'ui'
+            const isRootNode = node.kind === 'root'
+            const fillColor = isStalled ? '#B86B7D' : '#8598B2'
+            const strokeColor = isSelected
+              ? '#9AA6FF'
+              : isHovered
+                ? '#E2ECFF'
+                : isUiNode
+                  ? '#C8A870'
+                  : isRootNode
+                    ? '#596AFF'
+                    : '#AAB9D0'
 
             return h(
               'g',
               {
                 key: node.id,
                 'data-testid': `node-${node.id}`,
-                'data-name': node.displayName,
-                'data-plugin': node.name,
                 onClick: (e: ReactMouseEvent) => {
                   e.stopPropagation()
                   onSelectNode(node)
                 },
                 onDoubleClick: (e: ReactMouseEvent) => {
                   e.stopPropagation()
+                  // Center and drilldown
                   if (containerRef.current) {
                     const rect = containerRef.current.getBoundingClientRect()
                     onPanChange({
-                      x: rect.width / 2 - (node.x + node.width / 2) * zoom,
-                      y: rect.height / 2 - (node.y + node.height / 2) * zoom,
+                      x: rect.width / 2 - node.x * zoom,
+                      y: rect.height / 2 - node.y * zoom,
                     })
+                  }
+                  if (viewLevel === 1 && node.subsystem && node.subsystem !== 'root') {
+                    onSelectSubsystem?.(node.subsystem)
+                    onDrillDownLevel?.(2, node.id)
+                  } else if (viewLevel === 2) {
+                    onDrillDownLevel?.(3, node.id)
                   }
                 },
                 onMouseEnter: () => setHoveredNodeId(node.id),
                 onMouseLeave: () => setHoveredNodeId(null),
-                style: { cursor: 'pointer' },
+                opacity: isNodeDimmed ? 0.22 : 1,
+                style: { cursor: 'pointer', transition: 'opacity 0.25s' },
               },
-              h('title', null, `${node.displayName} (${node.role.toUpperCase()})`),
-              ...shapeElements,
+              // Chip outer border
+              h('circle', {
+                cx: node.x,
+                cy: node.y,
+                r: node.radius,
+                fill: fillColor,
+                stroke: strokeColor,
+                strokeWidth: isSelected ? 3 : isRootNode ? 2.5 : 1.8,
+                filter: isHovered ? 'url(#pcb-glow)' : undefined,
+                transition: 'stroke 0.2s, stroke-width 0.2s',
+              }),
+              // Chip inner technical ring
+              h('circle', {
+                cx: node.x,
+                cy: node.y,
+                r: Math.max(4, node.radius - (isRootNode ? 6 : 4)),
+                fill: 'none',
+                stroke: 'rgba(10, 18, 32, 0.28)',
+                strokeWidth: 1,
+              }),
+              // Root extra concentric IC mark
+              isRootNode
+                ? h('circle', {
+                    cx: node.x,
+                    cy: node.y,
+                    r: node.radius - 12,
+                    fill: 'none',
+                    stroke: 'rgba(10, 18, 32, 0.18)',
+                    strokeWidth: 1,
+                    strokeDasharray: '3 2',
+                  })
+                : null,
+              // Centered Monospace Technical ID (e.g. PLAYER, SOURCES, AUDIO, ROOT)
+              h(
+                'text',
+                {
+                  x: node.x,
+                  y: node.y + (node.radius > 36 ? 4.5 : node.radius > 26 ? 3.5 : 3),
+                  textAnchor: 'middle',
+                  fill: '#0A1220',
+                  fontSize: node.radius > 36 ? 13 : node.radius > 26 ? 10 : 8.5,
+                  fontWeight: 800,
+                  fontFamily:
+                    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                  letterSpacing: -0.2,
+                },
+                node.code,
+              ),
+              // Hover overlay tag showing full fiber service name
+              isHovered && (node.name || node.fiber)
+                ? h(
+                    'text',
+                    {
+                      x: node.x,
+                      y: node.y + node.radius + 16,
+                      textAnchor: 'middle',
+                      fill: '#E2ECFF',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      fontFamily: 'ui-monospace, monospace',
+                      filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.8))',
+                    },
+                    node.name ?? node.fiber?.name,
+                  )
+                : null,
             )
           }),
         ),
 
         // ═══════════════════════════════════════════════════════
-        // LAYER 5: SIGNAL FLOW LAYER (Real Dependency Packet Flow)
+        // LAYER 5: SIGNAL FLOW LAYER (Restrained Data Pulses)
         // ═══════════════════════════════════════════════════════
         h(
           'g',
@@ -878,7 +959,7 @@ export function PcbBoard({
                 strokeWidth: (trace.width ?? 2) + 0.8,
                 strokeLinecap: 'round',
                 filter: 'url(#pcb-glow)',
-                opacity: 0.8,
+                opacity: 0.85,
               }),
             ),
         ),
@@ -886,3 +967,4 @@ export function PcbBoard({
     ),
   )
 }
+

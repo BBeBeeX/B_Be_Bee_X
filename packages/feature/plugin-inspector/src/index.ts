@@ -97,8 +97,8 @@ export class Inspector extends Service {
 
     const childrenOf = new Map<Fiber, Fiber[]>()
     for (const fiber of all) {
-      const parent = fiber.parent.fiber
-      if (parent === fiber) continue
+      const parent = fiber.parent?.fiber
+      if (!parent || parent === fiber) continue
       const siblings = childrenOf.get(parent) ?? []
       siblings.push(fiber)
       childrenOf.set(parent, siblings)
@@ -139,6 +139,13 @@ export class Inspector extends Service {
         stalled.push({ name: fiber.name, state, waitingFor })
       }
 
+      let effects: EffectNode[]
+      try {
+        effects = (fiber.getEffects?.() ?? []) as EffectNode[]
+      } catch {
+        effects = []
+      }
+
       return {
         name: fiber.name,
         uid: fiber.uid,
@@ -146,7 +153,7 @@ export class Inspector extends Service {
         inject,
         waitingFor,
         provides: this.providedBy(fiber),
-        effects: fiber.getEffects() as EffectNode[],
+        effects,
         // Depth guard: a cycle in `parent` would otherwise hang the inspector,
         // and a debugging tool that hangs is worse than none. Truncating
         // silently is nearly as bad — the tree then *looks* complete — so the
@@ -173,22 +180,31 @@ export class Inspector extends Service {
   /** Every fiber Cordis currently knows about. */
   private collect(): Fiber[] {
     const out: Fiber[] = []
-    for (const runtime of this.ctx.registry.values()) {
-      for (const fiber of runtime.fibers) out.push(fiber)
+    try {
+      for (const runtime of this.ctx.registry.values()) {
+        for (const fiber of runtime.fibers) out.push(fiber)
+      }
+    } catch {
+      // Return collected so far if registry mutates during collect
     }
     return out
   }
 
   /** Service keys whose implementation belongs to this fiber. */
   private providedBy(fiber: Fiber): string[] {
-    const store = (this.ctx.reflect as unknown as { store: Record<symbol, { name: string; fiber: Fiber }> })
-      .store
-    const names: string[] = []
-    for (const key of Object.getOwnPropertySymbols(store)) {
-      const impl = store[key]
-      if (impl?.fiber === fiber) names.push(impl.name)
+    try {
+      const store = (this.ctx.reflect as unknown as { store?: Record<symbol, { name: string; fiber: Fiber }> })
+        ?.store
+      if (!store) return []
+      const names: string[] = []
+      for (const key of Object.getOwnPropertySymbols(store)) {
+        const impl = store[key]
+        if (impl?.fiber === fiber && impl.name) names.push(impl.name)
+      }
+      return names.sort()
+    } catch {
+      return []
     }
-    return names.sort()
   }
 
   /** A plain-text tree, for logs, bug reports, and the terminal. */
