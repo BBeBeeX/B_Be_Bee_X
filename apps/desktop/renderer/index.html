@@ -9,12 +9,25 @@
          `'unsafe-eval'`: no foreign JavaScript loads (docs/02 §2). -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' BBeBee-plugin:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: bbebee-file: https:; media-src 'self' blob: data: http: https: bbebee-file:; connect-src 'self'"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' BBeBee-plugin:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: bbebee-file: https:; media-src 'self' blob: data: http: https: bbebee-file:; connect-src 'self' ws: wss: http: https:"
     />
+    <script>
+      (function () {
+        if (location.search.includes('desktop-lyrics') || location.hash.includes('desktop-lyrics')) {
+          document.documentElement.classList.add('is-lyrics-window')
+          document.documentElement.style.background = 'transparent'
+        }
+      })()
+    </script>
     <title>BBeBee</title>
     <style>
       :root { color-scheme: dark; }
       body { margin: 0; background: #0B0B0F; color: #F5F5F7; font-family: system-ui, sans-serif; }
+      html.is-lyrics-window,
+      body.is-lyrics-window {
+        background: transparent !important;
+        background-color: transparent !important;
+      }
 
       /* Global sleek, transparent, ultra-narrow scrollbars */
       * {

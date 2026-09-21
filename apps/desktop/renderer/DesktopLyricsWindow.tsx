@@ -26,6 +26,13 @@ export function DesktopLyricsWindow(): ReactElement {
     const bridge = window.BBeBee?.desktopLyrics
     if (!bridge) return
 
+    // Get current data if available on initial mount
+    void (bridge as { getData?: () => Promise<unknown> }).getData?.()?.then((initial) => {
+      if (initial) {
+        setData((prev) => ({ ...prev, ...(initial as Partial<DesktopLyricsPayload>) }))
+      }
+    })
+
     const off = bridge.onData((incoming: unknown) => {
       setData((prev) => ({ ...prev, ...(incoming as Partial<DesktopLyricsPayload>) }))
     })
@@ -67,7 +74,7 @@ export function DesktopLyricsWindow(): ReactElement {
         userSelect: 'none',
         WebkitUserSelect: 'none',
         cursor: locked ? 'default' : 'move',
-        WebkitAppRegion: 'drag',
+        WebkitAppRegion: locked ? 'no-drag' : 'drag',
         background: hovered && !locked ? 'rgba(15, 15, 22, 0.6)' : 'transparent',
         borderRadius: 12,
         border: hovered && !locked ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid transparent',

@@ -16,9 +16,12 @@ const root = createRoot(document.getElementById('root')!)
 const isLyricsWindow =
   typeof window !== 'undefined' &&
   (new URLSearchParams(window.location.search).get('window') === 'desktop-lyrics' ||
+    window.location.search.includes('desktop-lyrics') ||
     window.location.hash.includes('desktop-lyrics'))
 
 if (isLyricsWindow) {
+  document.documentElement.classList.add('is-lyrics-window')
+  document.body.classList.add('is-lyrics-window')
   root.render(h(StrictMode, null, h(DesktopLyricsWindow)))
 } else {
   boot()

@@ -168,6 +168,24 @@ function clampToVisibleScreen(
 }
 
 let lyricWindow: BrowserWindow | undefined
+let lyricWindowReady = false
+let lyricWindowVisible = false
+let latestLyricData: unknown = undefined
+let programmaticMove = false
+
+function setLyricWindowPosition(x: number, y: number): void {
+  if (!lyricWindow || lyricWindow.isDestroyed()) return
+  const [curX, curY] = lyricWindow.getPosition()
+  if (curX === x && curY === y) return
+  programmaticMove = true
+  try {
+    lyricWindow.setPosition(x, y)
+  } finally {
+    setTimeout(() => {
+      programmaticMove = false
+    }, 60)
+  }
+}
 
 function createLyricWindow(pos?: { x?: number; y?: number }): BrowserWindow {
   const windowWidth = 860
@@ -212,6 +230,10 @@ function createLyricWindow(pos?: { x?: number; y?: number }): BrowserWindow {
     },
   })
 
+  // Ensure window stays above regular applications
+  window.setAlwaysOnTop(true, 'screen-saver')
+  window.setVisibleOnAllWorkspaces?.(true, { visibleOnFullScreen: true })
+
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (isWebUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
@@ -219,19 +241,39 @@ function createLyricWindow(pos?: { x?: number; y?: number }): BrowserWindow {
 
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   if (rendererUrl) {
-    void window.loadURL(`${rendererUrl}?window=desktop-lyrics`)
+    const targetUrl = new URL(rendererUrl)
+    targetUrl.searchParams.set('window', 'desktop-lyrics')
+    targetUrl.hash = 'desktop-lyrics'
+    void window.loadURL(targetUrl.toString())
   } else {
     void window.loadFile(join(here, '../renderer/index.html'), {
-      query: { window: 'desktop-lyrics' },
+      search: 'window=desktop-lyrics',
       hash: 'desktop-lyrics',
     })
   }
 
+  window.once('ready-to-show', () => {
+    lyricWindowReady = true
+    if (lyricWindowVisible && !window.isDestroyed()) {
+      window.showInactive()
+    }
+    if (latestLyricData && !window.isDestroyed()) {
+      window.webContents.send('desktop-lyrics:data', latestLyricData)
+    }
+  })
+
+  window.webContents.on('did-finish-load', () => {
+    if (latestLyricData && !window.isDestroyed()) {
+      window.webContents.send('desktop-lyrics:data', latestLyricData)
+    }
+  })
+
   let moveTimer: NodeJS.Timeout | undefined
   window.on('moved', () => {
+    if (programmaticMove) return
     if (moveTimer) clearTimeout(moveTimer)
     moveTimer = setTimeout(() => {
-      if (window.isDestroyed()) return
+      if (programmaticMove || window.isDestroyed()) return
       const [x, y] = window.getPosition()
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('desktop-lyrics:moved', { x, y })
@@ -241,7 +283,11 @@ function createLyricWindow(pos?: { x?: number; y?: number }): BrowserWindow {
 
   window.on('closed', () => {
     if (moveTimer) clearTimeout(moveTimer)
-    if (lyricWindow === window) lyricWindow = undefined
+    if (lyricWindow === window) {
+      lyricWindow = undefined
+      lyricWindowReady = false
+      lyricWindowVisible = false
+    }
   })
 
   return window
@@ -461,8 +507,10 @@ function registerHandlers(): void {
   ipcMain.handle(
     'desktop-lyrics:set-visible',
     (_event, visible: boolean, position?: { x: number; y: number }) => {
+      lyricWindowVisible = Boolean(visible)
       if (visible) {
         if (!lyricWindow || lyricWindow.isDestroyed()) {
+          lyricWindowReady = false
           lyricWindow = createLyricWindow(position)
         } else if (
           position &&
@@ -472,9 +520,11 @@ function registerHandlers(): void {
           position.y >= 0
         ) {
           const clamped = clampToVisibleScreen(position.x, position.y, 860, 140)
-          lyricWindow.setPosition(clamped.x, clamped.y)
+          setLyricWindowPosition(clamped.x, clamped.y)
         }
-        lyricWindow.showInactive()
+        if (lyricWindowReady && !lyricWindow.isDestroyed()) {
+          lyricWindow.showInactive()
+        }
       } else {
         if (lyricWindow && !lyricWindow.isDestroyed()) {
           lyricWindow.hide()
@@ -487,9 +537,10 @@ function registerHandlers(): void {
     if (position && typeof position.x === 'number' && typeof position.y === 'number') {
       const clamped = clampToVisibleScreen(position.x, position.y, 860, 140)
       if (!lyricWindow || lyricWindow.isDestroyed()) {
+        lyricWindowReady = false
         lyricWindow = createLyricWindow(clamped)
       } else {
-        lyricWindow.setPosition(clamped.x, clamped.y)
+        setLyricWindowPosition(clamped.x, clamped.y)
       }
     }
   })
@@ -502,13 +553,18 @@ function registerHandlers(): void {
     return undefined
   })
 
+  ipcMain.handle('desktop-lyrics:get-data', () => {
+    return latestLyricData
+  })
+
   ipcMain.handle('desktop-lyrics:set-locked', (_event, locked: boolean) => {
     if (lyricWindow && !lyricWindow.isDestroyed()) {
-      lyricWindow.setIgnoreMouseEvents(locked, { forward: true })
+      lyricWindow.setIgnoreMouseEvents(Boolean(locked), { forward: true })
     }
   })
 
   ipcMain.handle('desktop-lyrics:update-data', (_event, data: unknown) => {
+    latestLyricData = data
     if (lyricWindow && !lyricWindow.isDestroyed()) {
       lyricWindow.webContents.send('desktop-lyrics:data', data)
     }

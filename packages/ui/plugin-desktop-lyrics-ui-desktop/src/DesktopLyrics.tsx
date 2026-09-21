@@ -33,6 +33,7 @@ interface WindowWithBridge {
       setVisible(visible: boolean, pos?: { x: number; y: number }): Promise<void>
       setPosition(pos: { x: number; y: number }): Promise<void>
       getPosition(): Promise<{ x: number; y: number } | undefined>
+      getData?(): Promise<unknown>
       onMoved(callback: (pos: { x: number; y: number }) => void): () => void
       setLocked(locked: boolean): Promise<void>
       updateData(data: unknown): Promise<void>
@@ -88,6 +89,9 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
   const effectiveTextColor = lyricsConfig?.textColor ?? '#FFFFFF'
   const isSingleLine = lyricsConfig?.lineMode === 'single'
   const isEnabled = visible
+  const isLocked = lyricsConfig?.locked ?? locked
+  const posX = lyricsConfig?.position?.x ?? position.x
+  const posY = lyricsConfig?.position?.y ?? position.y
 
   const { status, currentLine, nextLine, title, artist, isPlaying } = useCurrentLyric(ctx)
   const [hovered, setHovered] = useState(false)
@@ -99,27 +103,31 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
       : undefined
   const hasNativeBridge = Boolean(bridge)
 
-  // 严格执行启动与数据同步时序：
-  // 1. 先看是否打开歌词；
-  // 2. 若打开，再看桌面歌词所在位置并移动；
-  // 3. 再看设置中的桌面歌词设置（字号、对齐、字体、颜色、透明度、锁定）并推入窗口；
-  // 4. 再显示桌面歌词。
+  // 1. 同步桌面歌词开关状态
   useEffect(() => {
     if (!hasNativeBridge || !bridge) return
+    const targetPos = posX >= 0 && posY >= 0 ? { x: posX, y: posY } : undefined
+    void bridge.setVisible(isEnabled, targetPos)
+  }, [hasNativeBridge, bridge, isEnabled])
 
-    // 1. 先看是否打开歌词
-    if (!isEnabled) {
-      void bridge.setVisible(false)
-      return
+  // 2. 同步桌面歌词位置坐标（仅在启用且坐标发生数值变化时触发）
+  useEffect(() => {
+    if (!hasNativeBridge || !bridge || !isEnabled) return
+    if (posX >= 0 && posY >= 0) {
+      void bridge.setPosition({ x: posX, y: posY })
     }
+  }, [hasNativeBridge, bridge, isEnabled, posX, posY])
 
-    // 2. 再看桌面歌词所在位置
-    const savedPos = lyricsConfig?.position ?? position
-    if (savedPos && savedPos.x >= 0 && savedPos.y >= 0) {
-      void bridge.setPosition(savedPos)
-    }
+  // 3. 同步锁定/穿透状态
+  useEffect(() => {
+    if (!hasNativeBridge || !bridge || !isEnabled) return
+    void bridge.setLocked(isLocked)
+  }, [hasNativeBridge, bridge, isEnabled, isLocked])
 
-    // 3. 再看设置中的桌面歌词设置
+  // 4. 同步歌词内容、字号、颜色与播放状态
+  useEffect(() => {
+    if (!hasNativeBridge || !bridge || !isEnabled) return
+
     let lineText = currentLine?.text
     if (!lineText) {
       if (status === 'loading-song' || status === 'loading-lyrics') {
@@ -136,7 +144,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
       nextLine: !isSingleLine && showNextLine && nextLine ? nextLine.text : undefined,
       fontSize: effectiveFontSize,
       opacity: effectiveOpacity,
-      locked: lyricsConfig?.locked ?? locked,
+      locked: isLocked,
       playing: isPlaying,
       title,
       artist,
@@ -145,16 +153,11 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
       textColor: effectiveTextColor,
       lineMode: lyricsConfig?.lineMode ?? (showNextLine ? 'double' : 'single'),
     })
-    void bridge.setLocked(lyricsConfig?.locked ?? locked)
-
-    // 4. 再显示桌面歌词
-    void bridge.setVisible(true, savedPos)
   }, [
     hasNativeBridge,
     bridge,
     isEnabled,
-    locked,
-    lyricsConfig?.locked,
+    isLocked,
     currentLine?.text,
     nextLine?.text,
     showNextLine,
@@ -165,22 +168,28 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
     effectiveTextColor,
     isSingleLine,
     lyricsConfig?.lineMode,
-    lyricsConfig?.position,
     isPlaying,
     title,
     artist,
     status,
   ])
 
-  // 监听原生窗口拖拽位置移动并实时保存至设置
+  // 监听原生窗口拖拽位置移动并实时保存至设置（仅在数值变化时更新，彻底阻断回环）
   useEffect(() => {
     if (!hasNativeBridge || !bridge?.onMoved) return
 
     const off = bridge.onMoved((pos: { x: number; y: number }) => {
+      if (pos.x === posX && pos.y === posY) return
       setPosition(pos)
       const settingsService = serviceOf<SettingsService>(ctx, 'settings')
       if (settingsService) {
         void settingsService.get().then((current) => {
+          if (
+            current.desktopLyrics?.position?.x === pos.x &&
+            current.desktopLyrics?.position?.y === pos.y
+          ) {
+            return
+          }
           void settingsService.update({
             desktopLyrics: {
               ...current.desktopLyrics,
@@ -194,7 +203,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
     return () => {
       off()
     }
-  }, [hasNativeBridge, bridge, setPosition, ctx])
+  }, [hasNativeBridge, bridge, setPosition, ctx, posX, posY])
 
   // Handle actions sent from the native desktop lyrics window
   useEffect(() => {
