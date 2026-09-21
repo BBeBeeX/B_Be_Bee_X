@@ -487,6 +487,12 @@ export function Slider(props: SliderProps) {
     [props],
   )
 
+  const max = props.max > 0 ? props.max : 1
+  const percent = Math.max(0, Math.min(100, (value / max) * 100))
+  const isInteracting = hovered || dragging !== undefined
+  const activeColor = isInteracting ? c().accent.base : c().text.primary
+  const trackBg = `linear-gradient(to right, ${activeColor} 0%, ${activeColor} ${percent}%, rgba(255, 255, 255, 0.2) ${percent}%, rgba(255, 255, 255, 0.2) 100%)`
+
   return h('input', {
     ...common(props),
     ...hoverProps,
@@ -497,6 +503,7 @@ export function Slider(props: SliderProps) {
     disabled,
     'aria-valuenow': value,
     'aria-valuemax': props.max,
+    className: isInteracting ? 'is-dragging' : undefined,
     onChange: (event: { target: { value: string } }) => {
       const next = Number(event.target.value)
       setDragging(next)
@@ -519,9 +526,10 @@ export function Slider(props: SliderProps) {
      */
     style: {
       width: '100%',
-      accentColor: hovered || dragging !== undefined ? c().accent.base : c().text.primary,
+      accentColor: activeColor,
       cursor: disabled ? 'default' : 'pointer',
-    },
+      '--slider-track-bg': trackBg,
+    } as React.CSSProperties,
   })
 }
 

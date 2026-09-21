@@ -575,7 +575,9 @@ describe('SettingsScreen', () => {
     fireEvent.click(historyBtn)
     expect(calls.includes('navigate:history.view')).toBe(true)
 
-    // Test navigation to Debug center
+    // Test navigation to Debug center (revealed via Advanced Settings)
+    const advCheckbox = document.querySelector('input[type="checkbox"]') as HTMLInputElement
+    if (advCheckbox) fireEvent.click(advCheckbox)
     const debugBtn = getByText('进入 Debug 调试中心 →')
     fireEvent.click(debugBtn)
     expect(calls.includes('navigate:debug.view')).toBe(true)

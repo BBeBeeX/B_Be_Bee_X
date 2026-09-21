@@ -1491,26 +1491,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             borderBottom: false,
           }),
         ),
-        h(
-          SettingsSection,
-          {
-            title: '开发者与系统诊断',
-            description: '查看运行环境、Discover 实时日志、音源测试与微内核架构拓扑 (Inspector)',
-          },
-          h(SettingsRow, {
-            title: '调试与诊断中心 (Debug)',
-            description: '包含环境信息、Discover 系统日志、音源 HTTP 抓包、音源测试及 Inspector 架构拓扑',
-            borderBottom: false,
-            action: h(Button, {
-              variant: 'secondary',
-              children: '进入 Debug 调试中心 →',
-              onPress: () => {
-                serviceOf<UiService>(ctx, 'ui')?.navigate?.('debug.view')
-              },
-            }),
-          }),
-        ),
-        // Advanced Settings Checkbox Toggle (Requirement 7)
+        // Advanced Settings Checkbox Toggle
         h(
           'div',
           {
@@ -1553,16 +1534,36 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
             h('span', { style: { fontWeight: 500 } }, '高级设置'),
           ),
         ),
-        // Danger zone appears only when advanced settings is enabled
-        showAdvancedSettings
-          ? h(
-              SettingsSection,
-              {
-                title: '危险区域',
-                description: '底层配置重置选项',
-              },
-              h(SettingsRow, {
-                title: '重置所有设置',
+        // Developer diagnostics and Danger zone appear only when advanced settings is enabled
+        showAdvancedSettings &&
+          h(
+            SettingsSection,
+            {
+              title: '开发者与系统诊断',
+              description: '查看运行环境、Discover 实时日志、音源测试与微内核架构拓扑 (Inspector)',
+            },
+            h(SettingsRow, {
+              title: '调试与诊断中心 (Debug)',
+              description: '包含环境信息、Discover 系统日志、音源 HTTP 抓包、音源测试及 Inspector 架构拓扑',
+              borderBottom: false,
+              action: h(Button, {
+                variant: 'secondary',
+                children: '进入 Debug 调试中心 →',
+                onPress: () => {
+                  serviceOf<UiService>(ctx, 'ui')?.navigate?.('debug.view')
+                },
+              }),
+            }),
+          ),
+        showAdvancedSettings &&
+          h(
+            SettingsSection,
+            {
+              title: '危险区域',
+              description: '底层配置重置选项',
+            },
+            h(SettingsRow, {
+              title: '重置所有设置',
                 description: '将所有偏好项恢复为初始默认值（不会删除已下载的歌曲或歌单）',
                 borderBottom: false,
                 action: resetting
@@ -1586,9 +1587,8 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
                       onPress: () => setResetting(true),
                     }),
               }),
-            )
-          : null,
+            ),
+        ),
       ),
-    ),
   )
 }

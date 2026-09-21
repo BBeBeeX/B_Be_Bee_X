@@ -367,9 +367,9 @@ function ProgressBar({ value, label }: { value: number; label: string }): ReactE
       'aria-valuemin': 0,
       'aria-valuemax': 100,
       style: {
-        height: 4,
+        height: 3,
         width: '100%',
-        borderRadius: 2,
+        borderRadius: 1.5,
         background: scheme.border.subtle,
         overflow: 'hidden',
       },

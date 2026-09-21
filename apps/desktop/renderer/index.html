@@ -15,6 +15,76 @@
     <style>
       :root { color-scheme: dark; }
       body { margin: 0; background: #0B0B0F; color: #F5F5F7; font-family: system-ui, sans-serif; }
+
+      /* Global sleek, transparent, ultra-narrow scrollbars */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+      }
+      *::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+        background: transparent;
+      }
+      *::-webkit-scrollbar-track,
+      *::-webkit-scrollbar-track-piece,
+      *::-webkit-scrollbar-corner {
+        background: transparent;
+      }
+      *::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.16);
+        border-radius: 4px;
+        transition: background-color 0.15s ease;
+      }
+      *::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.35);
+      }
+      *::-webkit-scrollbar-thumb:active {
+        background: rgba(255, 255, 255, 0.5);
+      }
+
+      /* Global progress & slider bars: thin track, thumb only visible on hover */
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        height: 12px;
+        background: transparent;
+        cursor: pointer;
+        outline: none;
+        margin: 0;
+        padding: 0;
+        vertical-align: middle;
+      }
+      input[type="range"]::-webkit-slider-runnable-track {
+        height: 3px;
+        border-radius: 1.5px;
+        background: var(--slider-track-bg, rgba(255, 255, 255, 0.2));
+        transition: height 0.15s ease;
+      }
+      input[type="range"]:hover::-webkit-slider-runnable-track,
+      input[type="range"]:active::-webkit-slider-runnable-track,
+      input[type="range"].is-dragging::-webkit-slider-runnable-track {
+        height: 3.5px;
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background-color: #FFFFFF;
+        margin-top: -3.5px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+      }
+      input[type="range"]:hover::-webkit-slider-thumb,
+      input[type="range"]:active::-webkit-slider-thumb,
+      input[type="range"]:focus-visible::-webkit-slider-thumb,
+      input[type="range"].is-dragging::-webkit-slider-thumb {
+        opacity: 1;
+      }
+
       /* Immersive panes scroll when they must, but never show a scrollbar. */
       .no-scrollbar { scrollbar-width: none; }
       .no-scrollbar::-webkit-scrollbar { display: none; }

@@ -410,6 +410,8 @@ function VerticalSlider({
 }): ReactElement {
   const trackRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
+  const [hovered, setHovered] = useState(false)
+  const [dragging, setDragging] = useState(false)
 
   const updateFromPointer = (clientY: number) => {
     if (!trackRef.current) return
@@ -422,6 +424,7 @@ function VerticalSlider({
   const handlePointerDown = (e: { clientY: number; preventDefault: () => void }) => {
     e.preventDefault()
     isDragging.current = true
+    setDragging(true)
     updateFromPointer(e.clientY)
 
     const onPointerMove = (ev: MouseEvent) => {
@@ -431,12 +434,15 @@ function VerticalSlider({
     }
     const onPointerUp = () => {
       isDragging.current = false
+      setDragging(false)
       window.removeEventListener('mousemove', onPointerMove)
       window.removeEventListener('mouseup', onPointerUp)
     }
     window.addEventListener('mousemove', onPointerMove)
     window.addEventListener('mouseup', onPointerUp)
   }
+
+  const isInteracting = hovered || dragging
 
   return h(
     'div',
@@ -450,6 +456,8 @@ function VerticalSlider({
       'aria-valuenow': value,
       'aria-orientation': 'vertical',
       onMouseDown: handlePointerDown,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
       onKeyDown: (e: { key: string; preventDefault: () => void }) => {
         if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
           e.preventDefault()
@@ -476,8 +484,8 @@ function VerticalSlider({
         position: 'absolute',
         top: 0,
         bottom: 0,
-        width: 4,
-        borderRadius: 2,
+        width: 3,
+        borderRadius: 1.5,
         backgroundColor: 'rgba(255, 255, 255, 0.18)',
       },
     }),
@@ -486,23 +494,24 @@ function VerticalSlider({
       style: {
         position: 'absolute',
         bottom: 0,
-        width: 4,
+        width: 3,
         height: `${value}%`,
-        borderRadius: 2,
-        backgroundColor: '#A78BFA',
+        borderRadius: 1.5,
+        backgroundColor: isInteracting ? '#1DB954' : '#FFFFFF',
       },
     }),
     // Thumb
     h('div', {
       style: {
         position: 'absolute',
-        bottom: `calc(${value}% - 6px)`,
-        width: 12,
-        height: 12,
+        bottom: `calc(${value}% - 5px)`,
+        width: 10,
+        height: 10,
         borderRadius: '50%',
         backgroundColor: '#FFFFFF',
-        boxShadow: '0 1px 4px rgba(0, 0, 0, 0.4)',
-        transition: 'transform 0.1s ease',
+        boxShadow: '0 1px 4px rgba(0, 0, 0, 0.5)',
+        opacity: isInteracting ? 1 : 0,
+        transition: 'opacity 0.15s ease',
       },
     }),
   )
