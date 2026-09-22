@@ -506,7 +506,7 @@ interface LibraryService {
   listPlaylists(page?: PageRequest): Promise<Paged<Playlist>>
   getPlaylist(urn: string, page?: PageRequest): Promise<PlaylistDetail | undefined>
   createPlaylist(name: string, opts?: { description?: string; smart?: SmartPlaylist }): Promise<Playlist>
-  updatePlaylist(urn: string, patch: { name?: string; description?: string | null }): Promise<void>
+  updatePlaylist(urn: string, patch: { name?: string; description?: string | null; artworkUrl?: string | null }): Promise<void>
   deletePlaylist(urn: string): Promise<void>
   addTracks(urn: string, trackUrns: readonly string[], opts?: { at?: number }): Promise<number>
   removeItems(urn: string, itemIds: readonly string[]): Promise<void>
@@ -517,6 +517,7 @@ interface LibraryService {
   listCollections(): Promise<readonly Collection[]>
   createCollection(name: string, opts?: { parentId?: string }): Promise<Collection>
   renameCollection(id: string, name: string): Promise<void>
+  moveCollection?(id: string, parentId: string | null): Promise<void>
   deleteCollection(id: string): Promise<void>
   listCollectionItems(id: string, page?: PageRequest): Promise<Paged<CollectionItem>>
   addToCollection(id: string, urns: readonly string[]): Promise<number>

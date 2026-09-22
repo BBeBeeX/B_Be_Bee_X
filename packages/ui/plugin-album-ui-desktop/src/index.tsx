@@ -17,7 +17,7 @@
  *    starting here. Playback never navigates; the transport bar announces it.
  */
 
-import { createElement as h } from 'react'
+import { createElement as h, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
@@ -26,9 +26,9 @@ import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { useTrackMenu } from '@BBeBee/ui-menus'
-import { Artwork, Button, ContextMenu, EmptyState, List, Text, TrackRow } from '@BBeBee/ui-kit-desktop'
+import { Artwork, ContextMenu, EmptyState, List } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
-import type { ArtworkProps, TrackRowProps } from '@BBeBee/ui-core'
+import type { ArtworkProps } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
 
 /**
@@ -43,13 +43,223 @@ function CachedArtwork({ ctx, ...props }: ArtworkProps & { ctx: Context }): Reac
   return h(Artwork, { ...props, artwork })
 }
 
-/** `TrackRow` renders its own `Artwork`; this is the same resolution for its track. */
-function CachedTrackRow({ ctx, ...props }: TrackRowProps & { ctx: Context }): ReactElement {
-  const artwork = useResolvedArtwork(ctx, props.track.artwork)
-  return h(TrackRow, {
-    ...props,
-    track: artwork ? { ...props.track, artwork } : props.track,
-  })
+function formatDuration(ms?: number): string {
+  if (!ms || ms <= 0) return '0:00'
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+function formatTotalDuration(tracks: readonly { durationMs?: number }[]): string {
+  const totalMs = tracks.reduce((sum, t) => sum + (t.durationMs || 0), 0)
+  if (totalMs <= 0) return ''
+  const totalSeconds = Math.floor(totalMs / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) {
+    return `${hours} 小时 ${minutes} 分钟`
+  }
+  return `${minutes} 分钟 ${seconds} 秒`
+}
+
+function AlbumTrackTableRow({
+  track,
+  index,
+  onPress,
+  onDownload,
+  onMore,
+}: {
+  track: Track
+  index: number
+  onPress: () => void
+  onDownload?: () => void
+  onMore: (anchor: { x: number; y: number }) => void
+}): ReactElement {
+  const [hovered, setHovered] = useState(false)
+  const artists = track.artists?.map((a) => a.name).join(', ')
+
+  return h(
+    'div',
+    {
+      role: 'row',
+      tabIndex: 0,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      onClick: onPress,
+      onContextMenu: (e: React.MouseEvent) => {
+        e.preventDefault()
+        onMore({ x: e.clientX, y: e.clientY })
+      },
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') onPress()
+      },
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        height: 56,
+        padding: '0 32px',
+        borderRadius: 4,
+        cursor: 'pointer',
+        background: hovered ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+        transition: 'background-color 0.15s ease',
+        boxSizing: 'border-box',
+      },
+    },
+    // Col 1: # or Play
+    h(
+      'div',
+      {
+        style: {
+          width: 40,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 14,
+          color: hovered ? '#FFFFFF' : '#b3b3b3',
+        },
+      },
+      hovered ? '▶' : String(index + 1),
+    ),
+    // Col 2: Title and Artist
+    h(
+      'div',
+      {
+        style: {
+          flex: 1,
+          minWidth: 0,
+          paddingLeft: 12,
+          paddingRight: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+        },
+      },
+      h(
+        'span',
+        {
+          style: {
+            color: '#FFFFFF',
+            fontSize: 15,
+            fontWeight: 500,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          },
+        },
+        track.title,
+      ),
+      artists
+        ? h(
+            'span',
+            {
+              style: {
+                color: '#b3b3b3',
+                fontSize: 13,
+                marginTop: 2,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              },
+            },
+            artists,
+          )
+        : null,
+    ),
+    // Col 3: Play count
+    h(
+      'div',
+      {
+        style: {
+          width: 140,
+          flexShrink: 0,
+          textAlign: 'right',
+          paddingRight: 24,
+          fontSize: 14,
+          color: '#b3b3b3',
+        },
+      },
+      '-',
+    ),
+    // Col 4: Duration and actions
+    h(
+      'div',
+      {
+        style: {
+          width: 110,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: 8,
+          paddingRight: 16,
+        },
+      },
+      onDownload && !track.urn.startsWith('BBeBee:local:')
+        ? h(
+            'button',
+            {
+              type: 'button',
+              'aria-label': 'Download',
+              title: 'Download',
+              onClick: (e: React.MouseEvent) => {
+                e.stopPropagation()
+                onDownload()
+              },
+              style: {
+                background: 'none',
+                border: 'none',
+                color: '#b3b3b3',
+                fontSize: 15,
+                cursor: 'pointer',
+                padding: 4,
+                opacity: hovered ? 1 : 0,
+                transition: 'opacity 0.15s ease',
+              },
+            },
+            '⬇',
+          )
+        : null,
+      h(
+        'button',
+        {
+          type: 'button',
+          'aria-label': 'More',
+          title: 'More',
+          onClick: (e: React.MouseEvent) => {
+            e.stopPropagation()
+            const rect = e.currentTarget.getBoundingClientRect()
+            onMore({ x: rect.left, y: rect.bottom + 4 })
+          },
+          style: {
+            background: 'none',
+            border: 'none',
+            color: '#b3b3b3',
+            fontSize: 16,
+            cursor: 'pointer',
+            padding: 4,
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 0.15s ease',
+          },
+        },
+        '⋯',
+      ),
+      h(
+        'span',
+        {
+          style: {
+            fontSize: 14,
+            color: '#b3b3b3',
+            width: 45,
+            textAlign: 'right',
+          },
+        },
+        formatDuration(track.durationMs),
+      ),
+    ),
+  )
 }
 
 /** What a screen shows while it does not yet have an answer. */
@@ -77,61 +287,269 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const urns = detail.tracks.map((track) => track.urn)
   const player = serviceOf<PlayerService>(ctx, 'player')
 
+  const yearText = detail.year || (detail.releaseDate ? detail.releaseDate.slice(0, 4) : '')
+  const totalDurationStr = formatTotalDuration(detail.tracks)
+
   return h(
     'div',
-    { style: { display: 'flex', flexDirection: 'column', height: '100%' } },
+    {
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: 'linear-gradient(180deg, #3d3d3d 0%, #1a1a1a 280px, #121212 100%)',
+        color: '#FFFFFF',
+        overflow: 'hidden',
+      },
+    },
+    // Hero Header
     h(
       'header',
       {
         style: {
           display: 'flex',
-          gap: tokens.space[4],
-          padding: tokens.space[4],
+          gap: 24,
+          padding: '36px 32px 24px 32px',
           alignItems: 'flex-end',
+          flexShrink: 0,
         },
       },
-      h(CachedArtwork, { ctx, artwork: detail.artwork, seed: detail.urn, size: 160, radius: tokens.radius.md }),
       h(
         'div',
-        null,
-        h(Text, { variant: 'xl', children: detail.title }),
-        h(Text, {
-          tone: 'muted',
-          children: detail.artists?.map((a) => a.name).join(', ') ?? '',
-        }),
-        h(Button, {
-          // Playback announces itself in the transport bar; no navigation.
-          onPress: () => void player?.playNow(urns),
-          children: 'Play album',
-          // Disabled rather than absent: an album with no playable tracks is
-          // a real state, and hiding the control hides the reason.
-          disabled: detail.tracks.length === 0,
-        }),
+        {
+          style: {
+            width: 232,
+            height: 232,
+            flexShrink: 0,
+            borderRadius: 6,
+            overflow: 'hidden',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.65)',
+          },
+        },
+        h(CachedArtwork, { ctx, artwork: detail.artwork, seed: detail.urn, size: 232, radius: 6 }),
+      ),
+      h(
+        'div',
+        { style: { display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1 } },
+        h(
+          'span',
+          { style: { fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#FFFFFF' } },
+          '专辑',
+        ),
+        h(
+          'h1',
+          {
+            style: {
+              fontSize: detail.title.length > 25 ? 40 : 54,
+              fontWeight: 900,
+              margin: '2px 0 6px 0',
+              lineHeight: 1.1,
+              color: '#FFFFFF',
+              letterSpacing: '-0.03em',
+              wordBreak: 'break-word',
+            },
+          },
+          detail.title,
+        ),
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 6,
+              fontSize: 14,
+              color: '#b3b3b3',
+              marginTop: 4,
+            },
+          },
+          h(
+            'div',
+            {
+              style: {
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                backgroundColor: '#404040',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#FFFFFF',
+                fontSize: 12,
+                fontWeight: 700,
+                flexShrink: 0,
+              },
+            },
+            (detail.artists?.[0]?.name?.[0] || '♪').toUpperCase(),
+          ),
+          h('span', { style: { fontWeight: 700, color: '#FFFFFF' } }, detail.artists?.map((a) => a.name).join(', ') || '未知艺人'),
+          yearText ? h('span', null, ` • ${yearText}`) : null,
+          h('span', null, ` • ${detail.tracks.length} 首歌曲`),
+          totalDurationStr ? h('span', null, `, ${totalDurationStr}`) : null,
+        ),
       ),
     ),
-    h(List<Track>, {
-      items: detail.tracks,
-      accessibilityLabel: `Tracks on ${detail.title}`,
-      estimatedItemSize: tokens.size.row,
-      keyExtractor: (track) => track.urn,
-      empty: h(EmptyState, { title: 'This album has no tracks' }),
-      renderItem: (track) =>
-        h(CachedTrackRow, {
-          ctx,
-          track,
-          showArtwork: false,
-          // A tap plays the track in the list it was tapped in: jump if the
-          // queue already holds it, otherwise the whole album becomes the
-          // queue, starting here.
-          onPress: () => {
-            void player?.playFromContext(track.urn, urns, {
-              context: { kind: 'album', urn: detail.urn, label: detail.title },
-            })
+    // Action Bar
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 32px 18px 32px',
+          flexShrink: 0,
+        },
+      },
+      h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: 24 } },
+        h(
+          'button',
+          {
+            type: 'button',
+            'aria-label': 'Play album',
+            onClick: () => void player?.playNow(urns),
+            disabled: detail.tracks.length === 0,
+            style: {
+              width: 56,
+              height: 56,
+              borderRadius: '50%',
+              backgroundColor: detail.tracks.length === 0 ? 'rgba(30, 215, 96, 0.4)' : '#1ed760',
+              border: 'none',
+              cursor: detail.tracks.length === 0 ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3)',
+              color: '#000000',
+              fontSize: 22,
+              paddingLeft: 4,
+            },
           },
-          onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,
-          onMore: (anchor) => menu.open({ track }, anchor),
-        }),
-    }),
+          h('span', null, '▶'),
+          h(
+            'span',
+            {
+              style: {
+                position: 'absolute',
+                width: 1,
+                height: 1,
+                padding: 0,
+                margin: -1,
+                overflow: 'hidden',
+                clip: 'rect(0, 0, 0, 0)',
+                whiteSpace: 'nowrap',
+                border: 0,
+              },
+            },
+            'Play album',
+          ),
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            title: '随机播放',
+            style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+            onClick: () => {
+              if (urns.length > 0) {
+                const shuffled = [...urns].sort(() => Math.random() - 0.5)
+                void player?.playNow(shuffled)
+              }
+            },
+          },
+          '🔀',
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            title: '添加到喜欢的音乐',
+            style: { background: 'none', border: 'none', fontSize: 22, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+          },
+          '♡',
+        ),
+        downloads
+          ? h(
+              'button',
+              {
+                type: 'button',
+                title: '下载全部',
+                style: { background: 'none', border: 'none', fontSize: 22, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+                onClick: () => void downloads.enqueue(urns),
+              },
+              '⬇',
+            )
+          : null,
+        h(
+          'button',
+          {
+            type: 'button',
+            title: '更多选项',
+            style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+            onClick: (e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              if (detail.tracks[0]) {
+                menu.open({ track: detail.tracks[0] }, { x: rect.left, y: rect.bottom + 6 })
+              }
+            },
+          },
+          '⋯',
+        ),
+      ),
+      h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: 6, color: '#b3b3b3', fontSize: 14, cursor: 'pointer' } },
+        h('span', null, '列表'),
+        h('span', { style: { fontSize: 18 } }, '☰'),
+      ),
+    ),
+    // Table Header
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 32px 8px 32px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          color: '#b3b3b3',
+          fontSize: 13,
+          fontWeight: 500,
+          flexShrink: 0,
+        },
+      },
+      h('span', { style: { width: 40, textAlign: 'center', flexShrink: 0 } }, '#'),
+      h('span', { style: { flex: 1, paddingLeft: 12 } }, '标题'),
+      h('span', { style: { width: 140, textAlign: 'right', paddingRight: 24, flexShrink: 0 } }, '播放量'),
+      h('span', { style: { width: 110, textAlign: 'right', paddingRight: 16, flexShrink: 0 } }, '🕒'),
+    ),
+    // Track list
+    h(
+      'div',
+      { style: { flex: 1, minHeight: 0 } },
+      h(List<Track>, {
+        items: detail.tracks,
+        accessibilityLabel: `Tracks on ${detail.title}`,
+        estimatedItemSize: tokens.size.row,
+        keyExtractor: (track) => track.urn,
+        empty: h(EmptyState, { title: 'This album has no tracks' }),
+        renderItem: (track, index) =>
+          h(AlbumTrackTableRow, {
+            track,
+            index,
+            onPress: () => {
+              void player?.playFromContext(track.urn, urns, {
+                context: { kind: 'album', urn: detail.urn, label: detail.title },
+              })
+            },
+            onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,
+            onMore: (anchor) => menu.open({ track }, anchor),
+          }),
+      }),
+    ),
     h(ContextMenu, menu.menuProps),
   )
 }

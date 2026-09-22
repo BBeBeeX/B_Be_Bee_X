@@ -23,6 +23,7 @@ import type {
   DownloadsService,
   PlayerService,
   Playlist,
+  PlaylistItem,
   Track,
 } from '@BBeBee/protocol'
 import { tryParseUrn } from '@BBeBee/protocol'
@@ -3755,6 +3756,402 @@ export function LibraryScreen({
   )
 }
 
+/* ── helpers for playlist / local screens ──────────────────────────────── */
+
+function formatDuration(ms?: number): string {
+  if (!ms || ms <= 0) return '0:00'
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+function formatTotalDuration(tracks: readonly (Track | undefined)[]): string {
+  const totalMs = tracks.reduce((sum, t) => sum + (t?.durationMs || 0), 0)
+  if (totalMs <= 0) return ''
+  const totalSeconds = Math.floor(totalMs / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) {
+    return `${hours} 小时 ${minutes} 分钟`
+  }
+  return `${minutes} 分钟 ${seconds} 秒`
+}
+
+function QuadArtworkCollage({
+  ctx,
+  tracks,
+  customArtwork,
+  size = 232,
+  radius = 6,
+  onEdit,
+}: {
+  ctx: Context
+  tracks: readonly (Track | undefined)[]
+  customArtwork?: ArtworkRef
+  size?: number
+  radius?: number
+  onEdit?: () => void
+}): ReactElement {
+  const [hovered, setHovered] = useState(false)
+
+  const artworksWithTracks = tracks.filter((t): t is Track => Boolean(t?.artwork))
+  const uniqueArtworks: ArtworkRef[] = []
+  const seenSources = new Set<string>()
+  for (const t of artworksWithTracks) {
+    const src = t.artwork?.sourceUrl || t.artwork?.id || t.urn
+    if (src && !seenSources.has(src)) {
+      seenSources.add(src)
+      if (t.artwork) uniqueArtworks.push(t.artwork)
+    }
+    if (uniqueArtworks.length >= 4) break
+  }
+
+  let content: ReactElement
+  if (customArtwork?.sourceUrl) {
+    content = h(CachedArtwork, { ctx, artwork: customArtwork, size, radius: 0 })
+  } else if (uniqueArtworks.length >= 4) {
+    const half = Math.floor(size / 2)
+    content = h(
+      'div',
+      {
+        style: {
+          display: 'grid',
+          gridTemplateColumns: `${half}px ${half}px`,
+          gridTemplateRows: `${half}px ${half}px`,
+          width: size,
+          height: size,
+          overflow: 'hidden',
+        },
+      },
+      uniqueArtworks.slice(0, 4).map((art, i) =>
+        h(
+          'div',
+          { key: i, style: { width: half, height: half, overflow: 'hidden' } },
+          h(CachedArtwork, { ctx, artwork: art, size: half, radius: 0 }),
+        ),
+      ),
+    )
+  } else if (uniqueArtworks.length > 0) {
+    content = h(CachedArtwork, { ctx, artwork: uniqueArtworks[0], size, radius: 0 })
+  } else {
+    content = h(
+      'div',
+      {
+        style: {
+          width: size,
+          height: size,
+          backgroundColor: '#282828',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#7f7f7f',
+          fontSize: Math.floor(size / 3),
+        },
+      },
+      '♪',
+    )
+  }
+
+  return h(
+    'div',
+    {
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      onClick: onEdit,
+      style: {
+        position: 'relative',
+        width: size,
+        height: size,
+        borderRadius: radius,
+        overflow: 'hidden',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.65)',
+        cursor: onEdit ? 'pointer' : 'default',
+        flexShrink: 0,
+      },
+    },
+    content,
+    onEdit && hovered
+      ? h(
+          'div',
+          {
+            style: {
+              position: 'absolute',
+              inset: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.65)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              color: '#FFFFFF',
+              zIndex: 2,
+            },
+          },
+          h('span', { style: { fontSize: 32 } }, '✎'),
+          h('span', { style: { fontSize: 14, fontWeight: 600 } }, '选择照片'),
+        )
+      : null,
+  )
+}
+
+function PlaylistTrackTableRow({
+  ctx,
+  track,
+  item,
+  index,
+  isSmart,
+  playlistName,
+  onPress,
+  onRemove,
+  onMore,
+}: {
+  ctx: Context
+  track: Track
+  item: PlaylistItem
+  index: number
+  isSmart?: boolean
+  playlistName: string
+  onPress: () => void
+  onRemove?: () => void
+  onMore: (anchor: { x: number; y: number }) => void
+}): ReactElement {
+  const [hovered, setHovered] = useState(false)
+  const artists = track.artists?.map((a) => a.name).join(', ')
+
+  return h(
+    'div',
+    {
+      role: 'row',
+      tabIndex: 0,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      onClick: onPress,
+      onContextMenu: (e: React.MouseEvent) => {
+        e.preventDefault()
+        onMore({ x: e.clientX, y: e.clientY })
+      },
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') onPress()
+      },
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        height: 56,
+        padding: '0 32px',
+        borderRadius: 4,
+        cursor: 'pointer',
+        background: hovered ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+        transition: 'background-color 0.15s ease',
+        boxSizing: 'border-box',
+      },
+    },
+    // Col 1: # or Play icon
+    h(
+      'div',
+      {
+        style: {
+          width: 40,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 14,
+          color: hovered ? '#FFFFFF' : '#b3b3b3',
+        },
+      },
+      hovered ? '▶' : String(index + 1),
+    ),
+    // Col 2: Artwork + Title + Artist
+    h(
+      'div',
+      {
+        style: {
+          flex: 2,
+          minWidth: 0,
+          paddingLeft: 12,
+          paddingRight: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+        },
+      },
+      h(
+        'div',
+        {
+          style: {
+            width: 40,
+            height: 40,
+            borderRadius: 4,
+            overflow: 'hidden',
+            flexShrink: 0,
+            backgroundColor: '#282828',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+        },
+        track.artwork
+          ? h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 })
+          : h('span', { style: { color: '#7f7f7f', fontSize: 16 } }, '♪'),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+          },
+        },
+        h(
+          'span',
+          {
+            style: {
+              color: '#FFFFFF',
+              fontSize: 15,
+              fontWeight: 500,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            },
+          },
+          track.title,
+        ),
+        artists
+          ? h(
+              'span',
+              {
+                style: {
+                  color: '#b3b3b3',
+                  fontSize: 13,
+                  marginTop: 2,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                },
+              },
+              artists,
+            )
+          : null,
+      ),
+    ),
+    // Col 3: Album
+    h(
+      'div',
+      {
+        style: {
+          flex: 1.5,
+          minWidth: 0,
+          paddingRight: 16,
+          fontSize: 14,
+          color: '#b3b3b3',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        },
+      },
+      track.albumTitle || '-',
+    ),
+    // Col 4: Added date
+    h(
+      'div',
+      {
+        style: {
+          flex: 1,
+          minWidth: 0,
+          paddingRight: 16,
+          fontSize: 13,
+          color: '#b3b3b3',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        },
+      },
+      formatAddedDate(item.addedAt),
+    ),
+    // Col 5: Duration & actions
+    h(
+      'div',
+      {
+        style: {
+          width: 100,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: 6,
+          paddingRight: 16,
+        },
+      },
+      !isSmart && onRemove
+        ? h(
+            'button',
+            {
+              type: 'button',
+              'aria-label': `Remove ${track.title} from ${playlistName}`,
+              title: `Remove from ${playlistName}`,
+              onClick: (e: React.MouseEvent) => {
+                e.stopPropagation()
+                onRemove()
+              },
+              style: {
+                background: 'none',
+                border: 'none',
+                color: '#b3b3b3',
+                fontSize: 18,
+                cursor: 'pointer',
+                padding: '2px 4px',
+                opacity: hovered ? 1 : 0,
+                transition: 'opacity 0.15s ease',
+              },
+            },
+            '×',
+          )
+        : null,
+      h(
+        'button',
+        {
+          type: 'button',
+          'aria-label': 'More',
+          title: '更多',
+          onClick: (e: React.MouseEvent) => {
+            e.stopPropagation()
+            const rect = e.currentTarget.getBoundingClientRect()
+            onMore({ x: rect.left, y: rect.bottom + 4 })
+          },
+          style: {
+            background: 'none',
+            border: 'none',
+            color: '#b3b3b3',
+            fontSize: 16,
+            cursor: 'pointer',
+            padding: 4,
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 0.15s ease',
+          },
+        },
+        '⋯',
+      ),
+      h(
+        'span',
+        {
+          style: {
+            fontSize: 14,
+            color: '#b3b3b3',
+            width: 45,
+            textAlign: 'right',
+          },
+        },
+        formatDuration(track.durationMs),
+      ),
+    ),
+  )
+}
+
 /* ── one playlist ──────────────────────────────────────────────────────── */
 
 export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string }): ReactElement {
@@ -3763,6 +4160,8 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   const urns = detail?.items.map((item) => item.trackUrn) ?? []
   const tracks = useTracksByUrn(ctx, urns)
   const [error, setError] = useState<string | undefined>(undefined)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const menu = useTrackMenu(ctx, { fromPlaylistUrn: urn })
 
   const play = (trackUrn: string) => {
@@ -3778,41 +4177,319 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   }
   if (!detail) return h(EmptyState, { title: 'Loading…' })
 
+  const totalDurationStr = formatTotalDuration(Array.from(tracks.values()))
+
+  const filteredUrns = searchQuery.trim()
+    ? urns.filter((u) => {
+        const t = tracks.get(u)
+        if (!t) return false
+        const q = searchQuery.toLowerCase()
+        return (
+          t.title.toLowerCase().includes(q) ||
+          t.artists?.some((a) => a.name.toLowerCase().includes(q)) ||
+          t.albumTitle?.toLowerCase().includes(q)
+        )
+      })
+    : urns
+
   return h(
     'section',
     {
       'aria-label': detail.name,
-      style: { display: 'flex', flexDirection: 'column', gap: tokens.space[3], padding: tokens.space[4], height: '100%' },
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: 'linear-gradient(180deg, #1e3264 0%, #151f38 280px, #121212 100%)',
+        color: '#FFFFFF',
+        overflow: 'hidden',
+      },
     },
+    // Hero Header
     h(
       'header',
-      { style: { display: 'flex', alignItems: 'center', gap: tokens.space[3] } },
+      {
+        style: {
+          display: 'flex',
+          gap: 24,
+          padding: '36px 32px 24px 32px',
+          alignItems: 'flex-end',
+          flexShrink: 0,
+        },
+      },
+      h(QuadArtworkCollage, {
+        ctx,
+        tracks: Array.from(tracks.values()),
+        customArtwork: detail.artwork,
+        size: 232,
+        radius: 6,
+        onEdit: () => setShowEditModal(true),
+      }),
       h(
         'div',
-        { style: { flex: 1, minWidth: 0 } },
-        h(Text, { variant: 'xl', numberOfLines: 1 }, detail.name),
+        { style: { display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1 } },
         h(
-          Text,
-          { variant: 'sm', tone: 'muted' },
-          detail.isSmart
-            ? 'Smart playlist — its tracks come from its rules'
-            : `${detail.trackCount ?? urns.length} tracks`,
+          'span',
+          { style: { fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#FFFFFF' } },
+          detail.isPublic !== false ? '公开歌单' : '歌单',
+        ),
+        h(
+          'h1',
+          {
+            onClick: () => setShowEditModal(true),
+            title: '点击编辑详情',
+            style: {
+              fontSize: detail.name.length > 20 ? 40 : 54,
+              fontWeight: 900,
+              margin: '2px 0 6px 0',
+              lineHeight: 1.1,
+              color: '#FFFFFF',
+              letterSpacing: '-0.03em',
+              cursor: 'pointer',
+              wordBreak: 'break-word',
+            },
+          },
+          detail.name,
+        ),
+        detail.description
+          ? h('p', { style: { margin: '0 0 4px 0', fontSize: 14, color: '#b3b3b3' } }, detail.description)
+          : null,
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 6,
+              fontSize: 14,
+              color: '#b3b3b3',
+              marginTop: 4,
+            },
+          },
+          h(
+            'div',
+            {
+              style: {
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                backgroundColor: '#404040',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#FFFFFF',
+                fontSize: 12,
+                fontWeight: 700,
+                flexShrink: 0,
+              },
+            },
+            (detail.owner?.[0] || 'B').toUpperCase(),
+          ),
+          h('span', { style: { fontWeight: 700, color: '#FFFFFF' } }, detail.owner || 'BBeBee'),
+          h('span', null, ` • ${detail.isSmart ? '智能歌单' : `${detail.trackCount ?? urns.length} 首歌曲`}`),
+          totalDurationStr ? h('span', null, `, ${totalDurationStr}`) : null,
         ),
       ),
-      h(Button, {
-        onPress: () => urns[0] && play(urns[0]),
-        disabled: urns.length === 0,
-        testID: 'playlist-play',
-        children: 'Play',
-      }),
     ),
-    error ? h(Text, { variant: 'sm', tone: 'error' }, error) : null,
+    // Primary Action Bar
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 32px 14px 32px',
+          flexShrink: 0,
+        },
+      },
+      h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: 24 } },
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-testid': 'playlist-play',
+            'aria-label': 'Play',
+            onClick: () => urns[0] && play(urns[0]),
+            disabled: urns.length === 0,
+            style: {
+              width: 56,
+              height: 56,
+              borderRadius: '50%',
+              backgroundColor: urns.length === 0 ? 'rgba(30, 215, 96, 0.4)' : '#1ed760',
+              border: 'none',
+              cursor: urns.length === 0 ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3)',
+              color: '#000000',
+              fontSize: 22,
+              paddingLeft: 4,
+            },
+          },
+          '▶',
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            title: '下载',
+            style: { background: 'none', border: 'none', fontSize: 22, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+          },
+          '⬇',
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            title: '更多选项',
+            style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+          },
+          '⋯',
+        ),
+      ),
+      h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: 16 } },
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: 16,
+              padding: '4px 10px',
+              gap: 6,
+            },
+          },
+          h('span', { style: { color: '#b3b3b3', fontSize: 14 } }, '🔍'),
+          h('input', {
+            type: 'text',
+            placeholder: '在歌单中搜索',
+            value: searchQuery,
+            onChange: (e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value),
+            style: {
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: '#FFFFFF',
+              fontSize: 13,
+              width: 120,
+            },
+          }),
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            style: {
+              background: 'none',
+              border: 'none',
+              color: '#b3b3b3',
+              fontSize: 14,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            },
+          },
+          h('span', null, '自定义顺序'),
+          h('span', { style: { fontSize: 16 } }, '≣'),
+        ),
+      ),
+    ),
+    // Secondary Actions (Capsule Buttons)
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '0 32px 16px 32px',
+          flexShrink: 0,
+        },
+      },
+      h(
+        'button',
+        {
+          type: 'button',
+          onClick: () => {
+            const el = document.querySelector('input[placeholder="在歌单中搜索"]') as HTMLInputElement | null
+            el?.focus()
+          },
+          style: {
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: 20,
+            padding: '6px 16px',
+            color: '#FFFFFF',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          },
+        },
+        '+ 添加',
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          onClick: () => setShowEditModal(true),
+          style: {
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: 20,
+            padding: '6px 16px',
+            color: '#FFFFFF',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          },
+        },
+        '✎ 名称和详情',
+      ),
+    ),
+    error ? h('div', { style: { padding: '0 32px 8px 32px' } }, h(Text, { variant: 'sm', tone: 'error' }, error)) : null,
+    // Table Header
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 32px 8px 32px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          color: '#b3b3b3',
+          fontSize: 13,
+          fontWeight: 500,
+          flexShrink: 0,
+        },
+      },
+      h('span', { style: { width: 40, textAlign: 'center', flexShrink: 0 } }, '#'),
+      h('span', { style: { flex: 2, paddingLeft: 12 } }, '标题'),
+      h('span', { style: { flex: 1.5, paddingLeft: 8 } }, '专辑'),
+      h('span', { style: { flex: 1, paddingLeft: 8 } }, '添加日期'),
+      h('span', { style: { width: 100, textAlign: 'right', paddingRight: 16, flexShrink: 0 } }, '🕒'),
+    ),
+    // Track Rows
     h(
       'div',
       { style: { flex: 1, minHeight: 0 } },
       h(List<string>, {
         testID: 'playlist-tracks',
-        items: urns,
+        items: filteredUrns,
         estimatedItemSize: tokens.size.row,
         keyExtractor: (trackUrn, index) => `${trackUrn}:${index}`,
         empty: h(EmptyState, {
@@ -3825,37 +4502,37 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
         renderItem: (trackUrn, index) => {
           const track = tracks.get(trackUrn)
           if (!track) return h(Text, { variant: 'sm', tone: 'muted' }, trackUrn)
-          const item = detail.items[index]!
-          return h(
-            'div',
-            { style: { display: 'flex', alignItems: 'center' } },
-            h(
-              'div',
-              { style: { flex: 1, minWidth: 0 } },
-              h(TrackRow, {
-                track,
-                onPress: () => play(trackUrn),
-                onMore: (anchor) => menu.open({ track, playlistItemId: item.id }, anchor),
-              }),
-            ),
-            detail.isSmart
-              ? null
-              : h(IconButton, {
-                  icon: '×',
-                  accessibilityLabel: `Remove ${track.title} from ${detail.name}`,
-                  variant: 'ghost',
-                  onPress: () => {
-                    setError(undefined)
-                    void ctx.library.removeItems(detail.urn, [item.id]).catch((cause: unknown) =>
-                      setError(cause instanceof Error ? cause.message : String(cause)),
-                    )
-                  },
-                }),
-          )
+          const item = detail.items[index] || { id: `item-${index}`, trackUrn, position: String(index) }
+          return h(PlaylistTrackTableRow, {
+            ctx,
+            track,
+            item,
+            index,
+            isSmart: detail.isSmart,
+            playlistName: detail.name,
+            onPress: () => play(trackUrn),
+            onRemove: () => {
+              setError(undefined)
+              void ctx.library.removeItems(detail.urn, [item.id]).catch((cause: unknown) =>
+                setError(cause instanceof Error ? cause.message : String(cause)),
+              )
+            },
+            onMore: (anchor) => menu.open({ track, playlistItemId: item.id }, anchor),
+          })
         },
       }),
     ),
     h(ContextMenu, menu.menuProps),
+    showEditModal
+      ? h(EditPlaylistModal, {
+          playlist: detail,
+          onClose: () => setShowEditModal(false),
+          onSave: async (patch) => {
+            await ctx.library.updatePlaylist(detail.urn, patch)
+            setShowEditModal(false)
+          },
+        })
+      : null,
   )
 }
 
@@ -3942,6 +4619,213 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   )
 }
 
+function LocalTrackTableRow({
+  ctx,
+  track,
+  index,
+  onPress,
+  onMore,
+}: {
+  ctx: Context
+  track: Track
+  index: number
+  onPress: () => void
+  onMore: (anchor: { x: number; y: number }) => void
+}): ReactElement {
+  const [hovered, setHovered] = useState(false)
+  const artists = track.artists?.map((a) => a.name).join(', ')
+
+  return h(
+    'div',
+    {
+      role: 'row',
+      tabIndex: 0,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      onClick: onPress,
+      onContextMenu: (e: React.MouseEvent) => {
+        e.preventDefault()
+        onMore({ x: e.clientX, y: e.clientY })
+      },
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') onPress()
+      },
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        height: 56,
+        padding: '0 32px',
+        borderRadius: 4,
+        cursor: 'pointer',
+        background: hovered ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+        transition: 'background-color 0.15s ease',
+        boxSizing: 'border-box',
+      },
+    },
+    // Col 1: # or Play icon
+    h(
+      'div',
+      {
+        style: {
+          width: 40,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 14,
+          color: hovered ? '#FFFFFF' : '#b3b3b3',
+        },
+      },
+      hovered ? '▶' : String(index + 1),
+    ),
+    // Col 2: Artwork + Title + Artist
+    h(
+      'div',
+      {
+        style: {
+          flex: 2,
+          minWidth: 0,
+          paddingLeft: 12,
+          paddingRight: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+        },
+      },
+      h(
+        'div',
+        {
+          style: {
+            width: 40,
+            height: 40,
+            borderRadius: 4,
+            overflow: 'hidden',
+            flexShrink: 0,
+            backgroundColor: '#282828',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+        },
+        track.artwork
+          ? h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 })
+          : h('span', { style: { color: '#7f7f7f', fontSize: 16 } }, '♪'),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+          },
+        },
+        h(
+          'span',
+          {
+            style: {
+              color: '#FFFFFF',
+              fontSize: 15,
+              fontWeight: 500,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            },
+          },
+          track.title,
+        ),
+        artists
+          ? h(
+              'span',
+              {
+                style: {
+                  color: '#b3b3b3',
+                  fontSize: 13,
+                  marginTop: 2,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                },
+              },
+              artists,
+            )
+          : null,
+      ),
+    ),
+    // Col 3: Album
+    h(
+      'div',
+      {
+        style: {
+          flex: 1.5,
+          minWidth: 0,
+          paddingRight: 16,
+          fontSize: 14,
+          color: '#b3b3b3',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        },
+      },
+      track.albumTitle || '-',
+    ),
+    // Col 4: Checkmark + Duration & actions
+    h(
+      'div',
+      {
+        style: {
+          width: 100,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: 6,
+          paddingRight: 16,
+        },
+      },
+      h('span', { style: { color: '#1ed760', fontSize: 13, marginRight: 4 } }, '✔'),
+      h(
+        'button',
+        {
+          type: 'button',
+          'aria-label': 'More',
+          title: '更多',
+          onClick: (e: React.MouseEvent) => {
+            e.stopPropagation()
+            const rect = e.currentTarget.getBoundingClientRect()
+            onMore({ x: rect.left, y: rect.bottom + 4 })
+          },
+          style: {
+            background: 'none',
+            border: 'none',
+            color: '#b3b3b3',
+            fontSize: 16,
+            cursor: 'pointer',
+            padding: 4,
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 0.15s ease',
+          },
+        },
+        '⋯',
+      ),
+      h(
+        'span',
+        {
+          style: {
+            fontSize: 14,
+            color: '#b3b3b3',
+            width: 45,
+            textAlign: 'right',
+          },
+        },
+        formatDuration(track.durationMs),
+      ),
+    ),
+  )
+}
+
 /* ── local music ──────────────────────────────────────────────────────── */
 
 export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
@@ -3949,6 +4833,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   const [loading, setLoading] = useState(true)
   const [generation, setGeneration] = useState(0)
   const [error, setError] = useState<string | undefined>(undefined)
+  const [searchQuery, setSearchQuery] = useState('')
   const player = serviceOf<PlayerService>(ctx, 'player')
   const menu = useTrackMenu(ctx)
 
@@ -3985,38 +4870,197 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
 
   const trackUrns = tracks.map((t) => t.urn)
 
+  const filteredTracks = searchQuery.trim()
+    ? tracks.filter((t) => {
+        const q = searchQuery.toLowerCase()
+        return (
+          t.title.toLowerCase().includes(q) ||
+          t.artists?.some((a) => a.name.toLowerCase().includes(q)) ||
+          t.albumTitle?.toLowerCase().includes(q)
+        )
+      })
+    : tracks
+
   return h(
     'section',
     {
       'aria-label': '本地音乐',
-      style: { display: 'flex', flexDirection: 'column', gap: tokens.space[3], padding: tokens.space[4], height: '100%' },
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: 'linear-gradient(180deg, #3d1c47 0%, #1c0d21 280px, #121212 100%)',
+        color: '#FFFFFF',
+        overflow: 'hidden',
+      },
     },
+    // Hero Header (No Cover, 56px Title)
     h(
       'header',
-      { style: { display: 'flex', alignItems: 'center', gap: tokens.space[3] } },
+      {
+        style: {
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          padding: '40px 32px 24px 32px',
+          flexShrink: 0,
+        },
+      },
+      h(
+        'span',
+        { style: { fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#FFFFFF' } },
+        '本地音乐',
+      ),
+      h(
+        'h1',
+        {
+          style: {
+            fontSize: 56,
+            fontWeight: 900,
+            margin: '2px 0 6px 0',
+            lineHeight: 1.1,
+            color: '#FFFFFF',
+            letterSpacing: '-0.03em',
+          },
+        },
+        '本地文件',
+      ),
+      h('p', { style: { margin: 0, fontSize: 14, color: '#b3b3b3' } }, `来自本地电脑的文件 • ${tracks.length} 首歌曲`),
+    ),
+    // Action Bar
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 32px 18px 32px',
+          flexShrink: 0,
+        },
+      },
       h(
         'div',
-        { style: { flex: 1, minWidth: 0 } },
-        h(Text, { variant: 'xl', numberOfLines: 1 }, '本地音乐'),
-        h(Text, { variant: 'sm', tone: 'muted' }, `${tracks.length} 首歌曲`),
+        { style: { display: 'flex', alignItems: 'center', gap: 24 } },
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-testid': 'local-music-play',
+            'aria-label': '播放全部',
+            onClick: () => trackUrns[0] && player?.playNow(trackUrns),
+            disabled: trackUrns.length === 0,
+            style: {
+              width: 56,
+              height: 56,
+              borderRadius: '50%',
+              backgroundColor: trackUrns.length === 0 ? 'rgba(30, 215, 96, 0.4)' : '#1ed760',
+              border: 'none',
+              cursor: trackUrns.length === 0 ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3)',
+              color: '#000000',
+              fontSize: 22,
+              paddingLeft: 4,
+            },
+          },
+          '▶',
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            title: '随机播放',
+            style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+            onClick: () => {
+              if (trackUrns.length > 0) {
+                const shuffled = [...trackUrns].sort(() => Math.random() - 0.5)
+                void player?.playNow(shuffled)
+              }
+            },
+          },
+          '🔀',
+        ),
       ),
-      h(Button, {
-        variant: 'secondary',
-        onPress: () => trackUrns[0] && player?.playNow(trackUrns),
-        disabled: trackUrns.length === 0,
-        testID: 'local-music-play',
-        children: '播放全部',
-      }),
-      h(Button, {
-        variant: 'ghost',
-        onPress: () => ctx.ui.navigate('scanner.settings'),
-        children: '扫描目录',
-      }),
+      h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: 16 } },
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: 16,
+              padding: '4px 10px',
+              gap: 6,
+            },
+          },
+          h('span', { style: { color: '#b3b3b3', fontSize: 14 } }, '🔍'),
+          h('input', {
+            type: 'text',
+            placeholder: '在本地文件中搜索',
+            value: searchQuery,
+            onChange: (e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value),
+            style: {
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: '#FFFFFF',
+              fontSize: 13,
+              width: 140,
+            },
+          }),
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: () => ctx.ui.navigate('scanner.settings'),
+            title: '扫描目录设置',
+            style: {
+              background: 'none',
+              border: 'none',
+              color: '#b3b3b3',
+              fontSize: 14,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            },
+          },
+          h('span', null, '自定义顺序'),
+          h('span', { style: { fontSize: 16 } }, '≣'),
+        ),
+      ),
     ),
-    error ? h(Text, { variant: 'sm', tone: 'error' }, error) : null,
+    error ? h('div', { style: { padding: '0 32px 8px 32px' } }, h(Text, { variant: 'sm', tone: 'error' }, error)) : null,
+    // Table Header
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 32px 8px 32px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          color: '#b3b3b3',
+          fontSize: 13,
+          fontWeight: 500,
+          flexShrink: 0,
+        },
+      },
+      h('span', { style: { width: 40, textAlign: 'center', flexShrink: 0 } }, '#'),
+      h('span', { style: { flex: 2, paddingLeft: 12 } }, '标题'),
+      h('span', { style: { flex: 1.5, paddingLeft: 8 } }, '专辑'),
+      h('span', { style: { width: 100, textAlign: 'right', paddingRight: 16, flexShrink: 0 } }, '✔ 🕒'),
+    ),
     loading
       ? h(EmptyState, { title: '加载中…' })
-      : tracks.length === 0
+      : filteredTracks.length === 0
       ? h(EmptyState, {
           icon: '📁',
           title: '暂无本地音乐',
@@ -4027,12 +5071,14 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
           { style: { flex: 1, minHeight: 0 } },
           h(List<Track>, {
             testID: 'local-tracks-list',
-            items: tracks,
+            items: filteredTracks,
             estimatedItemSize: tokens.size.row,
             keyExtractor: (t) => t.urn,
-            renderItem: (t) =>
-              h(TrackRow, {
+            renderItem: (t, index) =>
+              h(LocalTrackTableRow, {
+                ctx,
                 track: t,
+                index,
                 onPress: () => player?.playFromContext(t.urn, trackUrns),
                 onMore: (anchor) => menu.open({ track: t }, anchor),
               }),

@@ -290,20 +290,36 @@ which events invalidate which state — are written once. Only the JSX is writte
 
 ---
 
-### Context menus
+### Context menus & Library Interaction
 
-Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore` hands the pointer
-anchor to the screen; the screen holds a controller from `@BBeBee/ui-menus` and renders the
-kit's `ContextMenu`. The **model** — which actions exist for a track, a playlist, a collection,
-and what each one calls — is written once; the kits know how to draw menu rows and nothing about
-playlists or queues, which is what keeps the two shells' menus identical down to the order of
-the items.
+Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `UnifiedLibraryRow.onMore`, and header action controls hand the pointer anchor to the screen; the screen holds a controller from `@BBeBee/ui-menus` and renders the kit's `ContextMenu`. The **model** — which actions exist for a track, a playlist, a collection, and what each one calls — is written once in `@BBeBee/ui-menus`; the kits know how to draw menu rows and nothing about playlists or queues, which is what keeps the shells' menus unified down to the order of the items.
 
-The "add to playlist" submenu is the part with a structure: a filter field, a **new playlist**
-row, then the user's playlists. Smart playlists are disabled there — their tracks come from
-rules, so there is no row an add could write — and list actions resolve their tracks *before*
-the menu opens, so an item that would act on an empty list is absent rather than broken
-([09 §1](../workflow/structure.md)).
+#### Visual and Component Model
+- **Container styling**: High-contrast dark streaming card (`#242424`), 8px border radius, 4px padding, `0 12px 32px rgba(0,0,0,0.55)` depth shadow, and subtle 1px border (`rgba(255, 255, 255, 0.08)`).
+- **Dividers**: Menu items support `divider: true` to draw a 1px translucent separator line above critical or dangerous operations.
+- **Icons**: Standard operations (`pencil`, `delete`, `pin`, `create-playlist`, `create-folder`, `folder`, `play`, `download`, `playlist-add`) resolve to sharp outline SVG icons with consistent 16px geometry.
+- **Submenus**: Submenu triggers render a crisp solid triangle (`▶`). Submenus dynamically exclude cyclic candidates (e.g. "Add to other playlists" excludes the source playlist, "Move to folder" excludes the current folder and descendant folders).
+
+#### Playlist & Folder Menu Specifications
+- **Playlist Context Menu**:
+  - `edit-details`: Opens `EditPlaylistModal` to modify cover art (via local file chooser or remote URL), title, and description via `ctx.library.updatePlaylist`.
+  - `delete-playlist`: Danger tone with top divider, deletes playlist and refreshes library view.
+  - `toggle-pin`: Pin/unpin from top of library list.
+  - `add-to-playlist`: "Add to other playlists", excluding current playlist.
+  - `add-to-collection`: "Move to folder", supports existing folders, creating new folders, or moving to root.
+- **Folder (Collection) Context Menu**:
+  - `rename-collection`: Opens `RenameFolderModal` to update folder title via `ctx.library.renameCollection`.
+  - `delete-collection`: Danger tone with divider, deletes collection and cascades child relationships.
+  - `toggle-pin`: Pin/unpin folder in library list.
+  - `create-playlist` & `create-folder`: Creates items directly within the selected folder.
+  - `move-to-folder`: Move folder to another folder or root via `ctx.library.moveCollection`.
+  - `add-to-playlist`: "Add to other playlists". Uses `collectAllFolderTracks` to **recursively traverse** all direct tracks, nested playlist tracks, nested album tracks, and all nested subfolder contents without duplicates.
+  - `enqueue`: Plays all aggregated tracks across the folder hierarchy.
+
+#### Library Presentation Modes
+- **Collapsed mode** (72px rail): Minimalist icon list with consistent folder outline icons. When entering a folder, displays a `<` return button below the top brand logo to navigate back to the root library.
+- **Sidebar mode** (260–340px): Standard view featuring inline expandable folders via rotating triangle controls (`▼` / `▲`), indented child items (28px padding), and dedicated folder detail view (`< Folder Title`).
+- **Expanded mode** (full-canvas): High-density 3-column table view (`Title`, `Date Added`, `Last Played`) with top breadcrumb navigation (`音乐库 < 文件夹名`).
 
 ### The source surfaces
 

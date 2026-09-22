@@ -125,3 +125,23 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 - `debug.view`: Debug mode indicator, environment specs (Node, Electron, OS, Chromium, paths), and quick links to log screens.
 - `debug.logs`: Discover live ring-buffer logs (`ctx.logBuffer`) with level filters, search, and NDJSON export.
 - `debug.http-logs`: Outgoing HTTP requests from third-party music sources, detailing method, status code, latency, and URL.
+
+---
+
+## 6. Library Sidebars & Context Menus Specification
+
+### Library Layout Modes
+- **Collapsed Mode (72px)**: Minimal compact rail showing icon tiles. Folders render dedicated folder outline SVG icons. Entering a folder reveals a `<` return button beneath the top logo to return to the root library.
+- **Sidebar Mode (260–340px)**: Standard library navigation. Folders feature inline expand/collapse via rotating triangle arrows (`▼` / `▲`), indenting children by 28px left padding. Clicking the folder row navigates into the folder details screen (`< 文件夹名称`).
+- **Expanded Mode (Full Canvas)**: High-density 3-column table view with breadcrumbs (`音乐库 < 文件夹名称`), interactive search, and responsive sizing.
+
+### Context Menu Design Standards
+- **Dark Card Theme**: `#242424` background, 8px border radius, 4px padding, `0 12px 32px rgba(0,0,0,0.55)` depth shadow, and 1px border (`rgba(255, 255, 255, 0.08)`).
+- **Dividers**: Menu items support `divider: true` to render a 1px translucent separator line (`rgba(255, 255, 255, 0.08)`).
+- **Outline Icons**: Standard actions map to high-precision SVG outlines: `pencil`, `delete`, `pin`, `create-playlist`, `create-folder`, `folder`, `play`, `download`, `playlist-add`.
+- **Submenu Trigger**: Small solid triangle (`▶`).
+- **Recursive Track Gathering**: When adding a folder's contents to other playlists ("添加至其他歌单"), the system uses `collectAllFolderTracks` to recursively scan all direct tracks, nested playlist tracks, nested album tracks, and all descendant subfolders without duplicates.
+- **Dedicated Modals**:
+  - `EditPlaylistModal`: Modify cover art (file picker or URL), title, and multiline description.
+  - `RenameFolderModal`: Rename folder title and save via `ctx.library.renameCollection`.
+
