@@ -206,15 +206,30 @@ export class Playlists {
     return { urn, name: clean, trackCount: 0, ...(opts.description ? { description: opts.description } : {}) }
   }
 
-  async update(urn: string, patch: { name?: string; description?: string | null }): Promise<void> {
+  async update(
+    urn: string,
+    patch: { name?: string; description?: string | null; artworkUrl?: string | null },
+  ): Promise<void> {
     const row = await this.require(urn)
     const name = patch.name === undefined ? row.name : requiredName(patch.name)
     const description = patch.description === undefined ? row.description : patch.description
+    let artworkId = row.artwork_id
+    if (patch.artworkUrl !== undefined) {
+      if (patch.artworkUrl === null || patch.artworkUrl.trim() === '') {
+        artworkId = null
+      } else {
+        artworkId = `aw_${newId('art')}`
+        await this.db.exec(
+          `INSERT INTO artworks (id, source_url, fetched_at) VALUES (?, ?, ?)`,
+          [artworkId, patch.artworkUrl.trim(), Date.now()],
+        )
+      }
+    }
     await this.db.exec(
       `UPDATE playlists
-          SET name = ?, description = ?, revision = revision + 1, updated_at = ?
+          SET name = ?, description = ?, artwork_id = ?, revision = revision + 1, updated_at = ?
         WHERE urn = ?`,
-      [name, description, Date.now(), urn],
+      [name, description, artworkId, Date.now(), urn],
     )
   }
 

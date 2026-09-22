@@ -175,7 +175,10 @@ export class Library extends Service implements LibraryService {
     return playlist
   }
 
-  async updatePlaylist(urn: string, patch: { name?: string; description?: string | null }): Promise<void> {
+  async updatePlaylist(
+    urn: string,
+    patch: { name?: string; description?: string | null; artworkUrl?: string | null },
+  ): Promise<void> {
     await this.playlists.update(urn, patch)
     this.ownCtx.logger.info(`library: updated playlist ${urn}`)
     this.changed('playlist', [urn])
@@ -234,6 +237,12 @@ export class Library extends Service implements LibraryService {
   async renameCollection(id: string, name: string): Promise<void> {
     await this.collections.rename(id, name)
     this.ownCtx.logger.info(`library: renamed collection ${id} to "${name}"`)
+    this.collectionsChanged()
+  }
+
+  async moveCollection(id: string, parentId: string | null): Promise<void> {
+    await this.collections.move(id, parentId)
+    this.ownCtx.logger.info(`library: moved collection ${id} to parent ${parentId ?? 'root'}`)
     this.collectionsChanged()
   }
 

@@ -9,6 +9,7 @@
  * and the parity gate can read them.
  */
 
+import type { ReactNode } from 'react'
 import type { ArtworkRef, Track } from '@BBeBee/protocol'
 
 /** On every component, so a caller never has to ask which ones take them. */
@@ -72,14 +73,16 @@ export type MoreHandler = (anchor?: MenuAnchor) => void
 export interface MenuItemSpec {
   id: string
   label: string
-  /** A leading glyph. The label is the accessible name. */
-  icon?: string
+  /** A leading glyph or element. The label is the accessible name. */
+  icon?: string | ReactNode
   disabled?: boolean
   /** Destructive actions render in the error tone and sort last. */
   tone?: 'default' | 'danger'
   onSelect?: () => void | Promise<void>
   /** Opens a submenu instead of acting. */
   submenu?: SubmenuSpec
+  /** Optional divider line after this item. */
+  divider?: boolean
 }
 
 export interface SubmenuSpec {

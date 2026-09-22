@@ -70,6 +70,15 @@ export class Collections {
     if (result.changes === 0) throw notFound(id)
   }
 
+  async move(id: string, parentId: string | null): Promise<void> {
+    await this.require(id)
+    if (parentId !== null) {
+      if (parentId === id) throw new LibraryError('cannot move collection into itself', 'invalid-name')
+      await this.require(parentId)
+    }
+    await this.db.exec('UPDATE collections SET parent_id = ? WHERE id = ?', [parentId, id])
+  }
+
   async remove(id: string): Promise<void> {
     const result = await this.db.exec('DELETE FROM collections WHERE id = ?', [id])
     if (result.changes === 0) throw notFound(id)

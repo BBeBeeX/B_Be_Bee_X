@@ -57,11 +57,15 @@ export function addToPlaylistSubmenu(
   library: LibraryService | undefined,
   trackUrns: readonly string[],
   playlists: readonly Playlist[],
+  opts?: { title?: string; searchPlaceholder?: string; excludePlaylistUrn?: string },
 ): SubmenuSpec | undefined {
   if (!library || trackUrns.length === 0) return undefined
+  const filteredPlaylists = opts?.excludePlaylistUrn
+    ? playlists.filter((p) => p.urn !== opts.excludePlaylistUrn)
+    : playlists
   return {
-    title: '添加到歌单',
-    searchPlaceholder: '查找歌单',
+    title: opts?.title ?? '添加到歌单',
+    searchPlaceholder: opts?.searchPlaceholder ?? '查找歌单',
     emptyLabel: '没有匹配的歌单',
     create: {
       label: '新建歌单',
@@ -71,9 +75,10 @@ export function addToPlaylistSubmenu(
         await library.addTracks(playlist.urn, trackUrns)
       },
     },
-    items: playlists.map((playlist) => ({
+    items: filteredPlaylists.map((playlist) => ({
       id: playlist.urn,
       label: playlist.name,
+      icon: 'playlist-add',
       ...(playlist.isSmart ? { disabled: true } : {}),
       onSelect: async () => {
         await library.addTracks(playlist.urn, trackUrns)
@@ -85,38 +90,80 @@ export function addToPlaylistSubmenu(
 /* ── the collection submenu ─────────────────────────────────────────────── */
 
 /**
- * "Add to a collection" — the folder counterpart of the playlist submenu.
- *
- * A collection holds any URN, so the caller passes what it means to add: a
- * playlist adds itself (its songs are then in the library *through* it), a
- * track adds its own URN. Same structure as the playlist submenu: filter,
- * create, list.
+ * "Move/add to a collection" — the folder counterpart of the playlist submenu.
  */
 export function addToCollectionSubmenu(
   library: LibraryService | undefined,
   urns: readonly string[],
   collections: readonly Collection[],
+  opts?: {
+    title?: string
+    searchPlaceholder?: string
+    createLabel?: string
+    currentFolderId?: string
+    onSelectFolder?: (folderId: string | null) => void | Promise<void>
+    onMoved?: () => void
+  },
 ): SubmenuSpec | undefined {
-  if (!library || urns.length === 0) return undefined
+  if (!library || (urns.length === 0 && !opts?.onSelectFolder)) return undefined
+  const items: MenuItemSpec[] = []
+
+  if (opts?.currentFolderId) {
+    items.push({
+      id: '__move_root',
+      label: '移至根目录',
+      icon: 'folder',
+      onSelect: async () => {
+        if (opts.onSelectFolder) {
+          await opts.onSelectFolder(null)
+        } else {
+          await library.removeFromCollection(opts.currentFolderId!, urns).catch(() => {})
+          opts.onMoved?.()
+        }
+      },
+    })
+  }
+
+  for (const collection of collections) {
+    items.push({
+      id: collection.id,
+      label: collection.name,
+      icon: 'folder',
+      onSelect: async () => {
+        if (opts?.onSelectFolder) {
+          await opts.onSelectFolder(collection.id)
+        } else {
+          if (opts?.currentFolderId && opts.currentFolderId !== collection.id) {
+            await library.removeFromCollection(opts.currentFolderId, urns).catch(() => {})
+          }
+          await library.addToCollection(collection.id, urns)
+          opts?.onMoved?.()
+        }
+      },
+    })
+  }
+
   return {
-    title: '加入合集',
-    searchPlaceholder: '查找合集',
+    title: opts?.title ?? '加入合集',
+    searchPlaceholder: opts?.searchPlaceholder ?? '查找合集',
     emptyLabel: '没有匹配的合集',
     create: {
-      label: '新建合集',
+      label: opts?.createLabel ?? '新建合集',
       placeholder: '合集名称',
       onSelect: async (name) => {
         const collection = await library.createCollection(name)
-        await library.addToCollection(collection.id, urns)
+        if (opts?.onSelectFolder) {
+          await opts.onSelectFolder(collection.id)
+        } else {
+          if (opts?.currentFolderId && opts.currentFolderId !== collection.id) {
+            await library.removeFromCollection(opts.currentFolderId, urns).catch(() => {})
+          }
+          await library.addToCollection(collection.id, urns)
+          opts?.onMoved?.()
+        }
       },
     },
-    items: collections.map((collection) => ({
-      id: collection.id,
-      label: collection.name,
-      onSelect: async () => {
-        await library.addToCollection(collection.id, urns)
-      },
-    })),
+    items,
   }
 }
 
@@ -359,7 +406,7 @@ export function addToCollectionOnlyItems(
       onSelect: opts.onTogglePin,
     })
   }
-  if (submenu) items.push({ id: 'add-to-collection', label: '加入合集', icon: '🗂', submenu })
+  if (submenu) items.push({ id: 'add-to-collection', label: '移动至文件夹', icon: 'folder', submenu })
   return items
 }
 
@@ -374,7 +421,10 @@ export interface AddToCollectionController extends MenuController {
 
 /** A folder menu for an arbitrary entity — currently the album rows' menu. */
 export function useAddToCollection(ctx: Context): AddToCollectionController {
-  const state = useMenuState<{ title: string; urns: readonly string[] }>()
+  const state = useMenuState<
+    { title: string; urns: readonly string[] },
+    { pinned?: boolean; onTogglePin?: () => void }
+  >()
   const open = useCallback(
     (
       title: string,
@@ -401,13 +451,18 @@ export function useAddToCollection(ctx: Context): AddToCollectionController {
 
 /* ── playlists and collections ──────────────────────────────────────────── */
 
+export interface PlaylistMenuOptions {
+  pinned?: boolean
+  isSaved?: boolean
+  currentFolderId?: string
+  onTogglePin?: () => void
+  onEdit?: () => void
+  onDelete?: () => void
+  onMoved?: () => void
+}
+
 /**
  * Every action a playlist row offers.
- *
- * `tracks` are the playlist's track URNs: "add to the queue" and "download"
- * mean the whole list, and "add to another playlist" copies it. A caller that
- * has not loaded them passes none, and those items disappear rather than
- * acting on a partial list.
  */
 export function playlistMenuItems(
   ctx: Context,
@@ -415,110 +470,271 @@ export function playlistMenuItems(
   tracks: readonly string[],
   playlists: readonly Playlist[] = [],
   collections: readonly Collection[] = [],
-  opts: { pinned?: boolean; onTogglePin?: () => void } = {},
+  opts: PlaylistMenuOptions = {},
 ): MenuItemSpec[] {
   const library = serviceOf<LibraryService>(ctx, 'library')
   const player = serviceOf<PlayerService>(ctx, 'player')
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
   const items: MenuItemSpec[] = []
 
+  // 1. 编辑详情 (if provided)
+  if (opts.onEdit) {
+    items.push({
+      id: 'edit-details',
+      label: '编辑详情',
+      icon: 'pencil',
+      onSelect: opts.onEdit,
+    })
+  }
+
+  // 2. 删除 (if provided)
+  if (opts.onDelete) {
+    items.push({
+      id: 'delete-playlist',
+      label: '删除',
+      icon: 'delete',
+      tone: 'danger',
+      divider: true,
+      onSelect: opts.onDelete,
+    })
+  }
+
+  // 3. 置顶歌单
   if (opts.onTogglePin) {
     items.push({
       id: 'toggle-pin',
       label: opts.pinned ? '取消置顶歌单' : '置顶歌单',
-      icon: '📌',
+      icon: 'pin',
       onSelect: opts.onTogglePin,
     })
   }
 
-  if (library) {
+  // 4. 添加到音乐库
+  if (library && opts.isSaved !== true) {
     items.push({
       id: 'save-to-library',
       label: '添加到音乐库',
-      icon: '＋',
+      icon: 'plus',
       onSelect: () => library.setSaved(playlist.urn, true),
     })
   }
 
+  // 5. 播放 / 加入播放列表
   if (player && tracks.length > 0) {
     items.push({
       id: 'enqueue',
-      label: '加入播放列表',
-      icon: '＋',
+      label: '播放',
+      icon: 'play',
       onSelect: () => player.enqueueLast([...tracks]),
     })
   }
 
+  // 6. 下载
   if (downloads && tracks.length > 0) {
     items.push({
       id: 'download',
       label: '下载',
-      icon: '⬇',
+      icon: 'download',
       onSelect: () => void downloads.enqueue([...tracks]),
     })
   }
 
-  const submenu = addToPlaylistSubmenu(library, tracks, playlists)
-  if (submenu) items.push({ id: 'add-to-playlist', label: '添加到歌单', icon: '≡', submenu })
+  // 7. 添加至其他歌单
+  const submenu = addToPlaylistSubmenu(library, tracks, playlists, {
+    title: '添加至其他歌单',
+    excludePlaylistUrn: playlist.urn,
+  })
+  if (submenu) {
+    items.push({
+      id: 'add-to-playlist',
+      label: '添加至其他歌单',
+      icon: 'playlist-add',
+      submenu,
+    })
+  }
 
-  // The playlist itself, not its tracks: a collection is a folder, and the
-  // songs are in the library *through* the playlist. Editing the playlist
-  // later is reflected, because nothing was copied.
-  const collectionSubmenu = addToCollectionSubmenu(library, [playlist.urn], collections)
+  // 8. 移动至文件夹
+  const collectionSubmenu = addToCollectionSubmenu(library, [playlist.urn], collections, {
+    title: '移动至文件夹',
+    searchPlaceholder: '查找文件夹',
+    createLabel: '新建文件夹',
+    currentFolderId: opts.currentFolderId,
+    onMoved: opts.onMoved,
+  })
   if (collectionSubmenu) {
-    items.push({ id: 'add-to-collection', label: '加入合集', icon: '🗂', submenu: collectionSubmenu })
+    items.push({
+      id: 'add-to-collection',
+      label: '移动至文件夹',
+      icon: 'folder',
+      submenu: collectionSubmenu,
+    })
   }
 
   return items
 }
 
+export interface CollectionMenuOptions {
+  collectionId?: string
+  parentId?: string | null
+  pinned?: boolean
+  onTogglePin?: () => void
+  onRename?: () => void
+  onDelete?: () => void
+  onCreatePlaylist?: () => void
+  onCreateFolder?: () => void
+  onMoveToFolder?: (targetFolderId: string | null) => void
+  onPlay?: () => void
+}
+
 /**
  * Every action a collection row offers.
- *
- * No "add to library": a collection has an id, not a URN, so there is nothing
- * `library_items` could hold. The rest operate on the collection's track
- * members, which the caller resolves.
  */
 export function collectionMenuItems(
   ctx: Context,
   trackUrns: readonly string[],
+  playlists?: readonly Playlist[],
+  collections?: readonly Collection[],
+  opts?: CollectionMenuOptions,
+): MenuItemSpec[]
+export function collectionMenuItems(
+  ctx: Context,
+  trackUrns: readonly string[],
+  playlists?: readonly Playlist[],
+  opts?: CollectionMenuOptions,
+): MenuItemSpec[]
+export function collectionMenuItems(
+  ctx: Context,
+  trackUrns: readonly string[],
   playlists: readonly Playlist[] = [],
-  opts: { pinned?: boolean; onTogglePin?: () => void } = {},
+  collectionsOrOpts?: readonly Collection[] | CollectionMenuOptions,
+  maybeOpts?: CollectionMenuOptions,
 ): MenuItemSpec[] {
+  const isCollectionsArray = Array.isArray(collectionsOrOpts)
+  const collections: readonly Collection[] = isCollectionsArray ? (collectionsOrOpts as readonly Collection[]) : []
+  const opts: CollectionMenuOptions = isCollectionsArray
+    ? (maybeOpts ?? {})
+    : ((collectionsOrOpts as CollectionMenuOptions | undefined) ?? {})
+
   const library = serviceOf<LibraryService>(ctx, 'library')
   const player = serviceOf<PlayerService>(ctx, 'player')
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
   const items: MenuItemSpec[] = []
 
+  // 1. 重命名 (if provided)
+  if (opts.onRename) {
+    items.push({
+      id: 'rename-collection',
+      label: '重命名',
+      icon: 'pencil',
+      onSelect: opts.onRename,
+    })
+  }
+
+  // 2. 删除 (if provided)
+  if (opts.onDelete) {
+    items.push({
+      id: 'delete-collection',
+      label: '删除',
+      icon: 'delete',
+      tone: 'danger',
+      divider: true,
+      onSelect: opts.onDelete,
+    })
+  }
+
+  // 3. 置顶文件夹
   if (opts.onTogglePin) {
     items.push({
       id: 'toggle-pin',
-      label: opts.pinned ? '取消置顶歌单' : '置顶歌单',
-      icon: '📌',
+      label: opts.pinned ? '取消置顶文件夹' : '置顶文件夹',
+      icon: 'pin',
       onSelect: opts.onTogglePin,
     })
   }
 
-  if (player && trackUrns.length > 0) {
+  // 4. 创建歌单
+  if (opts.onCreatePlaylist) {
     items.push({
-      id: 'enqueue',
-      label: '加入播放列表',
-      icon: '＋',
-      onSelect: () => player.enqueueLast([...trackUrns]),
+      id: 'create-playlist',
+      label: '创建歌单',
+      icon: 'create-playlist',
+      onSelect: opts.onCreatePlaylist,
     })
   }
 
+  // 5. 创建歌单文件夹
+  if (opts.onCreateFolder) {
+    items.push({
+      id: 'create-folder',
+      label: '创建歌单文件夹',
+      icon: 'create-folder',
+      onSelect: opts.onCreateFolder,
+    })
+  }
+
+  // 6. 移动至文件夹
+  if (opts.onMoveToFolder || (library && opts.collectionId)) {
+    const availableFolders = collections.filter((c) => c.id !== opts.collectionId)
+    const folderSubmenu = addToCollectionSubmenu(
+      library,
+      opts.collectionId ? [opts.collectionId] : [],
+      availableFolders,
+      {
+        title: '移动至文件夹',
+        searchPlaceholder: '查找文件夹',
+        createLabel: '新建文件夹',
+        currentFolderId: opts.parentId ?? undefined,
+        onSelectFolder: async (targetFolderId) => {
+          if (opts.onMoveToFolder) {
+            opts.onMoveToFolder(targetFolderId)
+          } else if (library && opts.collectionId) {
+            await library.moveCollection?.(opts.collectionId, targetFolderId)
+          }
+        },
+      },
+    )
+    if (folderSubmenu) {
+      items.push({
+        id: 'move-to-folder',
+        label: '移动至文件夹',
+        icon: 'folder',
+        submenu: folderSubmenu,
+      })
+    }
+  }
+
+  // 7. 播放
+  if (opts.onPlay || (player && trackUrns.length > 0)) {
+    items.push({
+      id: 'enqueue',
+      label: '播放',
+      icon: 'play',
+      onSelect: opts.onPlay ?? (() => player?.enqueueLast([...trackUrns])),
+    })
+  }
+
+  // 8. 下载
   if (downloads && trackUrns.length > 0) {
     items.push({
       id: 'download',
       label: '下载',
-      icon: '⬇',
+      icon: 'download',
       onSelect: () => void downloads.enqueue([...trackUrns]),
     })
   }
 
-  const submenu = addToPlaylistSubmenu(library, trackUrns, playlists)
-  if (submenu) items.push({ id: 'add-to-playlist', label: '添加到歌单', icon: '≡', submenu })
+  // 9. 添加至其他歌单
+  const submenu = addToPlaylistSubmenu(library, trackUrns, playlists, {
+    title: '添加至其他歌单',
+  })
+  if (submenu) {
+    items.push({
+      id: 'add-to-playlist',
+      label: '添加至其他歌单',
+      icon: 'playlist-add',
+      submenu,
+    })
+  }
 
   return items
 }
@@ -548,11 +764,11 @@ function anchorOf(anchor: MenuAnchor | undefined): MenuAnchor {
  * `listPlaylists` never delays the menu itself — the submenu fills in when it
  * arrives, and an absent library leaves it empty rather than throwing.
  */
-function useMenuState<T>() {
+function useMenuState<T, O = unknown>() {
   const [open, setOpen] = useState<{
     target: T
     anchor: MenuAnchor
-    opts?: { pinned?: boolean; onTogglePin?: () => void }
+    opts?: O
   } | undefined>(undefined)
   const [playlists, setPlaylists] = useState<readonly Playlist[]>([])
   const [collections, setCollections] = useState<readonly Collection[]>([])
@@ -562,7 +778,7 @@ function useMenuState<T>() {
       target: T,
       anchor?: MenuAnchor,
       ctx?: Context,
-      opts?: { pinned?: boolean; onTogglePin?: () => void },
+      opts?: O,
     ) => {
       setOpen({ target, anchor: anchorOf(anchor), opts })
       if (!ctx) return
@@ -619,19 +835,19 @@ export interface PlaylistMenuController extends MenuController {
     playlist: { urn: string; name: string },
     tracks: readonly string[],
     anchor?: MenuAnchor,
-    opts?: { pinned?: boolean; onTogglePin?: () => void },
+    opts?: PlaylistMenuOptions,
   ): void
 }
 
 /** A playlist row's menu. `tracks` are its resolved track URNs, when the caller has them. */
 export function usePlaylistMenu(ctx: Context): PlaylistMenuController {
-  const state = useMenuState<{ playlist: { urn: string; name: string }; tracks: readonly string[] }>()
+  const state = useMenuState<{ playlist: { urn: string; name: string }; tracks: readonly string[] }, PlaylistMenuOptions>()
   const open = useCallback(
     (
       playlist: { urn: string; name: string },
       tracks: readonly string[],
       anchor?: MenuAnchor,
-      opts?: { pinned?: boolean; onTogglePin?: () => void },
+      opts?: PlaylistMenuOptions,
     ) => state.show({ playlist, tracks }, anchor, ctx, opts),
     [state, ctx],
   )
@@ -662,19 +878,19 @@ export interface CollectionMenuController extends MenuController {
     title: string,
     trackUrns: readonly string[],
     anchor?: MenuAnchor,
-    opts?: { pinned?: boolean; onTogglePin?: () => void },
+    opts?: CollectionMenuOptions,
   ): void
 }
 
 /** A collection row's menu. `trackUrns` are its track members, resolved by the caller. */
 export function useCollectionMenu(ctx: Context): CollectionMenuController {
-  const state = useMenuState<{ title: string; trackUrns: readonly string[] }>()
+  const state = useMenuState<{ title: string; trackUrns: readonly string[] }, CollectionMenuOptions>()
   const open = useCallback(
     (
       title: string,
       trackUrns: readonly string[],
       anchor?: MenuAnchor,
-      opts?: { pinned?: boolean; onTogglePin?: () => void },
+      opts?: CollectionMenuOptions,
     ) => state.show({ title, trackUrns }, anchor, ctx, opts),
     [state, ctx],
   )
@@ -686,7 +902,7 @@ export function useCollectionMenu(ctx: Context): CollectionMenuController {
       x: state.open?.anchor.x ?? 0,
       y: state.open?.anchor.y ?? 0,
       items: state.open
-        ? collectionMenuItems(ctx, state.open.target.trackUrns, state.playlists, state.open.opts)
+        ? collectionMenuItems(ctx, state.open.target.trackUrns, state.playlists, state.collections, state.open.opts)
         : [],
       ...(state.open ? { title: state.open.target.title } : {}),
     },

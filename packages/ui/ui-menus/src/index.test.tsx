@@ -8,7 +8,7 @@
  */
 
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context, Service } from 'cordis'
 import type { LibraryService, Playlist, SleepTimerService, SleepTimerState, Track } from '@BBeBee/protocol'
 import {
@@ -426,6 +426,31 @@ describe('playlistMenuItems', () => {
     // item that would act on an empty list is worse than one that is absent.
     expect(items.map((i) => i.id)).toEqual(['save-to-library', 'add-to-collection'])
   })
+
+  it('offers edit-details and delete-playlist when options are provided', async () => {
+    const h = await harness()
+    const onEdit = vi.fn()
+    const onDelete = vi.fn()
+    const items = playlistMenuItems(
+      h.ctx,
+      { urn: 'BBeBee:local:playlist:1', name: 'Road trip' },
+      [URN],
+      playlists,
+      h.library.collections,
+      { onEdit, onDelete },
+    )
+    expect(items[0]?.id).toBe('edit-details')
+    expect(items[0]?.label).toBe('编辑详情')
+    expect(items[1]?.id).toBe('delete-playlist')
+    expect(items[1]?.label).toBe('删除')
+    expect(items[1]?.divider).toBe(true)
+
+    await press(items, 'edit-details')
+    expect(onEdit).toHaveBeenCalledOnce()
+
+    await press(items, 'delete-playlist')
+    expect(onDelete).toHaveBeenCalledOnce()
+  })
 })
 
 describe('collectionMenuItems', () => {
@@ -435,6 +460,42 @@ describe('collectionMenuItems', () => {
     expect(items.map((i) => i.id)).toEqual(['enqueue', 'download', 'add-to-playlist'])
     await press(items, 'enqueue')
     expect(h.player.calls).toEqual([`enqueue:${URN}`])
+  })
+
+  it('offers rename, delete, create playlist, create folder, and move to folder when provided', async () => {
+    const h = await harness()
+    const onRename = vi.fn()
+    const onDelete = vi.fn()
+    const onCreatePlaylist = vi.fn()
+    const onCreateFolder = vi.fn()
+    const onMoveToFolder = vi.fn()
+
+    const items = collectionMenuItems(
+      h.ctx,
+      [URN],
+      playlists,
+      h.library.collections,
+      {
+        collectionId: 'col-1',
+        onRename,
+        onDelete,
+        onCreatePlaylist,
+        onCreateFolder,
+        onMoveToFolder,
+      },
+    )
+
+    expect(items.map((i) => i.id)).toContain('rename-collection')
+    expect(items.map((i) => i.id)).toContain('delete-collection')
+    expect(items.map((i) => i.id)).toContain('create-playlist')
+    expect(items.map((i) => i.id)).toContain('create-folder')
+    expect(items.map((i) => i.id)).toContain('move-to-folder')
+
+    await press(items, 'rename-collection')
+    expect(onRename).toHaveBeenCalledOnce()
+
+    await press(items, 'delete-collection')
+    expect(onDelete).toHaveBeenCalledOnce()
   })
 })
 

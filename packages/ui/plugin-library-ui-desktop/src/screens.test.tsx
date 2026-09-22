@@ -17,7 +17,7 @@ import type { Collection, Paged, Playlist, PlaylistDetail, SavedKind, Track } fr
 import { tryParseUrn } from '@BBeBee/protocol'
 import { tick } from '@BBeBee/kernel/testing'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
-import { CollectionScreen, FavoritesScreen, LibraryScreen, LocalMusicScreen, PlaylistDetailScreen, inject } from './index.js'
+import { CollectionScreen, FavoritesScreen, LibraryScreen, LocalMusicScreen, PlaylistDetailScreen, collectAllFolderTracks, inject } from './index.js'
 
 afterEach(cleanup)
 
@@ -67,12 +67,25 @@ class LibraryStub extends Service {
   async deletePlaylist(urn: string): Promise<void> {
     this.calls.push(`delete:${urn}`)
   }
+  async updatePlaylist(urn: string, patch: { name?: string; description?: string | null; artworkUrl?: string | null }): Promise<void> {
+    this.calls.push(`update:${urn}:${JSON.stringify(patch)}`)
+  }
   async createCollection(name: string): Promise<Collection> {
     this.calls.push(`collection:${name}`)
     return { id: 'c1', name, position: 'a', createdAt: 0 }
   }
   async deleteCollection(id: string): Promise<void> {
     this.calls.push(`collection-delete:${id}`)
+  }
+  async renameCollection(id: string, name: string): Promise<void> {
+    this.calls.push(`rename-collection:${id}:${name}`)
+  }
+  async moveCollection(id: string, parentId: string | null): Promise<void> {
+    this.calls.push(`move-collection:${id}:${parentId}`)
+  }
+  async addToCollection(id: string, urns: readonly string[]): Promise<number> {
+    this.calls.push(`add-to-collection:${id}:${urns.join(',')}`)
+    return urns.length
   }
   async listCollectionItems(id: string): Promise<Paged<{ urn: string; position: string }>> {
     return id === COLLECTION_ID
@@ -389,6 +402,278 @@ describe('LibraryScreen', () => {
 
       expect(library.calls).toContain('pin:BBeBee:local:playlist:two:true')
     })
+  })
+
+  it('toggles folder inline expansion with downward/upward triangle arrow in standard mode', async () => {
+    const { ctx, library } = await harness()
+    library.collections = [{ id: 'col-1', name: 'Ambient mix', position: 'a', createdAt: 0 }]
+    await withListLayout(async () => {
+      const { getByLabelText } = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      const expandBtn = getByLabelText('展开文件夹')
+      expect(expandBtn).toBeTruthy()
+
+      // Click to expand inline
+      await act(async () => {
+        expandBtn.click()
+        await tick()
+      })
+
+      const foldBtn = getByLabelText('折叠文件夹')
+      expect(foldBtn).toBeTruthy()
+
+      // Click to fold inline
+      await act(async () => {
+        foldBtn.click()
+        await tick()
+      })
+
+      expect(getByLabelText('展开文件夹')).toBeTruthy()
+    })
+  })
+
+  it('navigates into folder view in sidebar mode and returns with back button', async () => {
+    const { ctx, library } = await harness()
+    library.collections = [{ id: 'col-1', name: 'Ambient mix', position: 'a', createdAt: 0 }]
+    await withListLayout(async () => {
+      const { getByText, getByTitle, queryByTitle } = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Click folder item to open folder view
+      await act(async () => {
+        getByText('Ambient mix').click()
+        await tick()
+      })
+
+      // In folder view: back button is rendered
+      const backBtn = getByTitle('返回音乐库')
+      expect(backBtn).toBeTruthy()
+
+      // Click back button to return to root library
+      await act(async () => {
+        backBtn.click()
+        await tick()
+      })
+
+      expect(queryByTitle('返回音乐库')).toBeNull()
+      expect(getByText('音乐库')).toBeTruthy()
+    })
+  })
+
+  it('renders return button in collapsed mode when inside a folder and returns to root collapsed library', async () => {
+    const { ctx, library } = await harness()
+    library.collections = [{ id: 'col-1', name: 'Ambient mix', position: 'a', createdAt: 0 }]
+    await withListLayout(async () => {
+      const { getByLabelText, queryByLabelText } = render(
+        h(LibraryScreen, { ctx, mode: 'collapsed', folderId: 'col-1' }),
+      )
+      await act(async () => {
+        await tick()
+      })
+
+      const backBtn = getByLabelText('返回音乐库')
+      expect(backBtn).toBeTruthy()
+
+      await act(async () => {
+        backBtn.click()
+        await tick()
+      })
+
+      expect(queryByLabelText('返回音乐库')).toBeNull()
+    })
+  })
+
+  it('renders breadcrumb in expanded mode when inside a folder and returns to root expanded library', async () => {
+    const { ctx, library } = await harness()
+    library.collections = [{ id: 'col-1', name: 'Ambient mix', position: 'a', createdAt: 0 }]
+    await withListLayout(async () => {
+      const { getByText, getByTitle, queryByTitle } = render(
+        h(LibraryScreen, { ctx, mode: 'expanded', folderId: 'col-1' }),
+      )
+      await act(async () => {
+        await tick()
+      })
+
+      expect(getByText('Ambient mix')).toBeTruthy()
+      const backNav = getByTitle('返回音乐库')
+      expect(backNav).toBeTruthy()
+
+      await act(async () => {
+        backNav.click()
+        await tick()
+      })
+
+      expect(queryByTitle('返回音乐库')).toBeNull()
+      expect(getByText('音乐库')).toBeTruthy()
+    })
+  })
+
+  it('opens edit details modal and updates playlist', async () => {
+    const { ctx, library } = await harness()
+    library.playlists = [storedPlaylist]
+    await withListLayout(async () => {
+      const { getByText, getByTestId } = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      const row = getByText('Road trip').closest('[style*="cursor: pointer"]') as HTMLElement
+      await act(async () => {
+        fireEvent.contextMenu(row)
+        await tick()
+      })
+
+      const editItem = getByText('编辑详情')
+      expect(editItem).toBeTruthy()
+
+      await act(async () => {
+        editItem.click()
+        await tick()
+      })
+
+      const nameInput = getByTestId('edit-playlist-name') as HTMLInputElement
+      expect(nameInput.value).toBe('Road trip')
+
+      await act(async () => {
+        fireEvent.change(nameInput, { target: { value: 'Road trip 2026' } })
+        fireEvent.change(getByTestId('edit-playlist-description'), { target: { value: 'Best songs' } })
+        fireEvent.change(getByTestId('edit-playlist-artwork'), { target: { value: 'https://example.com/art.jpg' } })
+      })
+
+      await act(async () => {
+        ;(getByTestId('edit-playlist-save') as HTMLElement).click()
+        await tick()
+      })
+
+      expect(library.calls).toContain(
+        `update:${PLAYLIST_URN}:${JSON.stringify({
+          name: 'Road trip 2026',
+          description: 'Best songs',
+          artworkUrl: 'https://example.com/art.jpg',
+        })}`,
+      )
+    })
+  })
+
+  it('opens rename collection modal and renames collection', async () => {
+    const { ctx, library } = await harness()
+    library.collections = [{ id: 'col-1', name: 'My Folder', position: 'a', createdAt: 0 }]
+    await withListLayout(async () => {
+      const { getByText, getByTestId } = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      const row = getByText('My Folder').closest('[style*="cursor: pointer"]') as HTMLElement
+      await act(async () => {
+        fireEvent.contextMenu(row)
+        await tick()
+      })
+
+      const renameItem = getByText('重命名')
+      expect(renameItem).toBeTruthy()
+
+      await act(async () => {
+        renameItem.click()
+        await tick()
+      })
+
+      const input = getByTestId('rename-collection-name') as HTMLInputElement
+      expect(input.value).toBe('My Folder')
+
+      await act(async () => {
+        fireEvent.change(input, { target: { value: 'Renamed Folder' } })
+        ;(getByTestId('rename-collection-save') as HTMLElement).click()
+        await tick()
+      })
+
+      expect(library.calls).toContain('rename-collection:col-1:Renamed Folder')
+    })
+  })
+
+  it('deletes playlist and collection via context menu', async () => {
+    const { ctx, library } = await harness()
+    library.playlists = [storedPlaylist]
+    library.collections = [{ id: 'col-1', name: 'My Folder', position: 'a', createdAt: 0 }]
+    await withListLayout(async () => {
+      const { getByText } = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Delete playlist
+      const playlistRow = getByText('Road trip').closest('[style*="cursor: pointer"]') as HTMLElement
+      await act(async () => {
+        fireEvent.contextMenu(playlistRow)
+        await tick()
+      })
+      const deletePlaylistItem = getByText('删除')
+      expect(deletePlaylistItem).toBeTruthy()
+      await act(async () => {
+        deletePlaylistItem.click()
+        await tick()
+      })
+      expect(library.calls).toContain(`delete:${PLAYLIST_URN}`)
+
+      // Delete collection
+      const folderRow = getByText('My Folder').closest('[style*="cursor: pointer"]') as HTMLElement
+      await act(async () => {
+        fireEvent.contextMenu(folderRow)
+        await tick()
+      })
+      const deleteFolderItem = getByText('删除')
+      expect(deleteFolderItem).toBeTruthy()
+      await act(async () => {
+        deleteFolderItem.click()
+        await tick()
+      })
+      expect(library.calls).toContain('collection-delete:col-1')
+    })
+  })
+})
+
+describe('collectAllFolderTracks', () => {
+  it('recursively gathers tracks from nested folders, playlists, and albums', async () => {
+    const { ctx, library } = await harness()
+    const colRoot: Collection = { id: 'root', name: 'Root Folder', position: 'a', createdAt: 0 }
+    const colChild: Collection = { id: 'child', parentId: 'root', name: 'Child Folder', position: 'b', createdAt: 0 }
+    library.collections = [colRoot, colChild]
+    library.listCollectionItems = async (id: string) => {
+      if (id === 'root') {
+        return {
+          items: [
+            { urn: 'BBeBee:demo:track:root-1', position: 'a' },
+            { urn: PLAYLIST_URN, position: 'b' },
+          ],
+          hasMore: false,
+        }
+      }
+      if (id === 'child') {
+        return {
+          items: [
+            { urn: 'BBeBee:demo:track:child-1', position: 'a' },
+            { urn: ALBUM_URN, position: 'b' },
+          ],
+          hasMore: false,
+        }
+      }
+      return { items: [], hasMore: false }
+    }
+
+    const albumsMap = new Map([
+      [ALBUM_URN, { urn: ALBUM_URN, title: 'Album', tracks: [{ urn: 'BBeBee:demo:track:album-1', title: 'T' }] } as any],
+    ])
+
+    const tracks = await collectAllFolderTracks(ctx, 'root', library.collections, albumsMap)
+    expect(tracks).toContain('BBeBee:demo:track:root-1')
+    expect(tracks).toContain(TRACK)
+    expect(tracks).toContain('BBeBee:demo:track:child-1')
+    expect(tracks).toContain('BBeBee:demo:track:album-1')
   })
 })
 

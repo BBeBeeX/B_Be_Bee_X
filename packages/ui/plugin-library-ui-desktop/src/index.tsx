@@ -13,7 +13,7 @@
  */
 
 import { createElement as h, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactElement } from 'react'
+import type { ChangeEvent, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import type {
@@ -100,9 +100,17 @@ function formatPlayedDate(timestamp?: number): string {
 function UnifiedLibraryRow({
   ctx,
   item,
+  isFolder,
+  isExpanded,
+  onToggleExpand,
+  isChild,
 }: {
   ctx: Context
   item: UnifiedItem
+  isFolder?: boolean
+  isExpanded?: boolean
+  onToggleExpand?: () => void
+  isChild?: boolean
 }): ReactElement {
   const [isHovered, setIsHovered] = useState(false)
   const isFav = item.kind === 'favorite'
@@ -123,7 +131,7 @@ function UnifiedLibraryRow({
         alignItems: 'center',
         gap: 12,
         height: 64,
-        padding: '0 8px',
+        padding: isChild ? '0 8px 0 28px' : '0 8px',
         borderRadius: tokens.radius.sm,
         cursor: 'pointer',
         backgroundColor: isHovered ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
@@ -149,19 +157,49 @@ function UnifiedLibraryRow({
       },
       isFav
         ? h('span', { style: { fontSize: 20, color: '#FFFFFF' } }, '♥')
-        : item.artwork
-          ? h(CachedArtwork, {
-              ctx,
-              artwork: item.artwork,
-              seed: item.artworkSeed,
-              size: 48,
-              radius: isArt ? 24 : 4,
-            })
-          : h(
-              'span',
-              { style: { fontSize: 20, color: '#A0A0A0' } },
-              isArt ? '👤' : item.kind === 'local' ? '📁' : item.kind === 'album' ? '💿' : item.kind === 'playlist' ? '♪' : '🗂',
-            ),
+        : isFolder || item.kind === 'collection'
+          ? h(
+              'div',
+              {
+                style: {
+                  width: 48,
+                  height: 48,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                  borderRadius: 4,
+                  color: '#CCCCCC',
+                },
+              },
+              h(
+                'svg',
+                {
+                  width: 24,
+                  height: 24,
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: 2,
+                  strokeLinecap: 'round',
+                  strokeLinejoin: 'round',
+                },
+                h('path', { d: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' }),
+              ),
+            )
+          : item.artwork
+            ? h(CachedArtwork, {
+                ctx,
+                artwork: item.artwork,
+                seed: item.artworkSeed,
+                size: 48,
+                radius: isArt ? 24 : 4,
+              })
+            : h(
+                'span',
+                { style: { fontSize: 20, color: '#A0A0A0' } },
+                isArt ? '👤' : item.kind === 'local' ? '📁' : item.kind === 'album' ? '💿' : item.kind === 'playlist' ? '♪' : '🗂',
+              ),
       isHovered
         ? h(
             'div',
@@ -203,6 +241,54 @@ function UnifiedLibraryRow({
         h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1 }, item.subtitle),
       ),
     ),
+    isFolder
+      ? h(
+          'button',
+          {
+            type: 'button',
+            'aria-label': isExpanded ? '折叠文件夹' : '展开文件夹',
+            title: isExpanded ? '折叠' : '展开',
+            onClick: (e: { stopPropagation(): void }) => {
+              e.stopPropagation()
+              onToggleExpand?.()
+            },
+            style: {
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              border: 'none',
+              background: 'transparent',
+              color: '#A0A0AE',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              transition: 'color 0.15s ease, background-color 0.15s ease',
+            },
+            onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+              e.currentTarget.style.color = '#FFFFFF'
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'
+            },
+            onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+              e.currentTarget.style.color = '#A0A0AE'
+              e.currentTarget.style.backgroundColor = 'transparent'
+            },
+          },
+          h(
+            'span',
+            {
+              style: {
+                display: 'inline-flex',
+                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)',
+                fontSize: 10,
+              },
+            },
+            '▼',
+          ),
+        )
+      : null,
     // Automated test compatibility hook
     item.onDelete
       ? h('button', {
@@ -217,11 +303,544 @@ function UnifiedLibraryRow({
   )
 }
 
+export async function collectAllFolderTracks(
+  ctx: Context,
+  collectionId: string,
+  allCollections: readonly Collection[] = [],
+  albumsMap: Map<string, AlbumDetail> = new Map(),
+): Promise<string[]> {
+  const visited = new Set<string>()
+  const trackUrns = new Set<string>()
+
+  function getDescendants(id: string): string[] {
+    const direct = allCollections.filter((c) => c.parentId === id).map((c) => c.id)
+    const result: string[] = [...direct]
+    for (const d of direct) {
+      result.push(...getDescendants(d))
+    }
+    return result
+  }
+
+  const folderIds = [collectionId, ...getDescendants(collectionId)]
+
+  for (const fId of folderIds) {
+    if (visited.has(fId)) continue
+    visited.add(fId)
+    try {
+      const page = await ctx.library.listCollectionItems(fId, { limit: 1000 })
+      for (const item of page.items ?? []) {
+        const parsed = tryParseUrn(item.urn)
+        const kind = parsed?.kind
+        if (kind === 'track') {
+          trackUrns.add(item.urn)
+        } else if (kind === 'playlist') {
+          try {
+            const detail = await ctx.library.getPlaylist(item.urn)
+            for (const pi of detail?.items ?? []) {
+              trackUrns.add(pi.trackUrn)
+            }
+          } catch {
+            // ignore
+          }
+        } else if (kind === 'album') {
+          try {
+            let album = albumsMap.get(item.urn)
+            if (!album && ctx.sources?.getAlbum) {
+              album = await ctx.sources.getAlbum(item.urn)
+            }
+            for (const t of album?.tracks ?? []) {
+              trackUrns.add(t.urn)
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return Array.from(trackUrns)
+}
+
+function EditPlaylistModal({
+  playlist,
+  onClose,
+  onSave,
+}: {
+  playlist: (Playlist & { description?: string }) | null
+  onClose: () => void
+  onSave: (patch: { name: string; description?: string; artworkUrl?: string }) => Promise<void>
+}): ReactElement | null {
+  const [name, setName] = useState(playlist?.name ?? '')
+  const [description, setDescription] = useState(playlist?.description ?? '')
+  const [artworkUrl, setArtworkUrl] = useState(playlist?.artwork?.sourceUrl ?? '')
+  const [previewUrl, setPreviewUrl] = useState(playlist?.artwork?.sourceUrl ?? '')
+  const [isHoveringCover, setIsHoveringCover] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (playlist) {
+      setName(playlist.name ?? '')
+      setDescription(playlist.description ?? '')
+      setArtworkUrl(playlist.artwork?.sourceUrl ?? '')
+      setPreviewUrl(playlist.artwork?.sourceUrl ?? '')
+    }
+  }, [playlist])
+
+  if (!playlist) return null
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const res = reader.result as string
+        setArtworkUrl(res)
+        setPreviewUrl(res)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleSave = async () => {
+    if (!name.trim()) return
+    setSaving(true)
+    try {
+      await onSave({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        artworkUrl: artworkUrl.trim() || undefined,
+      })
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return h(
+    'div',
+    {
+      'aria-label': '编辑详情',
+      style: {
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        zIndex: 2000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+      onClick: (e: ReactMouseEvent) => {
+        if (e.target === e.currentTarget) onClose()
+      },
+    },
+    h(
+      'div',
+      {
+        style: {
+          width: 524,
+          backgroundColor: '#282828',
+          borderRadius: 8,
+          padding: 24,
+          boxShadow: '0 12px 36px rgba(0, 0, 0, 0.8)',
+          color: '#FFFFFF',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16,
+        },
+      },
+      h(
+        'div',
+        { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+        h('h2', { style: { margin: 0, fontSize: 20, fontWeight: 700, color: '#FFFFFF' } }, '编辑详情'),
+        h(
+          'button',
+          {
+            type: 'button',
+            'aria-label': '关闭',
+            onClick: onClose,
+            style: {
+              background: 'transparent',
+              border: 'none',
+              color: '#A0A0AE',
+              fontSize: 18,
+              cursor: 'pointer',
+              padding: 4,
+            },
+          },
+          '✕',
+        ),
+      ),
+      h(
+        'div',
+        { style: { display: 'flex', gap: 16 } },
+        h(
+          'div',
+          {
+            style: {
+              width: 180,
+              height: 180,
+              borderRadius: 4,
+              overflow: 'hidden',
+              position: 'relative',
+              backgroundColor: '#1E1E1E',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            },
+            onMouseEnter: () => setIsHoveringCover(true),
+            onMouseLeave: () => setIsHoveringCover(false),
+            onClick: () => fileInputRef.current?.click(),
+          },
+          previewUrl
+            ? h('img', {
+                src: previewUrl,
+                alt: '封面预览',
+                style: { width: '100%', height: '100%', objectFit: 'cover' },
+              })
+            : h('span', { style: { fontSize: 48, color: '#555555' } }, '♫'),
+          h(
+            'div',
+            {
+              style: {
+                position: 'absolute',
+                inset: 0,
+                backgroundColor: isHoveringCover ? 'rgba(0, 0, 0, 0.65)' : 'transparent',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                color: '#FFFFFF',
+                opacity: isHoveringCover ? 1 : 0,
+                transition: 'opacity 0.2s ease',
+              },
+            },
+            h(
+              'svg',
+              {
+                width: 36,
+                height: 36,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: 'currentColor',
+                strokeWidth: 2,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round',
+              },
+              h('path', { d: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z' }),
+              h('circle', { cx: 12, cy: 13, r: 4 }),
+            ),
+            h('span', { style: { fontSize: 13, fontWeight: 600 } }, '选择照片'),
+          ),
+          h('input', {
+            ref: fileInputRef,
+            type: 'file',
+            accept: 'image/*',
+            style: { display: 'none' },
+            onChange: handleFileChange,
+          }),
+        ),
+        h(
+          'div',
+          { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: 10 } },
+          h(
+            'div',
+            null,
+            h('label', { style: { display: 'block', fontSize: 11, color: '#A0A0AE', marginBottom: 4, fontWeight: 600 } }, '名称'),
+            h('input', {
+              type: 'text',
+              value: name,
+              onChange: (e: ChangeEvent<HTMLInputElement>) => setName(e.target.value),
+              placeholder: '添加名称',
+              'data-testid': 'edit-playlist-name',
+              style: {
+                width: '100%',
+                height: 38,
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: 4,
+                color: '#FFFFFF',
+                padding: '0 10px',
+                fontSize: 14,
+                boxSizing: 'border-box',
+                outline: 'none',
+              },
+            }),
+          ),
+          h(
+            'div',
+            null,
+            h('label', { style: { display: 'block', fontSize: 11, color: '#A0A0AE', marginBottom: 4, fontWeight: 600 } }, '简介'),
+            h('textarea', {
+              value: description,
+              onChange: (e: ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value),
+              placeholder: '添加可选简介',
+              rows: 3,
+              'data-testid': 'edit-playlist-description',
+              style: {
+                width: '100%',
+                height: 64,
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: 4,
+                color: '#FFFFFF',
+                padding: 8,
+                fontSize: 13,
+                resize: 'none',
+                fontFamily: 'inherit',
+                boxSizing: 'border-box',
+                outline: 'none',
+              },
+            }),
+          ),
+          h(
+            'div',
+            null,
+            h('label', { style: { display: 'block', fontSize: 11, color: '#A0A0AE', marginBottom: 4, fontWeight: 600 } }, '封面图片网址 (可选)'),
+            h('input', {
+              type: 'text',
+              value: artworkUrl,
+              onChange: (e: ChangeEvent<HTMLInputElement>) => {
+                setArtworkUrl(e.target.value)
+                setPreviewUrl(e.target.value)
+              },
+              placeholder: 'https://... 或点击左侧上传',
+              'data-testid': 'edit-playlist-artwork',
+              style: {
+                width: '100%',
+                height: 32,
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: 4,
+                color: '#FFFFFF',
+                padding: '0 10px',
+                fontSize: 12,
+                boxSizing: 'border-box',
+                outline: 'none',
+              },
+            }),
+          ),
+        ),
+      ),
+      h(
+        'div',
+        { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 } },
+        h(
+          'span',
+          { style: { fontSize: 11, color: '#888888' } },
+          '选择照片即表示你同意我们将其用作歌单封面。',
+        ),
+        h(
+          'div',
+          { style: { display: 'flex', gap: 10 } },
+          h(Button, {
+            variant: 'ghost',
+            onPress: onClose,
+            children: '取消',
+          }),
+          h(Button, {
+            variant: 'primary',
+            disabled: !name.trim() || saving,
+            onPress: handleSave,
+            testID: 'edit-playlist-save',
+            children: saving ? '保存中…' : '保存',
+          }),
+        ),
+      ),
+    ),
+  )
+}
+
+function RenameFolderModal({
+  collection,
+  onClose,
+  onRename,
+}: {
+  collection: Collection | null
+  onClose: () => void
+  onRename: (id: string, newName: string) => Promise<void>
+}): ReactElement | null {
+  const [name, setName] = useState(collection?.name ?? '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (collection) setName(collection.name)
+  }, [collection])
+
+  if (!collection) return null
+
+  const handleSave = async () => {
+    if (!name.trim()) return
+    setSaving(true)
+    try {
+      await onRename(collection.id, name.trim())
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return h(
+    'div',
+    {
+      'aria-label': '重命名文件夹',
+      style: {
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        zIndex: 2000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+      onClick: (e: ReactMouseEvent) => {
+        if (e.target === e.currentTarget) onClose()
+      },
+    },
+    h(
+      'div',
+      {
+        style: {
+          width: 360,
+          backgroundColor: '#282828',
+          borderRadius: 8,
+          padding: 20,
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16,
+        },
+      },
+      h('h3', { style: { margin: 0, fontSize: 16, color: '#FFFFFF', fontWeight: 600 } }, '重命名文件夹'),
+      h(TextField, {
+        value: name,
+        onChange: setName,
+        placeholder: '文件夹名称',
+        testID: 'rename-collection-name',
+      }),
+      h(
+        'div',
+        { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+        h(Button, {
+          variant: 'ghost',
+          onPress: onClose,
+          children: '取消',
+        }),
+        h(Button, {
+          variant: 'primary',
+          disabled: !name.trim() || saving,
+          onPress: handleSave,
+          testID: 'rename-collection-save',
+          children: saving ? '保存中…' : '保存',
+        }),
+      ),
+    ),
+  )
+}
+
+function CreateInFolderModal({
+  target,
+  onClose,
+  onCreate,
+}: {
+  target: { type: 'playlist' | 'folder'; folderId: string } | null
+  onClose: () => void
+  onCreate: (name: string) => Promise<void>
+}): ReactElement | null {
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setName('')
+  }, [target])
+
+  if (!target) return null
+
+  const isPlaylist = target.type === 'playlist'
+
+  const handleCreate = async () => {
+    if (!name.trim()) return
+    setSaving(true)
+    try {
+      await onCreate(name.trim())
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return h(
+    'div',
+    {
+      'aria-label': isPlaylist ? '在文件夹中创建歌单' : '创建文件夹',
+      style: {
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        zIndex: 2000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+      onClick: (e: ReactMouseEvent) => {
+        if (e.target === e.currentTarget) onClose()
+      },
+    },
+    h(
+      'div',
+      {
+        style: {
+          width: 360,
+          backgroundColor: '#282828',
+          borderRadius: 8,
+          padding: 20,
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16,
+        },
+      },
+      h('h3', { style: { margin: 0, fontSize: 16, color: '#FFFFFF', fontWeight: 600 } }, isPlaylist ? '在文件夹中创建歌单' : '创建文件夹'),
+      h(TextField, {
+        value: name,
+        onChange: setName,
+        placeholder: isPlaylist ? '新歌单名称' : '新文件夹名称',
+        testID: isPlaylist ? 'folder-create-playlist-name' : 'folder-create-subfolder-name',
+      }),
+      h(
+        'div',
+        { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+        h(Button, {
+          variant: 'ghost',
+          onPress: onClose,
+          children: '取消',
+        }),
+        h(Button, {
+          variant: 'primary',
+          disabled: !name.trim() || saving,
+          onPress: handleCreate,
+          testID: 'folder-create-submit',
+          children: saving ? '创建中…' : '创建',
+        }),
+      ),
+    ),
+  )
+}
+
 export interface LibraryScreenProps {
   ctx: Context
   mode?: 'collapsed' | 'sidebar' | 'expanded'
   onModeChange?: (mode: 'collapsed' | 'sidebar' | 'expanded') => void
   onOpenAlbum?: (urn: string) => void
+  folderId?: string | null
+  onFolderChange?: (folderId: string | null) => void
   [key: string]: unknown
 }
 
@@ -230,6 +849,8 @@ export function LibraryScreen({
   mode: propMode,
   onModeChange,
   onOpenAlbum,
+  folderId: propFolderId,
+  onFolderChange,
 }: LibraryScreenProps): ReactElement {
   const [localMode, setLocalMode] = useState<'collapsed' | 'sidebar' | 'expanded'>('sidebar')
   const currentMode = propMode ?? localMode
@@ -243,6 +864,32 @@ export function LibraryScreen({
   )
 
   const [isHeaderHovered, setIsHeaderHovered] = useState(false)
+  const [localFolderId, setLocalFolderId] = useState<string | null>(propFolderId ?? null)
+  useEffect(() => {
+    if (propFolderId !== undefined) {
+      setLocalFolderId(propFolderId)
+    }
+  }, [propFolderId])
+  const activeFolderId = localFolderId
+  const setActiveFolderId = useCallback(
+    (id: string | null) => {
+      setLocalFolderId(id)
+      onFolderChange?.(id)
+    },
+    [onFolderChange],
+  )
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set())
+
+  const toggleFolderExpanded = useCallback((folderId: string) => {
+    setExpandedFolderIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(folderId)) next.delete(folderId)
+      else next.add(folderId)
+      return next
+    })
+  }, [])
+
+  const [folderItemsMap, setFolderItemsMap] = useState<Map<string, UnifiedItem[]>>(new Map())
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
   const [collapsedMenuPos, setCollapsedMenuPos] = useState<{ top: number; left: number } | null>(null)
   const [showCreatePlaylistModal, setShowCreatePlaylistModal] = useState(false)
@@ -296,6 +943,10 @@ export function LibraryScreen({
     items: MenuItemSpec[]
     anchor: MenuAnchor
   } | undefined>(undefined)
+
+  const [editingPlaylist, setEditingPlaylist] = useState<(Playlist & { description?: string }) | null>(null)
+  const [renamingCollection, setRenamingCollection] = useState<Collection | null>(null)
+  const [createInFolderModal, setCreateInFolderModal] = useState<{ type: 'playlist' | 'folder'; folderId: string } | null>(null)
 
   const playlistMenu = usePlaylistMenu(ctx)
   const collectionMenu = useCollectionMenu(ctx)
@@ -591,13 +1242,30 @@ export function LibraryScreen({
             playlist,
             detail?.items.map((item) => item.trackUrn) ?? [],
             anchor,
-            { pinned: isPinned, onTogglePin: () => void togglePin(playlist) },
+            {
+              pinned: isPinned,
+              onTogglePin: () => void togglePin(playlist),
+              onEdit: () => setEditingPlaylist(detail ?? playlist),
+              onDelete: () => {
+                void ctx.library
+                  .deletePlaylist(playlist.urn)
+                  .then(() => setGeneration((n) => n + 1))
+                  .catch(fail('could not delete the playlist'))
+              },
+            },
           ),
         )
         .catch(() =>
           playlistMenu.open(playlist, [], anchor, {
             pinned: isPinned,
             onTogglePin: () => void togglePin(playlist),
+            onEdit: () => setEditingPlaylist(playlist),
+            onDelete: () => {
+              void ctx.library
+                .deletePlaylist(playlist.urn)
+                .then(() => setGeneration((n) => n + 1))
+                .catch(fail('could not delete the playlist'))
+            },
           }),
         )
     },
@@ -606,26 +1274,63 @@ export function LibraryScreen({
 
   const openCollectionMenu = useCallback(
     (collection: Collection, anchor?: MenuAnchor, isPinned?: boolean) => {
-      void ctx.library
-        .listCollectionItems(collection.id)
-        .then((page) =>
+      void collectAllFolderTracks(ctx, collection.id, collections.data ?? [], albumsMap)
+        .then((allTracks) =>
           collectionMenu.open(
             collection.name,
-            page.items
-              .map((item) => item.urn)
-              .filter((entryUrn) => tryParseUrn(entryUrn)?.kind === 'track'),
+            allTracks,
             anchor,
-            { pinned: isPinned, onTogglePin: () => void togglePin({ id: collection.id }) },
+            {
+              collectionId: collection.id,
+              parentId: collection.parentId ?? null,
+              pinned: isPinned,
+              onTogglePin: () => void togglePin({ id: collection.id }),
+              onRename: () => setRenamingCollection(collection),
+              onDelete: () => {
+                void ctx.library
+                  .deleteCollection(collection.id)
+                  .then(() => setGeneration((n) => n + 1))
+                  .catch(fail('could not delete the collection'))
+              },
+              onCreatePlaylist: () => setCreateInFolderModal({ type: 'playlist', folderId: collection.id }),
+              onCreateFolder: () => setCreateInFolderModal({ type: 'folder', folderId: collection.id }),
+              onMoveToFolder: (targetFolderId: string | null) => {
+                void ctx.library
+                  .moveCollection?.(collection.id, targetFolderId)
+                  .then(() => setGeneration((n) => n + 1))
+                  .catch(fail('could not move the collection'))
+              },
+              onPlay: () => {
+                if (allTracks[0]) void player?.playNow(allTracks)
+              },
+            },
           ),
         )
         .catch(() =>
           collectionMenu.open(collection.name, [], anchor, {
+            collectionId: collection.id,
+            parentId: collection.parentId ?? null,
             pinned: isPinned,
             onTogglePin: () => void togglePin({ id: collection.id }),
+            onRename: () => setRenamingCollection(collection),
+            onDelete: () => {
+              void ctx.library
+                .deleteCollection(collection.id)
+                .then(() => setGeneration((n) => n + 1))
+                .catch(fail('could not delete the collection'))
+            },
+            onCreatePlaylist: () => setCreateInFolderModal({ type: 'playlist', folderId: collection.id }),
+            onCreateFolder: () => setCreateInFolderModal({ type: 'folder', folderId: collection.id }),
+            onMoveToFolder: (targetFolderId: string | null) => {
+              void ctx.library
+                .moveCollection?.(collection.id, targetFolderId)
+                .then(() => setGeneration((n) => n + 1))
+                .catch(fail('could not move the collection'))
+            },
           }),
         )
     },
-    [ctx, collectionMenu, togglePin],
+    [ctx, collectionMenu, collections.data, albumsMap, togglePin, player],
   )
 
   const openAlbumMenu = useCallback(
@@ -673,7 +1378,14 @@ export function LibraryScreen({
     if (!name) return
     setDraft('')
     setError(undefined)
-    void ctx.library.createPlaylist(name).catch(fail('could not create the playlist'))
+    void ctx.library
+      .createPlaylist(name)
+      .then(async (created) => {
+        if (activeFolderId) {
+          await ctx.library.addToCollection(activeFolderId, [created.urn]).catch(() => {})
+        }
+      })
+      .catch(fail('could not create the playlist'))
   }
 
   const createCollection = () => {
@@ -681,7 +1393,9 @@ export function LibraryScreen({
     if (!name) return
     setCollectionDraft('')
     setError(undefined)
-    void ctx.library.createCollection(name).catch(fail('could not create the collection'))
+    void ctx.library
+      .createCollection(name, activeFolderId ? { parentId: activeFolderId } : undefined)
+      .catch(fail('could not create the collection'))
   }
 
   const historyMap = useMemo(() => {
@@ -843,14 +1557,14 @@ export function LibraryScreen({
         addedAt: collection.createdAt,
         lastPlayedAt: 0,
         isDownloaded: false,
-        onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.collection, { id: collection.id }),
+        onOpen: () => setActiveFolderId(collection.id),
         onPlay: () => playCollection(collection.id),
         onDelete: () =>
           void ctx.library.deleteCollection(collection.id).catch(fail('could not delete the collection')),
         onMore: (anchor) => openCollectionMenu(collection, anchor, isPinned),
       }
     })
-  }, [collectionFirstArtworks, collections.data, ctx, isItemPinned, openCollectionMenu, playCollection])
+  }, [collectionFirstArtworks, collections.data, ctx, isItemPinned, openCollectionMenu, playCollection, setActiveFolderId])
 
   const artistItems: UnifiedItem[] = useMemo(() => {
     const map = new Map<string, { urn: string; name: string; addedAt: number }>()
@@ -931,6 +1645,285 @@ export function LibraryScreen({
       return (b.addedAt ?? 0) - (a.addedAt ?? 0)
     })
   }, [allItems, activeFilter, searchQuery, sortMode])
+
+  const loadCollectionUnifiedItems = useCallback(
+    async (collectionId: string): Promise<UnifiedItem[]> => {
+      try {
+        const page = await ctx.library.listCollectionItems(collectionId)
+        const entries = page.items ?? []
+        const results: UnifiedItem[] = []
+
+        for (const entry of entries) {
+          const parsed = tryParseUrn(entry.urn)
+          const kind = parsed?.kind
+
+          const matchedPlaylist = playlistItems.find((p) => p.urn === entry.urn || p.id === entry.urn)
+          if (matchedPlaylist) {
+            results.push(matchedPlaylist)
+            continue
+          }
+
+          const matchedAlbum = albumItems.find((a) => a.urn === entry.urn || a.id === entry.urn)
+          if (matchedAlbum) {
+            results.push(matchedAlbum)
+            continue
+          }
+
+          if (kind === 'track') {
+            const local = localTracks.find((t) => t.urn === entry.urn)
+            let trackObj = local
+            if (!trackObj && ctx.sources?.getTracks) {
+              const fetched = await ctx.sources.getTracks([entry.urn]).catch(() => [])
+              trackObj = fetched[0]
+            }
+            if (trackObj) {
+              results.push({
+                id: entry.urn,
+                urn: entry.urn,
+                kind: 'playlist',
+                title: trackObj.title,
+                subtitle: trackObj.artists?.map((a) => a.name).join(', ') ?? '单曲',
+                creator: trackObj.artists?.map((a) => a.name).join(', ') ?? '未知艺人',
+                artwork: trackObj.artwork,
+                artworkSeed: entry.urn,
+                pinned: false,
+                addedAt: trackObj.fetchedAt ?? Date.now(),
+                lastPlayedAt: historyMap.get(entry.urn) ?? 0,
+                onOpen: () => {
+                  void player?.playNow([entry.urn])
+                },
+                onPlay: () => {
+                  void player?.playNow([entry.urn])
+                },
+                onMore: (anchor) =>
+                  openBuiltinMenu(
+                    trackObj!.title,
+                    () => void player?.playNow([entry.urn]),
+                    false,
+                    { id: entry.urn },
+                    anchor,
+                  ),
+              })
+              continue
+            }
+          }
+
+          if (kind === 'playlist') {
+            try {
+              const detail = await ctx.library.getPlaylist(entry.urn)
+              if (detail) {
+                const isPinned = isItemPinned({ id: detail.urn, urn: detail.urn })
+                results.push({
+                  id: detail.urn,
+                  urn: detail.urn,
+                  kind: 'playlist',
+                  title: detail.name,
+                  subtitle: detail.isSmart ? '智能歌单' : '歌单 • Revers',
+                  creator: 'Revers',
+                  artwork: detail.artwork ?? playlistFirstTrackArtworks.get(detail.urn),
+                  artworkSeed: detail.urn,
+                  pinned: isPinned,
+                  addedAt: detail.createdAt ?? Date.now(),
+                  lastPlayedAt: 0,
+                  onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.playlist, { urn: detail.urn }),
+                  onPlay: () => playPlaylist(detail.urn, detail.name),
+                  onMore: (anchor) =>
+                    openPlaylistMenu(
+                      {
+                        urn: detail.urn,
+                        name: detail.name,
+                        isSmart: detail.isSmart,
+                        createdAt: detail.createdAt,
+                        updatedAt: detail.updatedAt,
+                      },
+                      anchor,
+                      isPinned,
+                    ),
+                })
+                continue
+              }
+            } catch {
+              // ignore fetch failure and fall back
+            }
+          }
+
+          if (kind === 'album') {
+            try {
+              const album = await ctx.sources?.getAlbum(entry.urn)
+              if (album) {
+                const title = album.title ?? entry.urn
+                const artists = album.artists?.map((a) => a.name).join(', ') ?? '专辑'
+                const isPinned = isItemPinned({ id: entry.urn, urn: entry.urn })
+                results.push({
+                  id: entry.urn,
+                  urn: entry.urn,
+                  kind: 'album',
+                  title,
+                  subtitle: `专辑 • ${artists}`,
+                  creator: artists,
+                  artwork: album.artwork,
+                  artworkSeed: entry.urn,
+                  pinned: isPinned,
+                  addedAt: Date.now(),
+                  lastPlayedAt: 0,
+                  onOpen: () => {
+                    if (onOpenAlbum) onOpenAlbum(entry.urn)
+                    else ctx.ui.navigate(ALBUM_VIEWS.album, { urn: entry.urn })
+                  },
+                  onPlay: () => playAlbum(entry.urn, title),
+                  onMore: (anchor) => openAlbumMenu({ urn: entry.urn, title }, anchor, isPinned),
+                })
+                continue
+              }
+            } catch {
+              // ignore fetch failure and fall back
+            }
+          }
+
+          results.push({
+            id: entry.urn,
+            urn: entry.urn,
+            kind: 'playlist',
+            title: entry.urn,
+            subtitle: '项目',
+            creator: '',
+            artwork: undefined,
+            artworkSeed: entry.urn,
+            pinned: false,
+            addedAt: Date.now(),
+            lastPlayedAt: 0,
+            onOpen: () => {},
+            onPlay: () => {},
+            onMore: () => {},
+          })
+        }
+        return results
+      } catch {
+        return []
+      }
+    },
+    [
+      ctx,
+      playlistItems,
+      albumItems,
+      localTracks,
+      historyMap,
+      player,
+      openBuiltinMenu,
+      isItemPinned,
+      playlistFirstTrackArtworks,
+      playPlaylist,
+      openPlaylistMenu,
+      onOpenAlbum,
+      playAlbum,
+      openAlbumMenu,
+    ],
+  )
+
+  const loadCollectionUnifiedItemsRef = useRef(loadCollectionUnifiedItems)
+  useEffect(() => {
+    loadCollectionUnifiedItemsRef.current = loadCollectionUnifiedItems
+  })
+
+  useEffect(() => {
+    const idsToLoad = new Set<string>(expandedFolderIds)
+    if (activeFolderId) idsToLoad.add(activeFolderId)
+    if (idsToLoad.size === 0) return
+
+    let cancelled = false
+    Promise.all(
+      Array.from(idsToLoad).map(async (id) => {
+        const items = await loadCollectionUnifiedItemsRef.current(id)
+        return { id, items }
+      }),
+    )
+      .then((results) => {
+        if (cancelled) return
+        setFolderItemsMap((prev) => {
+          let hasDiff = false
+          for (const res of results) {
+            const existing = prev.get(res.id)
+            if (!existing || existing.length !== res.items.length) {
+              hasDiff = true
+              break
+            }
+          }
+          if (!hasDiff && prev.size === results.length) return prev
+          const next = new Map(prev)
+          for (const res of results) {
+            next.set(res.id, res.items)
+          }
+          return next
+        })
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [expandedFolderIds, activeFolderId, generation])
+
+  const activeCollection = useMemo(() => {
+    if (!activeFolderId) return undefined
+    return (collections.data ?? []).find((c) => c.id === activeFolderId)
+  }, [collections.data, activeFolderId])
+
+  const activeFolderItems = useMemo(() => {
+    if (!activeFolderId) return []
+    return folderItemsMap.get(activeFolderId) ?? []
+  }, [activeFolderId, folderItemsMap])
+
+  const filteredFolderItems = useMemo(() => {
+    let result = activeFolderItems
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase()
+      result = result.filter(
+        (item) => item.title.toLowerCase().includes(q) || item.subtitle.toLowerCase().includes(q),
+      )
+    }
+    return [...result].sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+      if (sortMode === 'alphabetical') {
+        return a.title.localeCompare(b.title, 'zh-Hans-CN')
+      }
+      if (sortMode === 'recent-played') {
+        return (b.lastPlayedAt ?? 0) - (a.lastPlayedAt ?? 0)
+      }
+      if (sortMode === 'creator') {
+        return (a.creator ?? '').localeCompare(b.creator ?? '', 'zh-Hans-CN')
+      }
+      return (b.addedAt ?? 0) - (a.addedAt ?? 0)
+    })
+  }, [activeFolderItems, searchQuery, sortMode])
+
+  const displayItems = useMemo(() => {
+    const list: (UnifiedItem & {
+      isFolder?: boolean
+      isExpanded?: boolean
+      onToggleExpand?: () => void
+      isChild?: boolean
+    })[] = []
+    for (const item of filteredItems) {
+      const isFolder = item.kind === 'collection'
+      const isExpanded = isFolder && expandedFolderIds.has(item.id)
+      list.push({
+        ...item,
+        isFolder,
+        isExpanded,
+        onToggleExpand: isFolder ? () => toggleFolderExpanded(item.id) : undefined,
+      })
+      if (isExpanded) {
+        const children = folderItemsMap.get(item.id) ?? []
+        for (const child of children) {
+          list.push({
+            ...child,
+            isChild: true,
+          })
+        }
+      }
+    }
+    return list
+  }, [filteredItems, expandedFolderIds, folderItemsMap, toggleFolderExpanded])
 
   const sortLabels: Record<'creator' | 'recent-added' | 'recent-played' | 'alphabetical', string> = {
     'creator': '创建者',
@@ -1299,6 +2292,37 @@ export function LibraryScreen({
         items: sortMenuItems,
         title: '排序方式',
       }),
+      h(EditPlaylistModal, {
+        playlist: editingPlaylist,
+        onClose: () => setEditingPlaylist(null),
+        onSave: async (patch) => {
+          if (!editingPlaylist) return
+          await ctx.library.updatePlaylist(editingPlaylist.urn, patch)
+          setGeneration((n) => n + 1)
+        },
+      }),
+      h(RenameFolderModal, {
+        collection: renamingCollection,
+        onClose: () => setRenamingCollection(null),
+        onRename: async (id, newName) => {
+          await ctx.library.renameCollection(id, newName)
+          setGeneration((n) => n + 1)
+        },
+      }),
+      h(CreateInFolderModal, {
+        target: createInFolderModal,
+        onClose: () => setCreateInFolderModal(null),
+        onCreate: async (name) => {
+          if (!createInFolderModal) return
+          if (createInFolderModal.type === 'playlist') {
+            const created = await ctx.library.createPlaylist(name)
+            await ctx.library.addToCollection(createInFolderModal.folderId, [created.urn])
+          } else {
+            await ctx.library.createCollection(name, { parentId: createInFolderModal.folderId })
+          }
+          setGeneration((n) => n + 1)
+        },
+      }),
     )
   }
 
@@ -1357,6 +2381,51 @@ export function LibraryScreen({
           h('rect', { x: 14.5, y: 4.5, width: 3, height: 15.5, rx: 1, transform: 'rotate(15 14.5 4.5)' }),
         ),
       ),
+      activeFolderId !== null
+        ? h(
+            'button',
+            {
+              type: 'button',
+              'aria-label': '返回音乐库',
+              title: '返回音乐库',
+              onClick: () => setActiveFolderId(null),
+              style: {
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                backgroundColor: '#242424',
+                border: 'none',
+                color: '#FFFFFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                margin: '4px 0 0',
+                transition: 'background-color 0.15s ease',
+              },
+              onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.backgroundColor = '#2E2E2E'
+              },
+              onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.backgroundColor = '#242424'
+              },
+            },
+            h(
+              'svg',
+              {
+                width: 18,
+                height: 18,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: 'currentColor',
+                strokeWidth: 2.5,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round',
+              },
+              h('polyline', { points: '15 18 9 12 15 6' }),
+            ),
+          )
+        : null,
       h(
         'div',
         { style: { position: 'relative', margin: '10px 0 16px' } },
@@ -1422,7 +2491,7 @@ export function LibraryScreen({
             width: '100%',
           },
         },
-        filteredItems.map((item) => {
+        (activeFolderId ? filteredFolderItems : filteredItems).map((item) => {
           const isFav = item.kind === 'favorite'
           const isArt = item.kind === 'artist'
           return h(
@@ -1458,6 +2527,36 @@ export function LibraryScreen({
             },
             isFav
               ? h('span', { style: { fontSize: 20, color: '#FFFFFF' } }, '♥')
+              : item.kind === 'collection'
+                ? h(
+                    'div',
+                    {
+                      style: {
+                        width: 48,
+                        height: 48,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                        borderRadius: 4,
+                        color: '#CCCCCC',
+                      },
+                    },
+                    h(
+                      'svg',
+                      {
+                        width: 24,
+                        height: 24,
+                        viewBox: '0 0 24 24',
+                        fill: 'none',
+                        stroke: 'currentColor',
+                        strokeWidth: 2,
+                        strokeLinecap: 'round',
+                        strokeLinejoin: 'round',
+                      },
+                      h('path', { d: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' }),
+                    ),
+                  )
               : item.artwork
                 ? h(CachedArtwork, {
                     ctx,
@@ -1480,6 +2579,391 @@ export function LibraryScreen({
   }
 
   if (currentMode === 'expanded') {
+    if (activeFolderId !== null) {
+      return h(
+        'section',
+        {
+          'aria-label': activeCollection?.name ?? 'Folder Expanded',
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100%',
+            width: '100%',
+            padding: 24,
+            boxSizing: 'border-box',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            userSelect: 'none',
+          },
+        },
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 20,
+            },
+          },
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: () => setActiveFolderId(null),
+                title: '返回音乐库',
+                style: {
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#A0A0AE',
+                  fontSize: 24,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  padding: 0,
+                  transition: 'color 0.15s ease',
+                },
+                onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                  e.currentTarget.style.color = '#FFFFFF'
+                },
+                onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                  e.currentTarget.style.color = '#A0A0AE'
+                },
+              },
+              '音乐库',
+            ),
+            h(
+              'svg',
+              {
+                width: 18,
+                height: 18,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: 'currentColor',
+                strokeWidth: 2.5,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round',
+                style: { color: '#666666' },
+              },
+              h('polyline', { points: '15 18 9 12 15 6' }),
+            ),
+            h(
+              'h1',
+              { style: { fontSize: 24, fontWeight: 700, color: '#FFFFFF', margin: 0 } },
+              activeCollection?.name ?? '文件夹',
+            ),
+          ),
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'center', gap: 12, position: 'relative' } },
+            renderCreateButton(),
+            renderCreateMenu(false),
+            activeCollection
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    'aria-label': '更多选项',
+                    title: '更多选项',
+                    onClick: (e: { clientX: number; clientY: number }) => {
+                      openCollectionMenu(
+                        activeCollection,
+                        { x: e.clientX, y: e.clientY },
+                        isItemPinned({ id: activeCollection.id }),
+                      )
+                    },
+                    style: {
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#A0A0AE',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'color 0.15s ease',
+                    },
+                    onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                      e.currentTarget.style.color = '#FFFFFF'
+                    },
+                    onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                      e.currentTarget.style.color = '#A0A0AE'
+                    },
+                  },
+                  h('span', { style: { fontSize: 16, fontWeight: 700 } }, '⋯'),
+                )
+              : null,
+            h(
+              'button',
+              {
+                type: 'button',
+                'aria-label': '收起音乐库',
+                title: '收起音乐库',
+                onClick: () => handleModeChange('sidebar'),
+                style: {
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#A0A0AE',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'color 0.15s ease',
+                },
+                onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                  e.currentTarget.style.color = '#FFFFFF'
+                },
+                onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                  e.currentTarget.style.color = '#A0A0AE'
+                },
+              },
+              h(
+                'svg',
+                {
+                  width: 16,
+                  height: 16,
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: 2,
+                  strokeLinecap: 'round',
+                  strokeLinejoin: 'round',
+                },
+                h('polyline', { points: '4 14 10 14 10 20' }),
+                h('polyline', { points: '20 10 14 10 14 4' }),
+                h('line', { x1: '14', y1: '10', x2: '21', y2: '3' }),
+                h('line', { x1: '10', y1: '14', x2: '3', y2: '21' }),
+              ),
+            ),
+          ),
+        ),
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 16,
+              gap: 16,
+            },
+          },
+          h(
+            'span',
+            {
+              style: {
+                padding: '6px 14px',
+                borderRadius: 16,
+                backgroundColor: '#FFFFFF',
+                color: '#000000',
+                fontSize: 13,
+                fontWeight: 600,
+              },
+            },
+            '创建者: 你',
+          ),
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'center', gap: 16 } },
+            h(
+              'div',
+              {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  backgroundColor: '#242424',
+                  borderRadius: 4,
+                  padding: '6px 12px',
+                  width: 220,
+                },
+              },
+              h('span', { style: { color: '#888888', fontSize: 13 } }, '🔍'),
+              h('input', {
+                value: searchQuery,
+                onChange: (e: { target: { value: string } }) => setSearchQuery(e.target.value),
+                placeholder: '在歌单中搜索',
+                style: {
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#FFFFFF',
+                  fontSize: 13,
+                  outline: 'none',
+                  width: '100%',
+                },
+              }),
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: (e: { clientX: number; clientY: number }) =>
+                  setSortMenuAnchor({ x: e.clientX, y: e.clientY }),
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#A0A0AE',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                },
+              },
+              h('span', null, sortLabels[sortMode]),
+              h('span', { style: { fontSize: 16 } }, '≣'),
+            ),
+          ),
+        ),
+        h(
+          'div',
+          { style: { flex: 1, display: 'flex', flexDirection: 'column' } },
+          h(
+            'div',
+            {
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                padding: '8px 16px',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                color: '#A0A0AE',
+                fontSize: 12,
+                marginBottom: 8,
+              },
+            },
+            h('div', { style: { flex: 2 } }, '标题'),
+            h('div', { style: { flex: 1 } }, '添加日期'),
+            h('div', { style: { flex: 1, textAlign: 'right' } }, '已播'),
+          ),
+          filteredFolderItems.length === 0
+            ? h(EmptyState, {
+                icon: '🗂',
+                title: '文件夹为空',
+                description: '点击创建添加歌单，或从音乐库中添加内容。',
+              })
+            : filteredFolderItems.map((item) => {
+                const isFav = item.kind === 'favorite'
+                const isArt = item.kind === 'artist'
+                return h(
+                  'div',
+                  {
+                    key: item.id,
+                    onClick: () => item.onOpen(),
+                    style: {
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '8px 16px',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      transition: 'background-color 0.15s ease',
+                    },
+                    onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'
+                    },
+                    onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                      e.currentTarget.style.backgroundColor = 'transparent'
+                    },
+                  },
+                  h(
+                    'div',
+                    { style: { flex: 2, display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 } },
+                    h(
+                      'div',
+                      {
+                        style: {
+                          width: 48,
+                          height: 48,
+                          borderRadius: isArt ? '50%' : 4,
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: isFav ? 'transparent' : 'rgba(255, 255, 255, 0.05)',
+                          background: isFav ? 'linear-gradient(135deg, #450af5, #8e8ee5)' : undefined,
+                        },
+                      },
+                      isFav
+                        ? h('span', { style: { fontSize: 20, color: '#FFFFFF' } }, '♥')
+                        : item.artwork
+                          ? h(CachedArtwork, {
+                              ctx,
+                              artwork: item.artwork,
+                              seed: item.artworkSeed,
+                              size: 48,
+                              radius: isArt ? 24 : 4,
+                            })
+                          : h(
+                              'span',
+                              { style: { fontSize: 20, color: '#A0A0A0' } },
+                              isArt ? '👤' : item.kind === 'local' ? '📁' : item.kind === 'album' ? '💿' : '♪',
+                            ),
+                    ),
+                    h(
+                      'div',
+                      { style: { minWidth: 0, flex: 1 } },
+                      h(
+                        'div',
+                        {
+                          style: {
+                            color: '#FFFFFF',
+                            fontWeight: 500,
+                            fontSize: 14,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          },
+                        },
+                        item.title,
+                      ),
+                      h(
+                        'div',
+                        { style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
+                        item.pinned
+                          ? h('span', { title: '已置顶', style: { fontSize: 12, color: '#1DB954', marginRight: 2 } }, '📌')
+                          : null,
+                        h(
+                          'span',
+                          {
+                            style: {
+                              color: '#A0A0AE',
+                              fontSize: 12,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            },
+                          },
+                          item.subtitle,
+                        ),
+                      ),
+                    ),
+                  ),
+                  h(
+                    'div',
+                    { style: { flex: 1, color: '#A0A0AE', fontSize: 13 } },
+                    formatAddedDate(item.addedAt),
+                  ),
+                  h(
+                    'div',
+                    { style: { flex: 1, color: '#A0A0AE', fontSize: 13, textAlign: 'right' } },
+                    formatPlayedDate(item.lastPlayedAt),
+                  ),
+                )
+              }),
+        ),
+        renderCreationModals(),
+        renderContextMenus(),
+      )
+    }
+
     return h(
       'section',
       {
@@ -1753,6 +3237,276 @@ export function LibraryScreen({
   }
 
   // Default mode: 'sidebar'
+  if (activeFolderId !== null) {
+    return h(
+      'section',
+      {
+        'aria-label': activeCollection?.name ?? 'Folder',
+        style: {
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          width: '100%',
+          padding: '12px 16px',
+          boxSizing: 'border-box',
+          overflowX: 'hidden',
+          overflowY: 'hidden',
+          userSelect: 'none',
+        },
+      },
+      h(
+        'header',
+        {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 14,
+          },
+        },
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              padding: '4px 6px',
+              borderRadius: 6,
+              transition: 'background-color 0.15s ease',
+              maxWidth: 150,
+              overflow: 'hidden',
+            },
+            onClick: () => setActiveFolderId(null),
+            title: '返回音乐库',
+          },
+          h(
+            'svg',
+            {
+              width: 20,
+              height: 20,
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: 'currentColor',
+              strokeWidth: 2.5,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round',
+              style: { color: '#FFFFFF', flexShrink: 0 },
+            },
+            h('polyline', { points: '15 18 9 12 15 6' }),
+          ),
+          h(
+            'span',
+            {
+              style: {
+                fontSize: 16,
+                fontWeight: 700,
+                color: '#FFFFFF',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              },
+            },
+            activeCollection?.name ?? '文件夹',
+          ),
+        ),
+        h(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: 6, position: 'relative' } },
+          renderCreateButton(),
+          renderCreateMenu(false),
+          activeCollection
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  'aria-label': '更多选项',
+                  title: '更多选项',
+                  onClick: (e: { clientX: number; clientY: number }) => {
+                    openCollectionMenu(
+                      activeCollection,
+                      { x: e.clientX, y: e.clientY },
+                      isItemPinned({ id: activeCollection.id }),
+                    )
+                  },
+                  style: {
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#A0A0AE',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'color 0.15s ease',
+                  },
+                  onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                    e.currentTarget.style.color = '#FFFFFF'
+                  },
+                  onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                    e.currentTarget.style.color = '#A0A0AE'
+                  },
+                },
+                h('span', { style: { fontSize: 16, fontWeight: 700 } }, '⋯'),
+              )
+            : null,
+          h(
+            'button',
+            {
+              type: 'button',
+              'aria-label': '展开音乐库',
+              title: '展开音乐库',
+              onClick: () => handleModeChange('expanded'),
+              style: {
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                border: 'none',
+                background: 'transparent',
+                color: '#A0A0AE',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'color 0.15s ease',
+              },
+              onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.color = '#FFFFFF'
+              },
+              onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.color = '#A0A0AE'
+              },
+            },
+            h(
+              'svg',
+              {
+                width: 16,
+                height: 16,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: 'currentColor',
+                strokeWidth: 2,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round',
+              },
+              h('polyline', { points: '15 3 21 3 21 9' }),
+              h('polyline', { points: '9 21 3 21 3 15' }),
+              h('line', { x1: '21', y1: '3', x2: '14', y2: '10' }),
+              h('line', { x1: '3', y1: '21', x2: '10', y2: '14' }),
+            ),
+          ),
+        ),
+      ),
+      h(
+        'div',
+        { style: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 } },
+        h(
+          'span',
+          {
+            style: {
+              padding: '5px 12px',
+              borderRadius: 16,
+              backgroundColor: '#FFFFFF',
+              color: '#000000',
+              fontSize: 13,
+              fontWeight: 600,
+            },
+          },
+          '创建者: 你',
+        ),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+          },
+        },
+        h(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+          h(
+            'button',
+            {
+              type: 'button',
+              'aria-label': '搜索',
+              title: '搜索',
+              onClick: () => setSearchOpen((prev) => !prev),
+              style: {
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                border: 'none',
+                background: 'transparent',
+                color: searchOpen ? '#FFFFFF' : '#A0A0AE',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
+            },
+            '🔍',
+          ),
+          searchOpen
+            ? h(TextField, {
+                value: searchQuery,
+                onChange: setSearchQuery,
+                placeholder: '在文件夹中搜索...',
+                testID: 'folder-search-input',
+              })
+            : null,
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: (e: { clientX: number; clientY: number }) =>
+              setSortMenuAnchor({ x: e.clientX, y: e.clientY }),
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'transparent',
+              border: 'none',
+              color: '#A0A0AE',
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: 'pointer',
+            },
+          },
+          h('span', null, sortLabels[sortMode]),
+          h('span', { style: { fontSize: 16 } }, '≣'),
+        ),
+      ),
+      h(
+        'div',
+        { style: { flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' } },
+        filteredFolderItems.length === 0
+          ? h(EmptyState, {
+              icon: '🗂',
+              title: '文件夹为空',
+              description: '点击创建添加歌单，或从音乐库中添加内容。',
+            })
+          : h(List<UnifiedItem>, {
+              testID: 'folder-items-list',
+              items: filteredFolderItems,
+              estimatedItemSize: 64,
+              keyExtractor: (item) => item.id,
+              empty: h(EmptyState, { title: 'No items yet' }),
+              renderItem: (item) => h(UnifiedLibraryRow, { key: item.id, ctx, item }),
+            }),
+      ),
+      renderCreationModals(),
+      renderContextMenus(),
+    )
+  }
+
   return h(
     'section',
     {
@@ -1978,13 +3732,22 @@ export function LibraryScreen({
             title: '没有找到内容',
             description: '导入音乐源、扫描本地文件夹或调整筛选条件。',
           })
-        : h(List<UnifiedItem>, {
+        : h(List<UnifiedItem & { isFolder?: boolean; isExpanded?: boolean; onToggleExpand?: () => void; isChild?: boolean }>, {
             testID: 'playlists-list',
-            items: filteredItems,
+            items: displayItems,
             estimatedItemSize: 64,
-            keyExtractor: (item) => item.id,
+            keyExtractor: (item) => (item.isChild ? `${item.id}:child` : item.id),
             empty: h(EmptyState, { title: 'No items yet' }),
-            renderItem: (item) => h(UnifiedLibraryRow, { key: item.id, ctx, item }),
+            renderItem: (item) =>
+              h(UnifiedLibraryRow, {
+                key: item.isChild ? `${item.id}:child` : item.id,
+                ctx,
+                item,
+                isFolder: item.isFolder ?? (item.kind === 'collection'),
+                isExpanded: item.isExpanded ?? expandedFolderIds.has(item.id),
+                onToggleExpand: item.onToggleExpand ?? (() => toggleFolderExpanded(item.id)),
+                isChild: item.isChild,
+              }),
           }),
     ),
     renderCreationModals(),

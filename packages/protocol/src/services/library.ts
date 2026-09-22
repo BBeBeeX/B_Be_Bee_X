@@ -89,6 +89,7 @@ export interface PlaylistCreateOptions {
 export interface PlaylistPatch {
   name?: string
   description?: string | null
+  artworkUrl?: string | null
 }
 
 export interface AddTracksOptions {
@@ -181,6 +182,8 @@ export interface LibraryService {
   createCollection(name: string, opts?: { parentId?: string }): Promise<Collection>
 
   renameCollection(id: string, name: string): Promise<void>
+
+  moveCollection?(id: string, parentId: string | null): Promise<void>
 
   /** Deletes the collection **and everything nested under it** (FK cascade). */
   deleteCollection(id: string): Promise<void>
