@@ -41,7 +41,7 @@ import {
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
-import { Artwork, Button, ContextMenu, EmptyState, IconButton, List, Text, TextField, TrackRow } from '@BBeBee/ui-kit-desktop'
+import { Artwork, Button, ContextMenu, EmptyState, List, Text, TextField, TrackRow } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
 import { useAddToCollection, useCollectionMenu, usePlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
@@ -4766,84 +4766,677 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
 
 /* ── favourites ────────────────────────────────────────────────────────── */
 
+type FavoriteSortKey = 'default' | 'title' | 'artist' | 'album' | 'duration'
+
+function FavoriteTrackTableRow({
+  ctx,
+  track,
+  index,
+  onPress,
+  onMore,
+  onRemove,
+}: {
+  ctx: Context
+  track: Track
+  index: number
+  onPress: () => void
+  onMore: (anchor: { x: number; y: number }) => void
+  onRemove: () => void
+}): ReactElement {
+  const [hovered, setHovered] = useState(false)
+  const artists = track.artists?.map((a) => a.name).join(', ')
+
+  return h(
+    'div',
+    {
+      role: 'row',
+      tabIndex: 0,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      onClick: onPress,
+      onContextMenu: (e: React.MouseEvent) => {
+        e.preventDefault()
+        onMore({ x: e.clientX, y: e.clientY })
+      },
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') onPress()
+      },
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        height: 56,
+        padding: '0 32px',
+        borderRadius: 4,
+        cursor: 'pointer',
+        background: hovered ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+        transition: 'background-color 0.15s ease',
+        boxSizing: 'border-box',
+      },
+    },
+    // Col 1: # or Play icon
+    h(
+      'div',
+      {
+        style: {
+          width: 40,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 14,
+          color: hovered ? '#FFFFFF' : '#b3b3b3',
+        },
+      },
+      hovered ? '▶' : String(index + 1),
+    ),
+    // Col 2: Artwork + Title + Artist
+    h(
+      'div',
+      {
+        style: {
+          flex: 2,
+          minWidth: 0,
+          paddingLeft: 12,
+          paddingRight: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+        },
+      },
+      h(
+        'div',
+        {
+          style: {
+            width: 40,
+            height: 40,
+            borderRadius: 4,
+            overflow: 'hidden',
+            flexShrink: 0,
+            backgroundColor: '#282828',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+        },
+        track.artwork
+          ? h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 })
+          : h('span', { style: { color: '#7f7f7f', fontSize: 16 } }, '♪'),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+          },
+        },
+        h(
+          'span',
+          {
+            style: {
+              color: '#FFFFFF',
+              fontSize: 15,
+              fontWeight: 500,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            },
+          },
+          track.title,
+        ),
+        artists
+          ? h(
+              'span',
+              {
+                style: {
+                  color: '#b3b3b3',
+                  fontSize: 13,
+                  marginTop: 2,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                },
+              },
+              artists,
+            )
+          : null,
+      ),
+    ),
+    // Col 3: Album
+    h(
+      'div',
+      {
+        style: {
+          flex: 1.5,
+          minWidth: 0,
+          paddingRight: 16,
+          fontSize: 14,
+          color: '#b3b3b3',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        },
+      },
+      track.albumTitle || '-',
+    ),
+    // Col 4: Heart + More & Duration
+    h(
+      'div',
+      {
+        style: {
+          width: 100,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: 6,
+          paddingRight: 16,
+        },
+      },
+      h(
+        'button',
+        {
+          type: 'button',
+          'aria-label': `Remove ${track.title} from favourites`,
+          title: '从已点赞歌曲中移除',
+          onClick: (e: React.MouseEvent) => {
+            e.stopPropagation()
+            onRemove()
+          },
+          style: {
+            background: 'none',
+            border: 'none',
+            color: '#1ed760',
+            fontSize: 15,
+            cursor: 'pointer',
+            padding: 4,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+        },
+        '♥',
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'aria-label': 'More',
+          title: '更多',
+          onClick: (e: React.MouseEvent) => {
+            e.stopPropagation()
+            const rect = e.currentTarget.getBoundingClientRect()
+            onMore({ x: rect.left, y: rect.bottom + 4 })
+          },
+          style: {
+            background: 'none',
+            border: 'none',
+            color: '#b3b3b3',
+            fontSize: 16,
+            cursor: 'pointer',
+            padding: 4,
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 0.15s ease',
+          },
+        },
+        '⋯',
+      ),
+      h(
+        'span',
+        {
+          style: {
+            fontSize: 14,
+            color: '#b3b3b3',
+            width: 45,
+            textAlign: 'right',
+          },
+        },
+        formatDuration(track.durationMs),
+      ),
+    ),
+  )
+}
+
 export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   const saved = useSaved(ctx, 'track')
   const entries = saved.data ?? []
-  const urns = entries.map((entry) => entry.urn)
-  const tracks = useTracksByUrn(ctx, urns)
-  const player = serviceOf<{ playFromContext(urn: string, contextUrns?: readonly string[]): Promise<void> }>(
-    ctx,
-    'player',
-  )
+  const urns = useMemo(() => entries.map((entry) => entry.urn), [entries])
+  const tracksMap = useTracksByUrn(ctx, urns)
+  const player = serviceOf<PlayerService>(ctx, 'player')
   const [error, setError] = useState<string | undefined>(undefined)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortKey, setSortKey] = useState<FavoriteSortKey>('default')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
   const menu = useTrackMenu(ctx)
+
+  const allTracks = useMemo(() => {
+    return urns.map((urn) => tracksMap.get(urn) ?? { urn, title: urn.split(':').pop() ?? urn, artists: [] })
+  }, [urns, tracksMap])
+
+  const sortedTracks = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    const matching = q
+      ? allTracks.filter((t) => {
+          return (
+            t.title.toLowerCase().includes(q) ||
+            t.artists?.some((a) => a.name.toLowerCase().includes(q)) ||
+            t.albumTitle?.toLowerCase().includes(q)
+          )
+        })
+      : [...allTracks]
+
+    if (sortKey === 'default') {
+      return sortOrder === 'desc' ? matching.reverse() : matching
+    }
+
+    return matching.sort((a, b) => {
+      let cmp = 0
+      if (sortKey === 'title') {
+        cmp = a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' })
+      } else if (sortKey === 'artist') {
+        const aArt = a.artists?.map((x) => x.name).join(', ') ?? ''
+        const bArt = b.artists?.map((x) => x.name).join(', ') ?? ''
+        cmp = aArt.localeCompare(bArt, undefined, { numeric: true, sensitivity: 'base' })
+      } else if (sortKey === 'album') {
+        cmp = (a.albumTitle ?? '').localeCompare(b.albumTitle ?? '', undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        })
+      } else if (sortKey === 'duration') {
+        cmp = (a.durationMs ?? 0) - (b.durationMs ?? 0)
+      }
+      return sortOrder === 'desc' ? -cmp : cmp
+    })
+  }, [allTracks, searchQuery, sortKey, sortOrder])
+
+  const sortedUrns = useMemo(() => sortedTracks.map((t) => t.urn), [sortedTracks])
+
+  const handleHeaderClick = (key: FavoriteSortKey) => {
+    if (sortKey === key) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortOrder('asc')
+    }
+  }
+
+  const renderSortIndicator = (key: FavoriteSortKey) => {
+    if (sortKey !== key) return null
+    return h('span', { style: { marginLeft: 4, fontSize: 11 } }, sortOrder === 'asc' ? '▲' : '▼')
+  }
+
+  const sortLabelMap: Record<FavoriteSortKey, string> = {
+    default: '默认顺序',
+    title: '标题',
+    artist: '艺人',
+    album: '专辑',
+    duration: '时长',
+  }
+
+  const sortMenuItems: MenuItemSpec[] = [
+    {
+      id: 'sort-default',
+      label: (sortKey === 'default' ? '✓ ' : '    ') + '默认顺序',
+      onSelect: () => setSortKey('default'),
+    },
+    {
+      id: 'sort-title',
+      label: (sortKey === 'title' ? '✓ ' : '    ') + '标题',
+      onSelect: () => setSortKey('title'),
+    },
+    {
+      id: 'sort-artist',
+      label: (sortKey === 'artist' ? '✓ ' : '    ') + '艺人',
+      onSelect: () => setSortKey('artist'),
+    },
+    {
+      id: 'sort-album',
+      label: (sortKey === 'album' ? '✓ ' : '    ') + '专辑',
+      onSelect: () => setSortKey('album'),
+    },
+    {
+      id: 'sort-duration',
+      label: (sortKey === 'duration' ? '✓ ' : '    ') + '时长',
+      onSelect: () => setSortKey('duration'),
+      divider: true,
+    },
+    {
+      id: 'order-asc',
+      label: (sortOrder === 'asc' ? '✓ ' : '    ') + '升序',
+      onSelect: () => setSortOrder('asc'),
+    },
+    {
+      id: 'order-desc',
+      label: (sortOrder === 'desc' ? '✓ ' : '    ') + '降序',
+      onSelect: () => setSortOrder('desc'),
+    },
+  ]
 
   return h(
     'section',
     {
-      'aria-label': 'Favourites',
-      style: { display: 'flex', flexDirection: 'column', gap: tokens.space[3], padding: tokens.space[4], height: '100%' },
+      'aria-label': '已点赞的歌曲',
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: 'linear-gradient(180deg, #4c1d95 0%, #1e1b4b 280px, #121212 100%)',
+        color: '#FFFFFF',
+        overflow: 'hidden',
+      },
     },
+    // Hero Header (No Cover, exactly matching LocalMusicScreen)
     h(
       'header',
-      { style: { display: 'flex', alignItems: 'baseline', gap: tokens.space[3] } },
-      h(Text, { variant: 'xl' }, 'Favourites'),
-      h(Text, { variant: 'sm', tone: 'muted' }, `${urns.length} saved`),
-      h(Button, {
-        variant: 'secondary',
-        onPress: () => urns[0] && player?.playFromContext(urns[0], urns),
-        disabled: urns.length === 0,
-        children: 'Play all',
-      }),
+      {
+        style: {
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          padding: '36px 32px 18px 32px',
+          flexShrink: 0,
+        },
+      },
+      h(
+        'span',
+        {
+          style: {
+            fontSize: 13,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            color: '#FFFFFF',
+          },
+        },
+        '歌单',
+      ),
+      h(
+        'h1',
+        {
+          style: {
+            fontSize: 56,
+            fontWeight: 900,
+            margin: '2px 0 6px 0',
+            lineHeight: 1.1,
+            color: '#FFFFFF',
+            letterSpacing: '-0.03em',
+          },
+        },
+        '已点赞的歌曲',
+      ),
+      h(
+        'p',
+        { style: { margin: 0, fontSize: 14, color: '#b3b3b3' } },
+        `已收藏的音乐 • ${urns.length} 首歌曲`,
+      ),
     ),
-    error ? h(Text, { variant: 'sm', tone: 'error' }, error) : null,
-    saved.status === 'error'
-      ? h(Text, { tone: 'error' }, `Could not read favourites: ${saved.error?.message}`)
-      : null,
+    // Action Bar
     h(
       'div',
-      { style: { flex: 1, minHeight: 0 } },
-      h(List<string>, {
-        testID: 'favorites-list',
-        items: urns,
-        estimatedItemSize: tokens.size.row,
-        keyExtractor: (entryUrn) => entryUrn,
-        empty: h(EmptyState, {
-          icon: '♡',
-          title: 'Nothing saved yet',
-          description: 'Save a track from the library and it lands here.',
-        }),
-        renderItem: (entryUrn) => {
-          const track = tracks.get(entryUrn)
-          if (!track) return h(Text, { variant: 'sm', tone: 'muted' }, entryUrn)
-          return h(
-            'div',
-            { style: { display: 'flex', alignItems: 'center' } },
-            h(
-              'div',
-              { style: { flex: 1, minWidth: 0 } },
-              h(TrackRow, {
-                track,
-                onPress: () => player?.playFromContext(entryUrn, urns),
-                onMore: (anchor) => menu.open({ track }, anchor),
-              }),
-            ),
-            h(IconButton, {
-              icon: '♥',
-              accessibilityLabel: `Remove ${track.title} from favourites`,
-              variant: 'primary',
-              onPress: () => {
-                setError(undefined)
-                void ctx.library.setSaved(entryUrn, false).catch((cause: unknown) =>
-                  setError(cause instanceof Error ? cause.message : String(cause)),
-                )
-              },
-            }),
-          )
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 32px 18px 32px',
+          flexShrink: 0,
         },
-      }),
+      },
+      h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: 24 } },
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-testid': 'favorites-play',
+            'aria-label': '播放全部',
+            onClick: () => sortedUrns[0] && player?.playFromContext(sortedUrns[0], sortedUrns),
+            disabled: sortedUrns.length === 0,
+            style: {
+              width: 56,
+              height: 56,
+              borderRadius: '50%',
+              backgroundColor: sortedUrns.length === 0 ? 'rgba(30, 215, 96, 0.4)' : '#1ed760',
+              border: 'none',
+              cursor: sortedUrns.length === 0 ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3)',
+              color: '#000000',
+              fontSize: 22,
+              paddingLeft: 4,
+            },
+          },
+          '▶',
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            title: '随机播放',
+            style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+            onClick: () => {
+              if (sortedUrns.length > 0) {
+                const shuffled = [...sortedUrns].sort(() => Math.random() - 0.5)
+                if (shuffled[0]) void player?.playFromContext(shuffled[0], shuffled)
+              }
+            },
+          },
+          '🔀',
+        ),
+      ),
+      h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: 16 } },
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: 16,
+              padding: '4px 10px',
+              gap: 6,
+            },
+          },
+          h('span', { style: { color: '#b3b3b3', fontSize: 14 } }, '🔍'),
+          h('input', {
+            type: 'text',
+            placeholder: '在已点赞歌曲中搜索',
+            value: searchQuery,
+            onChange: (e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value),
+            style: {
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: '#FFFFFF',
+              fontSize: 13,
+              width: 140,
+            },
+          }),
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-testid': 'favorites-sort-trigger',
+            title: '排序方式',
+            onClick: (e: React.MouseEvent) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              setSortMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
+            },
+            style: {
+              background: 'none',
+              border: 'none',
+              color: '#b3b3b3',
+              fontSize: 14,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: 0,
+            },
+          },
+          h('span', null, sortLabelMap[sortKey]),
+          h('span', { style: { fontSize: 16 } }, '≣'),
+        ),
+      ),
     ),
+    error ? h('div', { style: { padding: '0 32px 8px 32px' } }, h(Text, { variant: 'sm', tone: 'error' }, error)) : null,
+    saved.status === 'error'
+      ? h('div', { style: { padding: '0 32px 8px 32px' } }, h(Text, { tone: 'error' }, `Could not read favourites: ${saved.error?.message}`))
+      : null,
+    // Table Header
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 32px 8px 32px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          color: '#b3b3b3',
+          fontSize: 13,
+          fontWeight: 500,
+          flexShrink: 0,
+        },
+      },
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'favorites-sort-default',
+          onClick: () => handleHeaderClick('default'),
+          style: {
+            width: 40,
+            textAlign: 'center',
+            flexShrink: 0,
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'default' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            padding: 0,
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '#',
+        renderSortIndicator('default'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'favorites-sort-title',
+          onClick: () => handleHeaderClick('title'),
+          style: {
+            flex: 2,
+            paddingLeft: 12,
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'title' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '标题',
+        renderSortIndicator('title'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'favorites-sort-album',
+          onClick: () => handleHeaderClick('album'),
+          style: {
+            flex: 1.5,
+            paddingLeft: 8,
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'album' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '专辑',
+        renderSortIndicator('album'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'favorites-sort-duration',
+          onClick: () => handleHeaderClick('duration'),
+          style: {
+            width: 100,
+            textAlign: 'right',
+            paddingRight: 16,
+            flexShrink: 0,
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'duration' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '✔ 🕒',
+        renderSortIndicator('duration'),
+      ),
+    ),
+    // Content / List
+    saved.status === 'loading'
+      ? h(EmptyState, { title: '加载中…' })
+      : sortedTracks.length === 0
+      ? h(EmptyState, {
+          icon: '♡',
+          title: '暂无已点赞歌曲',
+          description: '在曲库中收藏歌曲后，歌曲将在此显示。',
+        })
+      : h(
+          'div',
+          { style: { flex: 1, minHeight: 0 } },
+          h(List<Track>, {
+            testID: 'favorites-list',
+            items: sortedTracks,
+            estimatedItemSize: tokens.size.row,
+            keyExtractor: (t) => t.urn,
+            renderItem: (t, index) =>
+              h(FavoriteTrackTableRow, {
+                ctx,
+                track: t,
+                index,
+                onPress: () => player?.playFromContext(t.urn, sortedUrns),
+                onMore: (anchor) => menu.open({ track: t }, anchor),
+                onRemove: () => {
+                  setError(undefined)
+                  void ctx.library.setSaved(t.urn, false).catch((cause: unknown) =>
+                    setError(cause instanceof Error ? cause.message : String(cause)),
+                  )
+                },
+              }),
+          }),
+        ),
     h(ContextMenu, menu.menuProps),
+    h(ContextMenu, {
+      open: sortMenuAnchor !== null,
+      onClose: () => setSortMenuAnchor(null),
+      x: sortMenuAnchor?.x ?? 0,
+      y: sortMenuAnchor?.y ?? 0,
+      items: sortMenuItems,
+      title: '排序方式',
+    }),
   )
 }
 

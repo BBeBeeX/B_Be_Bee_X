@@ -323,11 +323,12 @@ Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `Unif
 
 ### Detail screens, sorting & media views
 
-1. **Album, Playlist & Local Music Track Tables**:
+1. **Album, Playlist, Local Music & Favorites Track Tables**:
    - **Table Header Sorting**: Column headers (`#`, `标题`, `专辑`, `添加日期`, `时长`, `播放量`) support interactive sorting with ascending/descending directional indicators (`▲` / `▼`).
    - **Action Bar Sort Menu**: Dropdown `ContextMenu` ("默认顺序 ≣" / "自定义顺序 ≣") providing rapid switching between sorting keys and directions.
    - **Playback Queue Alignment**: Playing tracks from a sorted table (single-tap or "Play All") passes the sorted URN sequence to `ctx.player.playFromContext`, ensuring the playback queue matches visual order.
    - **Playlist Item ID Decoupling**: In `PlaylistDetailScreen`, rows wrap data as `{ item, track, trackUrn, originalIndex }`, preserving item IDs across sort operations so that removals and context menus act on the correct playlist item.
+   - **Favorites Parity (`FavoritesScreen`)**: Styled with immersive purple gradient header, 56px play button, shuffle, real-time search filter, and `FavoriteTrackTableRow` with interactive green heart un-favorite button (`♥`).
 
 2. **Local Music Dual Views (Tracks & Albums)**:
    - Header segmented toggle allows switching between "歌曲" (table list) and "专辑" (grid view).

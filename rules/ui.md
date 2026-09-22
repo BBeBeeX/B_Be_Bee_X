@@ -149,7 +149,7 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 
 ## 7. Detail Screens, Sorting & Playback History Specifications
 
-### Track Table Sorting (`AlbumScreen`, `PlaylistDetailScreen`, `LocalMusicScreen`)
+### Track Table Sorting (`AlbumScreen`, `PlaylistDetailScreen`, `LocalMusicScreen`, `FavoritesScreen`)
 - **Interactive Header Columns**:
   - Clicking column headers (`#`, `标题`, `专辑`, `添加日期`, `时长`, `播放量`) toggles between ascending (`asc`) and descending (`desc`) order.
   - Active sorted column displays a subtle directional arrow indicator (`▲` for ascending, `▼` for descending).
@@ -162,6 +162,9 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
   - Up-next playback order strictly follows the visual sorted order on screen.
 - **Playlist Item ID Decoupling**:
   - `PlaylistDetailScreen` wraps row data as `{ item, track, trackUrn, originalIndex }` so that row actions (removal, context menus) remain bound to `PlaylistItem.id`, immune to active sort orders.
+- **Favorites Screen Parity (`FavoritesScreen`)**:
+  - Aligned with `LocalMusicScreen`: purple gradient background (`#4c1d95`), no-cover text Hero Header ("已点赞的歌曲"), action bar with 56px play button (`▶`), shuffle, search input, and sort dropdown.
+  - Rows render as `FavoriteTrackTableRow`: index/hover play, 40px cover art, title/artist, album, interactive green heart button (`♥`) to un-favorite, hover `⋯` more button, and duration.
 
 ### Local Music Dual Views (`LocalMusicScreen`)
 - **View Toggle**: Segmented toggle in header to switch between "歌曲" (Tracks table) and "专辑" (Albums grid).

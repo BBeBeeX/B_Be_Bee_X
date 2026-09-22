@@ -790,6 +790,87 @@ describe('FavoritesScreen', () => {
 
     expect(library.calls).toContain(`save:${TRACK}:false`)
   })
+
+  it('renders hero header, action bar and table header in LocalMusic consistent style', async () => {
+    const { ctx, player } = await harness()
+    await withListLayout(async () => {
+      const { container, getByTestId, getByPlaceholderText } = render(h(FavoritesScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      expect(container.textContent).toContain('已点赞的歌曲')
+      expect(container.textContent).toContain('已收藏的音乐 • 1 首歌曲')
+      expect(container.textContent).toContain('歌单')
+
+      expect(getByTestId('favorites-play')).toBeTruthy()
+      expect(getByPlaceholderText('在已点赞歌曲中搜索')).toBeTruthy()
+      expect(getByTestId('favorites-sort-default')).toBeTruthy()
+      expect(getByTestId('favorites-sort-title')).toBeTruthy()
+      expect(getByTestId('favorites-sort-album')).toBeTruthy()
+      expect(getByTestId('favorites-sort-duration')).toBeTruthy()
+
+      // Click play all
+      await act(async () => {
+        getByTestId('favorites-play').click()
+        await tick()
+      })
+      expect(player.calls).toContain(`${TRACK} <- 1`)
+    })
+  })
+
+  it('supports sorting favorite tracks by clicking headers and via sort menu', async () => {
+    const { ctx, library, sources, player } = await harness()
+    const TRACK_B = 'BBeBee:demo:track:two'
+    const trackB: Track = {
+      urn: TRACK_B,
+      title: 'Beta Track',
+      artists: [{ urn: 'b', name: 'Zeta Artist', role: 'main', ordinal: 0 }],
+      durationMs: 300000,
+      albumTitle: 'A-Album',
+    }
+    sources.tracks.push(trackB)
+    library.saved.push(TRACK_B)
+
+    await withListLayout(async () => {
+      const { getByTestId, container } = render(h(FavoritesScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Default order: Alpha then Beta
+      const defaultRows = container.querySelectorAll('[role="row"]')
+      expect(defaultRows.length).toBe(2)
+      expect(defaultRows[0]?.textContent).toContain('Alpha')
+      expect(defaultRows[1]?.textContent).toContain('Beta Track')
+
+      // Click Title header to sort ascending
+      await act(async () => {
+        getByTestId('favorites-sort-title').click()
+        await tick()
+      })
+      // 'Alpha' < 'Beta Track'
+      const ascRows = container.querySelectorAll('[role="row"]')
+      expect(ascRows[0]?.textContent).toContain('Alpha')
+      expect(ascRows[1]?.textContent).toContain('Beta Track')
+
+      // Click Title header again for descending
+      await act(async () => {
+        getByTestId('favorites-sort-title').click()
+        await tick()
+      })
+      const descRows = container.querySelectorAll('[role="row"]')
+      expect(descRows[0]?.textContent).toContain('Beta Track')
+      expect(descRows[1]?.textContent).toContain('Alpha')
+
+      // Click play button to verify sorted context
+      await act(async () => {
+        getByTestId('favorites-play').click()
+        await tick()
+      })
+      expect(player.calls).toContain(`${TRACK_B} <- 2`)
+    })
+  })
 })
 
 
