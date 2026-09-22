@@ -22,9 +22,11 @@ import type {
   ArtworkRef,
   Collection,
   DownloadsService,
+  LibraryService,
   PlayerService,
   Playlist,
   PlaylistItem,
+  SourcesService,
   Track,
 } from '@BBeBee/protocol'
 import { tryParseUrn } from '@BBeBee/protocol'
@@ -41,7 +43,7 @@ import {
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
-import { Artwork, Button, ContextMenu, EmptyState, List, Text, TextField, TrackRow } from '@BBeBee/ui-kit-desktop'
+import { Artwork, Button, ContextMenu, EmptyState, List, Text, TextField } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
 import { useAddToCollection, useCollectionMenu, usePlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
@@ -364,6 +366,35 @@ export async function collectAllFolderTracks(
   }
 
   return Array.from(trackUrns)
+}
+
+export async function fetchAllLocalTracks(sources: SourcesService): Promise<Track[]> {
+  const all: Track[] = []
+  let cursor: string | undefined
+  do {
+    const page = await sources.listTracks({
+      sourceIds: ['local'],
+      page: cursor ? { cursor, limit: 500 } : { limit: 500 },
+    })
+    all.push(...page.items)
+    cursor = page.hasMore && page.cursor ? page.cursor : undefined
+  } while (cursor)
+  return all
+}
+
+export async function fetchAllLocalAlbums(sources: SourcesService): Promise<Album[]> {
+  if (!sources.listAlbums) return []
+  const all: Album[] = []
+  let cursor: string | undefined
+  do {
+    const page = await sources.listAlbums({
+      sourceIds: ['local'],
+      page: cursor ? { cursor, limit: 500 } : { limit: 500 },
+    })
+    all.push(...page.items)
+    cursor = page.hasMore && page.cursor ? page.cursor : undefined
+  } while (cursor)
+  return all
 }
 
 function EditPlaylistModal({
@@ -992,10 +1023,9 @@ export function LibraryScreen({
   useEffect(() => {
     let cancelled = false
     if (!ctx.sources?.listTracks) return
-    ctx.sources
-      .listTracks({ sourceIds: ['local'] })
-      .then((res) => {
-        if (!cancelled) setLocalTracks(res.items)
+    fetchAllLocalTracks(ctx.sources)
+      .then((items) => {
+        if (!cancelled) setLocalTracks(items)
       })
       .catch(() => {})
     return () => {
@@ -3780,6 +3810,136 @@ function formatTotalDuration(tracks: readonly (Track | undefined)[]): string {
   return `${minutes} 分钟 ${seconds} 秒`
 }
 
+function TrackLibraryActionButton({
+  track,
+  hovered,
+  inLibrary,
+  onAddToFavorites,
+  onOpenPlaylistMenu,
+}: {
+  track: Track
+  hovered: boolean
+  inLibrary: boolean
+  onAddToFavorites?: () => void
+  onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
+}): ReactElement {
+  return h(
+    'button',
+    {
+      type: 'button',
+      'aria-label': inLibrary ? `Add ${track.title} to playlist` : `Add ${track.title} to favourites`,
+      title: inLibrary ? '加入歌单' : '加入最喜欢的音乐',
+      onClick: (e: React.MouseEvent) => {
+        e.stopPropagation()
+        if (inLibrary) {
+          const rect = e.currentTarget.getBoundingClientRect()
+          onOpenPlaylistMenu(track, { x: rect.left, y: rect.bottom + 4 })
+        } else {
+          onAddToFavorites?.()
+        }
+      },
+      style: {
+        background: 'none',
+        border: 'none',
+        color: inLibrary ? '#FFFFFF' : '#b3b3b3',
+        fontSize: inLibrary ? 15 : 18,
+        cursor: 'pointer',
+        padding: '2px 4px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: hovered ? 1 : 0,
+        transition: 'opacity 0.15s ease',
+      },
+    },
+    inLibrary ? '🖤' : '＋',
+  )
+}
+
+function useTrackLibraryInfo(ctx: Context) {
+  const library = serviceOf<LibraryService>(ctx, 'library')
+  const sources = serviceOf<SourcesService>(ctx, 'sources')
+  const savedTracks = useSaved(ctx, 'track')
+  const playlists = usePlaylists(ctx)
+  const [addToPlaylistMenuState, setAddToPlaylistMenuState] = useState<{
+    track: Track
+    anchor: MenuAnchor
+  } | null>(null)
+
+  const savedTrackUrns = useMemo(() => {
+    return new Set(savedTracks.data?.map((e) => e.urn) ?? [])
+  }, [savedTracks.data])
+
+  const isTrackInLibrary = useCallback(
+    (track: Track, alwaysInLibrary = false): boolean => {
+      if (alwaysInLibrary) return true
+      if (track.loved) return true
+      if (savedTrackUrns.has(track.urn)) return true
+      return false
+    },
+    [savedTrackUrns],
+  )
+
+  const handleAddToFavorites = useCallback(
+    async (track: Track) => {
+      if (!library) return
+      await library.setSaved(track.urn, true)
+      if (sources?.setLoved) {
+        await sources.setLoved(track.urn, true).catch(() => {})
+      }
+    },
+    [library, sources],
+  )
+
+  const openAddToPlaylistMenu = useCallback((track: Track, anchor: MenuAnchor) => {
+    setAddToPlaylistMenuState({ track, anchor })
+  }, [])
+
+  const closeAddToPlaylistMenu = useCallback(() => {
+    setAddToPlaylistMenuState(null)
+  }, [])
+
+  const addToPlaylistMenuItems = useMemo((): MenuItemSpec[] => {
+    if (!addToPlaylistMenuState || !library) return []
+    const track = addToPlaylistMenuState.track
+    const list = playlists.data ?? []
+    const items: MenuItemSpec[] = [
+      {
+        id: 'create-new-playlist',
+        label: '新建歌单',
+        icon: '＋',
+        onSelect: async () => {
+          const name = window.prompt('歌单名称：')
+          if (name && name.trim()) {
+            const p = await library.createPlaylist(name.trim())
+            if (p) await library.addTracks(p.urn, [track.urn])
+          }
+        },
+        divider: list.length > 0,
+      },
+      ...list.map((playlist) => ({
+        id: playlist.urn,
+        label: playlist.name,
+        icon: '♪',
+        disabled: playlist.isSmart,
+        onSelect: async () => {
+          await library.addTracks(playlist.urn, [track.urn])
+        },
+      })),
+    ]
+    return items
+  }, [addToPlaylistMenuState, library, playlists.data])
+
+  return {
+    isTrackInLibrary,
+    handleAddToFavorites,
+    openAddToPlaylistMenu,
+    closeAddToPlaylistMenu,
+    addToPlaylistMenuState,
+    addToPlaylistMenuItems,
+  }
+}
+
 function QuadArtworkCollage({
   ctx,
   tracks,
@@ -3907,6 +4067,7 @@ function PlaylistTrackTableRow({
   onPress,
   onRemove,
   onMore,
+  onOpenPlaylistMenu,
 }: {
   ctx: Context
   track: Track
@@ -3917,6 +4078,7 @@ function PlaylistTrackTableRow({
   onPress: () => void
   onRemove?: () => void
   onMore: (anchor: { x: number; y: number }) => void
+  onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
 }): ReactElement {
   const [hovered, setHovered] = useState(false)
   const artists = track.artists?.map((a) => a.name).join(', ')
@@ -4088,6 +4250,12 @@ function PlaylistTrackTableRow({
           paddingRight: 16,
         },
       },
+      h(TrackLibraryActionButton, {
+        track,
+        hovered,
+        inLibrary: true,
+        onOpenPlaylistMenu,
+      }),
       !isSmart && onRemove
         ? h(
             'button',
@@ -4170,6 +4338,8 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
   const menu = useTrackMenu(ctx, { fromPlaylistUrn: urn })
+  const { openAddToPlaylistMenu, closeAddToPlaylistMenu, addToPlaylistMenuState, addToPlaylistMenuItems } =
+    useTrackLibraryInfo(ctx)
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -4738,11 +4908,20 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
               )
             },
             onMore: (anchor) => menu.open({ track, playlistItemId: item.id }, anchor),
+            onOpenPlaylistMenu: openAddToPlaylistMenu,
           })
         },
       }),
     ),
     h(ContextMenu, menu.menuProps),
+    h(ContextMenu, {
+      open: addToPlaylistMenuState !== null,
+      onClose: closeAddToPlaylistMenu,
+      x: addToPlaylistMenuState?.anchor.x ?? 0,
+      y: addToPlaylistMenuState?.anchor.y ?? 0,
+      items: addToPlaylistMenuItems,
+      title: '添加到歌单',
+    }),
     h(ContextMenu, {
       open: sortMenuAnchor !== null,
       onClose: () => setSortMenuAnchor(null),
@@ -4774,14 +4953,14 @@ function FavoriteTrackTableRow({
   index,
   onPress,
   onMore,
-  onRemove,
+  onOpenPlaylistMenu,
 }: {
   ctx: Context
   track: Track
   index: number
   onPress: () => void
   onMore: (anchor: { x: number; y: number }) => void
-  onRemove: () => void
+  onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
 }): ReactElement {
   const [hovered, setHovered] = useState(false)
   const artists = track.artists?.map((a) => a.name).join(', ')
@@ -4843,34 +5022,16 @@ function FavoriteTrackTableRow({
           gap: 12,
         },
       },
+      h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 }),
       h(
         'div',
         {
           style: {
-            width: 40,
-            height: 40,
-            borderRadius: 4,
-            overflow: 'hidden',
-            flexShrink: 0,
-            backgroundColor: '#282828',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          },
-        },
-        track.artwork
-          ? h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 })
-          : h('span', { style: { color: '#7f7f7f', fontSize: 16 } }, '♪'),
-      ),
-      h(
-        'div',
-        {
-          style: {
-            flex: 1,
-            minWidth: 0,
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'center',
+            minWidth: 0,
+            overflow: 'hidden',
           },
         },
         h(
@@ -4922,7 +5083,7 @@ function FavoriteTrackTableRow({
       },
       track.albumTitle || '-',
     ),
-    // Col 4: Heart + More & Duration
+    // Col 4: Action icon + More & Duration
     h(
       'div',
       {
@@ -4936,30 +5097,12 @@ function FavoriteTrackTableRow({
           paddingRight: 16,
         },
       },
-      h(
-        'button',
-        {
-          type: 'button',
-          'aria-label': `Remove ${track.title} from favourites`,
-          title: '从已点赞歌曲中移除',
-          onClick: (e: React.MouseEvent) => {
-            e.stopPropagation()
-            onRemove()
-          },
-          style: {
-            background: 'none',
-            border: 'none',
-            color: '#1ed760',
-            fontSize: 15,
-            cursor: 'pointer',
-            padding: 4,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          },
-        },
-        '♥',
-      ),
+      h(TrackLibraryActionButton, {
+        track,
+        hovered,
+        inLibrary: true,
+        onOpenPlaylistMenu,
+      }),
       h(
         'button',
         {
@@ -5006,12 +5149,14 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   const urns = useMemo(() => entries.map((entry) => entry.urn), [entries])
   const tracksMap = useTracksByUrn(ctx, urns)
   const player = serviceOf<PlayerService>(ctx, 'player')
-  const [error, setError] = useState<string | undefined>(undefined)
+  const error = saved.error?.message
   const [searchQuery, setSearchQuery] = useState('')
   const [sortKey, setSortKey] = useState<FavoriteSortKey>('default')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
   const menu = useTrackMenu(ctx)
+  const { openAddToPlaylistMenu, closeAddToPlaylistMenu, addToPlaylistMenuState, addToPlaylistMenuItems } =
+    useTrackLibraryInfo(ctx)
 
   const allTracks = useMemo(() => {
     return urns.map((urn) => tracksMap.get(urn) ?? { urn, title: urn.split(':').pop() ?? urn, artists: [] })
@@ -5391,7 +5536,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
             fontWeight: 500,
           },
         },
-        '✔ 🕒',
+        '🕒',
         renderSortIndicator('duration'),
       ),
     ),
@@ -5419,16 +5564,19 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
                 index,
                 onPress: () => player?.playFromContext(t.urn, sortedUrns),
                 onMore: (anchor) => menu.open({ track: t }, anchor),
-                onRemove: () => {
-                  setError(undefined)
-                  void ctx.library.setSaved(t.urn, false).catch((cause: unknown) =>
-                    setError(cause instanceof Error ? cause.message : String(cause)),
-                  )
-                },
+                onOpenPlaylistMenu: openAddToPlaylistMenu,
               }),
           }),
         ),
     h(ContextMenu, menu.menuProps),
+    h(ContextMenu, {
+      open: addToPlaylistMenuState !== null,
+      onClose: closeAddToPlaylistMenu,
+      x: addToPlaylistMenuState?.anchor.x ?? 0,
+      y: addToPlaylistMenuState?.anchor.y ?? 0,
+      items: addToPlaylistMenuItems,
+      title: '添加到歌单',
+    }),
     h(ContextMenu, {
       open: sortMenuAnchor !== null,
       onClose: () => setSortMenuAnchor(null),
@@ -5444,14 +5592,20 @@ function LocalTrackTableRow({
   ctx,
   track,
   index,
+  inLibrary,
   onPress,
   onMore,
+  onAddToFavorites,
+  onOpenPlaylistMenu,
 }: {
   ctx: Context
   track: Track
   index: number
+  inLibrary: boolean
   onPress: () => void
   onMore: (anchor: { x: number; y: number }) => void
+  onAddToFavorites?: (track: Track) => void
+  onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
 }): ReactElement {
   const [hovered, setHovered] = useState(false)
   const artists = track.artists?.map((a) => a.name).join(', ')
@@ -5606,7 +5760,13 @@ function LocalTrackTableRow({
           paddingRight: 16,
         },
       },
-      h('span', { style: { color: '#1ed760', fontSize: 13, marginRight: 4 } }, '✔'),
+      h(TrackLibraryActionButton, {
+        track,
+        hovered,
+        inLibrary,
+        onAddToFavorites: () => onAddToFavorites?.(track),
+        onOpenPlaylistMenu,
+      }),
       h(
         'button',
         {
@@ -5810,6 +5970,14 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
   const player = serviceOf<PlayerService>(ctx, 'player')
   const menu = useTrackMenu(ctx)
+  const {
+    isTrackInLibrary,
+    handleAddToFavorites,
+    openAddToPlaylistMenu,
+    closeAddToPlaylistMenu,
+    addToPlaylistMenuState,
+    addToPlaylistMenuItems,
+  } = useTrackLibraryInfo(ctx)
 
   useEffect(() => {
     let cancelled = false
@@ -5819,18 +5987,15 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
       return
     }
 
-    const loadAlbums = ctx.sources.listAlbums
-      ? ctx.sources.listAlbums({ sourceIds: ['local'] }).catch(() => ({ items: [] as Album[], hasMore: false }))
-      : Promise.resolve({ items: [] as Album[], hasMore: false })
+    const loadAlbums = fetchAllLocalAlbums(ctx.sources).catch(() => [] as Album[])
 
-    Promise.all([ctx.sources.listTracks({ sourceIds: ['local'] }), loadAlbums])
-      .then(([tracksPaged, albumsPaged]) => {
+    Promise.all([fetchAllLocalTracks(ctx.sources), loadAlbums])
+      .then(([loadedTracks, loadedAlbums]) => {
         if (!cancelled) {
-          const loadedTracks = tracksPaged.items
           setTracks(loadedTracks)
 
-          if (albumsPaged.items.length > 0) {
-            setAlbums(albumsPaged.items)
+          if (loadedAlbums.length > 0) {
+            setAlbums(loadedAlbums)
           } else {
             // Synthesize albums from local tracks if listAlbums returned empty
             const map = new Map<string, Album>()
@@ -6392,7 +6557,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                   fontWeight: 500,
                 },
               },
-              '✔ 🕒',
+              '🕒',
               renderTrackSortIndicator('duration'),
             ),
           ),
@@ -6418,8 +6583,11 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                       ctx,
                       track: t,
                       index,
+                      inLibrary: isTrackInLibrary(t),
                       onPress: () => player?.playFromContext(t.urn, sortedTrackUrns),
                       onMore: (anchor) => menu.open({ track: t }, anchor),
+                      onAddToFavorites: handleAddToFavorites,
+                      onOpenPlaylistMenu: openAddToPlaylistMenu,
                     }),
                 }),
               ),
@@ -6478,6 +6646,14 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
         ],
     h(ContextMenu, menu.menuProps),
     h(ContextMenu, {
+      open: addToPlaylistMenuState !== null,
+      onClose: closeAddToPlaylistMenu,
+      x: addToPlaylistMenuState?.anchor.x ?? 0,
+      y: addToPlaylistMenuState?.anchor.y ?? 0,
+      items: addToPlaylistMenuItems,
+      title: '添加到歌单',
+    }),
+    h(ContextMenu, {
       open: sortMenuAnchor !== null,
       onClose: () => setSortMenuAnchor(null),
       x: sortMenuAnchor?.x ?? 0,
@@ -6489,6 +6665,122 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
 }
 
 /* ── one collection ────────────────────────────────────────────────────── */
+
+function CollectionTrackTableRow({
+  track,
+  onPress,
+  onMore,
+  inLibrary,
+  onAddToFavorites,
+  onOpenPlaylistMenu,
+}: {
+  track: Track
+  onPress: () => void
+  onMore: (anchor: MenuAnchor) => void
+  inLibrary: boolean
+  onAddToFavorites?: (track: Track) => void
+  onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
+}): ReactElement {
+  const [hovered, setHovered] = useState(false)
+  const artists = track.artists?.map((a) => a.name).join(', ')
+
+  return h(
+    'div',
+    {
+      role: 'row',
+      tabIndex: 0,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      onClick: onPress,
+      onContextMenu: (e: React.MouseEvent) => {
+        e.preventDefault()
+        onMore({ x: e.clientX, y: e.clientY })
+      },
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') onPress()
+      },
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        height: 56,
+        padding: `0 ${tokens.space[3]}px`,
+        borderRadius: tokens.radius.sm,
+        cursor: 'pointer',
+        background: hovered ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+        transition: 'background-color 0.15s ease',
+        boxSizing: 'border-box',
+        width: '100%',
+      },
+    },
+    h(Artwork, {
+      artwork: track.artwork,
+      seed: track.urn,
+      size: tokens.size.artworkThumb,
+    }),
+    h(
+      'div',
+      { style: { flex: 1, minWidth: 0, marginLeft: tokens.space[3], overflow: 'hidden' } },
+      h(Text, { numberOfLines: 1, children: track.title }),
+      artists ? h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1, children: artists }) : null,
+    ),
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: 6,
+          paddingRight: 8,
+          flexShrink: 0,
+        },
+      },
+      h(TrackLibraryActionButton, {
+        track,
+        hovered,
+        inLibrary,
+        onAddToFavorites: () => onAddToFavorites?.(track),
+        onOpenPlaylistMenu,
+      }),
+      h(
+        'button',
+        {
+          type: 'button',
+          'aria-label': 'More',
+          title: '更多',
+          onClick: (e: React.MouseEvent) => {
+            e.stopPropagation()
+            const rect = e.currentTarget.getBoundingClientRect()
+            onMore({ x: rect.left, y: rect.bottom + 4 })
+          },
+          style: {
+            background: 'none',
+            border: 'none',
+            color: '#b3b3b3',
+            fontSize: 16,
+            cursor: 'pointer',
+            padding: 4,
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 0.15s ease',
+          },
+        },
+        '⋯',
+      ),
+      h(
+        'span',
+        {
+          style: {
+            fontSize: 13,
+            color: '#b3b3b3',
+            width: 45,
+            textAlign: 'right',
+          },
+        },
+        formatDuration(track.durationMs),
+      ),
+    ),
+  )
+}
 
 /**
  * A collection is a folder, so its rows are whatever its members are: tracks
@@ -6504,6 +6796,14 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
     .filter((member) => member.kind === 'track' && member.track)
     .map((member) => member.urn)
   const menu = useTrackMenu(ctx)
+  const {
+    isTrackInLibrary,
+    handleAddToFavorites,
+    openAddToPlaylistMenu,
+    closeAddToPlaylistMenu,
+    addToPlaylistMenuState,
+    addToPlaylistMenuItems,
+  } = useTrackLibraryInfo(ctx)
 
   if (!id) return h(EmptyState, { title: 'No collection chosen' })
   if (state.status === 'error') {
@@ -6550,22 +6850,17 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
         }),
         renderItem: (member) => {
           if (member.kind === 'track' && member.track) {
-            return h(
-              'div',
-              { style: { display: 'flex', alignItems: 'center' } },
-              h(
-                'div',
-                { style: { flex: 1, minWidth: 0 } },
-                h(TrackRow, {
-                  track: member.track,
-                  onPress: () =>
-                    void players?.playNow(trackUrns).then(() => {
-                      /* playNow starts at the first track; the context is the collection */
-                    }),
-                  onMore: (anchor) => menu.open({ track: member.track! }, anchor),
+            return h(CollectionTrackTableRow, {
+              track: member.track,
+              inLibrary: isTrackInLibrary(member.track, true),
+              onAddToFavorites: handleAddToFavorites,
+              onOpenPlaylistMenu: openAddToPlaylistMenu,
+              onPress: () =>
+                void players?.playNow(trackUrns).then(() => {
+                  /* playNow starts at the first track; the context is the collection */
                 }),
-              ),
-            )
+              onMore: (anchor) => menu.open({ track: member.track! }, anchor),
+            })
           }
           return h(MemberRow, {
             member,
@@ -6578,6 +6873,14 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
       }),
     ),
     h(ContextMenu, menu.menuProps),
+    h(ContextMenu, {
+      open: addToPlaylistMenuState !== null,
+      onClose: closeAddToPlaylistMenu,
+      x: addToPlaylistMenuState?.anchor.x ?? 0,
+      y: addToPlaylistMenuState?.anchor.y ?? 0,
+      items: addToPlaylistMenuItems,
+      title: '添加到歌单',
+    }),
   )
 }
 

@@ -149,24 +149,35 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 
 ## 7. Detail Screens, Sorting & Playback History Specifications
 
-### Track Table Sorting (`AlbumScreen`, `PlaylistDetailScreen`, `LocalMusicScreen`, `FavoritesScreen`)
+### Track Table Sorting & Row Interactions (`AlbumScreen`, `PlaylistDetailScreen`, `LocalMusicScreen`, `FavoritesScreen`, `CollectionScreen`)
 - **Interactive Header Columns**:
-  - Clicking column headers (`#`, `标题`, `专辑`, `添加日期`, `时长`, `播放量`) toggles between ascending (`asc`) and descending (`desc`) order.
+  - Clicking column headers (`#`, `标题`, `专辑`, `添加日期`, `🕒 时长`, `播放量`) toggles between ascending (`asc`) and descending (`desc`) order.
   - Active sorted column displays a subtle directional arrow indicator (`▲` for ascending, `▼` for descending).
-  - Clicking a different column resets direction to ascending.
+  - Column headers omit the green checkmark (`✔`), presenting clean column names and `🕒`.
 - **Action Bar Sort Dropdown (`ContextMenu`)**:
   - Dedicated sort dropdown button (e.g. `默认顺序 ≣` / `自定义顺序 ≣` / `标题 ≣`).
   - Clicking reveals a structured `ContextMenu` with sort key options and an asc/desc toggle option.
+- **Unified Row Library Action Button (`TrackLibraryActionButton`)**:
+  - Replaces previous static checkmark or favorite icon in track rows across `LocalMusicScreen`, `PlaylistDetailScreen`, `FavoritesScreen`, and `CollectionScreen`.
+  - Hidden by default; smoothly fades in on row hover (`opacity: 1`).
+  - **Not in library**: displays `＋` icon, clicking adds track directly to favorites (`library.setSaved(track.urn, true)`).
+  - **In library / favorites / playlist / collection**: displays `🖤` icon, clicking opens "添加到歌单" submenu allowing immediate addition to existing playlists or creating a new playlist.
 - **Playback Queue Coherence**:
   - Playing a single track or clicking "Play All / Play Album" passes the currently sorted/filtered track URN sequence to `ctx.player.playFromContext`.
   - Up-next playback order strictly follows the visual sorted order on screen.
 - **Playlist Item ID Decoupling**:
   - `PlaylistDetailScreen` wraps row data as `{ item, track, trackUrn, originalIndex }` so that row actions (removal, context menus) remain bound to `PlaylistItem.id`, immune to active sort orders.
+- **Album Screen Customizations (`AlbumScreen`)**:
+  - Header Action Bar heart toggle: wired to `library.isSaved(album.urn)` / `library.setSaved(album.urn, isSaved)` with immediate reactivity, synchronizing saved albums to the Library albums tab.
+  - Local album safety: detects `urn.startsWith('BBeBee:local:')` to omit download button in header and row items, and removes download menu item.
+  - Three-dot menu: "加入合集" renamed to "加入文件夹", "添加至最喜欢的音乐" updated to "添加到音乐库/从音乐库中删除", redundant "加入歌单" and "转至专辑" items removed.
 - **Favorites Screen Parity (`FavoritesScreen`)**:
   - Aligned with `LocalMusicScreen`: purple gradient background (`#4c1d95`), no-cover text Hero Header ("已点赞的歌曲"), action bar with 56px play button (`▶`), shuffle, search input, and sort dropdown.
-  - Rows render as `FavoriteTrackTableRow`: index/hover play, 40px cover art, title/artist, album, interactive green heart button (`♥`) to un-favorite, hover `⋯` more button, and duration.
+  - Rows render as `FavoriteTrackTableRow`: index/hover play, 40px cover art, title/artist, album, hover `TrackLibraryActionButton` (`🖤` submenu), hover `⋯` more button, and duration.
 
-### Local Music Dual Views (`LocalMusicScreen`)
+### Local Music Dual Views & Pagination (`LocalMusicScreen`)
+- **Full Loading (No 100 Limit)**:
+  - Uses `fetchAllLocalTracks` and `fetchAllLocalAlbums` to recursively paginate in batches of 500 until all scanned files are retrieved, overcoming default 100-item page boundaries.
 - **View Toggle**: Segmented toggle in header to switch between "歌曲" (Tracks table) and "专辑" (Albums grid).
 - **Local Album Grid (`LocalAlbumCard`)**:
   - Groups local tracks by album name, deriving artwork from the first track with artwork.

@@ -17,15 +17,15 @@
  *    starting here. Playback never navigates; the transport bar announces it.
  */
 
-import { createElement as h, useMemo, useState } from 'react'
+import { createElement as h, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { DownloadsService, PlayerService, Track } from '@BBeBee/protocol'
+import type { Collection, DownloadsService, LibraryService, PlayerService, SleepTimerService, Track } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
-import { useTrackMenu } from '@BBeBee/ui-menus'
+import { addToCollectionSubmenu, sleepTimerSubmenu, useTrackMenu } from '@BBeBee/ui-menus'
 import { Artwork, ContextMenu, EmptyState, List } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
@@ -272,11 +272,47 @@ type AlbumSortKey = 'trackNo' | 'title' | 'plays' | 'duration'
 export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): ReactElement {
   const album = useAlbum(ctx, urn)
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
-  const menu = useTrackMenu(ctx)
+  const library = serviceOf<LibraryService>(ctx, 'library')
   const player = serviceOf<PlayerService>(ctx, 'player')
+  const sleepTimer = serviceOf<SleepTimerService>(ctx, 'sleepTimer')
+  const menu = useTrackMenu(ctx)
   const [sortKey, setSortKey] = useState<AlbumSortKey>('trackNo')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
+  const [albumMenuAnchor, setAlbumMenuAnchor] = useState<MenuAnchor | null>(null)
+  const [collections, setCollections] = useState<readonly Collection[]>([])
+  const [isSaved, setIsSaved] = useState(false)
+
+  useEffect(() => {
+    const albumUrn = album.data?.urn
+    if (!library || !albumUrn) return
+    let cancelled = false
+    library
+      .isSaved(albumUrn)
+      .then((res) => {
+        if (!cancelled) setIsSaved(res)
+      })
+      .catch(() => {})
+    const off = ctx.on('library/changed', () => {
+      library
+        .isSaved(albumUrn)
+        .then((res) => {
+          if (!cancelled) setIsSaved(res)
+        })
+        .catch(() => {})
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [ctx, library, album.data?.urn])
+
+  const handleToggleSave = useCallback(async () => {
+    if (!library || !album.data?.urn) return
+    const next = !isSaved
+    await library.setSaved(album.data.urn, next)
+    setIsSaved(next)
+  }, [library, album.data?.urn, isSaved])
 
   const tracks = album.data?.tracks ?? []
 
@@ -313,6 +349,64 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   }
 
   const detail = album.data
+
+  const isLocalAlbum = Boolean(
+    detail.urn.startsWith('BBeBee:local:') ||
+      detail.urn.startsWith('local:') ||
+      (detail.tracks.length > 0 &&
+        detail.tracks.every((t) => t.urn.startsWith('BBeBee:local:') || t.urn.startsWith('local:'))),
+  )
+
+  const collectionSubmenu = addToCollectionSubmenu(library, [detail.urn], collections, {
+    title: '加入文件夹',
+  })
+
+  const albumMenuItems: MenuItemSpec[] = []
+
+  if (collectionSubmenu) {
+    albumMenuItems.push({
+      id: 'add-to-folder',
+      label: '加入文件夹',
+      icon: '🗂',
+      submenu: collectionSubmenu,
+    })
+  }
+
+  albumMenuItems.push({
+    id: 'toggle-library',
+    label: isSaved ? '从音乐库中删除' : '添加到音乐库',
+    icon: isSaved ? '♡' : '♥',
+    tone: isSaved ? 'danger' : undefined,
+    onSelect: () => void handleToggleSave(),
+  })
+
+  if (player) {
+    albumMenuItems.push({
+      id: 'enqueue',
+      label: '加入播放列表',
+      icon: '＋',
+      onSelect: () => player.enqueueLast(sortedUrns),
+    })
+  }
+
+  if (!isLocalAlbum && downloads) {
+    albumMenuItems.push({
+      id: 'download',
+      label: '下载',
+      icon: '⬇',
+      onSelect: () => void downloads.enqueue(sortedUrns),
+    })
+  }
+
+  const sleepSubmenu = sleepTimerSubmenu(sleepTimer)
+  if (sleepSubmenu) {
+    albumMenuItems.push({
+      id: 'sleep-timer',
+      label: sleepTimer?.state.active ? '睡眠定时器 (已开启)' : '睡眠定时器',
+      icon: '⏱',
+      submenu: sleepSubmenu,
+    })
+  }
 
   const handleHeaderClick = (key: AlbumSortKey) => {
     if (sortKey === key) {
@@ -548,16 +642,27 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           'button',
           {
             type: 'button',
-            title: '添加到喜欢的音乐',
-            style: { background: 'none', border: 'none', fontSize: 22, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+            'data-testid': 'album-heart-trigger',
+            'aria-label': isSaved ? '从音乐库中删除' : '添加到音乐库',
+            title: isSaved ? '从音乐库中删除' : '添加到音乐库',
+            onClick: () => void handleToggleSave(),
+            style: {
+              background: 'none',
+              border: 'none',
+              fontSize: 22,
+              color: isSaved ? '#1ed760' : '#b3b3b3',
+              cursor: 'pointer',
+              padding: 0,
+            },
           },
-          '♡',
+          isSaved ? '♥' : '♡',
         ),
-        downloads
+        !isLocalAlbum && downloads
           ? h(
               'button',
               {
                 type: 'button',
+                'data-testid': 'album-download-all',
                 title: '下载全部',
                 style: { background: 'none', border: 'none', fontSize: 22, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
                 onClick: () => void downloads.enqueue(sortedUrns),
@@ -569,13 +674,20 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           'button',
           {
             type: 'button',
+            'data-testid': 'album-more-trigger',
             title: '更多选项',
             style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
-            onClick: (e) => {
+            onClick: async (e) => {
               const rect = e.currentTarget.getBoundingClientRect()
-              if (detail.tracks[0]) {
-                menu.open({ track: detail.tracks[0] }, { x: rect.left, y: rect.bottom + 6 })
+              if (library) {
+                try {
+                  const cols = await library.listCollections()
+                  setCollections(cols)
+                } catch {
+                  setCollections([])
+                }
               }
+              setAlbumMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
             },
           },
           '⋯',
@@ -736,12 +848,20 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
                 context: { kind: 'album', urn: detail.urn, label: detail.title },
               })
             },
-            onDownload: downloads ? () => void downloads.enqueue([track.urn]) : undefined,
+            onDownload: !isLocalAlbum && downloads ? () => void downloads.enqueue([track.urn]) : undefined,
             onMore: (anchor) => menu.open({ track }, anchor),
           }),
       }),
     ),
     h(ContextMenu, menu.menuProps),
+    h(ContextMenu, {
+      open: albumMenuAnchor !== null,
+      onClose: () => setAlbumMenuAnchor(null),
+      x: albumMenuAnchor?.x ?? 0,
+      y: albumMenuAnchor?.y ?? 0,
+      items: albumMenuItems,
+      title: detail.title,
+    }),
     h(ContextMenu, {
       open: sortMenuAnchor !== null,
       onClose: () => setSortMenuAnchor(null),

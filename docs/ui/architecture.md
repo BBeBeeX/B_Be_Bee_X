@@ -324,13 +324,16 @@ Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `Unif
 ### Detail screens, sorting & media views
 
 1. **Album, Playlist, Local Music & Favorites Track Tables**:
-   - **Table Header Sorting**: Column headers (`#`, `标题`, `专辑`, `添加日期`, `时长`, `播放量`) support interactive sorting with ascending/descending directional indicators (`▲` / `▼`).
+   - **Table Header Sorting**: Column headers (`#`, `标题`, `专辑`, `添加日期`, `🕒 时长`, `播放量`) support interactive sorting with ascending/descending directional indicators (`▲` / `▼`). Column headers omit `✔`.
    - **Action Bar Sort Menu**: Dropdown `ContextMenu` ("默认顺序 ≣" / "自定义顺序 ≣") providing rapid switching between sorting keys and directions.
+   - **Row Hover Library Action (`TrackLibraryActionButton`)**: Across track rows in `LocalMusicScreen`, `PlaylistDetailScreen`, `FavoritesScreen`, and `CollectionScreen`, the static checkmark is replaced with a hover action icon. When hovered, tracks not in library show `＋` (clicking saves to Favorites via `library.setSaved(track.urn, true)`); tracks in library show `🖤` (clicking opens the "添加到歌单" submenu).
+   - **Album Header & Menu**: `AlbumScreen` features an Action Bar heart button (`♥`/`♡`) bound to `library.setSaved(album.urn, isSaved)` displaying saved albums in the user's Library. Local albums (`BBeBee:local:`) omit download buttons in header and rows, and omit the download menu item. Three-dot menu provides "加入文件夹", "添加到音乐库/从音乐库中删除", "加入播放列表", and "睡眠定时器" (omitting "加入歌单" and "转至专辑").
    - **Playback Queue Alignment**: Playing tracks from a sorted table (single-tap or "Play All") passes the sorted URN sequence to `ctx.player.playFromContext`, ensuring the playback queue matches visual order.
    - **Playlist Item ID Decoupling**: In `PlaylistDetailScreen`, rows wrap data as `{ item, track, trackUrn, originalIndex }`, preserving item IDs across sort operations so that removals and context menus act on the correct playlist item.
-   - **Favorites Parity (`FavoritesScreen`)**: Styled with immersive purple gradient header, 56px play button, shuffle, real-time search filter, and `FavoriteTrackTableRow` with interactive green heart un-favorite button (`♥`).
+   - **Favorites Parity (`FavoritesScreen`)**: Styled with immersive purple gradient header, 56px play button, shuffle, real-time search filter, and `FavoriteTrackTableRow` with hover `TrackLibraryActionButton` (`🖤` submenu).
 
 2. **Local Music Dual Views (Tracks & Albums)**:
+   - **Full Pagination**: `fetchAllLocalTracks` and `fetchAllLocalAlbums` recursively paginate in batches of 500 until all local items are retrieved, removing the former 100-item truncation.
    - Header segmented toggle allows switching between "歌曲" (table list) and "专辑" (grid view).
    - Album grid view aggregates local tracks into `LocalAlbumCard` components with cover artwork, title, artist, track count, and hover play trigger.
    - Sort dropdown adapts dynamically to album-specific criteria (name, artist, year, track count).

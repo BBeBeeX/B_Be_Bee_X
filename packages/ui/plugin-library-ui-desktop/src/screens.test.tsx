@@ -17,7 +17,7 @@ import type { Collection, Paged, Playlist, PlaylistDetail, SavedKind, Track } fr
 import { tryParseUrn } from '@BBeBee/protocol'
 import { tick } from '@BBeBee/kernel/testing'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
-import { CollectionScreen, FavoritesScreen, LibraryScreen, LocalMusicScreen, PlaylistDetailScreen, collectAllFolderTracks, inject } from './index.js'
+import { CollectionScreen, FavoritesScreen, LibraryScreen, LocalMusicScreen, PlaylistDetailScreen, collectAllFolderTracks, fetchAllLocalTracks, inject } from './index.js'
 
 afterEach(cleanup)
 
@@ -774,21 +774,26 @@ describe('PlaylistDetailScreen', () => {
 })
 
 describe('FavoritesScreen', () => {
-  it('unsaves a row through the library service', async () => {
-    const { ctx, library } = await harness()
+  it('opens add to playlist menu from favorite track row', async () => {
+    const { ctx } = await harness()
     await withListLayout(async () => {
-      const { getByLabelText } = render(h(FavoritesScreen, { ctx }))
+      const { getByLabelText, getByText } = render(h(FavoritesScreen, { ctx }))
       await act(async () => {
         await tick()
       })
 
+      const btn = getByLabelText('Add Alpha to playlist')
+      expect(btn).toBeTruthy()
+      expect(btn.textContent).toBe('🖤')
+
       await act(async () => {
-        getByLabelText('Remove Alpha from favourites').click()
+        btn.click()
         await tick()
       })
+
+      expect(getByText('添加到歌单')).toBeTruthy()
+      expect(getByText('新建歌单')).toBeTruthy()
     })
-
-    expect(library.calls).toContain(`save:${TRACK}:false`)
   })
 
   it('renders hero header, action bar and table header in LocalMusic consistent style', async () => {
@@ -1025,6 +1030,55 @@ describe('LocalMusicScreen', () => {
 
       expect(getByTestId('local-albums-grid')).toBeTruthy()
     })
+  })
+
+  it('shows ＋ button when track is not in library and adds to favorites on click', async () => {
+    const { ctx, library } = await harness()
+    library.saved = [] // not saved
+    await withListLayout(async () => {
+      const { getByLabelText } = render(h(LocalMusicScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      const addBtn = getByLabelText('Add Alpha to favourites')
+      expect(addBtn).toBeTruthy()
+      expect(addBtn.textContent).toBe('＋')
+
+      await act(async () => {
+        addBtn.click()
+        await tick()
+      })
+
+      expect(library.calls).toContain(`save:${TRACK}:true`)
+    })
+  })
+
+  it('fetchAllLocalTracks paginates across multiple pages to fetch all tracks', async () => {
+    let callCount = 0
+    const mockSources = {
+      async listTracks(opts: any) {
+        callCount++
+        if (!opts?.page?.cursor) {
+          return {
+            items: [{ urn: 'track-1', title: 'Track 1' } as Track],
+            cursor: 'c-2',
+            hasMore: true,
+          }
+        }
+        return {
+          items: [{ urn: 'track-2', title: 'Track 2' } as Track],
+          cursor: undefined,
+          hasMore: false,
+        }
+      },
+    } as any
+
+    const result = await fetchAllLocalTracks(mockSources)
+    expect(callCount).toBe(2)
+    expect(result).toHaveLength(2)
+    expect(result[0]?.urn).toBe('track-1')
+    expect(result[1]?.urn).toBe('track-2')
   })
 })
 

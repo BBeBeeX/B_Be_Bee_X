@@ -33,12 +33,24 @@ const detail: AlbumDetail = {
   ],
 }
 
+const LOCAL_ALBUM_URN = 'BBeBee:local:album:local1'
+const localDetail: AlbumDetail = {
+  urn: LOCAL_ALBUM_URN,
+  title: 'Local Album',
+  artists: [{ urn: 'BBeBee:local:artist:local', name: 'Local Artist', role: 'main', ordinal: 0 }],
+  tracks: [
+    { urn: 'BBeBee:local:track:1', title: 'Local 1', artists: [] },
+  ],
+}
+
 class SourcesStub extends Service {
   constructor(ctx: Context) {
     super(ctx, 'sources')
   }
   async getAlbum(urn: string): Promise<AlbumDetail | undefined> {
-    return urn === ALBUM_URN ? detail : undefined
+    if (urn === ALBUM_URN) return detail
+    if (urn === LOCAL_ALBUM_URN) return localDetail
+    return undefined
   }
 }
 
@@ -77,20 +89,44 @@ class UiStub extends Service {
   navigate(): void {}
 }
 
+class LibraryStub extends Service {
+  readonly saved = new Set<string>()
+  readonly calls: string[] = []
+  constructor(ctx: Context) {
+    super(ctx, 'library')
+  }
+  async isSaved(urn: string): Promise<boolean> {
+    return this.saved.has(urn)
+  }
+  async setSaved(urn: string, saved: boolean): Promise<void> {
+    this.calls.push(`save:${urn}:${saved}`)
+    if (saved) this.saved.add(urn)
+    else this.saved.delete(urn)
+    this.ctx.emit('library/changed', 'album', [urn])
+  }
+  async listCollections() {
+    return [
+      { id: 'col-1', name: 'My Folder', memberCount: 0, depth: 0, path: 'My Folder', revision: 0, createdAt: 0, updatedAt: 0 },
+    ]
+  }
+}
+
 async function harness() {
   const root = new Context()
   await root.plugin(SourcesStub)
   await root.plugin(PlayerStub)
   await root.plugin(DownloadsStub)
   await root.plugin(UiStub)
+  await root.plugin(LibraryStub)
   let scoped: Context | undefined
-  root.inject(['ui', 'sources', 'player', 'downloads'], (s) => void (scoped = s))
+  root.inject(['ui', 'sources', 'player', 'downloads', 'library'], (s) => void (scoped = s))
   await tick()
   if (!scoped) throw new Error('no scoped context')
   return {
     ctx: scoped,
     player: root.player as unknown as PlayerStub,
     downloads: root.downloads as unknown as DownloadsStub,
+    library: root.library as unknown as LibraryStub,
   }
 }
 
@@ -223,5 +259,78 @@ describe('AlbumScreen', () => {
         context: { kind: 'album', urn: ALBUM_URN, label: 'Homogenic' },
       },
     ])
+  })
+
+  it('toggles album save state via heart button', async () => {
+    const { ctx, library } = await harness()
+    await withListLayout(async () => {
+      const { getByTestId } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
+      await act(async () => {
+        await tick()
+      })
+
+      const heart = getByTestId('album-heart-trigger')
+      expect(heart.textContent).toBe('♡')
+
+      await act(async () => {
+        heart.click()
+        await tick()
+      })
+      expect(library.calls).toContain(`save:${ALBUM_URN}:true`)
+      expect(heart.textContent).toBe('♥')
+
+      await act(async () => {
+        heart.click()
+        await tick()
+      })
+      expect(library.calls).toContain(`save:${ALBUM_URN}:false`)
+      expect(heart.textContent).toBe('♡')
+    })
+  })
+
+  it('hides download buttons when album is local', async () => {
+    const { ctx } = await harness()
+    await withListLayout(async () => {
+      const { queryByTestId, queryAllByLabelText } = render(h(AlbumScreen, { ctx, urn: LOCAL_ALBUM_URN }))
+      await act(async () => {
+        await tick()
+      })
+
+      expect(queryByTestId('album-download-all')).toBeNull()
+      expect(queryAllByLabelText('Download')).toHaveLength(0)
+    })
+  })
+
+  it('provides custom album three-dots menu', async () => {
+    const { ctx, library } = await harness()
+    await withListLayout(async () => {
+      const { getByTestId, getByText, queryByText } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Click more options trigger
+      await act(async () => {
+        getByTestId('album-more-trigger').click()
+        await tick()
+      })
+
+      // Check items
+      expect(getByText('加入文件夹')).toBeTruthy()
+      expect(getByText('添加到音乐库')).toBeTruthy()
+      expect(getByText('加入播放列表')).toBeTruthy()
+      expect(getByText('下载')).toBeTruthy()
+
+      // Removed items
+      expect(queryByText('加入歌单')).toBeNull()
+      expect(queryByText('转至专辑')).toBeNull()
+
+      // Clicking '添加到音乐库' in menu saves the album
+      await act(async () => {
+        getByText('添加到音乐库').click()
+        await tick()
+      })
+      expect(library.calls).toContain(`save:${ALBUM_URN}:true`)
+    })
   })
 })
