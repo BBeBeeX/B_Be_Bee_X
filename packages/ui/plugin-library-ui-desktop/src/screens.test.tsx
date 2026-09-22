@@ -775,5 +775,41 @@ describe('LocalMusicScreen', () => {
 
     expect(player.calls).toContain(`now:${TRACK}`)
   })
+
+  it('switches between tracks and albums view back and forth', async () => {
+    const { ctx } = await harness()
+    await withListLayout(async () => {
+      const { getByTestId, container } = render(h(LocalMusicScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Initially on tracks view
+      expect(getByTestId('local-tab-tracks')).toBeTruthy()
+      expect(getByTestId('local-tab-albums')).toBeTruthy()
+      expect(container.textContent).toContain('本地文件')
+      expect(container.textContent).toContain('Alpha')
+
+      // Switch to albums view
+      await act(async () => {
+        getByTestId('local-tab-albums').click()
+        await tick()
+      })
+
+      // When in albums view
+      expect(container.textContent).toContain('本地专辑')
+      expect(getByTestId('local-albums-grid')).toBeTruthy()
+
+      // Switch back to tracks view
+      await act(async () => {
+        getByTestId('local-tab-tracks').click()
+        await tick()
+      })
+
+      // Back on tracks view
+      expect(container.textContent).toContain('本地文件')
+      expect(container.textContent).toContain('Alpha')
+    })
+  })
 })
 
