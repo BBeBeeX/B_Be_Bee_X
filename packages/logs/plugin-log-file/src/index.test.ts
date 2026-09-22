@@ -124,6 +124,19 @@ describe('plugin-log-file', () => {
     expect(typeof record['time']).toBe('number')
   })
 
+  it('formats %s, %d placeholders before writing to disk', async () => {
+    const { ctx } = await bootLogging()
+    ctx.logger('scanner').info('scanner: scanning specified dir %s (%s)', 'dir-1', 'file:///music')
+    await settle()
+
+    const logs = await ctx.fs.dir('logs')
+    const content = await ctx.fs.readFile(ctx.fs.join(logs!, 'app.log'))
+    const lines = content.trim().split('\n')
+    const record = JSON.parse(lines[lines.length - 1]!) as Record<string, unknown>
+
+    expect(record['message']).toBe('scanner: scanning specified dir dir-1 (file:///music)')
+  })
+
   it('redacts credentials on the way to disk', async () => {
     const { ctx } = await bootLogging()
     ctx.logger('source').warn('auth failed for https://user:secret@music.example.org/?token=abc123')
@@ -241,5 +254,28 @@ describe('plugin-log-buffer', () => {
     expect(ctx.logBuffer).toBeUndefined()
     // Must not throw into a disposed buffer.
     expect(() => ctx.logger('x').error('after')).not.toThrow()
+  })
+
+  it('formats %s, %d placeholders in the buffer', async () => {
+    const ctx = new Context()
+    await ctx.plugin(logBuffer, {})
+
+    ctx.logger('scanner').info('scanner: scanning specified dir %s (%s)', 'dir-1', 'file:///music')
+    ctx.logger('scanner').info('scanner: starting scan on %d specified dir(s) (full=%s)', 1, false)
+    ctx.logger('scanner').info(
+      'scanner: scan completed (added=%d, updated=%d, removed=%d, errors=%d, cancelled=%s)',
+      0,
+      0,
+      0,
+      0,
+      false,
+    )
+
+    const buffer = ctx.logBuffer as LogBuffer
+    expect(buffer.all[0]!.message).toBe('scanner: scanning specified dir dir-1 (file:///music)')
+    expect(buffer.all[1]!.message).toBe('scanner: starting scan on 1 specified dir(s) (full=false)')
+    expect(buffer.all[2]!.message).toBe(
+      'scanner: scan completed (added=0, updated=0, removed=0, errors=0, cancelled=false)',
+    )
   })
 })

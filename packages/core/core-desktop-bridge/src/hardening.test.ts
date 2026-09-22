@@ -14,7 +14,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createHost, type IpcHost } from './main.js'
-import { CH } from './protocol.js'
+import { CH, unwrapBridgeResult } from './protocol.js'
 import { tempDir } from '@BBeBee/kernel/testing'
 
 let root: string
@@ -70,8 +70,8 @@ async function harness(overrides: Parameters<typeof createHost>[1] = {}) {
     resolvePath: (kind) => layout[kind],
     ...overrides,
   })
-  const call = (method: string, args: unknown[], service = 'fs', token?: string) =>
-    invoke(undefined, CH.call, service, method, args, token)
+  const call = async (method: string, args: unknown[], service = 'fs', token?: string) =>
+    unwrapBridgeResult(await invoke(undefined, CH.call, service, method, args, token))
   return { dir, layout, call, invoke, makeSender, hostHandle }
 }
 

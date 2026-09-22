@@ -198,6 +198,19 @@ export class FsNode extends Service implements FsService {
       const child = join(path, entry.name)
       try {
         const s = await fsp.stat(child)
+        if (entry.isSymbolicLink() && s.isDirectory()) {
+          // On Windows, legacy NTFS junction points (e.g. "Documents\My Music", "Documents\My Pictures",
+          // "AppData\Local\Application Data") have ACLs configured with Deny Read permissions. `stat`
+          // succeeds by following the junction to its target, but attempting to list/traverse the junction
+          // itself fails with EPERM. Similarly, cyclic or unreadable directory symlinks should not be
+          // reported as traversable directories.
+          try {
+            const dirHandle = await fsp.opendir(child)
+            await dirHandle.close()
+          } catch {
+            continue
+          }
+        }
         out.push({
           uri: this.toUri(child),
           name: entry.name,

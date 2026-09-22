@@ -9,9 +9,8 @@
 
 import type { Context } from 'cordis'
 import {
+  formatLogArguments,
   levelName,
-  redact,
-  redactString,
   type FsService,
   type LogRecord,
   type Uri,
@@ -125,14 +124,14 @@ export async function apply(ctx: Context, config: LogFileConfig = {}) {
     yield ctx.logger.exporter({
       export(message) {
         if (message.level > maxLevel) return
-        const [first, ...rest] = message.args as unknown[]
+        const { fullMessage, unused } = formatLogArguments(message.args as unknown[])
         const record: LogRecord = {
           sn: message.sn,
           time: message.ts,
           level: levelName(message.level),
           scope: message.name,
-          message: redactString(typeof first === 'string' ? first : String(first)),
-          ...(rest.length ? { meta: { args: redact(rest) as unknown[] } } : {}),
+          message: fullMessage,
+          ...(unused.length ? { meta: { args: unused } } : {}),
         }
         queued.push(`${JSON.stringify(record)}\n`)
         schedule()

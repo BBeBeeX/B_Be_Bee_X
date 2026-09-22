@@ -21,6 +21,7 @@ import {
 import { createHost, type IpcHost } from './main.js'
 import { DbBridge, FsBridge, PathsBridge, fetchPaths } from './index.js'
 import type { BridgeApi, BridgeEvent } from './protocol.js'
+import { unwrapBridgeResult } from './protocol.js'
 import { tempDir } from '@BBeBee/kernel/testing'
 
 let root: string
@@ -79,8 +80,10 @@ async function makeBridge(
   )
 
   const api: BridgeApi = {
-    call: (service, method, args, token) =>
-      invoke('BBeBee:call', service, method, args, token) as Promise<unknown>,
+    call: async (service, method, args, token) => {
+      const res = await invoke('BBeBee:call', service, method, args, token)
+      return unwrapBridgeResult(res)
+    },
     streamOpen: (u, range) => invoke('BBeBee:stream:open', u, range) as Promise<number>,
     streamPull: (handle) => invoke('BBeBee:stream:pull', handle) as Promise<Uint8Array | null>,
     streamClose: (handle) => invoke('BBeBee:stream:close', handle) as Promise<void>,
@@ -322,4 +325,22 @@ describe('bridge specifics', () => {
     // Should pass assertContained and reach fs (fails with ENOENT or false, not boundary check)
     await expect(ctx.fs.exists(subUri)).resolves.toBe(false)
   })
+
+  it('serializes errors over CH.call in a BridgeEnvelope without rejecting IPC handle', async () => {
+    const dir = await mkdtemp(join(root, 'err-env-'))
+    const { ctx } = await makeBridge(dir)
+    const missing = ctx.fs.join(ctx.paths.cache, 'nonexistent-file.txt')
+
+    // Calling fs.stat on a missing file must reject with ENOENT when unwrapped,
+    // preserving error properties.
+    await expect(ctx.fs.stat(missing)).rejects.toThrow(/ENOENT/)
+    try {
+      await ctx.fs.stat(missing)
+      expect.unreachable('should have thrown')
+    } catch (err) {
+      expect((err as NodeJS.ErrnoException).code).toBe('ENOENT')
+      expect(err instanceof Error).toBe(true)
+    }
+  })
 })
+

@@ -304,6 +304,7 @@ function renderLogRow(rec: LogRecord, index: number): ReactElement {
         style: {
           flex: 1,
           color: rec.level === 'error' ? '#FCA5A5' : rec.level === 'warn' ? '#FDE047' : '#E2E8F0',
+          whiteSpace: 'pre-wrap',
         },
       },
       rec.message,

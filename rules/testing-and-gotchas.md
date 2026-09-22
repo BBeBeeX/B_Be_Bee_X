@@ -40,6 +40,7 @@ Test conventions, common gotchas, and milestone status for BBeBee.
 | `CapabilityError: … may not …` | Capability missing in manifest or unauthorized namespace. Widen manifest, never the gate |
 | `CapabilityError: host … not allowed` | Source rule accessed undeclared host. Add host to `allowedHosts` |
 | Test fails with `Element is not defined` | Missing `// @vitest-environment jsdom` comment at the top of test file |
+| `Error occurred in handler for 'BBeBee:call': EPERM ...` | Windows legacy junction points (`Documents\My Music`) have Deny Read ACLs. `FsNode.list` probes directory symlinks with `opendir` to skip unreadable ones; IPC bridge wraps calls in `BridgeEnvelope` to prevent Electron from logging unhandled rejections. |
 
 ---
 

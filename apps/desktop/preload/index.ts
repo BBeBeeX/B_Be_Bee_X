@@ -9,7 +9,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 // The channel names only — the package root pulls in cordis, and a sandboxed
 // preload has no `require` for anything but Electron's own modules.
-import { CH } from '@BBeBee/core-desktop-bridge/protocol'
+import { CH, unwrapBridgeResult } from '@BBeBee/core-desktop-bridge/protocol'
 
 const api = {
   paths: {
@@ -109,8 +109,10 @@ contextBridge.exposeInMainWorld('BBeBee', api)
  * calls — no domain concept crosses (docs/02 §2).
  */
 contextBridge.exposeInMainWorld('BBeBeeBridge', {
-  call: (service: string, method: string, args: unknown[], token?: string) =>
-    ipcRenderer.invoke(CH.call, service, method, args, token),
+  call: async (service: string, method: string, args: unknown[], token?: string) => {
+    const res = await ipcRenderer.invoke(CH.call, service, method, args, token)
+    return unwrapBridgeResult(res)
+  },
   streamOpen: (uri: string, range?: { start: number; end?: number }) =>
     ipcRenderer.invoke(CH.streamOpen, uri, range),
   streamPull: (handle: number) => ipcRenderer.invoke(CH.streamPull, handle),

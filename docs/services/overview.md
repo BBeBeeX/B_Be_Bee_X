@@ -125,5 +125,14 @@ export interface FsService {
 > The scanner ([06](../sources/spec.md)) is written against `list`/`stat` precisely so it does
 > not care.
 
+### 1.1 Directory enumeration and Windows junction points
+
+On Windows, backwards-compatibility NTFS junction points (such as `Documents\My Music`, `Documents\My Pictures`, `AppData\Local\Application Data`) have ACLs configured with `Deny Read` (`FILE_LIST_DIRECTORY`). While `fsp.stat` succeeds by following the link, attempting to list the directory via `readdir` throws `EPERM`.
+
+To prevent recursive walkers (e.g. `plugin-local-scanner`) from attempting to traverse restricted system junctions or cyclic directory links:
+- `FsNode.list()` probes directory symlinks (`entry.isSymbolicLink() && s.isDirectory()`) using `fsp.opendir()`. If opening fails, the entry is skipped rather than reported as a traversable directory.
+- `core-desktop-bridge` envelopes all IPC calls on `CH.call` (`BridgeEnvelope`). If an operation fails, the error is serialized across the bridge and deserialized in the renderer rather than rejecting `ipcMain.handle`, preventing Electron's internal handler from dumping unhandled stack traces to the main-process console.
+
 ---
+
 

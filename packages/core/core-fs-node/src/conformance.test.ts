@@ -6,9 +6,9 @@
  * wrong rather than "just different".
  */
 
-import { mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdtemp, rm, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { fsConformance, fsScopeConformance, pathsConformance } from '@BBeBee/protocol/conformance'
@@ -97,6 +97,30 @@ describe('core-fs-node specifics', () => {
     // Test URL-encoded join and access
     const pathname = file.startsWith('file://') ? file.replace(/^file:\/\//, '') : file
     expect(fs().basename(pathname)).toBe('my song.mp3')
+  })
+
+  it('skips unreadable directory symlinks in list()', async () => {
+    const scratch = pathToFileURL(await mkdtemp(join(root, 'symlink-'))).href.replace(/\/$/, '')
+    const readableDir = fs().join(scratch, 'readable')
+    await fs().mkdir(readableDir)
+    await fs().writeFile(fs().join(readableDir, 'song.mp3'), 'audio')
+
+    const unreadableDir = fs().join(scratch, 'restricted')
+    await fs().mkdir(unreadableDir)
+    const unreadablePath = fileURLToPath(unreadableDir)
+    await chmod(unreadablePath, 0o000)
+
+    try {
+      const symlinkPath = join(fileURLToPath(scratch), 'link-to-restricted')
+      await symlink(unreadablePath, symlinkPath, 'dir')
+
+      const entries = await fs().list(scratch)
+      const names = entries.map((e) => e.name)
+      expect(names).toContain('readable')
+      expect(names).not.toContain('link-to-restricted')
+    } finally {
+      await chmod(unreadablePath, 0o777)
+    }
   })
 })
 

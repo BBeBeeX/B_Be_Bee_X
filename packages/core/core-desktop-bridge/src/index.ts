@@ -36,7 +36,7 @@ import type {
   WellKnownDir,
   WriteOptions,
 } from '@BBeBee/protocol'
-import { requireBridge, type BridgeApi, type BridgeHttpRequest } from './protocol.js'
+import { requireBridge, unwrapBridgeResult, type BridgeApi, type BridgeHttpRequest } from './protocol.js'
 
 export * from './protocol.js'
 
@@ -103,7 +103,7 @@ export async function fetchPaths(bridge: BridgeApi = requireBridge()): Promise<
   const keys = ['appData', 'cache', 'temp', 'logs', 'downloads', 'music'] as const
   const out: Record<string, string | undefined> = {}
   for (const key of keys) {
-    out[key] = (await bridge.call('paths', key, [])) as string | undefined
+    out[key] = unwrapBridgeResult<string | undefined>(await bridge.call('paths', key, []))
   }
   out['pluginRoot'] = `${out['appData']}/plugins`
   return out
@@ -146,8 +146,9 @@ export class FsBridge extends Service implements FsService {
     assertFs(config, mode, this.scopeOf(uri, capabilityConfigOf(config)))
   }
 
-  private call<T>(method: string, args: unknown[]): Promise<T> {
-    return this.bridge.call('fs', method, args) as Promise<T>
+  private async call<T>(method: string, args: unknown[]): Promise<T> {
+    const res = await this.bridge.call('fs', method, args)
+    return unwrapBridgeResult<T>(res)
   }
 
   async dir(kind: WellKnownDir) {
@@ -300,8 +301,9 @@ export class DbBridge extends Service implements DbService {
     this.bridge = requireBridge()
   }
 
-  private call<T>(method: string, args: unknown[], token?: string): Promise<T> {
-    return this.bridge.call('db', method, args, token) as Promise<T>
+  private async call<T>(method: string, args: unknown[], token?: string): Promise<T> {
+    const res = await this.bridge.call('db', method, args, token)
+    return unwrapBridgeResult<T>(res)
   }
 
   /**

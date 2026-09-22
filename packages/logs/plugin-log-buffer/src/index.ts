@@ -8,7 +8,7 @@
 
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
-import { levelName, redact, redactString, type LogLevel, type LogRecord } from '@BBeBee/protocol'
+import { formatLogArguments, levelName, type LogLevel, type LogRecord } from '@BBeBee/protocol'
 
 export interface LogBufferConfig {
   /** Entries retained. Oldest are dropped first. */
@@ -48,14 +48,14 @@ export class LogBuffer extends Service {
     return this.ctx.logger.exporter({
       export: (message) => {
         if (message.level > this.maxLevel) return
-        const [first, ...rest] = message.args as unknown[]
+        const { fullMessage, unused } = formatLogArguments(message.args as unknown[])
         this.push({
           sn: message.sn,
           time: message.ts,
           level: levelName(message.level),
           scope: message.name,
-          message: redactString(typeof first === 'string' ? first : String(first)),
-          ...(rest.length ? { meta: { args: redact(rest) as unknown[] } } : {}),
+          message: fullMessage,
+          ...(unused.length ? { meta: { args: unused } } : {}),
         })
       },
     })

@@ -169,3 +169,67 @@ export function safeStorageCodec(): {
     decrypt: (cipher) => bridge.decrypt(cipher),
   }
 }
+
+/** A serialized error traversing the IPC bridge. */
+export interface SerializedBridgeError {
+  message: string
+  name?: string
+  code?: string
+  errno?: number
+  syscall?: string
+  path?: string
+  stack?: string
+}
+
+/**
+ * Result envelope over CH.call to prevent Electron's ipcMain.handle from
+ * logging unhandled rejections to the terminal for expected operational errors.
+ */
+export interface BridgeEnvelope<T = unknown> {
+  __bbebee_bridge__: true
+  ok: boolean
+  result?: T
+  error?: SerializedBridgeError
+}
+
+export function serializeBridgeError(error: unknown): SerializedBridgeError {
+  if (error instanceof Error) {
+    const err = error as NodeJS.ErrnoException
+    return {
+      message: err.message,
+      name: err.name,
+      code: err.code,
+      errno: err.errno,
+      syscall: err.syscall,
+      path: err.path,
+      stack: err.stack,
+    }
+  }
+  return { message: String(error) }
+}
+
+export function deserializeBridgeError(data: SerializedBridgeError): Error {
+  const err = new Error(data.message)
+  if (data.name) err.name = data.name
+  if (data.code) (err as NodeJS.ErrnoException).code = data.code
+  if (data.errno !== undefined) (err as NodeJS.ErrnoException).errno = data.errno
+  if (data.syscall) (err as NodeJS.ErrnoException).syscall = data.syscall
+  if (data.path) (err as NodeJS.ErrnoException).path = data.path
+  if (data.stack) err.stack = data.stack
+  return err
+}
+
+export function isBridgeEnvelope(val: unknown): val is BridgeEnvelope {
+  return typeof val === 'object' && val !== null && '__bbebee_bridge__' in val
+}
+
+export function unwrapBridgeResult<T>(response: unknown): T {
+  if (isBridgeEnvelope(response)) {
+    if (!response.ok) {
+      throw deserializeBridgeError(response.error ?? { message: 'bridge call failed' })
+    }
+    return response.result as T
+  }
+  return response as T
+}
+

@@ -27,6 +27,8 @@ import { FsNode } from '@BBeBee/core-fs-node'
 import { DbNode } from '@BBeBee/core-db-node'
 import {
   CH,
+  serializeBridgeError,
+  type BridgeEnvelope,
   type BridgeEvent,
   type BridgeHttpHead,
   type BridgeHttpRequest,
@@ -314,75 +316,84 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
 
   /* ── Generic method dispatch ──────────────────────────────────────── */
 
-  ipc.handle(CH.call, async (event: CallerLike, ...rest) => {
-    const [service, method, args, token] = rest as unknown as [
-      BridgedService,
-      string,
-      unknown[],
-      string | undefined,
-    ]
-    const target = services[service]?.()
-    if (!target) throw new Error(`bridge: unknown service "${service}"`)
-    if (!ALLOWED[service].has(method)) {
-      throw new Error(`bridge: ${service}.${method} is not callable over the bridge`)
-    }
-
-    const callArgs = Array.isArray(args) ? args : []
-    if (service === 'fs' && method === 'pickDirectory') {
-      if (options.pickDirectory) {
-        const picked = await options.pickDirectory(event?.sender)
-        if (!picked) return undefined
-        const uri = toFileUri(picked)
-        extraRoots.add(uri)
-        return uri
+  ipc.handle(CH.call, async (event: CallerLike, ...rest): Promise<BridgeEnvelope> => {
+    try {
+      const [service, method, args, token] = rest as unknown as [
+        BridgedService,
+        string,
+        unknown[],
+        string | undefined,
+      ]
+      const target = services[service]?.()
+      if (!target) throw new Error(`bridge: unknown service "${service}"`)
+      if (!ALLOWED[service].has(method)) {
+        throw new Error(`bridge: ${service}.${method} is not callable over the bridge`)
       }
-    }
 
-    if (service === 'fs') {
-      for (const index of URI_ARGS[method] ?? []) assertContained(callArgs[index])
-    }
-    if (service === 'db' && typeof callArgs[0] === 'string') {
-      assertSqlAllowed(callArgs[0], 'the bridge')
-      if (/scan_specified_dir/i.test(callArgs[0]) && Array.isArray(callArgs[1])) {
-        for (const arg of callArgs[1]) {
-          if (
-            typeof arg === 'string' &&
-            (arg.startsWith('file://') || arg.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(arg))
-          ) {
-            const uri = toFileUri(arg)
-            extraRoots.add(uri)
+      const callArgs = Array.isArray(args) ? args : []
+      if (service === 'fs' && method === 'pickDirectory') {
+        if (options.pickDirectory) {
+          const picked = await options.pickDirectory(event?.sender)
+          if (!picked) return { __bbebee_bridge__: true, ok: true, result: undefined }
+          const uri = toFileUri(picked)
+          extraRoots.add(uri)
+          return { __bbebee_bridge__: true, ok: true, result: uri }
+        }
+      }
+
+      if (service === 'fs') {
+        for (const index of URI_ARGS[method] ?? []) assertContained(callArgs[index])
+      }
+      if (service === 'db' && typeof callArgs[0] === 'string') {
+        assertSqlAllowed(callArgs[0], 'the bridge')
+        if (/scan_specified_dir/i.test(callArgs[0]) && Array.isArray(callArgs[1])) {
+          for (const arg of callArgs[1]) {
+            if (
+              typeof arg === 'string' &&
+              (arg.startsWith('file://') || arg.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(arg))
+            ) {
+              const uri = toFileUri(arg)
+              extraRoots.add(uri)
+            }
           }
         }
       }
-    }
 
-    // A call carrying a transaction token is routed into that transaction's
-    // view rather than the shared service, so it participates in the
-    // transaction rather than queuing behind it (see core-db-node).
-    if (token) {
-      const open = transactions.get(token)
-      if (!open) throw new Error(`bridge: unknown transaction "${token}"`)
-      open.touch()
-      const fn = (open.tx as unknown as Record<string, (...a: unknown[]) => unknown>)[method]
-      if (typeof fn !== 'function') throw new Error(`bridge: db has no method "${method}"`)
-      return fn.apply(open.tx, callArgs)
-    }
+      // A call carrying a transaction token is routed into that transaction's
+      // view rather than the shared service, so it participates in the
+      // transaction rather than queuing behind it (see core-db-node).
+      if (token) {
+        const open = transactions.get(token)
+        if (!open) throw new Error(`bridge: unknown transaction "${token}"`)
+        open.touch()
+        const fn = (open.tx as unknown as Record<string, (...a: unknown[]) => unknown>)[method]
+        if (typeof fn !== 'function') throw new Error(`bridge: db has no method "${method}"`)
+        const result = await fn.apply(open.tx, callArgs)
+        return { __bbebee_bridge__: true, ok: true, result }
+      }
 
-    // `paths` is a bag of getters, not methods: a bare property read is the
-    // only sensible call shape for it.
-    if (service === 'paths' && callArgs.length === 0) {
-      const value = (target as unknown as Record<string, unknown>)[method]
-      if (typeof value !== 'function') return value
-    }
+      // `paths` is a bag of getters, not methods: a bare property read is the
+      // only sensible call shape for it.
+      if (service === 'paths' && callArgs.length === 0) {
+        const value = (target as unknown as Record<string, unknown>)[method]
+        if (typeof value !== 'function') return { __bbebee_bridge__: true, ok: true, result: value }
+      }
 
-    const fn = (target as unknown as Record<string, (...a: unknown[]) => unknown>)[method]
-    if (typeof fn !== 'function') throw new Error(`bridge: ${service} has no method "${method}"`)
-    void event
-    const result = await fn.apply(target, callArgs)
-    if (service === 'fs' && method === 'pickDirectory' && typeof result === 'string') {
-      extraRoots.add(toFileUri(result))
+      const fn = (target as unknown as Record<string, (...a: unknown[]) => unknown>)[method]
+      if (typeof fn !== 'function') throw new Error(`bridge: ${service} has no method "${method}"`)
+      void event
+      const result = await fn.apply(target, callArgs)
+      if (service === 'fs' && method === 'pickDirectory' && typeof result === 'string') {
+        extraRoots.add(toFileUri(result))
+      }
+      return { __bbebee_bridge__: true, ok: true, result }
+    } catch (error) {
+      return {
+        __bbebee_bridge__: true,
+        ok: false,
+        error: serializeBridgeError(error),
+      }
     }
-    return result
   })
 
   /* ── Chunked reads ────────────────────────────────────────────────── */

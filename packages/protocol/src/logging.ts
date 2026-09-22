@@ -141,3 +141,125 @@ export function redactString(value: string): string {
     .replace(SENSITIVE_QUERY, `$1${REDACTED}`)
     .replace(BEARER, `$1 ${REDACTED}`)
 }
+
+/* ── Log formatting ─────────────────────────────────────────────────────── */
+
+export interface FormattedLog {
+  /** The formatted message text with placeholders substituted. */
+  text: string
+  /** The message text with placeholders substituted AND unused args appended. */
+  fullMessage: string
+  /** Any arguments not consumed by format specifiers. */
+  unused: unknown[]
+}
+
+/**
+ * Format and redact arguments passed to `ctx.logger`.
+ *
+ * Supports standard printf-style placeholders:
+ *   - `%s`: string (or error stack/message, or JSON object)
+ *   - `%d`, `%i`: integer/number
+ *   - `%f`: float
+ *   - `%j`, `%o`, `%O`: JSON serialized object
+ *   - `%%`: literal `%`
+ *
+ * Unused arguments are preserved in `unused` and appended to `fullMessage`.
+ * All outputs have sensitive credentials redacted unless `raw: true` is specified.
+ */
+export function formatLogArguments(
+  args: unknown[],
+  options: { raw?: boolean } = {},
+): FormattedLog {
+  if (!args || !Array.isArray(args) || args.length === 0) {
+    return { text: '', fullMessage: '', unused: [] }
+  }
+
+  const [first, ...rest] = args
+
+  let template: string
+  if (first instanceof Error) {
+    template = first.stack || `${first.name}: ${first.message}`
+  } else if (typeof first === 'object' && first !== null) {
+    try {
+      template = JSON.stringify(first)
+    } catch {
+      template = String(first)
+    }
+  } else {
+    template = typeof first === 'string' ? first : String(first)
+  }
+
+  const rawTemplate = options.raw ? template : redactString(template)
+  const sanitizedRest = options.raw ? rest : (rest.map((a) => redact(a)) as unknown[])
+
+  let index = 0
+  const formattedText = rawTemplate.replace(/%[sdjifoO%]/g, (match) => {
+    if (match === '%%') return '%'
+    if (index >= sanitizedRest.length) return match
+    const val = sanitizedRest[index++]
+    if (match === '%j' || match === '%o' || match === '%O') {
+      try {
+        return JSON.stringify(val)
+      } catch {
+        return String(val)
+      }
+    }
+    if (match === '%d' || match === '%i') {
+      const n = Number(val)
+      return isNaN(n) ? 'NaN' : String(n)
+    }
+    if (match === '%f') {
+      const n = parseFloat(String(val))
+      return isNaN(n) ? 'NaN' : String(n)
+    }
+    if (typeof val === 'object' && val !== null) {
+      if ('stack' in val && typeof (val as { stack: unknown }).stack === 'string') {
+        return (val as { stack: string }).stack
+      }
+      if ('message' in val && typeof (val as { message: unknown }).message === 'string') {
+        const e = val as { name?: string; message: string }
+        return `${e.name ?? 'Error'}: ${e.message}`
+      }
+      try {
+        return JSON.stringify(val)
+      } catch {
+        return String(val)
+      }
+    }
+    return String(val)
+  })
+
+  const unused = sanitizedRest.slice(index)
+
+  let fullMessage = formattedText
+  if (unused.length > 0) {
+    const extraParts = unused.map((arg) => {
+      if (typeof arg === 'object' && arg !== null) {
+        if ('stack' in arg && typeof (arg as { stack: unknown }).stack === 'string') {
+          return (arg as { stack: string }).stack
+        }
+        if ('message' in arg && typeof (arg as { message: unknown }).message === 'string') {
+          const e = arg as { name?: string; message: string }
+          return `${e.name ?? 'Error'}: ${e.message}`
+        }
+        try {
+          return JSON.stringify(arg)
+        } catch {
+          return String(arg)
+        }
+      }
+      return String(arg)
+    })
+    fullMessage = `${formattedText} ${extraParts.join(' ')}`
+  }
+
+  const finalFullMessage = options.raw ? fullMessage : redactString(fullMessage)
+  const finalText = options.raw ? formattedText : redactString(formattedText)
+
+  return {
+    text: finalText,
+    fullMessage: finalFullMessage,
+    unused,
+  }
+}
+
