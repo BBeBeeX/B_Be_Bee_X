@@ -16,9 +16,20 @@ Layer 5（ui）— `plugin-queue`（headless）的桌面视图包：up-next 队�
 |---|---|
 | `queue.view` | `QueueScreen` |
 
-**`QueueScreen({ ctx })`** — up-next 列表。空队列 → `EmptyState`（🎵 "Nothing queued"）；否则 `List<QueueItem>`（`estimatedItemSize: tokens.size.row`，`keyExtractor: item.id`）+ `TrackRow`，`active: item.id === state.currentItemId`。行内容来自 headless 的 `useTracksByUrn`（一次 `getTracks` 批量解析）：**封面 + 标题 + 艺人**；尚未有目录答案时（写入进行中、源被移除）经 `queueTrackFallback` 显示——当前项借用 transport 的 nowPlaying 元数据，其余显示 "Loading…"，**绝不显示 URN**。行点击是 `playFromContext(urn)`：曲目按定义就在队列里，故语义是**跳到该项**、原队列原封不动。
+**`QueueScreen({ ctx, onClose })`** — 播放队列与最近播放历史抽屉页，提供顶部双 Tab 切换：
+- **「队列」Tab**：
+  - **当前播放**：高亮当前播放曲目（绿色标题、波形状态），无待播时提示 "队列中暂无更多待播歌曲"。
+  - **下一首播放**：展示后续待播序列，若带有来源语境则显示「下一首歌来自：{label}」。
+  - 空队列状态下展示 `EmptyState`（🎵 "Nothing queued"）。
+  - 行内容来自 `useTracksByUrn` 批量解析：封面 + 标题 + 艺人；未就绪时经 `queueTrackFallback` 优雅回退，绝不展示原始 URN。
+  - 行点击调用 `playFromContext(urn)` 跳至该项。
+- **「最近播放」Tab**：
+  - 通过 `usePlayHistory` 读取历史记录，并按 `trackUrn` 严格**去重**（保留该曲目最近一次的播放记录与时间）。
+  - 右侧显示相对时间（如 "刚刚"、"5分钟前"、"2小时前"）。
+  - 行点击调用 `playFromContext(record.trackUrn, uniqueHistoryUrns)`，将去重后的播放历史作为上下文队列播放。
+  - 空记录时展示 `EmptyState`（🎵 "暂无播放记录"）。
 
-**`bound(ctx, Screen)`** — 闭包本插件 `apply` 时的 context（shell 的 context 只有 `ui`，hooks 读 `ctx.player` 会抛 `cannot get property "player" without inject`——"设备上抛错、测试全绿"正是此 bug 的形状，因为测试建的是 root context）。必须 `h(Screen, …)` 而非函数调用。
+**`bound(ctx, Screen)`** — 闭包本插件 `apply` 时的 context（shell 的 context 只有 `ui`，hooks 读 `ctx.player` 会抛 `cannot get property "player" without inject`）。必须 `h(Screen, …)` 而非函数调用。
 
 ## 声明与导出
 
@@ -32,7 +43,13 @@ export default { name, inject, apply }
 
 ## 测试（`src/screens.test.tsx`）
 
-队列屏的标记断言：空态文案、行渲染、点击是跳转而非重新入队、目录未答时不显示 URN。
+- 空态与占位文案断言；
+- 队列行渲染、绿色高亮当前播放与「下一首播放」上下文标题；
+- 目录未解析时不显示原始 URN；
+- 行点击触发 `playFromContext` 跳转而非重新入队；
+- 最近播放 Tab 切换与列表展示；
+- 最近播放 Tab 歌曲按 `trackUrn` 去重测试，验证同一歌曲多次播放仅展示一行最新记录，且点击行附带去重上下文 URN 列表；
+- 队列行右键菜单操作项验证。
 
 ## 相关文档
 

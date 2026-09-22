@@ -321,6 +321,24 @@ Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `Unif
 - **Sidebar mode** (260–340px): Standard view featuring inline expandable folders via rotating triangle controls (`▼` / `▲`), indented child items (28px padding), and dedicated folder detail view (`< Folder Title`).
 - **Expanded mode** (full-canvas): High-density 3-column table view (`Title`, `Date Added`, `Last Played`) with top breadcrumb navigation (`音乐库 < 文件夹名`).
 
+### Detail screens, sorting & media views
+
+1. **Album, Playlist & Local Music Track Tables**:
+   - **Table Header Sorting**: Column headers (`#`, `标题`, `专辑`, `添加日期`, `时长`, `播放量`) support interactive sorting with ascending/descending directional indicators (`▲` / `▼`).
+   - **Action Bar Sort Menu**: Dropdown `ContextMenu` ("默认顺序 ≣" / "自定义顺序 ≣") providing rapid switching between sorting keys and directions.
+   - **Playback Queue Alignment**: Playing tracks from a sorted table (single-tap or "Play All") passes the sorted URN sequence to `ctx.player.playFromContext`, ensuring the playback queue matches visual order.
+   - **Playlist Item ID Decoupling**: In `PlaylistDetailScreen`, rows wrap data as `{ item, track, trackUrn, originalIndex }`, preserving item IDs across sort operations so that removals and context menus act on the correct playlist item.
+
+2. **Local Music Dual Views (Tracks & Albums)**:
+   - Header segmented toggle allows switching between "歌曲" (table list) and "专辑" (grid view).
+   - Album grid view aggregates local tracks into `LocalAlbumCard` components with cover artwork, title, artist, track count, and hover play trigger.
+   - Sort dropdown adapts dynamically to album-specific criteria (name, artist, year, track count).
+
+3. **Playback History & Recent Plays**:
+   - **Deduplication**: `HistoryScreen` (desktop and mobile) and `QueueScreen` (recent plays tab) de-duplicate tracks by `trackUrn`, retaining only the most recent playback record (with its relative timestamp and completion badge).
+   - **Play Count Indicator**: `HistoryScreen` displays a `播放 N 次` capsule badge indicating total plays per track.
+   - **Count Consistency**: Header counters (`(${uniqueRecords.length} 首)`) and empty state checks evaluate against deduplicated unique tracks.
+
 ### The source surfaces
 
 Four screens carry the whole string model, and they are worth naming because they are the part of

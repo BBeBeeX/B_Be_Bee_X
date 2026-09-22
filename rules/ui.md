@@ -145,3 +145,41 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
   - `EditPlaylistModal`: Modify cover art (file picker or URL), title, and multiline description.
   - `RenameFolderModal`: Rename folder title and save via `ctx.library.renameCollection`.
 
+---
+
+## 7. Detail Screens, Sorting & Playback History Specifications
+
+### Track Table Sorting (`AlbumScreen`, `PlaylistDetailScreen`, `LocalMusicScreen`)
+- **Interactive Header Columns**:
+  - Clicking column headers (`#`, `标题`, `专辑`, `添加日期`, `时长`, `播放量`) toggles between ascending (`asc`) and descending (`desc`) order.
+  - Active sorted column displays a subtle directional arrow indicator (`▲` for ascending, `▼` for descending).
+  - Clicking a different column resets direction to ascending.
+- **Action Bar Sort Dropdown (`ContextMenu`)**:
+  - Dedicated sort dropdown button (e.g. `默认顺序 ≣` / `自定义顺序 ≣` / `标题 ≣`).
+  - Clicking reveals a structured `ContextMenu` with sort key options and an asc/desc toggle option.
+- **Playback Queue Coherence**:
+  - Playing a single track or clicking "Play All / Play Album" passes the currently sorted/filtered track URN sequence to `ctx.player.playFromContext`.
+  - Up-next playback order strictly follows the visual sorted order on screen.
+- **Playlist Item ID Decoupling**:
+  - `PlaylistDetailScreen` wraps row data as `{ item, track, trackUrn, originalIndex }` so that row actions (removal, context menus) remain bound to `PlaylistItem.id`, immune to active sort orders.
+
+### Local Music Dual Views (`LocalMusicScreen`)
+- **View Toggle**: Segmented toggle in header to switch between "歌曲" (Tracks table) and "专辑" (Albums grid).
+- **Local Album Grid (`LocalAlbumCard`)**:
+  - Groups local tracks by album name, deriving artwork from the first track with artwork.
+  - Cards display album cover, title, artist, and track count.
+  - Hovering reveals a green play button (`▶`) for instant playback of the album's tracks.
+  - Clicking the card navigates directly to the album view (`album.view`).
+- **Album Grid Sorting**: Action bar sort menu dynamically adapts when album view is active, providing album-specific sort keys: default order, album title, artist, release year, track count.
+
+### Playback History & Recent Plays (`HistoryScreen` & `QueueScreen`)
+- **Strict Deduplication by `trackUrn`**:
+  - Both desktop and mobile `HistoryScreen` and the desktop `QueueScreen` "最近播放" tab de-duplicate playback entries by `trackUrn`, retaining only the most recent playback record.
+  - Preserves latest playback timestamp, relative time display, and completion/skipped badges.
+  - Headless batch metadata loading (`useTracksByUrn`) only resolves the deduplicated URN list, avoiding redundant catalogue lookups.
+- **Play Count Indicator**:
+  - `HistoryScreen` calculates cumulative play frequency per track across the history dataset.
+  - Displays a pill badge (`播放 N 次`) in the row metadata area.
+- **Header Count & Empty State Alignment**:
+  - Header record counts (`最近播放记录 (${uniqueRecords.length} 首)`) and empty state guards evaluate against deduplicated records.
+

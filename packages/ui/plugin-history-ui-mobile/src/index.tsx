@@ -4,7 +4,7 @@
  * One screen: playback history and activity statistics.
  */
 
-import { createElement as h, Fragment } from 'react'
+import { createElement as h, Fragment, useMemo } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
@@ -46,16 +46,30 @@ function formatPlayDuration(ms: number): string {
 }
 
 export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
-  const { records, loading } = usePlayHistory(ctx, { limit: 100 })
+  const { records, loading } = usePlayHistory(ctx, { limit: 200 })
+  const { uniqueRecords, playCountMap } = useMemo(() => {
+    const counts = new Map<string, number>()
+    const seen = new Set<string>()
+    const list: PlayRecord[] = []
+    for (const r of records) {
+      counts.set(r.trackUrn, (counts.get(r.trackUrn) ?? 0) + 1)
+      if (!seen.has(r.trackUrn)) {
+        seen.add(r.trackUrn)
+        list.push(r)
+      }
+    }
+    return { uniqueRecords: list, playCountMap: counts }
+  }, [records])
+
   const { stats } = usePlayHistoryStats(ctx)
   const transport = useTransport(ctx)
   const tracks = useTracksByUrn(
     ctx,
-    records.map((r) => r.trackUrn),
+    uniqueRecords.map((r) => r.trackUrn),
   )
   const menu = useTrackMenu(ctx)
 
-  if (records.length === 0 && !loading) {
+  if (uniqueRecords.length === 0 && !loading) {
     return h(EmptyState, {
       icon: '🎵',
       title: '暂无播放记录',
@@ -93,23 +107,52 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
       ),
     ),
     h(List<PlayRecord>, {
-      items: records,
+      items: uniqueRecords,
       accessibilityLabel: '播放历史',
       estimatedItemSize: tokens.size.row,
       keyExtractor: (item) => item.id,
       renderItem: (item) => {
         const track = tracks.get(item.trackUrn) ?? fallbackTrack(item.trackUrn)
         const isActive = transport.trackUrn === item.trackUrn
-        return h(CachedTrackRow, {
-          ctx,
-          track,
-          active: isActive,
-          showArtwork: true,
-          onPress: () => {
-            void ctx.player?.playNow?.([item.trackUrn])
+        const playCount = playCountMap.get(item.trackUrn) ?? 1
+        return h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              paddingRight: 12,
+            },
           },
-          onMore: (anchor) => menu.open({ track }, anchor),
-        })
+          h(
+            'div',
+            { style: { flex: 1, minWidth: 0 } },
+            h(CachedTrackRow, {
+              ctx,
+              track,
+              active: isActive,
+              showArtwork: true,
+              onPress: () => {
+                void ctx.player?.playNow?.([item.trackUrn])
+              },
+              onMore: (anchor) => menu.open({ track }, anchor),
+            }),
+          ),
+          h(
+            'span',
+            {
+              style: {
+                fontSize: 11,
+                padding: '1px 6px',
+                borderRadius: 4,
+                background: 'rgba(255, 255, 255, 0.08)',
+                color: '#8e8e93',
+                whiteSpace: 'nowrap',
+              },
+            },
+            `播放 ${playCount} 次`,
+          ),
+        )
       },
     }),
     h(ContextMenu, menu.menuProps),

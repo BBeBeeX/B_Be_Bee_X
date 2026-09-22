@@ -7,10 +7,10 @@
  * 3. Playback history track list with date filtering, playback controls, and context menus.
  */
 
-import { createElement as h, useState } from 'react'
+import { createElement as h, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { Track } from '@BBeBee/protocol'
+import type { PlayRecord, Track } from '@BBeBee/protocol'
 import {
   usePlayHistory,
   usePlayHistoryStats,
@@ -103,14 +103,28 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
   const { stats } = usePlayHistoryStats(ctx)
   const { heatmap } = usePlayHistoryHeatmap(ctx, 365)
   const { records, loading } = usePlayHistory(ctx, {
-    limit: 200,
+    limit: 500,
     date: selectedDate ?? undefined,
   })
+
+  const { uniqueRecords, playCountMap } = useMemo(() => {
+    const counts = new Map<string, number>()
+    const seen = new Set<string>()
+    const list: PlayRecord[] = []
+    for (const r of records) {
+      counts.set(r.trackUrn, (counts.get(r.trackUrn) ?? 0) + 1)
+      if (!seen.has(r.trackUrn)) {
+        seen.add(r.trackUrn)
+        list.push(r)
+      }
+    }
+    return { uniqueRecords: list, playCountMap: counts }
+  }, [records])
 
   const transport = useTransport(ctx)
   const tracks = useTracksByUrn(
     ctx,
-    records.map((r) => r.trackUrn),
+    uniqueRecords.map((r) => r.trackUrn),
   )
   const menu = useTrackMenu(ctx)
 
@@ -267,11 +281,13 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
       h(
         'div',
         { style: { fontSize: 14, fontWeight: 600, color: '#f5f5f7' } },
-        selectedDate ? `${selectedDate} 的播放记录 (${records.length} 首)` : `最近播放记录 (${records.length} 首)`,
+        selectedDate
+          ? `${selectedDate} 的播放记录 (${uniqueRecords.length} 首)`
+          : `最近播放记录 (${uniqueRecords.length} 首)`,
       ),
     ),
     // Track List or Empty State
-    records.length === 0 && !loading
+    uniqueRecords.length === 0 && !loading
       ? h(EmptyState, {
           icon: '🎵',
           title: selectedDate ? `${selectedDate} 无播放记录` : '暂无播放记录',
@@ -288,9 +304,10 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
               gap: 2,
             },
           },
-          records.map((record) => {
+          uniqueRecords.map((record) => {
             const track = tracks.get(record.trackUrn) ?? fallbackTrack(record.trackUrn)
             const isActive = transport.trackUrn === record.trackUrn
+            const playCount = playCountMap.get(record.trackUrn) ?? 1
 
             return h(
               'div',
@@ -335,6 +352,19 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
                     userSelect: 'none',
                   },
                 },
+                h(
+                  'span',
+                  {
+                    style: {
+                      fontSize: 11,
+                      padding: '1px 6px',
+                      borderRadius: 4,
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      color: '#8e8e93',
+                    },
+                  },
+                  `播放 ${playCount} 次`,
+                ),
                 record.completed
                   ? h(
                       'span',

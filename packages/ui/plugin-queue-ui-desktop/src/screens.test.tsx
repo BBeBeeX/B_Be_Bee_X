@@ -234,6 +234,60 @@ describe('QueueScreen', () => {
     expect(container.textContent).toContain('Historical Track')
     expect(container.textContent).toContain('分钟前')
   })
+
+  it('de-duplicates tracks in 最近播放 tab showing only the most recent entry', async () => {
+    const { ctx, calls } = await harness(
+      {},
+      [{ id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' }],
+      {
+        'BBeBee:local:track:dup': { urn: 'BBeBee:local:track:dup', title: 'Duplicate Track', artists: [] },
+        'BBeBee:local:track:other': { urn: 'BBeBee:local:track:other', title: 'Other Track', artists: [] },
+      },
+      [
+        {
+          id: 'hist-1',
+          trackUrn: 'BBeBee:local:track:dup',
+          startedAt: Date.now() - 10000,
+          msPlayed: 120000,
+          completed: true,
+          skipped: false,
+        },
+        {
+          id: 'hist-2',
+          trackUrn: 'BBeBee:local:track:dup',
+          startedAt: Date.now() - 100000,
+          msPlayed: 120000,
+          completed: true,
+          skipped: false,
+        },
+        {
+          id: 'hist-3',
+          trackUrn: 'BBeBee:local:track:other',
+          startedAt: Date.now() - 200000,
+          msPlayed: 120000,
+          completed: true,
+          skipped: false,
+        },
+      ],
+    )
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+    const histTab = container.querySelector('button[aria-label="最近播放"]') as HTMLElement
+    act(() => {
+      fireEvent.click(histTab)
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const historyList = container.querySelector('div[role="list"][aria-label="最近播放"]')
+    expect(historyList).not.toBeNull()
+    const items = historyList?.querySelectorAll('[role="listitem"]')
+    expect(items).toHaveLength(2)
+
+    const firstRow = items?.[0]?.querySelector('[role="row"]') as HTMLElement
+    expect(firstRow).toBeTruthy()
+    firstRow.click()
+    expect(calls).toContain('jump:BBeBee:local:track:dup|BBeBee:local:track:dup,BBeBee:local:track:other')
+  })
 })
 
 

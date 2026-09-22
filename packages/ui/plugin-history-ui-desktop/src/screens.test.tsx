@@ -189,4 +189,70 @@ describe('HistoryScreen', () => {
     fireEvent.click(confirmBtn)
     expect(calls).toContain('clearHistory')
   })
+
+  it('de-duplicates records and displays play count per track', async () => {
+    const now = Date.now()
+    const records: PlayRecord[] = [
+      {
+        id: '1',
+        trackUrn: 'BBeBee:local:track:dup',
+        startedAt: now,
+        msPlayed: 180000,
+        completed: true,
+        skipped: false,
+      },
+      {
+        id: '2',
+        trackUrn: 'BBeBee:local:track:dup',
+        startedAt: now - 60000,
+        msPlayed: 180000,
+        completed: true,
+        skipped: false,
+      },
+      {
+        id: '3',
+        trackUrn: 'BBeBee:local:track:dup',
+        startedAt: now - 120000,
+        msPlayed: 60000,
+        completed: false,
+        skipped: true,
+      },
+      {
+        id: '4',
+        trackUrn: 'BBeBee:local:track:single',
+        startedAt: now - 180000,
+        msPlayed: 200000,
+        completed: true,
+        skipped: false,
+      },
+    ]
+    const tracks: Record<string, Track> = {
+      'BBeBee:local:track:dup': {
+        urn: 'BBeBee:local:track:dup',
+        title: 'Song Repeated',
+        artists: [{ name: 'Artist A', urn: 'BBeBee:local:artist:1', role: 'main', ordinal: 0 }],
+      },
+      'BBeBee:local:track:single': {
+        urn: 'BBeBee:local:track:single',
+        title: 'Song Once',
+        artists: [{ name: 'Artist B', urn: 'BBeBee:local:artist:2', role: 'main', ordinal: 0 }],
+      },
+    }
+
+    const { ctx } = await harness({ records, tracks })
+    const { findByText, findAllByText } = render(h(HistoryScreen, { ctx }))
+
+    // De-duplicated count in header: (2 首)
+    expect(await findByText('最近播放记录 (2 首)')).toBeTruthy()
+
+    // Each unique track rendered once
+    const dupTitles = await findAllByText('Song Repeated')
+    expect(dupTitles).toHaveLength(1)
+    const singleTitles = await findAllByText('Song Once')
+    expect(singleTitles).toHaveLength(1)
+
+    // Play count badge
+    expect(await findByText('播放 3 次')).toBeTruthy()
+    expect(await findByText('播放 1 次')).toBeTruthy()
+  })
 })

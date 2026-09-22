@@ -17,10 +17,15 @@ Layer 5（ui）— `plugin-album`（headless）的桌面视图包：专辑页的
 **`AlbumScreen({ urn })`** — `useAlbum` → 三态分支（`Pending` / "Album unavailable" + 原因 / 内容）：
 
 - **header**：横排 160px `Artwork`（经 `CachedArtwork` 走 `ctx.cache`，未命中先画 fallback，不把远端 URL 交给第二个请求）+ 标题 + 艺人 + "Play album"；
-- **曲目 `List`**：`showArtwork: false`，`estimatedItemSize: tokens.size.row`，空专辑显示 "This album has no tracks"；
+- **操作栏与多维排序**：
+  - 绿色主播放按钮（`▶`）、随机播放、添加到收藏与更多操作；
+  - 右侧提供排序下拉菜单（如 `默认顺序 ≣` / `标题 ≣`），点击弹出 `ContextMenu` 支持在默认序号、标题、时长、播放量之间快速切换并支持升降序切换。
+- **曲目列表与表头交互**：
+  - 表头列（`#`、`标题`、`播放量`、`🕒 时长`）支持鼠标点击排序，再次点击切换升序/降序，高亮当前排序列并展示箭头指示器（`▲`/`▼`）。
+  - 曲目 `List`：`showArtwork: false`，`estimatedItemSize: tokens.size.row`，空专辑显示 "This album has no tracks"；
 - **播放语义**（本屏存在的理由）：
-  - "Play album" → `player.playNow(全部曲目)`——**显式的"从头播这张"手势，直接替换队列**；`disabled: 无曲目`，禁用而非隐藏（"没有可播曲目的专辑"是真实状态，藏掉按钮就藏掉了原因）。
-  - 点单轨 → `player.playFromContext(track, 全部曲目, { context: { kind: 'album', urn, label } })`——队列已有该曲则跳转、队列不动；没有则整张专辑成为队列并从点击处起播。
+  - "Play album" → `player.playNow(排序后的全部曲目)`——**显式的"从头播这张"手势，直接替换队列**；`disabled: 无曲目`，禁用而非隐藏。
+  - 点单轨 → `player.playFromContext(track, 排序后的全部曲目, { context: { kind: 'album', urn, label } })`——播放语境与当前页面排序完全一致。
   - **播放不导航**：走带条自己宣布正在播放，用户停在原地。
 - **下载**：`onDownload` → `ctx.downloads.enqueue([urn])`；没有 `ctx.downloads` 的构建不画这个按钮。
 
@@ -28,12 +33,14 @@ Layer 5（ui）— `plugin-album`（headless）的桌面视图包：专辑页的
 
 ## 测试（`src/screens.test.tsx`）
 
-jsdom + Testing Library，`withListLayout` 给虚拟列表量高；harness 注册 sources/player/downloads/ui 桩并从 `inject` 派生 scoped context。4 个用例：
+jsdom + Testing Library，`withListLayout` 给虚拟列表量高；harness 注册 sources/player/downloads/ui 桩并从 `inject` 派生 scoped context。测试用例涵盖：
 
 1. 画出专辑 + "Play album" → `playNow([A, B])`（逐字）；
 2. 点 "Jóga" → `playFromContext(B, [A, B], { kind: 'album', urn, label: 'Homogenic' })`；
 3. 下载按钮 → `downloads.enqueue([A])` 且**不触碰播放**；
-4. 缺失专辑 → "Album unavailable" + "no album"，而不是一张空页。
+4. 缺失专辑 → "Album unavailable" + "no album"，而不是一张空页；
+5. 点击表头列进行排序切换，并验证点击曲目时 `playFromContext` 接收反转/排序后的 URN 列表；
+6. 操作栏排序下拉菜单切换排序键，并验证排序后的播放队列上下文。
 
 ## 相关文档
 

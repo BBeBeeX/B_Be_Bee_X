@@ -7,10 +7,10 @@
  * and event wiring only (docs/08 §1).
  */
 
-import { createElement as h, useState } from 'react'
+import { createElement as h, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { Track } from '@BBeBee/protocol'
+import type { PlayRecord, Track } from '@BBeBee/protocol'
 import { QUEUE_VIEWS } from '@BBeBee/plugin-queue/views'
 import {
   queueTrackFallback,
@@ -182,10 +182,23 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
   const queueTrackUrns = queue.map((item) => item.trackUrn)
   const queueTracks = useTracksByUrn(ctx, queueTrackUrns)
 
-  // Play history resolution
-  const { records: historyRecords, loading: historyLoading } = usePlayHistory(ctx, { limit: 50 })
-  const historyTrackUrns = historyRecords.map((r) => r.trackUrn)
-  const historyTracks = useTracksByUrn(ctx, historyTrackUrns)
+  // Play history resolution (de-duplicated by trackUrn, preserving most recent occurrence)
+  const { records: historyRecords, loading: historyLoading } = usePlayHistory(ctx, { limit: 100 })
+  const { uniqueHistoryRecords, uniqueHistoryUrns } = useMemo(() => {
+    const seen = new Set<string>()
+    const list: PlayRecord[] = []
+    const urns: string[] = []
+    for (const record of historyRecords) {
+      if (!seen.has(record.trackUrn)) {
+        seen.add(record.trackUrn)
+        list.push(record)
+        urns.push(record.trackUrn)
+      }
+    }
+    return { uniqueHistoryRecords: list, uniqueHistoryUrns: urns }
+  }, [historyRecords])
+
+  const historyTracks = useTracksByUrn(ctx, uniqueHistoryUrns)
 
   const handleClose = () => {
     if (onClose) {
@@ -471,7 +484,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
   }
 
   const renderHistoryContent = () => {
-    if (historyRecords.length === 0 && !historyLoading) {
+    if (uniqueHistoryRecords.length === 0 && !historyLoading) {
       return h(EmptyState, {
         icon: '🎵',
         title: '暂无播放记录',
@@ -491,7 +504,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
           minHeight: 0,
         },
       },
-      historyRecords.map((record) => {
+      uniqueHistoryRecords.map((record) => {
         const track: Track = historyTracks.get(record.trackUrn) ?? {
           urn: record.trackUrn,
           title: record.trackUrn.split(':').pop() ?? record.trackUrn,
@@ -506,7 +519,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
             track,
             active: isActive,
             extraRight: formatRelativeTime(record.startedAt),
-            onPress: () => void ctx.player.playFromContext(record.trackUrn),
+            onPress: () => void ctx.player.playFromContext(record.trackUrn, uniqueHistoryUrns),
             onMore: (anchor) => menu.open({ track }, anchor),
           }),
         )
