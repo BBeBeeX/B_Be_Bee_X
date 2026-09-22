@@ -125,10 +125,8 @@ export class Library extends Service implements LibraryService {
           path: '/favorites',
           title: 'Favourites',
           icon: 'heart',
-          // On desktop chrome, and on mobile reached from the playlists
-          // screen — the tab bar is full and this is a screen people visit,
-          // not one they live in.
-          placement: ['sidebar'],
+          // Reached from inside the library rather than standalone chrome
+          placement: [],
           order: 31,
         })
       }, 'library-ui-contributions'),

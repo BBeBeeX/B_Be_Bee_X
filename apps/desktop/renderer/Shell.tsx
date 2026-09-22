@@ -144,6 +144,7 @@ export function Shell({ ctx }: { ctx: Context }) {
   const [isFullscreenNowPlaying, setIsFullscreenNowPlaying] = useState(false)
   const [isBottomBarHovered, setIsBottomBarHovered] = useState(false)
   const [isQueueOpen, setIsQueueOpen] = useState(false)
+  const [libraryMode, setLibraryMode] = useState<'collapsed' | 'sidebar' | 'expanded'>('sidebar')
 
   const [navState, setNavState] = useState<{ history: HistoryItem[]; index: number }>({
     history: [],
@@ -153,6 +154,9 @@ export function Shell({ ctx }: { ctx: Context }) {
   const navigateTo = useCallback(
     (id: string, params?: Record<string, unknown>) => {
       setIsFullscreenNowPlaying(false)
+      if (id !== 'library.home') {
+        setLibraryMode((m) => (m === 'expanded' ? 'sidebar' : m))
+      }
       setNavState((prev) => {
         const base =
           prev.history.length === 0 && defaultEntry ? [{ id: defaultEntry.id }] : prev.history
@@ -247,6 +251,15 @@ export function Shell({ ctx }: { ctx: Context }) {
     | undefined
   const DesktopLyrics = ctx.ui.viewFor('desktop-lyrics.floating') as
     | ComponentType<{ ctx: Context }>
+    | undefined
+  const LibraryView = ctx.ui.viewFor('library.home') as
+    | ComponentType<{
+        ctx: Context
+        mode?: 'collapsed' | 'sidebar' | 'expanded'
+        onModeChange?: (mode: 'collapsed' | 'sidebar' | 'expanded') => void
+        onOpenAlbum?: (urn: string) => void
+        [key: string]: unknown
+      }>
     | undefined
 
   if (isFullscreenNowPlaying) {
@@ -399,14 +412,24 @@ export function Shell({ ctx }: { ctx: Context }) {
       {
         style: {
           display: 'grid',
-          gridTemplateColumns: isQueueOpen
-            ? '240px 1fr minmax(260px, 28%)'
-            : '240px 1fr',
+          gridTemplateColumns:
+            libraryMode === 'expanded'
+              ? isQueueOpen
+                ? '1fr minmax(260px, 28%)'
+                : '1fr'
+              : libraryMode === 'collapsed'
+                ? isQueueOpen
+                  ? '72px 1fr minmax(260px, 28%)'
+                  : '72px 1fr'
+                : isQueueOpen
+                  ? '240px 1fr minmax(260px, 28%)'
+                  : '240px 1fr',
           gap: 8,
           padding: 8,
           flex: 1,
           minHeight: 0,
           overflow: 'hidden',
+          transition: 'grid-template-columns 0.28s cubic-bezier(0.2, 0, 0, 1)',
         },
       },
       h(
@@ -414,110 +437,183 @@ export function Shell({ ctx }: { ctx: Context }) {
         {
           style: {
             borderRadius: 8,
-            padding: 12,
+            padding: LibraryView ? 0 : 12,
             background: '#121212',
             minHeight: 0,
             overflowY: 'auto',
+            overflowX: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
           },
         },
         h(
           'div',
-          { style: { fontSize: 12, color: '#5A5A68', padding: '8px 10px', letterSpacing: 1 } },
+          {
+            style: LibraryView
+              ? {
+                  position: 'absolute',
+                  width: 1,
+                  height: 1,
+                  padding: 0,
+                  margin: -1,
+                  overflow: 'hidden',
+                  clip: 'rect(0, 0, 0, 0)',
+                  whiteSpace: 'nowrap',
+                  border: 0,
+                }
+              : { fontSize: 12, color: '#5A5A68', padding: '8px 10px', letterSpacing: 1 },
+          },
           'BBeBee',
         ),
-        ...entries.map((entry, index) => {
-          const isActive =
-            currentId === entry.id ||
-            (currentId === 'album.view' && entry.id === 'library.home')
-          return h(
-            'div',
-            { key: entry.id },
-            // One heading, above the first settings page. Without the divide the
-            // sidebar reads as one flat list and "Music folders" looks like a
-            // library section rather than a setting.
-            entry.group === 'settings' && entries[index - 1]?.group !== 'settings'
-              ? h(
-                  'div',
-                  {
-                    style: {
-                      fontSize: 11,
-                      color: '#5A5A68',
-                      padding: '14px 10px 4px',
-                      letterSpacing: 1,
-                      textTransform: 'uppercase',
-                    },
-                  },
-                  'Settings',
-                )
-              : null,
-            h(
-              'button',
-              {
-                onClick: () => {
-                  if (entry.id === 'now-playing.view') {
-                    setIsFullscreenNowPlaying(true)
-                  } else {
-                    navigateTo(entry.id)
-                  }
-                },
-                style: {
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '8px 10px',
-                  marginBottom: 2,
-                  borderRadius: 6,
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: isActive ? '#2A2340' : 'transparent',
-                  color: isActive ? '#F5F5F7' : '#A0A0AE',
-                  font: 'inherit',
-                },
-              },
-              entry.title,
-            ),
-          )
-        }),
-      ),
-      h(
-        'main',
-        {
-          style: {
-            borderRadius: 8,
-            background: '#121212',
-            overflow: 'auto',
-            minHeight: 0,
-          },
-        },
-        View
+        LibraryView
           ? h(
-              ViewBoundary,
-              {
-                // Remounts on navigation, which is what clears a failed view once
-                // the user goes somewhere else and comes back.
-                key: currentId + (currentParams ? `:${JSON.stringify(currentParams)}` : ''),
-                title: active?.title ?? currentId ?? 'This view',
-                onError: (error) =>
-                  ctx.logger.error(
-                    `ui: view "${currentId}" threw: ${error.stack ?? error.message}`,
-                  ),
-              },
-              h(View, {
+              'div',
+              { style: { height: '100%', width: '100%', display: 'flex', flexDirection: 'column' } },
+              h('span', { style: { display: 'none' } }, 'Library'),
+              h(LibraryView, {
                 ctx,
-                ...currentParams,
+                mode: libraryMode,
+                onModeChange: setLibraryMode,
                 onOpenAlbum: (urn: string) => navigateTo('album.view', { urn }),
               }),
+              entries
+                .filter((e) => e.group === 'settings')
+                .map((entry) =>
+                  h(
+                    'button',
+                    {
+                      key: entry.id,
+                      onClick: () => navigateTo(entry.id),
+                      style: {
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '8px 10px',
+                        marginBottom: 2,
+                        borderRadius: 6,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: currentId === entry.id ? '#2A2340' : 'transparent',
+                        color: currentId === entry.id ? '#F5F5F7' : '#A0A0AE',
+                        font: 'inherit',
+                      },
+                    },
+                    entry.title,
+                  ),
+                ),
             )
-          : h(
-              'div',
-              { style: { padding: 24, color: '#A0A0AE' } },
-              active
-                ? // A contribution with no view on this target is a normal
-                  // state, not an error — the direct cost of ADR-2 (docs/08 §3).
-                  `"${active.title}" has no desktop view.`
-                : 'No plugin has contributed a route.',
-            ),
+          : entries.map((entry, index) => {
+              const isActive =
+                currentId === entry.id ||
+                (currentId === 'album.view' && entry.id === 'library.home')
+              return h(
+                'div',
+                { key: entry.id },
+                // One heading, above the first settings page. Without the divide the
+                // sidebar reads as one flat list and "Music folders" looks like a
+                // library section rather than a setting.
+                entry.group === 'settings' && entries[index - 1]?.group !== 'settings'
+                  ? h(
+                      'div',
+                      {
+                        style: {
+                          fontSize: 11,
+                          color: '#5A5A68',
+                          padding: '14px 10px 4px',
+                          letterSpacing: 1,
+                          textTransform: 'uppercase',
+                        },
+                      },
+                      'Settings',
+                    )
+                  : null,
+                h(
+                  'button',
+                  {
+                    onClick: () => {
+                      if (entry.id === 'now-playing.view') {
+                        setIsFullscreenNowPlaying(true)
+                      } else {
+                        navigateTo(entry.id)
+                      }
+                    },
+                    style: {
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 10px',
+                      marginBottom: 2,
+                      borderRadius: 6,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: isActive ? '#2A2340' : 'transparent',
+                      color: isActive ? '#F5F5F7' : '#A0A0AE',
+                      font: 'inherit',
+                    },
+                  },
+                  entry.title,
+                ),
+              )
+            }),
       ),
+      libraryMode === 'expanded'
+        ? null
+        : h(
+            'main',
+            {
+              style: {
+                borderRadius: 8,
+                background: '#121212',
+                overflow: 'auto',
+                minHeight: 0,
+              },
+            },
+            View
+              ? currentId === 'library.home' && LibraryView
+                ? h(
+                    'div',
+                    {
+                      style: {
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '100%',
+                        color: '#A0A0AE',
+                        gap: 12,
+                      },
+                    },
+                    h('span', { style: { fontSize: 40, opacity: 0.6 } }, '♪'),
+                    h('div', { style: { fontSize: 15, fontWeight: 500 } }, '选择歌单或专辑开始播放'),
+                  )
+                : h(
+                    ViewBoundary,
+                    {
+                      // Remounts on navigation, which is what clears a failed view once
+                      // the user goes somewhere else and comes back.
+                      key: currentId + (currentParams ? `:${JSON.stringify(currentParams)}` : ''),
+                      title: active?.title ?? currentId ?? 'This view',
+                      onError: (error) =>
+                        ctx.logger.error(
+                          `ui: view "${currentId}" threw: ${error.stack ?? error.message}`,
+                        ),
+                    },
+                    h(View, {
+                      ctx,
+                      ...currentParams,
+                      onOpenAlbum: (urn: string) => navigateTo('album.view', { urn }),
+                    }),
+                  )
+              : h(
+                  'div',
+                  { style: { padding: 24, color: '#A0A0AE' } },
+                  active
+                    ? // A contribution with no view on this target is a normal
+                      // state, not an error — the direct cost of ADR-2 (docs/08 §3).
+                      `"${active.title}" has no desktop view.`
+                    : 'No plugin has contributed a route.',
+                ),
+          ),
       isQueueOpen && QueueView
         ? h(
             'aside',
