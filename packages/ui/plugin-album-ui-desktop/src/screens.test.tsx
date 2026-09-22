@@ -104,6 +104,20 @@ class LibraryStub extends Service {
     else this.saved.delete(urn)
     this.ctx.emit('library/changed', 'album', [urn])
   }
+  async listSaved(kind: string): Promise<{ items: { urn: string }[] }> {
+    return { items: Array.from(this.saved).filter((urn) => urn.includes(kind)).map((urn) => ({ urn })) }
+  }
+  async listPlaylists() {
+    return { items: [{ urn: 'BBeBee:user:playlist:p1', name: 'My Playlist', isSmart: false }] }
+  }
+  async addTracks(playlistUrn: string, trackUrns: string[]): Promise<void> {
+    this.calls.push(`addTracks:${playlistUrn}:${trackUrns.join(',')}`)
+  }
+  async createPlaylist(name: string) {
+    const p = { urn: `BBeBee:user:playlist:${Date.now()}`, name, isSmart: false }
+    this.calls.push(`createPlaylist:${name}`)
+    return p
+  }
   async listCollections() {
     return [
       { id: 'col-1', name: 'My Folder', memberCount: 0, depth: 0, path: 'My Folder', revision: 0, createdAt: 0, updatedAt: 0 },
@@ -134,12 +148,13 @@ describe('AlbumScreen', () => {
   it('draws the album and plays it from the top', async () => {
     const { ctx, player } = await harness()
     await withListLayout(async () => {
-      const { getByText } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
+      const { getAllByText, getByText } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
       await act(async () => {
+        await tick()
         await tick()
       })
 
-      expect(getByText('Homogenic')).toBeTruthy()
+      expect(getAllByText('Homogenic').length).toBeGreaterThan(0)
       await act(async () => {
         getByText('Play album').click()
         await tick()
@@ -331,6 +346,60 @@ describe('AlbumScreen', () => {
         await tick()
       })
       expect(library.calls).toContain(`save:${ALBUM_URN}:true`)
+    })
+  })
+
+  it('displays album column in table header and supports sorting by album', async () => {
+    const { ctx } = await harness()
+    await withListLayout(async () => {
+      const { getByTestId } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
+      await act(async () => {
+        await tick()
+      })
+
+      const albumCol = getByTestId('album-sort-album')
+      expect(albumCol.textContent).toContain('专辑')
+
+      await act(async () => {
+        albumCol.click()
+        await tick()
+      })
+      expect(albumCol.textContent).toContain('▲')
+    })
+  })
+
+  it('renders track library action button and handles add to favorites and playlist menu', async () => {
+    const { ctx, library } = await harness()
+    await withListLayout(async () => {
+      const { getAllByTitle, getByText } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
+      await act(async () => {
+        await tick()
+      })
+
+      const addButtons = getAllByTitle('加入最喜欢的音乐')
+      expect(addButtons.length).toBeGreaterThan(0)
+      const firstBtn = addButtons[0]!
+      expect(firstBtn.textContent).toBe('＋')
+
+      // Click '+'
+      await act(async () => {
+        firstBtn.click()
+        await tick()
+      })
+
+      // Saved in library
+      expect(library.calls).toContain(`save:${TRACK_A}:true`)
+      // Row immediately updates to green heart '♥'
+      expect(firstBtn.textContent).toBe('♥')
+
+      // Clicking '♥' opens playlist menu
+      await act(async () => {
+        firstBtn.click()
+        await tick()
+      })
+
+      expect(getByText('添加到歌单')).toBeTruthy()
+      expect(getByText('My Playlist')).toBeTruthy()
     })
   })
 })

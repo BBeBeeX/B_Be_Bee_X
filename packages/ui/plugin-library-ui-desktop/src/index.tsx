@@ -947,6 +947,7 @@ export function LibraryScreen({
   const playlists = usePlaylists(ctx)
   const collections = useCollections(ctx)
   const savedAlbumEntries = useSaved(ctx, 'album')
+  const savedArtistEntries = useSaved(ctx, 'artist')
   const savedTrackEntries = useSaved(ctx, 'track')
   const allSaved = useSaved(ctx)
   const player = serviceOf<PlayerService>(ctx, 'player')
@@ -1599,39 +1600,28 @@ export function LibraryScreen({
   }, [collectionFirstArtworks, collections.data, ctx, isItemPinned, openCollectionMenu, playCollection, setActiveFolderId])
 
   const artistItems: UnifiedItem[] = useMemo(() => {
-    const map = new Map<string, { urn: string; name: string; addedAt: number }>()
-    for (const album of albumsMap.values()) {
-      for (const a of album.artists ?? []) {
-        if (!map.has(a.name)) {
-          map.set(a.name, {
-            urn: a.urn ?? `artist:${a.name}`,
-            name: a.name,
-            addedAt: album.year ? new Date(album.year, 0).getTime() : 0,
-          })
-        }
-      }
-    }
-    return Array.from(map.values()).map((artist) => {
-      const isPinned = isItemPinned({ id: artist.urn, urn: artist.urn })
+    return (savedArtistEntries.data ?? []).map((entry) => {
+      const name = entry.urn.replace(/^artist:/, '')
+      const isPinned = isItemPinned({ id: entry.urn, urn: entry.urn })
       return {
-        id: artist.urn,
-        urn: artist.urn,
+        id: entry.urn,
+        urn: entry.urn,
         kind: 'artist' as const,
-        title: artist.name,
+        title: name,
         subtitle: '艺人',
-        creator: artist.name,
+        creator: name,
         artwork: undefined,
-        artworkSeed: artist.urn,
+        artworkSeed: entry.urn,
         pinned: isPinned,
-        addedAt: artist.addedAt,
+        addedAt: entry.addedAt,
         lastPlayedAt: 0,
         isDownloaded: false,
-        onOpen: () => ctx.ui.navigate('sources.search', { query: artist.name }),
+        onOpen: () => ctx.ui.navigate('sources.search', { query: name }),
         onPlay: () => {},
-        onMore: (anchor) => openBuiltinMenu(artist.name, () => {}, isPinned, { id: artist.urn }, anchor),
+        onMore: (anchor) => openBuiltinMenu(name, () => {}, isPinned, { id: entry.urn }, anchor),
       }
     })
-  }, [albumsMap, ctx, isItemPinned, openBuiltinMenu])
+  }, [ctx, isItemPinned, openBuiltinMenu, savedArtistEntries.data])
 
   const allItems = useMemo(() => {
     return [favoriteItem, localItem, ...playlistItems, ...albumItems, ...collectionItems, ...artistItems]
@@ -3813,7 +3803,7 @@ function formatTotalDuration(tracks: readonly (Track | undefined)[]): string {
 function TrackLibraryActionButton({
   track,
   hovered,
-  inLibrary,
+  inLibrary: initialInLibrary,
   onAddToFavorites,
   onOpenPlaylistMenu,
 }: {
@@ -3823,6 +3813,11 @@ function TrackLibraryActionButton({
   onAddToFavorites?: () => void
   onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
 }): ReactElement {
+  const [inLibrary, setInLibrary] = useState(initialInLibrary)
+  useEffect(() => {
+    setInLibrary(initialInLibrary)
+  }, [initialInLibrary])
+
   return h(
     'button',
     {
@@ -3835,14 +3830,16 @@ function TrackLibraryActionButton({
           const rect = e.currentTarget.getBoundingClientRect()
           onOpenPlaylistMenu(track, { x: rect.left, y: rect.bottom + 4 })
         } else {
+          setInLibrary(true)
           onAddToFavorites?.()
         }
       },
       style: {
         background: 'none',
         border: 'none',
-        color: inLibrary ? '#FFFFFF' : '#b3b3b3',
-        fontSize: inLibrary ? 15 : 18,
+        color: inLibrary ? '#1ed760' : '#b3b3b3',
+        fontSize: inLibrary ? 16 : 18,
+        fontWeight: inLibrary ? 700 : 400,
         cursor: 'pointer',
         padding: '2px 4px',
         display: 'flex',
@@ -3852,7 +3849,7 @@ function TrackLibraryActionButton({
         transition: 'opacity 0.15s ease',
       },
     },
-    inLibrary ? '🖤' : '＋',
+    inLibrary ? '♥' : '＋',
   )
 }
 
@@ -4241,7 +4238,7 @@ function PlaylistTrackTableRow({
       'div',
       {
         style: {
-          width: 100,
+          width: 120,
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
@@ -4282,6 +4279,18 @@ function PlaylistTrackTableRow({
           )
         : null,
       h(
+        'span',
+        {
+          style: {
+            fontSize: 14,
+            color: '#b3b3b3',
+            width: 45,
+            textAlign: 'right',
+          },
+        },
+        formatDuration(track.durationMs),
+      ),
+      h(
         'button',
         {
           type: 'button',
@@ -4304,18 +4313,6 @@ function PlaylistTrackTableRow({
           },
         },
         '⋯',
-      ),
-      h(
-        'span',
-        {
-          style: {
-            fontSize: 14,
-            color: '#b3b3b3',
-            width: 45,
-            textAlign: 'right',
-          },
-        },
-        formatDuration(track.durationMs),
       ),
     ),
   )
@@ -4858,9 +4855,9 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
           'data-testid': 'playlist-sort-duration',
           onClick: () => handleHeaderClick('duration'),
           style: {
-            width: 100,
+            width: 120,
             textAlign: 'right',
-            paddingRight: 16,
+            paddingRight: 40,
             flexShrink: 0,
             background: 'none',
             border: 'none',
@@ -5083,12 +5080,12 @@ function FavoriteTrackTableRow({
       },
       track.albumTitle || '-',
     ),
-    // Col 4: Action icon + More & Duration
+    // Col 4: Action icon + Duration & More
     h(
       'div',
       {
         style: {
-          width: 100,
+          width: 120,
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
@@ -5103,6 +5100,18 @@ function FavoriteTrackTableRow({
         inLibrary: true,
         onOpenPlaylistMenu,
       }),
+      h(
+        'span',
+        {
+          style: {
+            fontSize: 14,
+            color: '#b3b3b3',
+            width: 45,
+            textAlign: 'right',
+          },
+        },
+        formatDuration(track.durationMs),
+      ),
       h(
         'button',
         {
@@ -5126,18 +5135,6 @@ function FavoriteTrackTableRow({
           },
         },
         '⋯',
-      ),
-      h(
-        'span',
-        {
-          style: {
-            fontSize: 14,
-            color: '#b3b3b3',
-            width: 45,
-            textAlign: 'right',
-          },
-        },
-        formatDuration(track.durationMs),
       ),
     ),
   )
@@ -5524,9 +5521,9 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
           'data-testid': 'favorites-sort-duration',
           onClick: () => handleHeaderClick('duration'),
           style: {
-            width: 100,
+            width: 120,
             textAlign: 'right',
-            paddingRight: 16,
+            paddingRight: 40,
             flexShrink: 0,
             background: 'none',
             border: 'none',
@@ -5751,7 +5748,7 @@ function LocalTrackTableRow({
       'div',
       {
         style: {
-          width: 100,
+          width: 120,
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
@@ -5767,6 +5764,18 @@ function LocalTrackTableRow({
         onAddToFavorites: () => onAddToFavorites?.(track),
         onOpenPlaylistMenu,
       }),
+      h(
+        'span',
+        {
+          style: {
+            fontSize: 14,
+            color: '#b3b3b3',
+            width: 45,
+            textAlign: 'right',
+          },
+        },
+        formatDuration(track.durationMs),
+      ),
       h(
         'button',
         {
@@ -5790,18 +5799,6 @@ function LocalTrackTableRow({
           },
         },
         '⋯',
-      ),
-      h(
-        'span',
-        {
-          style: {
-            fontSize: 14,
-            color: '#b3b3b3',
-            width: 45,
-            textAlign: 'right',
-          },
-        },
-        formatDuration(track.durationMs),
       ),
     ),
   )
@@ -5960,7 +5957,6 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   const [albums, setAlbums] = useState<readonly Album[]>([])
   const [viewMode, setViewMode] = useState<'tracks' | 'albums'>('tracks')
   const [loading, setLoading] = useState(true)
-  const [generation, setGeneration] = useState(0)
   const [error, setError] = useState<string | undefined>(undefined)
   const [searchQuery, setSearchQuery] = useState('')
   const [trackSortKey, setTrackSortKey] = useState<LocalTrackSortKey>('default')
@@ -6030,11 +6026,6 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
     return () => {
       cancelled = true
     }
-  }, [ctx, generation])
-
-  useEffect(() => {
-    const off = ctx.on('library/changed', () => setGeneration((n) => n + 1))
-    return () => void off()
   }, [ctx])
 
   const sortedTracks = useMemo(() => {
@@ -6545,9 +6536,9 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                 'data-testid': 'local-sort-duration',
                 onClick: () => handleTrackHeaderClick('duration'),
                 style: {
-                  width: 100,
+                  width: 120,
                   textAlign: 'right',
-                  paddingRight: 16,
+                  paddingRight: 40,
                   flexShrink: 0,
                   background: 'none',
                   border: 'none',
@@ -6727,12 +6718,13 @@ function CollectionTrackTableRow({
       'div',
       {
         style: {
+          width: 120,
+          flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-end',
           gap: 6,
           paddingRight: 8,
-          flexShrink: 0,
         },
       },
       h(TrackLibraryActionButton, {
@@ -6742,6 +6734,18 @@ function CollectionTrackTableRow({
         onAddToFavorites: () => onAddToFavorites?.(track),
         onOpenPlaylistMenu,
       }),
+      h(
+        'span',
+        {
+          style: {
+            fontSize: 13,
+            color: '#b3b3b3',
+            width: 45,
+            textAlign: 'right',
+          },
+        },
+        formatDuration(track.durationMs),
+      ),
       h(
         'button',
         {
@@ -6765,18 +6769,6 @@ function CollectionTrackTableRow({
           },
         },
         '⋯',
-      ),
-      h(
-        'span',
-        {
-          style: {
-            fontSize: 13,
-            color: '#b3b3b3',
-            width: 45,
-            textAlign: 'right',
-          },
-        },
-        formatDuration(track.durationMs),
       ),
     ),
   )

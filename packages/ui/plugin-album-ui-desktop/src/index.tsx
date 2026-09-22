@@ -21,7 +21,7 @@ import { createElement as h, useCallback, useEffect, useMemo, useState } from 'r
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Collection, DownloadsService, LibraryService, PlayerService, SleepTimerService, Track } from '@BBeBee/protocol'
+import type { Collection, DownloadsService, LibraryService, PlayerService, Playlist, SleepTimerService, SourcesService, Track } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
@@ -48,10 +48,10 @@ function formatDuration(ms?: number): string {
   const totalSeconds = Math.floor(ms / 1000)
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
 }
 
-function formatTotalDuration(tracks: readonly { durationMs?: number }[]): string {
+function formatTotalDuration(tracks: readonly Track[]): string {
   const totalMs = tracks.reduce((sum, t) => sum + (t.durationMs || 0), 0)
   if (totalMs <= 0) return ''
   const totalSeconds = Math.floor(totalMs / 1000)
@@ -64,15 +64,74 @@ function formatTotalDuration(tracks: readonly { durationMs?: number }[]): string
   return `${minutes} 分钟 ${seconds} 秒`
 }
 
+function TrackLibraryActionButton({
+  track,
+  hovered,
+  inLibrary: initialInLibrary,
+  onAddToFavorites,
+  onOpenPlaylistMenu,
+}: {
+  track: Track
+  hovered: boolean
+  inLibrary: boolean
+  onAddToFavorites?: () => void
+  onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
+}): ReactElement {
+  const [optimisticInLibrary, setOptimisticInLibrary] = useState(false)
+  const inLibrary = initialInLibrary || optimisticInLibrary
+
+  return h(
+    'button',
+    {
+      type: 'button',
+      'aria-label': inLibrary ? `Add ${track.title} to playlist` : `Add ${track.title} to favourites`,
+      title: inLibrary ? '加入歌单' : '加入最喜欢的音乐',
+      onClick: (e: React.MouseEvent) => {
+        e.stopPropagation()
+        if (inLibrary) {
+          const rect = e.currentTarget.getBoundingClientRect()
+          onOpenPlaylistMenu(track, { x: rect.left, y: rect.bottom + 4 })
+        } else {
+          setOptimisticInLibrary(true)
+          onAddToFavorites?.()
+        }
+      },
+      style: {
+        background: 'none',
+        border: 'none',
+        color: inLibrary ? '#1ed760' : '#b3b3b3',
+        fontSize: inLibrary ? 16 : 18,
+        fontWeight: inLibrary ? 700 : 400,
+        cursor: 'pointer',
+        padding: '2px 4px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: hovered ? 1 : 0,
+        transition: 'opacity 0.15s ease',
+      },
+    },
+    inLibrary ? '♥' : '＋',
+  )
+}
+
 function AlbumTrackTableRow({
   track,
   index,
+  albumTitle,
+  inLibrary,
+  onAddToFavorites,
+  onOpenPlaylistMenu,
   onPress,
   onDownload,
   onMore,
 }: {
   track: Track
   index: number
+  albumTitle?: string
+  inLibrary: boolean
+  onAddToFavorites?: (track: Track) => void
+  onOpenPlaylistMenu?: (track: Track, anchor: MenuAnchor) => void
   onPress: () => void
   onDownload?: () => void
   onMore: (anchor: { x: number; y: number }) => void
@@ -128,7 +187,7 @@ function AlbumTrackTableRow({
       'div',
       {
         style: {
-          flex: 1,
+          flex: 2,
           minWidth: 0,
           paddingLeft: 12,
           paddingRight: 16,
@@ -168,32 +227,34 @@ function AlbumTrackTableRow({
           )
         : null,
     ),
-    // Col 3: Play count
+    // Col 3: Album
     h(
       'div',
       {
         style: {
-          width: 140,
-          flexShrink: 0,
-          textAlign: 'right',
-          paddingRight: 24,
+          flex: 1.5,
+          minWidth: 0,
+          paddingRight: 16,
           fontSize: 14,
           color: '#b3b3b3',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
         },
       },
-      '-',
+      track.albumTitle || albumTitle || '-',
     ),
     // Col 4: Duration and actions
     h(
       'div',
       {
         style: {
-          width: 110,
+          width: 130,
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-end',
-          gap: 8,
+          gap: 6,
           paddingRight: 16,
         },
       },
@@ -222,12 +283,33 @@ function AlbumTrackTableRow({
             '⬇',
           )
         : null,
+      onOpenPlaylistMenu
+        ? h(TrackLibraryActionButton, {
+            track,
+            hovered,
+            inLibrary,
+            onAddToFavorites: () => onAddToFavorites?.(track),
+            onOpenPlaylistMenu,
+          })
+        : null,
+      h(
+        'span',
+        {
+          style: {
+            fontSize: 14,
+            color: '#b3b3b3',
+            width: 45,
+            textAlign: 'right',
+          },
+        },
+        formatDuration(track.durationMs),
+      ),
       h(
         'button',
         {
           type: 'button',
           'aria-label': 'More',
-          title: 'More',
+          title: '更多',
           onClick: (e: React.MouseEvent) => {
             e.stopPropagation()
             const rect = e.currentTarget.getBoundingClientRect()
@@ -246,18 +328,6 @@ function AlbumTrackTableRow({
         },
         '⋯',
       ),
-      h(
-        'span',
-        {
-          style: {
-            fontSize: 14,
-            color: '#b3b3b3',
-            width: 45,
-            textAlign: 'right',
-          },
-        },
-        formatDuration(track.durationMs),
-      ),
     ),
   )
 }
@@ -267,12 +337,13 @@ function Pending({ label }: { label: string }): ReactElement {
   return h(EmptyState, { title: label, accessibilityLabel: label })
 }
 
-type AlbumSortKey = 'trackNo' | 'title' | 'plays' | 'duration'
+type AlbumSortKey = 'trackNo' | 'title' | 'album' | 'duration' | 'plays'
 
 export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): ReactElement {
   const album = useAlbum(ctx, urn)
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
   const library = serviceOf<LibraryService>(ctx, 'library')
+  const sources = serviceOf<SourcesService>(ctx, 'sources')
   const player = serviceOf<PlayerService>(ctx, 'player')
   const sleepTimer = serviceOf<SleepTimerService>(ctx, 'sleepTimer')
   const menu = useTrackMenu(ctx)
@@ -282,30 +353,88 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const [albumMenuAnchor, setAlbumMenuAnchor] = useState<MenuAnchor | null>(null)
   const [collections, setCollections] = useState<readonly Collection[]>([])
   const [isSaved, setIsSaved] = useState(false)
+  const [savedTrackUrns, setSavedTrackUrns] = useState<Set<string>>(new Set())
+  const [playlists, setPlaylists] = useState<readonly Playlist[]>([])
+  const [addToPlaylistMenuState, setAddToPlaylistMenuState] = useState<{
+    track: Track
+    anchor: MenuAnchor
+  } | null>(null)
 
   useEffect(() => {
     const albumUrn = album.data?.urn
     if (!library || !albumUrn) return
     let cancelled = false
+
     library
       .isSaved(albumUrn)
       .then((res) => {
         if (!cancelled) setIsSaved(res)
       })
       .catch(() => {})
-    const off = ctx.on('library/changed', () => {
+
+    if (typeof library.listSaved === 'function') {
       library
-        .isSaved(albumUrn)
+        .listSaved('track')
         .then((res) => {
-          if (!cancelled) setIsSaved(res)
+          if (!cancelled && res?.items) {
+            const next = new Set(res.items.map((i) => i.urn))
+            setSavedTrackUrns((prev) => {
+              if (prev.size === next.size && [...prev].every((u) => next.has(u))) return prev
+              return next
+            })
+          }
         })
         .catch(() => {})
+    }
+
+    const off = ctx.on('library/changed', (kind) => {
+      if (!kind || kind === 'album') {
+        library
+          .isSaved(albumUrn)
+          .then((res) => {
+            if (!cancelled) setIsSaved(res)
+          })
+          .catch(() => {})
+      }
+      if (kind === 'track' && typeof library.listSaved === 'function') {
+        library
+          .listSaved('track')
+          .then((res) => {
+            if (!cancelled && res?.items) {
+              const next = new Set(res.items.map((i) => i.urn))
+              setSavedTrackUrns((prev) => {
+                if (prev.size === next.size && [...prev].every((u) => next.has(u))) return prev
+                return next
+              })
+            }
+          })
+          .catch(() => {})
+      } else if (kind === 'playlist' && typeof library.listPlaylists === 'function') {
+        library
+          .listPlaylists()
+          .then((res) => {
+            if (!cancelled && res?.items) setPlaylists(res.items)
+          })
+          .catch(() => {})
+      }
     })
     return () => {
       cancelled = true
       off()
     }
-  }, [ctx, library, album.data?.urn])
+  }, [ctx, album.data?.urn])
+
+  const handleTrackAddToFavorites = useCallback(
+    async (track: Track) => {
+      if (!library) return
+      setSavedTrackUrns((prev) => new Set([...prev, track.urn]))
+      await library.setSaved(track.urn, true)
+      if (sources?.setLoved) {
+        await sources.setLoved(track.urn, true).catch(() => {})
+      }
+    },
+    [library, sources],
+  )
 
   const handleToggleSave = useCallback(async () => {
     if (!library || !album.data?.urn) return
@@ -327,15 +456,48 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
         cmp = a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' })
       } else if (sortKey === 'duration') {
         cmp = (a.durationMs ?? 0) - (b.durationMs ?? 0)
-      } else if (sortKey === 'plays') {
-        cmp = 0
+      } else if (sortKey === 'album' || sortKey === 'plays') {
+        const aAlb = a.albumTitle || album.data?.title || ''
+        const bAlb = b.albumTitle || album.data?.title || ''
+        cmp = aAlb.localeCompare(bAlb, undefined, { numeric: true, sensitivity: 'base' })
       }
       return sortOrder === 'desc' ? -cmp : cmp
     })
     return list
-  }, [tracks, sortKey, sortOrder])
+  }, [tracks, sortKey, sortOrder, album.data?.title])
 
   const sortedUrns = useMemo(() => sortedTracks.map((track) => track.urn), [sortedTracks])
+
+  const addToPlaylistMenuItems = useMemo((): MenuItemSpec[] => {
+    if (!addToPlaylistMenuState || !library) return []
+    const track = addToPlaylistMenuState.track
+    const list = playlists ?? []
+    const items: MenuItemSpec[] = [
+      {
+        id: 'create-new-playlist',
+        label: '新建歌单',
+        icon: '＋',
+        onSelect: async () => {
+          const name = window.prompt('歌单名称：')
+          if (name && name.trim()) {
+            const p = await library.createPlaylist(name.trim())
+            if (p) await library.addTracks(p.urn, [track.urn])
+          }
+        },
+        divider: list.length > 0,
+      },
+      ...list.map((playlist) => ({
+        id: playlist.urn,
+        label: playlist.name,
+        icon: '♪',
+        disabled: playlist.isSmart,
+        onSelect: async () => {
+          await library.addTracks(playlist.urn, [track.urn])
+        },
+      })),
+    ]
+    return items
+  }, [addToPlaylistMenuState, library, playlists])
 
   if (album.status === 'loading' || album.status === 'idle') {
     return h(Pending, { label: 'Loading album…' })
@@ -425,8 +587,9 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const sortLabelMap: Record<AlbumSortKey, string> = {
     trackNo: '默认顺序',
     title: '标题',
+    album: '专辑',
+    plays: '专辑',
     duration: '时长',
-    plays: '播放量',
   }
 
   const sortMenuItems: MenuItemSpec[] = [
@@ -441,15 +604,14 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       onSelect: () => setSortKey('title'),
     },
     {
+      id: 'sort-album',
+      label: ((sortKey === 'album' || sortKey === 'plays') ? '✓ ' : '    ') + '专辑',
+      onSelect: () => setSortKey('album'),
+    },
+    {
       id: 'sort-duration',
       label: (sortKey === 'duration' ? '✓ ' : '    ') + '时长',
       onSelect: () => setSortKey('duration'),
-    },
-    {
-      id: 'sort-plays',
-      label: (sortKey === 'plays' ? '✓ ' : '    ') + '播放量',
-      onSelect: () => setSortKey('plays'),
-      divider: true,
     },
     {
       id: 'order-asc',
@@ -767,7 +929,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           'data-testid': 'album-sort-title',
           onClick: () => handleHeaderClick('title'),
           style: {
-            flex: 1,
+            flex: 2,
             paddingLeft: 12,
             textAlign: 'left',
             background: 'none',
@@ -786,24 +948,23 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
         'button',
         {
           type: 'button',
-          'data-testid': 'album-sort-plays',
-          onClick: () => handleHeaderClick('plays'),
+          'data-testid': 'album-sort-album',
+          onClick: () => handleHeaderClick('album'),
           style: {
-            width: 140,
-            textAlign: 'right',
-            paddingRight: 24,
+            flex: 1.5,
+            textAlign: 'left',
             flexShrink: 0,
             background: 'none',
             border: 'none',
-            color: sortKey === 'plays' ? '#FFFFFF' : '#b3b3b3',
+            color: sortKey === 'album' || sortKey === 'plays' ? '#FFFFFF' : '#b3b3b3',
             cursor: 'pointer',
             padding: 0,
             fontSize: 13,
             fontWeight: 500,
           },
         },
-        '播放量',
-        renderSortIndicator('plays'),
+        '专辑',
+        renderSortIndicator('album') || renderSortIndicator('plays'),
       ),
       h(
         'button',
@@ -812,9 +973,9 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           'data-testid': 'album-sort-duration',
           onClick: () => handleHeaderClick('duration'),
           style: {
-            width: 110,
+            width: 130,
             textAlign: 'right',
-            paddingRight: 16,
+            paddingRight: 40,
             flexShrink: 0,
             background: 'none',
             border: 'none',
@@ -843,6 +1004,20 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           h(AlbumTrackTableRow, {
             track,
             index,
+            albumTitle: detail.title,
+            inLibrary: track.loved === true || savedTrackUrns.has(track.urn),
+            onAddToFavorites: handleTrackAddToFavorites,
+            onOpenPlaylistMenu: async (t, anchor) => {
+              if (library && typeof library.listPlaylists === 'function') {
+                try {
+                  const res = await library.listPlaylists()
+                  if (res?.items) setPlaylists(res.items)
+                } catch {
+                  // Ignore and proceed with available playlists
+                }
+              }
+              setAddToPlaylistMenuState({ track: t, anchor })
+            },
             onPress: () => {
               void player?.playFromContext(track.urn, sortedUrns, {
                 context: { kind: 'album', urn: detail.urn, label: detail.title },
@@ -869,6 +1044,14 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       y: sortMenuAnchor?.y ?? 0,
       items: sortMenuItems,
       title: '排序方式',
+    }),
+    h(ContextMenu, {
+      open: addToPlaylistMenuState !== null,
+      onClose: () => setAddToPlaylistMenuState(null),
+      x: addToPlaylistMenuState?.anchor.x ?? 0,
+      y: addToPlaylistMenuState?.anchor.y ?? 0,
+      items: addToPlaylistMenuItems,
+      title: '添加到歌单',
     }),
   )
 }

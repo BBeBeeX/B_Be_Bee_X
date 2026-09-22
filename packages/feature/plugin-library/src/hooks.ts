@@ -34,6 +34,11 @@ export interface LibraryRead<T> extends AsyncState<T> {
   reload(): void
 }
 
+interface LibraryReadFilter {
+  onChanged?: (kind: UrnKind, urns: string[]) => boolean
+  onCollectionsChanged?: boolean
+}
+
 /**
  * Run a curation read, reloading whenever the library changes.
  *
@@ -41,15 +46,22 @@ export interface LibraryRead<T> extends AsyncState<T> {
  * saved kind — because `read` is a fresh closure on every render and effect
  * dependencies cannot reference it without re-running forever.
  */
-function useLibraryRead<T>(ctx: Context, read: () => Promise<T>, key: string): LibraryRead<T> {
+function useLibraryRead<T>(
+  ctx: Context,
+  read: () => Promise<T>,
+  key: string,
+  filter?: LibraryReadFilter,
+): LibraryRead<T> {
   const [state, setState] = useState<AsyncState<T>>({ status: 'idle' })
   const [generation, setGeneration] = useState(0)
   const readRef = useRef(read)
   readRef.current = read
+  const filterRef = useRef(filter)
+  filterRef.current = filter
 
   useEffect(() => {
     let cancelled = false
-    setState((prev) => ({ ...prev, status: 'loading' }))
+    setState((prev) => (prev.status === 'ready' ? prev : { ...prev, status: 'loading' }))
     readRef
       .current()
       .then((data) => {
@@ -67,8 +79,22 @@ function useLibraryRead<T>(ctx: Context, read: () => Promise<T>, key: string): L
   }, [ctx, key, generation])
 
   useEffect(() => {
-    const offChanged = ctx.on('library/changed', () => setGeneration((n) => n + 1))
-    const offCollections = ctx.on('library/collections-changed', () => setGeneration((n) => n + 1))
+    const offChanged = ctx.on('library/changed', (kind, urns) => {
+      if (filterRef.current) {
+        if (!filterRef.current.onChanged || !filterRef.current.onChanged(kind, urns ?? [])) {
+          return
+        }
+      }
+      setGeneration((n) => n + 1)
+    })
+    const offCollections = ctx.on('library/collections-changed', () => {
+      if (filterRef.current) {
+        if (!filterRef.current.onCollectionsChanged) {
+          return
+        }
+      }
+      setGeneration((n) => n + 1)
+    })
     return () => {
       offChanged()
       offCollections()
@@ -95,6 +121,7 @@ export function usePlaylists(ctx: Context): LibraryRead<readonly Playlist[]> {
     ctx,
     () => readAll((cursor) => ctx.library.listPlaylists(cursor ? { cursor } : undefined)),
     'playlists',
+    { onChanged: (kind) => kind === 'playlist' },
   )
 }
 
@@ -104,6 +131,7 @@ export function usePlaylist(ctx: Context, urn: string | undefined): LibraryRead<
     ctx,
     () => (urn ? ctx.library.getPlaylist(urn) : Promise.resolve(undefined)),
     `playlist:${urn ?? ''}`,
+    { onChanged: (kind, urns) => kind === 'playlist' && (!urn || !urns.length || urns.includes(urn)) },
   )
 }
 
@@ -112,11 +140,17 @@ export function useSaved(ctx: Context, kind?: SavedKind): LibraryRead<readonly L
     ctx,
     () => readAll((cursor) => ctx.library.listSaved(kind, cursor ? { cursor } : undefined)),
     `saved:${kind ?? 'all'}`,
+    { onChanged: (eventKind) => !kind || eventKind === kind },
   )
 }
 
 export function useCollections(ctx: Context): LibraryRead<readonly Collection[]> {
-  return useLibraryRead(ctx, () => ctx.library.listCollections(), 'collections')
+  return useLibraryRead(
+    ctx,
+    () => ctx.library.listCollections(),
+    'collections',
+    { onCollectionsChanged: true },
+  )
 }
 
 /**
@@ -269,5 +303,6 @@ export function useCollectionDetail(
       return { collection, members }
     },
     `collection:${id ?? ''}`,
+    { onCollectionsChanged: true },
   )
 }

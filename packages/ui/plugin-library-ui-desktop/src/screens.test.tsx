@@ -784,7 +784,7 @@ describe('FavoritesScreen', () => {
 
       const btn = getByLabelText('Add Alpha to playlist')
       expect(btn).toBeTruthy()
-      expect(btn.textContent).toBe('🖤')
+      expect(btn.textContent).toBe('♥')
 
       await act(async () => {
         btn.click()
