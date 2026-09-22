@@ -17,7 +17,7 @@
  *    starting here. Playback never navigates; the transport bar announces it.
  */
 
-import { createElement as h, useState } from 'react'
+import { createElement as h, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
@@ -28,7 +28,7 @@ import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { Artwork, ContextMenu, EmptyState, List } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
-import type { ArtworkProps } from '@BBeBee/ui-core'
+import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
 
 /**
@@ -267,10 +267,39 @@ function Pending({ label }: { label: string }): ReactElement {
   return h(EmptyState, { title: label, accessibilityLabel: label })
 }
 
+type AlbumSortKey = 'trackNo' | 'title' | 'plays' | 'duration'
+
 export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): ReactElement {
   const album = useAlbum(ctx, urn)
   const downloads = serviceOf<DownloadsService>(ctx, 'downloads')
   const menu = useTrackMenu(ctx)
+  const player = serviceOf<PlayerService>(ctx, 'player')
+  const [sortKey, setSortKey] = useState<AlbumSortKey>('trackNo')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
+
+  const tracks = album.data?.tracks ?? []
+
+  const sortedTracks = useMemo(() => {
+    const list = [...tracks]
+    if (sortKey === 'trackNo') {
+      return sortOrder === 'desc' ? list.reverse() : list
+    }
+    list.sort((a, b) => {
+      let cmp = 0
+      if (sortKey === 'title') {
+        cmp = a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' })
+      } else if (sortKey === 'duration') {
+        cmp = (a.durationMs ?? 0) - (b.durationMs ?? 0)
+      } else if (sortKey === 'plays') {
+        cmp = 0
+      }
+      return sortOrder === 'desc' ? -cmp : cmp
+    })
+    return list
+  }, [tracks, sortKey, sortOrder])
+
+  const sortedUrns = useMemo(() => sortedTracks.map((track) => track.urn), [sortedTracks])
 
   if (album.status === 'loading' || album.status === 'idle') {
     return h(Pending, { label: 'Loading album…' })
@@ -284,8 +313,61 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   }
 
   const detail = album.data
-  const urns = detail.tracks.map((track) => track.urn)
-  const player = serviceOf<PlayerService>(ctx, 'player')
+
+  const handleHeaderClick = (key: AlbumSortKey) => {
+    if (sortKey === key) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortOrder('asc')
+    }
+  }
+
+  const renderSortIndicator = (key: AlbumSortKey) => {
+    if (sortKey !== key) return null
+    return h('span', { style: { marginLeft: 4, fontSize: 11 } }, sortOrder === 'asc' ? '▲' : '▼')
+  }
+
+  const sortLabelMap: Record<AlbumSortKey, string> = {
+    trackNo: '默认顺序',
+    title: '标题',
+    duration: '时长',
+    plays: '播放量',
+  }
+
+  const sortMenuItems: MenuItemSpec[] = [
+    {
+      id: 'sort-trackNo',
+      label: (sortKey === 'trackNo' ? '✓ ' : '    ') + '默认顺序',
+      onSelect: () => setSortKey('trackNo'),
+    },
+    {
+      id: 'sort-title',
+      label: (sortKey === 'title' ? '✓ ' : '    ') + '标题',
+      onSelect: () => setSortKey('title'),
+    },
+    {
+      id: 'sort-duration',
+      label: (sortKey === 'duration' ? '✓ ' : '    ') + '时长',
+      onSelect: () => setSortKey('duration'),
+    },
+    {
+      id: 'sort-plays',
+      label: (sortKey === 'plays' ? '✓ ' : '    ') + '播放量',
+      onSelect: () => setSortKey('plays'),
+      divider: true,
+    },
+    {
+      id: 'order-asc',
+      label: (sortOrder === 'asc' ? '✓ ' : '    ') + '升序',
+      onSelect: () => setSortOrder('asc'),
+    },
+    {
+      id: 'order-desc',
+      label: (sortOrder === 'desc' ? '✓ ' : '    ') + '降序',
+      onSelect: () => setSortOrder('desc'),
+    },
+  ]
 
   const yearText = detail.year || (detail.releaseDate ? detail.releaseDate.slice(0, 4) : '')
   const totalDurationStr = formatTotalDuration(detail.tracks)
@@ -410,7 +492,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           {
             type: 'button',
             'aria-label': 'Play album',
-            onClick: () => void player?.playNow(urns),
+            onClick: () => void player?.playNow(sortedUrns),
             disabled: detail.tracks.length === 0,
             style: {
               width: 56,
@@ -454,8 +536,8 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             title: '随机播放',
             style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
             onClick: () => {
-              if (urns.length > 0) {
-                const shuffled = [...urns].sort(() => Math.random() - 0.5)
+              if (sortedUrns.length > 0) {
+                const shuffled = [...sortedUrns].sort(() => Math.random() - 0.5)
                 void player?.playNow(shuffled)
               }
             },
@@ -478,7 +560,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
                 type: 'button',
                 title: '下载全部',
                 style: { background: 'none', border: 'none', fontSize: 22, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
-                onClick: () => void downloads.enqueue(urns),
+                onClick: () => void downloads.enqueue(sortedUrns),
               },
               '⬇',
             )
@@ -501,9 +583,32 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       ),
       h(
         'div',
-        { style: { display: 'flex', alignItems: 'center', gap: 6, color: '#b3b3b3', fontSize: 14, cursor: 'pointer' } },
-        h('span', null, '列表'),
-        h('span', { style: { fontSize: 18 } }, '☰'),
+        { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-testid': 'album-sort-trigger',
+            title: '排序方式',
+            onClick: (e: React.MouseEvent) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              setSortMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
+            },
+            style: {
+              background: 'none',
+              border: 'none',
+              color: '#b3b3b3',
+              fontSize: 14,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: 0,
+            },
+          },
+          h('span', null, sortLabelMap[sortKey]),
+          h('span', { style: { fontSize: 16 } }, '≣'),
+        ),
       ),
     ),
     // Table Header
@@ -521,17 +626,103 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           flexShrink: 0,
         },
       },
-      h('span', { style: { width: 40, textAlign: 'center', flexShrink: 0 } }, '#'),
-      h('span', { style: { flex: 1, paddingLeft: 12 } }, '标题'),
-      h('span', { style: { width: 140, textAlign: 'right', paddingRight: 24, flexShrink: 0 } }, '播放量'),
-      h('span', { style: { width: 110, textAlign: 'right', paddingRight: 16, flexShrink: 0 } }, '🕒'),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'album-sort-trackNo',
+          onClick: () => handleHeaderClick('trackNo'),
+          style: {
+            width: 40,
+            textAlign: 'center',
+            flexShrink: 0,
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'trackNo' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            padding: 0,
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '#',
+        renderSortIndicator('trackNo'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'album-sort-title',
+          onClick: () => handleHeaderClick('title'),
+          style: {
+            flex: 1,
+            paddingLeft: 12,
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'title' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            padding: 0,
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '标题',
+        renderSortIndicator('title'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'album-sort-plays',
+          onClick: () => handleHeaderClick('plays'),
+          style: {
+            width: 140,
+            textAlign: 'right',
+            paddingRight: 24,
+            flexShrink: 0,
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'plays' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            padding: 0,
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '播放量',
+        renderSortIndicator('plays'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'album-sort-duration',
+          onClick: () => handleHeaderClick('duration'),
+          style: {
+            width: 110,
+            textAlign: 'right',
+            paddingRight: 16,
+            flexShrink: 0,
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'duration' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            padding: 0,
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '🕒',
+        renderSortIndicator('duration'),
+      ),
     ),
     // Track list
     h(
       'div',
       { style: { flex: 1, minHeight: 0 } },
       h(List<Track>, {
-        items: detail.tracks,
+        items: sortedTracks,
         accessibilityLabel: `Tracks on ${detail.title}`,
         estimatedItemSize: tokens.size.row,
         keyExtractor: (track) => track.urn,
@@ -541,7 +732,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             track,
             index,
             onPress: () => {
-              void player?.playFromContext(track.urn, urns, {
+              void player?.playFromContext(track.urn, sortedUrns, {
                 context: { kind: 'album', urn: detail.urn, label: detail.title },
               })
             },
@@ -551,6 +742,14 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       }),
     ),
     h(ContextMenu, menu.menuProps),
+    h(ContextMenu, {
+      open: sortMenuAnchor !== null,
+      onClose: () => setSortMenuAnchor(null),
+      x: sortMenuAnchor?.x ?? 0,
+      y: sortMenuAnchor?.y ?? 0,
+      items: sortMenuItems,
+      title: '排序方式',
+    }),
   )
 }
 

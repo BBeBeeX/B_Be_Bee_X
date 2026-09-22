@@ -4155,19 +4155,76 @@ function PlaylistTrackTableRow({
 
 /* ── one playlist ──────────────────────────────────────────────────────── */
 
+type PlaylistSortKey = 'custom' | 'title' | 'artist' | 'album' | 'dateAdded' | 'duration'
+
 export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string }): ReactElement {
   const state = usePlaylist(ctx, urn)
   const detail = state.data
-  const urns = detail?.items.map((item) => item.trackUrn) ?? []
+  const rawItems = detail?.items ?? []
+  const urns = rawItems.map((item) => item.trackUrn)
   const tracks = useTracksByUrn(ctx, urns)
   const [error, setError] = useState<string | undefined>(undefined)
   const [showEditModal, setShowEditModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [sortKey, setSortKey] = useState<PlaylistSortKey>('custom')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
   const menu = useTrackMenu(ctx, { fromPlaylistUrn: urn })
+
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    const list = rawItems.map((item, originalIndex) => ({
+      item,
+      trackUrn: item.trackUrn,
+      track: tracks.get(item.trackUrn),
+      originalIndex,
+    }))
+
+    const matching = q
+      ? list.filter(({ track, trackUrn }) => {
+          if (!track) return trackUrn.toLowerCase().includes(q)
+          return (
+            track.title.toLowerCase().includes(q) ||
+            track.artists?.some((a) => a.name.toLowerCase().includes(q)) ||
+            track.albumTitle?.toLowerCase().includes(q)
+          )
+        })
+      : list
+
+    if (sortKey === 'custom') {
+      return sortOrder === 'desc' ? [...matching].reverse() : matching
+    }
+
+    return [...matching].sort((a, b) => {
+      let cmp = 0
+      if (sortKey === 'title') {
+        cmp = (a.track?.title ?? '').localeCompare(b.track?.title ?? '', undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        })
+      } else if (sortKey === 'artist') {
+        const aArt = a.track?.artists?.map((x) => x.name).join(', ') ?? ''
+        const bArt = b.track?.artists?.map((x) => x.name).join(', ') ?? ''
+        cmp = aArt.localeCompare(bArt, undefined, { numeric: true, sensitivity: 'base' })
+      } else if (sortKey === 'album') {
+        cmp = (a.track?.albumTitle ?? '').localeCompare(b.track?.albumTitle ?? '', undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        })
+      } else if (sortKey === 'dateAdded') {
+        cmp = (a.item.addedAt ?? 0) - (b.item.addedAt ?? 0)
+      } else if (sortKey === 'duration') {
+        cmp = (a.track?.durationMs ?? 0) - (b.track?.durationMs ?? 0)
+      }
+      return sortOrder === 'desc' ? -cmp : cmp
+    })
+  }, [rawItems, tracks, searchQuery, sortKey, sortOrder])
+
+  const sortedUrns = useMemo(() => filteredRows.map((r) => r.trackUrn), [filteredRows])
 
   const play = (trackUrn: string) => {
     if (!detail) return
-    void ctx.player.playFromContext(trackUrn, urns, {
+    void ctx.player.playFromContext(trackUrn, sortedUrns, {
       context: { kind: 'playlist', urn: detail.urn, label: detail.name },
     })
   }
@@ -4178,20 +4235,74 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   }
   if (!detail) return h(EmptyState, { title: 'Loading…' })
 
-  const totalDurationStr = formatTotalDuration(Array.from(tracks.values()))
+  const handleHeaderClick = (key: PlaylistSortKey) => {
+    if (sortKey === key) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortOrder('asc')
+    }
+  }
 
-  const filteredUrns = searchQuery.trim()
-    ? urns.filter((u) => {
-        const t = tracks.get(u)
-        if (!t) return false
-        const q = searchQuery.toLowerCase()
-        return (
-          t.title.toLowerCase().includes(q) ||
-          t.artists?.some((a) => a.name.toLowerCase().includes(q)) ||
-          t.albumTitle?.toLowerCase().includes(q)
-        )
-      })
-    : urns
+  const renderSortIndicator = (key: PlaylistSortKey) => {
+    if (sortKey !== key) return null
+    return h('span', { style: { marginLeft: 4, fontSize: 11 } }, sortOrder === 'asc' ? '▲' : '▼')
+  }
+
+  const sortLabelMap: Record<PlaylistSortKey, string> = {
+    custom: '自定义顺序',
+    title: '标题',
+    artist: '艺人',
+    album: '专辑',
+    dateAdded: '添加日期',
+    duration: '时长',
+  }
+
+  const sortMenuItems: MenuItemSpec[] = [
+    {
+      id: 'sort-custom',
+      label: (sortKey === 'custom' ? '✓ ' : '    ') + '自定义顺序',
+      onSelect: () => setSortKey('custom'),
+    },
+    {
+      id: 'sort-title',
+      label: (sortKey === 'title' ? '✓ ' : '    ') + '标题',
+      onSelect: () => setSortKey('title'),
+    },
+    {
+      id: 'sort-artist',
+      label: (sortKey === 'artist' ? '✓ ' : '    ') + '艺人',
+      onSelect: () => setSortKey('artist'),
+    },
+    {
+      id: 'sort-album',
+      label: (sortKey === 'album' ? '✓ ' : '    ') + '专辑',
+      onSelect: () => setSortKey('album'),
+    },
+    {
+      id: 'sort-dateAdded',
+      label: (sortKey === 'dateAdded' ? '✓ ' : '    ') + '添加日期',
+      onSelect: () => setSortKey('dateAdded'),
+    },
+    {
+      id: 'sort-duration',
+      label: (sortKey === 'duration' ? '✓ ' : '    ') + '时长',
+      onSelect: () => setSortKey('duration'),
+      divider: true,
+    },
+    {
+      id: 'order-asc',
+      label: (sortOrder === 'asc' ? '✓ ' : '    ') + '升序',
+      onSelect: () => setSortOrder('asc'),
+    },
+    {
+      id: 'order-desc',
+      label: (sortOrder === 'desc' ? '✓ ' : '    ') + '降序',
+      onSelect: () => setSortOrder('desc'),
+    },
+  ]
+
+  const totalDurationStr = formatTotalDuration(Array.from(tracks.values()))
 
   return h(
     'section',
@@ -4314,15 +4425,15 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             type: 'button',
             'data-testid': 'playlist-play',
             'aria-label': 'Play',
-            onClick: () => urns[0] && play(urns[0]),
-            disabled: urns.length === 0,
+            onClick: () => sortedUrns[0] && play(sortedUrns[0]),
+            disabled: sortedUrns.length === 0,
             style: {
               width: 56,
               height: 56,
               borderRadius: '50%',
-              backgroundColor: urns.length === 0 ? 'rgba(30, 215, 96, 0.4)' : '#1ed760',
+              backgroundColor: sortedUrns.length === 0 ? 'rgba(30, 215, 96, 0.4)' : '#1ed760',
               border: 'none',
-              cursor: urns.length === 0 ? 'not-allowed' : 'pointer',
+              cursor: sortedUrns.length === 0 ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -4388,6 +4499,12 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
           'button',
           {
             type: 'button',
+            'data-testid': 'playlist-sort-trigger',
+            title: '排序方式',
+            onClick: (e: ReactMouseEvent) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              setSortMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
+            },
             style: {
               background: 'none',
               border: 'none',
@@ -4397,9 +4514,10 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
               display: 'flex',
               alignItems: 'center',
               gap: 6,
+              padding: 0,
             },
           },
-          h('span', null, '自定义顺序'),
+          h('span', null, sortLabelMap[sortKey]),
           h('span', { style: { fontSize: 16 } }, '≣'),
         ),
       ),
@@ -4478,21 +4596,123 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
           flexShrink: 0,
         },
       },
-      h('span', { style: { width: 40, textAlign: 'center', flexShrink: 0 } }, '#'),
-      h('span', { style: { flex: 2, paddingLeft: 12 } }, '标题'),
-      h('span', { style: { flex: 1.5, paddingLeft: 8 } }, '专辑'),
-      h('span', { style: { flex: 1, paddingLeft: 8 } }, '添加日期'),
-      h('span', { style: { width: 100, textAlign: 'right', paddingRight: 16, flexShrink: 0 } }, '🕒'),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'playlist-sort-custom',
+          onClick: () => handleHeaderClick('custom'),
+          style: {
+            width: 40,
+            textAlign: 'center',
+            flexShrink: 0,
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'custom' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            padding: 0,
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '#',
+        renderSortIndicator('custom'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'playlist-sort-title',
+          onClick: () => handleHeaderClick('title'),
+          style: {
+            flex: 2,
+            paddingLeft: 12,
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'title' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '标题',
+        renderSortIndicator('title'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'playlist-sort-album',
+          onClick: () => handleHeaderClick('album'),
+          style: {
+            flex: 1.5,
+            paddingLeft: 8,
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'album' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '专辑',
+        renderSortIndicator('album'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'playlist-sort-dateAdded',
+          onClick: () => handleHeaderClick('dateAdded'),
+          style: {
+            flex: 1,
+            paddingLeft: 8,
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'dateAdded' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '添加日期',
+        renderSortIndicator('dateAdded'),
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'playlist-sort-duration',
+          onClick: () => handleHeaderClick('duration'),
+          style: {
+            width: 100,
+            textAlign: 'right',
+            paddingRight: 16,
+            flexShrink: 0,
+            background: 'none',
+            border: 'none',
+            color: sortKey === 'duration' ? '#FFFFFF' : '#b3b3b3',
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 500,
+          },
+        },
+        '🕒',
+        renderSortIndicator('duration'),
+      ),
     ),
     // Track Rows
     h(
       'div',
       { style: { flex: 1, minHeight: 0 } },
-      h(List<string>, {
+      h(List<{ item: PlaylistItem; trackUrn: string; track?: Track; originalIndex: number }>, {
         testID: 'playlist-tracks',
-        items: filteredUrns,
+        items: filteredRows,
         estimatedItemSize: tokens.size.row,
-        keyExtractor: (trackUrn, index) => `${trackUrn}:${index}`,
+        keyExtractor: (row) => row.item.id,
         empty: h(EmptyState, {
           icon: '♪',
           title: 'Nothing here yet',
@@ -4500,10 +4720,9 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             ? 'No track in the catalogue matches this playlist\'s rules right now.'
             : 'Add tracks from the library to fill this playlist.',
         }),
-        renderItem: (trackUrn, index) => {
-          const track = tracks.get(trackUrn)
+        renderItem: (row, index) => {
+          const { track, item, trackUrn } = row
           if (!track) return h(Text, { variant: 'sm', tone: 'muted' }, trackUrn)
-          const item = detail.items[index] || { id: `item-${index}`, trackUrn, position: String(index) }
           return h(PlaylistTrackTableRow, {
             ctx,
             track,
@@ -4524,6 +4743,14 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
       }),
     ),
     h(ContextMenu, menu.menuProps),
+    h(ContextMenu, {
+      open: sortMenuAnchor !== null,
+      onClose: () => setSortMenuAnchor(null),
+      x: sortMenuAnchor?.x ?? 0,
+      y: sortMenuAnchor?.y ?? 0,
+      items: sortMenuItems,
+      title: '排序方式',
+    }),
     showEditModal
       ? h(EditPlaylistModal, {
           playlist: detail,
@@ -4972,6 +5199,9 @@ function LocalAlbumCard({
 
 /* ── local music ──────────────────────────────────────────────────────── */
 
+type LocalTrackSortKey = 'default' | 'title' | 'artist' | 'album' | 'duration'
+type LocalAlbumSortKey = 'default' | 'title' | 'artist' | 'year' | 'count'
+
 export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   const [tracks, setTracks] = useState<readonly Track[]>([])
   const [albums, setAlbums] = useState<readonly Album[]>([])
@@ -4980,6 +5210,11 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   const [generation, setGeneration] = useState(0)
   const [error, setError] = useState<string | undefined>(undefined)
   const [searchQuery, setSearchQuery] = useState('')
+  const [trackSortKey, setTrackSortKey] = useState<LocalTrackSortKey>('default')
+  const [trackSortOrder, setTrackSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [albumSortKey, setAlbumSortKey] = useState<LocalAlbumSortKey>('default')
+  const [albumSortOrder, setAlbumSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
   const player = serviceOf<PlayerService>(ctx, 'player')
   const menu = useTrackMenu(ctx)
 
@@ -5044,28 +5279,183 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
     return () => void off()
   }, [ctx])
 
-  const trackUrns = tracks.map((t) => t.urn)
+  const sortedTracks = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    const matching = q
+      ? tracks.filter((t) => {
+          return (
+            t.title.toLowerCase().includes(q) ||
+            t.artists?.some((a) => a.name.toLowerCase().includes(q)) ||
+            t.albumTitle?.toLowerCase().includes(q)
+          )
+        })
+      : [...tracks]
 
-  const filteredTracks = searchQuery.trim()
-    ? tracks.filter((t) => {
-        const q = searchQuery.toLowerCase()
-        return (
-          t.title.toLowerCase().includes(q) ||
-          t.artists?.some((a) => a.name.toLowerCase().includes(q)) ||
-          t.albumTitle?.toLowerCase().includes(q)
-        )
-      })
-    : tracks
+    if (trackSortKey === 'default') {
+      return trackSortOrder === 'desc' ? matching.reverse() : matching
+    }
 
-  const filteredAlbums = searchQuery.trim()
-    ? albums.filter((a) => {
-        const q = searchQuery.toLowerCase()
-        return (
-          a.title.toLowerCase().includes(q) ||
-          a.artists?.some((art) => art.name.toLowerCase().includes(q))
-        )
-      })
-    : albums
+    return matching.sort((a, b) => {
+      let cmp = 0
+      if (trackSortKey === 'title') {
+        cmp = a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' })
+      } else if (trackSortKey === 'artist') {
+        const aArt = a.artists?.map((x) => x.name).join(', ') ?? ''
+        const bArt = b.artists?.map((x) => x.name).join(', ') ?? ''
+        cmp = aArt.localeCompare(bArt, undefined, { numeric: true, sensitivity: 'base' })
+      } else if (trackSortKey === 'album') {
+        cmp = (a.albumTitle ?? '').localeCompare(b.albumTitle ?? '', undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        })
+      } else if (trackSortKey === 'duration') {
+        cmp = (a.durationMs ?? 0) - (b.durationMs ?? 0)
+      }
+      return trackSortOrder === 'desc' ? -cmp : cmp
+    })
+  }, [tracks, searchQuery, trackSortKey, trackSortOrder])
+
+  const sortedTrackUrns = useMemo(() => sortedTracks.map((t) => t.urn), [sortedTracks])
+
+  const sortedAlbums = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    const matching = q
+      ? albums.filter((a) => {
+          return (
+            a.title.toLowerCase().includes(q) ||
+            a.artists?.some((art) => art.name.toLowerCase().includes(q))
+          )
+        })
+      : [...albums]
+
+    if (albumSortKey === 'default') {
+      return albumSortOrder === 'desc' ? matching.reverse() : matching
+    }
+
+    return matching.sort((a, b) => {
+      let cmp = 0
+      if (albumSortKey === 'title') {
+        cmp = a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' })
+      } else if (albumSortKey === 'artist') {
+        const aArt = a.artists?.map((x) => x.name).join(', ') ?? ''
+        const bArt = b.artists?.map((x) => x.name).join(', ') ?? ''
+        cmp = aArt.localeCompare(bArt, undefined, { numeric: true, sensitivity: 'base' })
+      } else if (albumSortKey === 'year') {
+        cmp = (a.year ?? 0) - (b.year ?? 0)
+      } else if (albumSortKey === 'count') {
+        cmp = (a.trackCount ?? 0) - (b.trackCount ?? 0)
+      }
+      return albumSortOrder === 'desc' ? -cmp : cmp
+    })
+  }, [albums, searchQuery, albumSortKey, albumSortOrder])
+
+  const handleTrackHeaderClick = (key: LocalTrackSortKey) => {
+    if (trackSortKey === key) {
+      setTrackSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setTrackSortKey(key)
+      setTrackSortOrder('asc')
+    }
+  }
+
+  const renderTrackSortIndicator = (key: LocalTrackSortKey) => {
+    if (trackSortKey !== key) return null
+    return h('span', { style: { marginLeft: 4, fontSize: 11 } }, trackSortOrder === 'asc' ? '▲' : '▼')
+  }
+
+  const trackSortLabelMap: Record<LocalTrackSortKey, string> = {
+    default: '默认顺序',
+    title: '标题',
+    artist: '艺人',
+    album: '专辑',
+    duration: '时长',
+  }
+
+  const albumSortLabelMap: Record<LocalAlbumSortKey, string> = {
+    default: '默认顺序',
+    title: '专辑名称',
+    artist: '艺人',
+    year: '年份',
+    count: '曲目数',
+  }
+
+  const trackSortMenuItems: MenuItemSpec[] = [
+    {
+      id: 'sort-default',
+      label: (trackSortKey === 'default' ? '✓ ' : '    ') + '默认顺序',
+      onSelect: () => setTrackSortKey('default'),
+    },
+    {
+      id: 'sort-title',
+      label: (trackSortKey === 'title' ? '✓ ' : '    ') + '标题',
+      onSelect: () => setTrackSortKey('title'),
+    },
+    {
+      id: 'sort-artist',
+      label: (trackSortKey === 'artist' ? '✓ ' : '    ') + '艺人',
+      onSelect: () => setTrackSortKey('artist'),
+    },
+    {
+      id: 'sort-album',
+      label: (trackSortKey === 'album' ? '✓ ' : '    ') + '专辑',
+      onSelect: () => setTrackSortKey('album'),
+    },
+    {
+      id: 'sort-duration',
+      label: (trackSortKey === 'duration' ? '✓ ' : '    ') + '时长',
+      onSelect: () => setTrackSortKey('duration'),
+      divider: true,
+    },
+    {
+      id: 'order-asc',
+      label: (trackSortOrder === 'asc' ? '✓ ' : '    ') + '升序',
+      onSelect: () => setTrackSortOrder('asc'),
+    },
+    {
+      id: 'order-desc',
+      label: (trackSortOrder === 'desc' ? '✓ ' : '    ') + '降序',
+      onSelect: () => setTrackSortOrder('desc'),
+    },
+  ]
+
+  const albumSortMenuItems: MenuItemSpec[] = [
+    {
+      id: 'sort-default',
+      label: (albumSortKey === 'default' ? '✓ ' : '    ') + '默认顺序',
+      onSelect: () => setAlbumSortKey('default'),
+    },
+    {
+      id: 'sort-title',
+      label: (albumSortKey === 'title' ? '✓ ' : '    ') + '专辑名称',
+      onSelect: () => setAlbumSortKey('title'),
+    },
+    {
+      id: 'sort-artist',
+      label: (albumSortKey === 'artist' ? '✓ ' : '    ') + '艺人',
+      onSelect: () => setAlbumSortKey('artist'),
+    },
+    {
+      id: 'sort-year',
+      label: (albumSortKey === 'year' ? '✓ ' : '    ') + '年份',
+      onSelect: () => setAlbumSortKey('year'),
+    },
+    {
+      id: 'sort-count',
+      label: (albumSortKey === 'count' ? '✓ ' : '    ') + '曲目数',
+      onSelect: () => setAlbumSortKey('count'),
+      divider: true,
+    },
+    {
+      id: 'order-asc',
+      label: (albumSortOrder === 'asc' ? '✓ ' : '    ') + '升序',
+      onSelect: () => setAlbumSortOrder('asc'),
+    },
+    {
+      id: 'order-desc',
+      label: (albumSortOrder === 'desc' ? '✓ ' : '    ') + '降序',
+      onSelect: () => setAlbumSortOrder('desc'),
+    },
+  ]
 
   return h(
     'section',
@@ -5193,15 +5583,15 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
             type: 'button',
             'data-testid': 'local-music-play',
             'aria-label': '播放全部',
-            onClick: () => trackUrns[0] && player?.playNow(trackUrns),
-            disabled: trackUrns.length === 0,
+            onClick: () => sortedTrackUrns[0] && player?.playNow(sortedTrackUrns),
+            disabled: sortedTrackUrns.length === 0,
             style: {
               width: 56,
               height: 56,
               borderRadius: '50%',
-              backgroundColor: trackUrns.length === 0 ? 'rgba(30, 215, 96, 0.4)' : '#1ed760',
+              backgroundColor: sortedTrackUrns.length === 0 ? 'rgba(30, 215, 96, 0.4)' : '#1ed760',
               border: 'none',
-              cursor: trackUrns.length === 0 ? 'not-allowed' : 'pointer',
+              cursor: sortedTrackUrns.length === 0 ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -5220,8 +5610,8 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
             title: '随机播放',
             style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
             onClick: () => {
-              if (trackUrns.length > 0) {
-                const shuffled = [...trackUrns].sort(() => Math.random() - 0.5)
+              if (sortedTrackUrns.length > 0) {
+                const shuffled = [...sortedTrackUrns].sort(() => Math.random() - 0.5)
                 void player?.playNow(shuffled)
               }
             },
@@ -5270,14 +5660,38 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
               background: 'none',
               border: 'none',
               color: '#b3b3b3',
+              fontSize: 16,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              padding: 4,
+            },
+          },
+          '⚙',
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-testid': 'local-music-sort-trigger',
+            title: '排序方式',
+            onClick: (e: ReactMouseEvent) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              setSortMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
+            },
+            style: {
+              background: 'none',
+              border: 'none',
+              color: '#b3b3b3',
               fontSize: 14,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
+              padding: 0,
             },
           },
-          h('span', null, '自定义顺序'),
+          h('span', null, viewMode === 'tracks' ? trackSortLabelMap[trackSortKey] : albumSortLabelMap[albumSortKey]),
           h('span', { style: { fontSize: 16 } }, '≣'),
         ),
       ),
@@ -5302,14 +5716,96 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                 flexShrink: 0,
               },
             },
-            h('span', { style: { width: 40, textAlign: 'center', flexShrink: 0 } }, '#'),
-            h('span', { style: { flex: 2, paddingLeft: 12 } }, '标题'),
-            h('span', { style: { flex: 1.5, paddingLeft: 8 } }, '专辑'),
-            h('span', { style: { width: 100, textAlign: 'right', paddingRight: 16, flexShrink: 0 } }, '✔ 🕒'),
+            h(
+              'button',
+              {
+                type: 'button',
+                'data-testid': 'local-sort-default',
+                onClick: () => handleTrackHeaderClick('default'),
+                style: {
+                  width: 40,
+                  textAlign: 'center',
+                  flexShrink: 0,
+                  background: 'none',
+                  border: 'none',
+                  color: trackSortKey === 'default' ? '#FFFFFF' : '#b3b3b3',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: 13,
+                  fontWeight: 500,
+                },
+              },
+              '#',
+              renderTrackSortIndicator('default'),
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                'data-testid': 'local-sort-title',
+                onClick: () => handleTrackHeaderClick('title'),
+                style: {
+                  flex: 2,
+                  paddingLeft: 12,
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  color: trackSortKey === 'title' ? '#FFFFFF' : '#b3b3b3',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 500,
+                },
+              },
+              '标题',
+              renderTrackSortIndicator('title'),
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                'data-testid': 'local-sort-album',
+                onClick: () => handleTrackHeaderClick('album'),
+                style: {
+                  flex: 1.5,
+                  paddingLeft: 8,
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  color: trackSortKey === 'album' ? '#FFFFFF' : '#b3b3b3',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 500,
+                },
+              },
+              '专辑',
+              renderTrackSortIndicator('album'),
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                'data-testid': 'local-sort-duration',
+                onClick: () => handleTrackHeaderClick('duration'),
+                style: {
+                  width: 100,
+                  textAlign: 'right',
+                  paddingRight: 16,
+                  flexShrink: 0,
+                  background: 'none',
+                  border: 'none',
+                  color: trackSortKey === 'duration' ? '#FFFFFF' : '#b3b3b3',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 500,
+                },
+              },
+              '✔ 🕒',
+              renderTrackSortIndicator('duration'),
+            ),
           ),
           loading
             ? h(EmptyState, { key: 'track-loading', title: '加载中…' })
-            : filteredTracks.length === 0
+            : sortedTracks.length === 0
             ? h(EmptyState, {
                 key: 'track-empty',
                 icon: '📁',
@@ -5321,7 +5817,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                 { key: 'track-list-container', style: { flex: 1, minHeight: 0 } },
                 h(List<Track>, {
                   testID: 'local-tracks-list',
-                  items: filteredTracks,
+                  items: sortedTracks,
                   estimatedItemSize: tokens.size.row,
                   keyExtractor: (t) => t.urn,
                   renderItem: (t, index) =>
@@ -5329,7 +5825,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                       ctx,
                       track: t,
                       index,
-                      onPress: () => player?.playFromContext(t.urn, trackUrns),
+                      onPress: () => player?.playFromContext(t.urn, sortedTrackUrns),
                       onMore: (anchor) => menu.open({ track: t }, anchor),
                     }),
                 }),
@@ -5339,7 +5835,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
           // Albums Grid
           loading
             ? h(EmptyState, { key: 'album-loading', title: '加载中…' })
-            : filteredAlbums.length === 0
+            : sortedAlbums.length === 0
             ? h(EmptyState, {
                 key: 'album-empty',
                 icon: '💿',
@@ -5367,7 +5863,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                       gap: 24,
                     },
                   },
-                  filteredAlbums.map((album) =>
+                  sortedAlbums.map((album) =>
                     h(LocalAlbumCard, {
                       key: album.urn,
                       ctx,
@@ -5388,6 +5884,14 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
               ),
         ],
     h(ContextMenu, menu.menuProps),
+    h(ContextMenu, {
+      open: sortMenuAnchor !== null,
+      onClose: () => setSortMenuAnchor(null),
+      x: sortMenuAnchor?.x ?? 0,
+      y: sortMenuAnchor?.y ?? 0,
+      items: viewMode === 'tracks' ? trackSortMenuItems : albumSortMenuItems,
+      title: '排序方式',
+    }),
   )
 }
 

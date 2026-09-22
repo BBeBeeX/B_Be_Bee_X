@@ -100,7 +100,8 @@ class LibraryStub extends Service {
       : { items: [], hasMore: false }
   }
   async getPlaylist(urn: string): Promise<PlaylistDetail | undefined> {
-    return urn === PLAYLIST_URN ? storedPlaylist : undefined
+    const found = this.playlists.find((p) => p.urn === urn) as PlaylistDetail | undefined
+    return found ?? (urn === PLAYLIST_URN ? storedPlaylist : undefined)
   }
   async listSaved(kind?: SavedKind): Promise<Paged<{ urn: string; kind: 'track' | 'album'; sourceId: string; addedAt: number; pinned?: boolean }>> {
     const items = this.saved.map((urn, index) => {
@@ -148,17 +149,19 @@ class PlayerStub extends Service {
 }
 
 class SourcesStub extends Service {
+  tracks: Track[] = [track]
+  albums: any[] = []
   constructor(ctx: Context) {
     super(ctx, 'sources')
   }
   async getTracks(urns: readonly string[]): Promise<Track[]> {
-    return urns.includes(TRACK) ? [track] : []
+    return this.tracks.filter((t) => urns.includes(t.urn))
   }
   async listTracks() {
-    return { items: [track], hasMore: false }
+    return { items: this.tracks, hasMore: false }
   }
   async listAlbums() {
-    return { items: [], hasMore: false }
+    return { items: this.albums, hasMore: false }
   }
   async getAlbum(urn: string) {
     return urn === ALBUM_URN
@@ -194,6 +197,7 @@ async function harness() {
     ctx: scoped,
     library: root.library as unknown as LibraryStub,
     player: root.player as unknown as PlayerStub,
+    sources: root.sources as unknown as SourcesStub,
     ui: root.ui as unknown as UiStub,
   }
 }
@@ -711,6 +715,62 @@ describe('PlaylistDetailScreen', () => {
 
     expect(library.calls).toEqual([`remove:${PLAYLIST_URN}:item-1`])
   })
+
+  it('supports sorting tracks by clicking headers and via sort menu', async () => {
+    const { ctx, player, library, sources } = await harness()
+    const TRACK_B = 'BBeBee:demo:track:two'
+    const trackB: Track = {
+      urn: TRACK_B,
+      title: 'Beta',
+      artists: [{ urn: 'BBeBee:demo:artist:b', name: 'B', role: 'main', ordinal: 0 }],
+      durationMs: 300000,
+    }
+    sources.tracks = [track, trackB]
+    const multiPlaylist: PlaylistDetail = {
+      urn: PLAYLIST_URN,
+      name: 'Road trip',
+      trackCount: 2,
+      items: [
+        { id: 'item-1', trackUrn: TRACK, position: 'a' },
+        { id: 'item-2', trackUrn: TRACK_B, position: 'b' },
+      ],
+      hasMore: false,
+    }
+    library.playlists = [multiPlaylist]
+
+    await withListLayout(async () => {
+      const { getByTestId, getByText } = render(h(PlaylistDetailScreen, { ctx, urn: PLAYLIST_URN }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Clicking '#' toggles custom sort to desc
+      await act(async () => {
+        getByTestId('playlist-sort-custom').click()
+        await tick()
+      })
+
+      // Click play button to play from sortedUrns
+      await act(async () => {
+        getByTestId('playlist-play').click()
+        await tick()
+      })
+
+      // Open sort menu
+      await act(async () => {
+        getByTestId('playlist-sort-trigger').click()
+        await tick()
+      })
+
+      // Click "升序" in menu
+      await act(async () => {
+        getByText('升序').click()
+        await tick()
+      })
+    })
+
+    expect(player.calls).toContain(`${TRACK_B} <- 2`)
+  })
 })
 
 describe('FavoritesScreen', () => {
@@ -809,6 +869,80 @@ describe('LocalMusicScreen', () => {
       // Back on tracks view
       expect(container.textContent).toContain('本地文件')
       expect(container.textContent).toContain('Alpha')
+    })
+  })
+
+  it('supports sorting local tracks by headers and sort menu', async () => {
+    const { ctx, player, sources } = await harness()
+    const TRACK_B = 'BBeBee:demo:track:two'
+    const trackB: Track = {
+      urn: TRACK_B,
+      title: 'Zeta',
+      artists: [{ urn: 'BBeBee:demo:artist:z', name: 'Z', role: 'main', ordinal: 0 }],
+      durationMs: 300000,
+    }
+    sources.tracks = [track, trackB]
+
+    await withListLayout(async () => {
+      const { getByTestId, getByText } = render(h(LocalMusicScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Click sort menu trigger
+      await act(async () => {
+        getByTestId('local-music-sort-trigger').click()
+        await tick()
+      })
+
+      // Choose "降序"
+      await act(async () => {
+        getByText('降序').click()
+        await tick()
+      })
+
+      // Click play all
+      await act(async () => {
+        ;(getByTestId('local-music-play') as HTMLElement).click()
+        await tick()
+      })
+    })
+
+    expect(player.calls).toContain(`now:${TRACK_B},${TRACK}`)
+  })
+
+  it('supports sorting local albums via sort menu', async () => {
+    const { ctx, sources } = await harness()
+    sources.albums = [
+      { urn: 'BBeBee:local:album:a', title: 'AAA', trackCount: 2, year: 2020 },
+      { urn: 'BBeBee:local:album:z', title: 'ZZZ', trackCount: 1, year: 2024 },
+    ]
+
+    await withListLayout(async () => {
+      const { getByTestId, getByText } = render(h(LocalMusicScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Switch to albums view
+      await act(async () => {
+        getByTestId('local-tab-albums').click()
+        await tick()
+      })
+
+      // Click sort menu trigger
+      await act(async () => {
+        getByTestId('local-music-sort-trigger').click()
+        await tick()
+      })
+
+      // Select "专辑名称"
+      await act(async () => {
+        getByText('专辑名称').click()
+        await tick()
+      })
+
+      expect(getByTestId('local-albums-grid')).toBeTruthy()
     })
   })
 })

@@ -163,4 +163,65 @@ describe('AlbumScreen', () => {
     expect(container.textContent).toContain('Album unavailable')
     expect(container.textContent).toContain('no album')
   })
+
+  it('supports sorting tracks by clicking headers', async () => {
+    const { ctx, player } = await harness()
+    await withListLayout(async () => {
+      const { getByTestId, getByText } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Clicking '#' toggles trackNo to desc
+      await act(async () => {
+        getByTestId('album-sort-trackNo').click()
+        await tick()
+      })
+
+      // Now "Play album" should play in reversed order [TRACK_B, TRACK_A]
+      await act(async () => {
+        getByText('Play album').click()
+        await tick()
+      })
+    })
+
+    expect(player.calls).toEqual([{ method: 'playNow', urns: [TRACK_B, TRACK_A] }])
+  })
+
+  it('supports sorting tracks via sort menu trigger', async () => {
+    const { ctx, player } = await harness()
+    await withListLayout(async () => {
+      const { getByTestId, getByText } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Click sort trigger to open ContextMenu
+      await act(async () => {
+        getByTestId('album-sort-trigger').click()
+        await tick()
+      })
+
+      // Click "降序" in the menu
+      await act(async () => {
+        getByText('降序').click()
+        await tick()
+      })
+
+      // Play Jóga row, context should be [TRACK_B, TRACK_A]
+      await act(async () => {
+        getByText('Jóga').click()
+        await tick()
+      })
+    })
+
+    expect(player.calls).toEqual([
+      {
+        method: 'playFromContext',
+        urn: TRACK_B,
+        urns: [TRACK_B, TRACK_A],
+        context: { kind: 'album', urn: ALBUM_URN, label: 'Homogenic' },
+      },
+    ])
+  })
 })
