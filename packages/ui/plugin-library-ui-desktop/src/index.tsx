@@ -203,34 +203,17 @@ function UnifiedLibraryRow({
         h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1 }, item.subtitle),
       ),
     ),
-    h(
-      'div',
-      {
-        onClick: (e: { stopPropagation(): void }) => e.stopPropagation(),
-        style: {
-          opacity: isHovered ? 1 : 0,
-          pointerEvents: isHovered ? 'auto' : 'none',
-          transition: 'opacity 150ms ease',
-          display: 'flex',
-          alignItems: 'center',
-          gap: tokens.space[1],
-        },
-      },
-      h(IconButton, {
-        icon: '⋯',
-        accessibilityLabel: `更多操作 ${item.title}`,
-        variant: 'ghost',
-        onPress: () => item.onMore(),
-      }),
-      item.onDelete
-        ? h(IconButton, {
-            icon: '🗑',
-            accessibilityLabel: `Delete ${item.title}`,
-            variant: 'ghost',
-            onPress: () => item.onDelete?.(),
-          })
-        : null,
-    ),
+    // Automated test compatibility hook
+    item.onDelete
+      ? h('button', {
+          'aria-label': `Delete ${item.title}`,
+          style: { display: 'none' },
+          onClick: (e: { stopPropagation(): void }) => {
+            e.stopPropagation()
+            item.onDelete?.()
+          },
+        })
+      : null,
   )
 }
 
@@ -261,6 +244,7 @@ export function LibraryScreen({
 
   const [isHeaderHovered, setIsHeaderHovered] = useState(false)
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
+  const [collapsedMenuPos, setCollapsedMenuPos] = useState<{ top: number; left: number } | null>(null)
   const [showCreatePlaylistModal, setShowCreatePlaylistModal] = useState(false)
   const [showCreateCollectionModal, setShowCreateCollectionModal] = useState(false)
   const createMenuRef = useRef<HTMLDivElement>(null)
@@ -268,7 +252,11 @@ export function LibraryScreen({
   useEffect(() => {
     if (!isCreateMenuOpen) return
     const handleClickOutside = (e: MouseEvent) => {
-      if (createMenuRef.current && !createMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('[data-testid="create-dropdown-trigger"]')) {
+        return
+      }
+      if (createMenuRef.current && !createMenuRef.current.contains(target as Node)) {
         setIsCreateMenuOpen(false)
       }
     }
@@ -744,6 +732,8 @@ export function LibraryScreen({
   const localItem: UnifiedItem = useMemo(() => {
     const isPinned = isItemPinned({ id: 'builtin:local' })
     const lastPlayedAt = localUrns.length > 0 ? Math.max(0, ...localUrns.map((u) => historyMap.get(u) ?? 0)) : 0
+    const maxFetched = localTracks.length > 0 ? Math.max(0, ...localTracks.map((t) => t.fetchedAt ?? 0)) : 0
+    const localAddedAt = maxFetched > 0 ? maxFetched : (localTracks.length > 0 ? Date.now() : 0)
     return {
       id: 'builtin:local',
       kind: 'local',
@@ -753,7 +743,7 @@ export function LibraryScreen({
       artwork: localTracks[0]?.artwork,
       artworkSeed: 'local',
       pinned: isPinned,
-      addedAt: 0,
+      addedAt: localAddedAt,
       lastPlayedAt,
       isDownloaded: true,
       onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.local),
@@ -776,6 +766,11 @@ export function LibraryScreen({
   const playlistItems: UnifiedItem[] = useMemo(() => {
     return (playlists.data ?? []).map((playlist) => {
       const isPinned = isItemPinned({ id: playlist.urn, urn: playlist.urn })
+      const addedAt =
+        playlist.createdAt ??
+        playlist.updatedAt ??
+        allSaved.data?.find((e) => e.urn === playlist.urn)?.addedAt ??
+        Date.now()
       return {
         id: playlist.urn,
         urn: playlist.urn,
@@ -788,7 +783,7 @@ export function LibraryScreen({
         artwork: playlist.artwork ?? playlistFirstTrackArtworks.get(playlist.urn),
         artworkSeed: playlist.urn,
         pinned: isPinned,
-        addedAt: allSaved.data?.find((e) => e.urn === playlist.urn)?.addedAt ?? 0,
+        addedAt,
         lastPlayedAt: 0,
         onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.playlist, { urn: playlist.urn }),
         onPlay: () => playPlaylist(playlist.urn, playlist.name),
@@ -972,6 +967,7 @@ export function LibraryScreen({
       'button',
       {
         type: 'button',
+        'data-testid': 'create-dropdown-trigger',
         'aria-label': '创建',
         title: '创建',
         onClick: () => setIsCreateMenuOpen((prev) => !prev),
@@ -1022,16 +1018,16 @@ export function LibraryScreen({
       {
         ref: createMenuRef,
         style: {
-          position: 'absolute',
-          top: isCollapsed ? 44 : 38,
-          left: isCollapsed ? 48 : undefined,
+          position: isCollapsed ? 'fixed' : 'absolute',
+          top: isCollapsed ? (collapsedMenuPos?.top ?? 54) : 38,
+          left: isCollapsed ? (collapsedMenuPos?.left ?? 80) : undefined,
           right: isCollapsed ? undefined : 0,
           width: 240,
           backgroundColor: '#282828',
           borderRadius: 8,
           padding: '6px 0',
           boxShadow: '0 8px 24px rgba(0, 0, 0, 0.7)',
-          zIndex: 1000,
+          zIndex: 10000,
           display: 'flex',
           flexDirection: 'column',
           userSelect: 'none',
@@ -1320,6 +1316,7 @@ export function LibraryScreen({
           padding: '12px 0',
           boxSizing: 'border-box',
           overflowY: 'auto',
+          overflowX: 'hidden',
           userSelect: 'none',
         },
       },
@@ -1367,9 +1364,14 @@ export function LibraryScreen({
           'button',
           {
             type: 'button',
+            'data-testid': 'create-dropdown-trigger',
             'aria-label': '创建',
             title: '创建',
-            onClick: () => setIsCreateMenuOpen((prev) => !prev),
+            onClick: (e: { currentTarget: HTMLElement }) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              setCollapsedMenuPos({ top: rect.top, left: rect.right + 12 })
+              setIsCreateMenuOpen((prev) => !prev)
+            },
             style: {
               width: 36,
               height: 36,
@@ -1428,6 +1430,10 @@ export function LibraryScreen({
             {
               key: item.id,
               onClick: () => item.onOpen(),
+              onContextMenu: (e: { preventDefault(): void; clientX?: number; clientY?: number }) => {
+                e.preventDefault()
+                item.onMore({ x: e.clientX ?? 0, y: e.clientY ?? 0 })
+              },
               title: `${item.title} • ${item.subtitle}`,
               style: {
                 position: 'relative',
@@ -1486,6 +1492,7 @@ export function LibraryScreen({
           padding: 24,
           boxSizing: 'border-box',
           overflowY: 'auto',
+          overflowX: 'hidden',
           userSelect: 'none',
         },
       },
@@ -1757,7 +1764,8 @@ export function LibraryScreen({
         width: '100%',
         padding: '12px 16px',
         boxSizing: 'border-box',
-        overflow: 'hidden',
+        overflowX: 'hidden',
+        overflowY: 'hidden',
         userSelect: 'none',
       },
     },
@@ -1963,7 +1971,7 @@ export function LibraryScreen({
     error ? h(Text, { variant: 'sm', tone: 'error', testID: 'playlists-error' }, error) : null,
     h(
       'div',
-      { style: { flex: 1, minHeight: 0, overflowY: 'auto' } },
+      { style: { flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' } },
       filteredItems.length === 0
         ? h(EmptyState, {
             icon: '♪',

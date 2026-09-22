@@ -422,8 +422,8 @@ export function Shell({ ctx }: { ctx: Context }) {
                   ? '72px 1fr minmax(260px, 28%)'
                   : '72px 1fr'
                 : isQueueOpen
-                  ? '240px 1fr minmax(260px, 28%)'
-                  : '240px 1fr',
+                  ? '280px 1fr minmax(260px, 28%)'
+                  : '280px 1fr',
           gap: 8,
           padding: 8,
           flex: 1,

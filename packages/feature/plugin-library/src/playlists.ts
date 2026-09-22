@@ -42,6 +42,7 @@ interface PlaylistRow {
   smart_query_json: string | null
   track_count: number | null
   duration_ms: number | null
+  created_at?: number | null
   updated_at: number
 }
 
@@ -56,7 +57,7 @@ interface ItemRow {
 
 const PLAYLIST_COLUMNS = `
   p.urn, p.name, p.description, p.artwork_id, p.owner, p.is_public,
-  p.is_smart, p.smart_query_json, p.track_count, p.duration_ms, p.updated_at,
+  p.is_smart, p.smart_query_json, p.track_count, p.duration_ms, p.created_at, p.updated_at,
   aw.source_url AS artwork_source_url, aw.blurhash, aw.dominant_color`
 
 const PLAYLIST_JOINS = 'LEFT JOIN artworks aw ON aw.id = p.artwork_id'
@@ -360,6 +361,8 @@ export class Playlists {
       ...(row.track_count !== null ? { trackCount: row.track_count } : {}),
       ...(row.duration_ms !== null ? { durationMs: row.duration_ms } : {}),
       ...(row.is_smart === 1 ? { isSmart: true } : {}),
+      ...(row.created_at ? { createdAt: row.created_at } : {}),
+      ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
     }
   }
 }

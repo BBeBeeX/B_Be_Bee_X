@@ -471,7 +471,7 @@ describe('the desktop shell', () => {
 
     const workspace = container.querySelector('nav')?.parentElement as HTMLElement
     expect(workspace).not.toBeNull()
-    expect(workspace.style.gridTemplateColumns).toBe('240px 1fr')
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr')
     expect(container.querySelector('[data-testid="queue-sidebar-panel"]')).toBeNull()
     expect(container.textContent).toContain('Main Library Content')
 
@@ -480,7 +480,7 @@ describe('the desktop shell', () => {
       ctx.emit('ui/navigate', 'queue.view')
     })
 
-    expect(workspace.style.gridTemplateColumns).toBe('240px 1fr minmax(260px, 28%)')
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr minmax(260px, 28%)')
     const aside = container.querySelector('[data-testid="queue-sidebar-panel"]') as HTMLElement
     expect(aside).not.toBeNull()
     expect(aside.textContent).toContain('Queue Aside Content')
@@ -496,7 +496,7 @@ describe('the desktop shell', () => {
     })
 
     expect(container.querySelector('[data-testid="queue-sidebar-panel"]')).toBeNull()
-    expect(workspace.style.gridTemplateColumns).toBe('240px 1fr')
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr')
     expect(container.textContent).toContain('Main Library Content')
 
     // Navigate to queue.view opens it again
@@ -510,7 +510,7 @@ describe('the desktop shell', () => {
       ctx.emit('ui/navigate', 'queue.view')
     })
     expect(container.querySelector('[data-testid="queue-sidebar-panel"]')).toBeNull()
-    expect(workspace.style.gridTemplateColumns).toBe('240px 1fr')
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr')
   })
 
   it('navigates to settings.view when profile avatar is clicked', async () => {

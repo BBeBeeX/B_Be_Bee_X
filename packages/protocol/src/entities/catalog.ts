@@ -96,6 +96,7 @@ export interface Track {
   artwork?: ArtworkRef
   externalIds?: ExternalIds
   loved?: boolean
+  fetchedAt?: number
 }
 
 /** Identifiers that let the same recording be recognised across providers. */
@@ -124,6 +125,8 @@ export interface Playlist {
    * definition is editable through `ctx.library.setSmartQuery`.
    */
   isSmart?: boolean
+  createdAt?: number
+  updatedAt?: number
 }
 
 export interface PlaylistItem {

@@ -56,6 +56,7 @@ interface TrackRow {
   artwork_source_url: string | null
   artwork_local_uri: string | null
   loved?: number | null
+  fetched_at?: number | null
 }
 
 interface AlbumRow {
@@ -120,7 +121,7 @@ const ARTWORK_COLUMNS = `
 const TRACK_COLUMNS = `
   t.urn, t.title, t.sort_title, t.album_urn, al.title AS album_title,
   t.track_no, t.disc_no, t.duration_ms, t.year, t.explicit, t.bpm,
-  t.replay_gain_track, t.replay_gain_album, t.peak_track, t.available,
+  t.replay_gain_track, t.replay_gain_album, t.peak_track, t.available, t.fetched_at,
   COALESCE(st.loved, 0) AS loved,
   ${ARTWORK_COLUMNS}`
 
@@ -551,6 +552,7 @@ ${TRACK_JOINS}
       available: row.available === 1,
       artwork: artworkOf(row),
       loved: row.loved !== undefined && row.loved !== null ? row.loved === 1 : undefined,
+      fetchedAt: row.fetched_at ?? undefined,
     }))
   }
 
