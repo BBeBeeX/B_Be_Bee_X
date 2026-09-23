@@ -180,6 +180,9 @@ importers:
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@BBeBee/ui-kit-desktop':
+        specifier: workspace:*
+        version: link:../../packages/ui/ui-kit-desktop
       cordis:
         specifier: 4.0.0-rc.9
         version: 4.0.0-rc.9
@@ -1878,6 +1881,9 @@ importers:
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol
+      '@BBeBee/ui-kit-desktop':
+        specifier: workspace:*
+        version: link:../ui-kit-desktop
       cordis:
         specifier: 4.0.0-rc.9
         version: 4.0.0-rc.9

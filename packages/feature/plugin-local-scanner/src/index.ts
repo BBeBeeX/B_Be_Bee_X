@@ -536,6 +536,14 @@ export class Scanner extends Service implements ScannerService {
       }
       try {
         const metadata = await this.ownCtx.codec.readMetadata(file.uri)
+        const supported = new Set(this.ownCtx.codec.supportedFormats().map((f) => f.toLowerCase()))
+        const codec = metadata.codec?.toLowerCase()
+        if (codec === 'alac' && !supported.has('alac')) {
+          throw new Error('unsupported codec: ALAC is not supported on this platform')
+        }
+        if (codec === 'wma' && !supported.has('wma')) {
+          throw new Error('unsupported codec: WMA is not supported on this platform')
+        }
         let artwork = metadata.hasArtwork
           ? await this.ownCtx.codec.readArtwork(file.uri).catch(() => undefined)
           : undefined
@@ -585,6 +593,11 @@ export class Scanner extends Service implements ScannerService {
 
         if (item.error || !item.metadata) {
           summary.errors++
+          const { removedTrackUrn } = await forgetFile(
+            { tx, sourceId: this.config.sourceId, now },
+            item.file.uri,
+          )
+          if (removedTrackUrn) changed.push(removedTrackUrn)
           await this.writeEntry(tx, dir.id, item.file, 'error', null, item.error ?? 'unreadable')
           continue
         }

@@ -54,6 +54,7 @@ export interface MediaElementLike {
   currentTime: number
   duration: number
   paused: boolean
+  error?: { code?: number; message?: string } | null
   play(): Promise<void> | void
   pause(): void
   addEventListener(type: string, listener: () => void): void
@@ -213,7 +214,10 @@ class StreamedHandle implements AudioSourceHandle {
 
   private readonly stallListeners = new Set<(stalled: boolean) => void>()
   private stalled = false
-  private readonly onStallNative = () => this.setStalled(true)
+  private readonly onStallNative = () => {
+    if ((this.element as { error?: unknown }).error) return
+    this.setStalled(true)
+  }
   private readonly onRecoverNative = () => {
     /*
      * The element's own clock is authoritative as soon as it can play.
@@ -230,6 +234,10 @@ class StreamedHandle implements AudioSourceHandle {
   private readonly onSeekedNative = () => {
     this.pendingSeekSeconds = undefined
   }
+  private readonly onErrorNative = () => {
+    this.setStalled(false)
+    this.onEndedNative()
+  }
 
   private pendingSeekSeconds?: number
 
@@ -240,6 +248,7 @@ class StreamedHandle implements AudioSourceHandle {
     this.node = node
     element.addEventListener('ended', this.onEndedNative)
     element.addEventListener('seeked', this.onSeekedNative)
+    element.addEventListener('error', this.onErrorNative)
     for (const type of STALL_EVENTS) element.addEventListener(type, this.onStallNative)
     for (const type of RECOVER_EVENTS) element.addEventListener(type, this.onRecoverNative)
   }
@@ -287,7 +296,15 @@ class StreamedHandle implements AudioSourceHandle {
         this.element.currentTime = seconds
       }
     }
-    void this.element.play()
+    const res = this.element.play()
+    if (res && typeof (res as Promise<void>).catch === 'function') {
+      ;(res as Promise<void>).catch((err: Error) => {
+        this.setStalled(false)
+        if (err.name === 'NotSupportedError' || (this.element as { error?: unknown }).error) {
+          this.onEndedNative()
+        }
+      })
+    }
   }
 
   pause(): void {
@@ -314,6 +331,7 @@ class StreamedHandle implements AudioSourceHandle {
     this.pendingSeekSeconds = undefined
     this.element.removeEventListener('ended', this.onEndedNative)
     this.element.removeEventListener('seeked', this.onSeekedNative)
+    this.element.removeEventListener('error', this.onErrorNative)
     for (const type of STALL_EVENTS) this.element.removeEventListener(type, this.onStallNative)
     for (const type of RECOVER_EVENTS) this.element.removeEventListener(type, this.onRecoverNative)
     this.endedListeners.clear()

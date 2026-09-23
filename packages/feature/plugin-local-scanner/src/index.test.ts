@@ -274,6 +274,32 @@ describe('scanning', () => {
     expect(entry?.error, 'with the reason, for the "could not import" list').toMatch(/unsupported/)
   })
 
+  it('records an error and rejects files with unsupported codec such as ALAC', async () => {
+    const h = await harness()
+    await h.write('barbies.m4a')
+    h.codec.tags.set(h.uri + '/barbies.m4a', {
+      title: 'Barbies',
+      artist: 'Artist',
+      codec: 'ALAC',
+      hasArtwork: false,
+    })
+
+    await h.scanner.addSpecifiedDir(h.uri)
+    const summary = await h.scanner.scan()
+
+    expect(summary).toMatchObject({ added: 0, errors: 1 })
+    const entry = await h.db.get<{ status: string; error: string; track_urn: string | null }>(
+      'SELECT status, error, track_urn FROM scan_entries WHERE uri = ?',
+      [h.uri + '/barbies.m4a'],
+    )
+    expect(entry?.status).toBe('error')
+    expect(entry?.error).toMatch(/unsupported codec: ALAC/)
+    expect(entry?.track_urn).toBeNull()
+
+    const bindings = await h.db.query('SELECT * FROM media_bindings')
+    expect(bindings).toHaveLength(0)
+  })
+
   it('survives a directory symlink cycle', async () => {
     // `ln -s . loop` inside a music folder — or two folders linking to each
     // other, which real collections do have — made the BFS queue never empty

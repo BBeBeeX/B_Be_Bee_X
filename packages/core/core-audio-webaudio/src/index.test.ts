@@ -20,6 +20,7 @@ class FakeMediaElement {
   currentTime = 0
   duration = 120
   paused = true
+  error: { code?: number; message?: string } | null = null
   private readonly listeners = new Map<string, Set<() => void>>()
 
   async play(): Promise<void> {
@@ -292,6 +293,47 @@ describe('stalls', () => {
 
     expect(seen).toEqual([])
     expect(elements[0]!.countListeners(), 'every handler is removed, not just muted').toBe(0)
+  })
+
+  it('clears stall and triggers ended on element error', async () => {
+    const { audio, elements } = await harness()
+    const source = await audio.load('https://example.org/bad.m4a', { strategy: 'stream' })
+    const seenStalls: boolean[] = []
+    let ended = false
+    source.onStalled((stalled) => void seenStalls.push(stalled))
+    source.onEnded(() => void (ended = true))
+
+    // Element emits waiting first, then encounters fatal error
+    elements[0]!.emit('waiting')
+    expect(seenStalls).toEqual([true])
+
+    elements[0]!.error = { code: 4, message: 'Format not supported' }
+    elements[0]!.emit('error')
+
+    expect(seenStalls).toEqual([true, false])
+    expect(ended).toBe(true)
+
+    // Subsequent stall events should be ignored while in error
+    elements[0]!.emit('waiting')
+    expect(seenStalls).toEqual([true, false])
+  })
+
+  it('handles play() rejection without throwing unhandled rejection', async () => {
+    const { audio, elements } = await harness()
+    const source = await audio.load('https://example.org/bad.m4a', { strategy: 'stream' })
+    let ended = false
+    source.onEnded(() => void (ended = true))
+
+    const notSupportedError = new Error('Failed to load because no supported source was found.')
+    notSupportedError.name = 'NotSupportedError'
+    elements[0]!.play = async () => {
+      throw notSupportedError
+    }
+
+    source.play()
+    await tick()
+
+    expect(ended).toBe(true)
   })
 })
 
