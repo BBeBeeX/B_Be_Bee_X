@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDuration } from './time.js'
+import { formatDuration, formatTotalDuration } from './time.js'
 
 describe('formatDuration', () => {
   it('formats under an hour as m:ss', () => {
@@ -33,3 +33,20 @@ describe('formatDuration', () => {
     expect(formatDuration(7_265_000)).toBe('2:01:05')
   })
 })
+
+describe('formatTotalDuration', () => {
+  it('returns empty string for empty or 0ms items', () => {
+    expect(formatTotalDuration([])).toBe('')
+    expect(formatTotalDuration([{ durationMs: 0 }, undefined])).toBe('')
+  })
+
+  it('formats under an hour as minutes and seconds', () => {
+    expect(formatTotalDuration([{ durationMs: 125_000 }])).toBe('2 分钟 5 秒')
+  })
+
+  it('formats over an hour as hours and minutes', () => {
+    expect(formatTotalDuration([{ durationMs: 3_665_000 }])).toBe('1 小时 1 分钟')
+    expect(formatTotalDuration([{ durationMs: 7_200_000 }])).toBe('2 小时 0 分钟')
+  })
+})
+

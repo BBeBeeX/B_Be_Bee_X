@@ -25,6 +25,7 @@ import type { Collection, DownloadsService, LibraryService, PlayerService, Playl
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
+import { formatDuration, formatTotalDuration } from '@BBeBee/toolkit'
 import { addToCollectionSubmenu, sleepTimerSubmenu, useTrackMenu } from '@BBeBee/ui-menus'
 import { Artwork, ContextMenu, EmptyState, List } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
@@ -41,27 +42,6 @@ import { tokens } from '@BBeBee/ui-tokens'
 function CachedArtwork({ ctx, ...props }: ArtworkProps & { ctx: Context }): ReactElement {
   const artwork = useResolvedArtwork(ctx, props.artwork)
   return h(Artwork, { ...props, artwork })
-}
-
-function formatDuration(ms?: number): string {
-  if (!ms || ms <= 0) return '0:00'
-  const totalSeconds = Math.floor(ms / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
-}
-
-function formatTotalDuration(tracks: readonly Track[]): string {
-  const totalMs = tracks.reduce((sum, t) => sum + (t.durationMs || 0), 0)
-  if (totalMs <= 0) return ''
-  const totalSeconds = Math.floor(totalMs / 1000)
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-  if (hours > 0) {
-    return `${hours} 小时 ${minutes} 分钟`
-  }
-  return `${minutes} 分钟 ${seconds} 秒`
 }
 
 function TrackLibraryActionButton({

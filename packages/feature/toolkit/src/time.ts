@@ -24,3 +24,22 @@ export function formatDuration(ms: number | undefined): string {
   const mm = hours > 0 ? String(minutes).padStart(2, '0') : String(minutes)
   return `${hours > 0 ? `${hours}:` : ''}${mm}:${String(seconds).padStart(2, '0')}`
 }
+
+/**
+ * Total duration of a collection of items (such as tracks or playlist entries).
+ * Formatted as "X 小时 Y 分钟" if >= 1 hour, or "Y 分钟 Z 秒" if < 1 hour,
+ * or empty string if total duration is 0 or unmeasured.
+ */
+export function formatTotalDuration(items: readonly ({ durationMs?: number } | undefined)[]): string {
+  const totalMs = items.reduce((sum, item) => sum + (item?.durationMs || 0), 0)
+  if (totalMs <= 0) return ''
+  const totalSeconds = Math.floor(totalMs / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) {
+    return `${hours} 小时 ${minutes} 分钟`
+  }
+  return `${minutes} 分钟 ${seconds} 秒`
+}
+
