@@ -409,7 +409,20 @@ export class AudioWebAudio extends Service implements AudioService {
     // the audio graph" (docs/03 §7). Gated here rather than on `chainInput`
     // because this is where a caller actually acquires a node.
     this.gate()
-    return opts.strategy === 'buffer' ? this.loadBuffered(src, opts) : this.loadStreamed(src, opts)
+    if (opts.strategy === 'buffer') {
+      try {
+        return await this.loadBuffered(src, opts)
+      } catch (err) {
+        // If buffered decoding fails (e.g. 24-bit FLAC, ID3v2-prefixed FLAC, or unsupported bit depth),
+        // fallback to streamed HTMLMediaElement if available rather than aborting playback!
+        const canStream = Boolean(this.config.createMediaElement ?? defaultMediaElementFactory())
+        if (canStream) {
+          return await this.loadStreamed(src, opts)
+        }
+        throw err
+      }
+    }
+    return this.loadStreamed(src, opts)
   }
 
   /** Ungated callers pass through; a plugin is held to its manifest. */

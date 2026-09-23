@@ -270,6 +270,17 @@ describe('stalls', () => {
     expect(called).toBe(false)
   })
 
+  it('falls back to streamed media element when buffered decodeAudioData fails', async () => {
+    const { audio, engine } = await harness()
+    engine.decodeAudioData = async () => {
+      throw new Error('Unable to decode audio data')
+    }
+    const source = await audio.load('file:///music/high-res-24bit.flac', { strategy: 'buffer' })
+    expect(source).toBeDefined()
+    source.play()
+    expect(source.positionMs).toBe(0)
+  })
+
   it('a disposed streamed source stops listening', async () => {
     const { audio, elements } = await harness()
     const source = await audio.load('https://example.org/a.mp3', { strategy: 'stream' })
