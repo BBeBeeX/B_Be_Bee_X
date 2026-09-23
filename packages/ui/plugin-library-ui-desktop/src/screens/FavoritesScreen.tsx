@@ -5,7 +5,7 @@ import type { PlayerService, Track } from '@BBeBee/protocol'
 import { useSaved } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import { serviceOf, type MenuAnchor, type MenuItemSpec } from '@BBeBee/ui-core'
-import { ContextMenu, EmptyState, List, Text } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -223,8 +223,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
   const menu = useTrackMenu(ctx)
-  const { openAddToPlaylistMenu, closeAddToPlaylistMenu, addToPlaylistMenuState, addToPlaylistMenuItems } =
-    useTrackLibraryInfo(ctx)
+  const { openAddToPlaylistMenu, saveToPlaylistMenuProps } = useTrackLibraryInfo(ctx)
 
   const allTracks = useMemo(() => {
     return urns.map((urn) => tracksMap.get(urn) ?? { urn, title: urn.split(':').pop() ?? urn, artists: [] })
@@ -637,14 +636,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
           }),
         ),
     h(ContextMenu, menu.menuProps),
-    h(ContextMenu, {
-      open: addToPlaylistMenuState !== null,
-      onClose: closeAddToPlaylistMenu,
-      x: addToPlaylistMenuState?.anchor.x ?? 0,
-      y: addToPlaylistMenuState?.anchor.y ?? 0,
-      items: addToPlaylistMenuItems,
-      title: '添加到歌单',
-    }),
+    h(SaveToPlaylistPopover, saveToPlaylistMenuProps),
     h(ContextMenu, {
       open: sortMenuAnchor !== null,
       onClose: () => setSortMenuAnchor(null),

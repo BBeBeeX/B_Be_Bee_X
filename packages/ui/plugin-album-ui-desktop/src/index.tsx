@@ -21,13 +21,13 @@ import { createElement as h, useCallback, useEffect, useMemo, useState } from 'r
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Collection, DownloadsService, LibraryService, PlayerService, Playlist, SleepTimerService, SourcesService, Track } from '@BBeBee/protocol'
+import type { Collection, DownloadsService, LibraryService, PlayerService, SleepTimerService, SourcesService, Track } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { formatDuration, formatTotalDuration } from '@BBeBee/toolkit'
-import { addToCollectionSubmenu, sleepTimerSubmenu, useTrackMenu } from '@BBeBee/ui-menus'
-import { Artwork, ContextMenu, EmptyState, List } from '@BBeBee/ui-kit-desktop'
+import { addToCollectionSubmenu, sleepTimerSubmenu, useSaveToPlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
+import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -327,6 +327,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const player = serviceOf<PlayerService>(ctx, 'player')
   const sleepTimer = serviceOf<SleepTimerService>(ctx, 'sleepTimer')
   const menu = useTrackMenu(ctx)
+  const saveToPlaylistMenu = useSaveToPlaylistMenu(ctx)
   const [sortKey, setSortKey] = useState<AlbumSortKey>('trackNo')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
@@ -334,11 +335,6 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const [collections, setCollections] = useState<readonly Collection[]>([])
   const [isSaved, setIsSaved] = useState(false)
   const [savedTrackUrns, setSavedTrackUrns] = useState<Set<string>>(new Set())
-  const [playlists, setPlaylists] = useState<readonly Playlist[]>([])
-  const [addToPlaylistMenuState, setAddToPlaylistMenuState] = useState<{
-    track: Track
-    anchor: MenuAnchor
-  } | null>(null)
 
   useEffect(() => {
     const albumUrn = album.data?.urn
@@ -387,13 +383,6 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
                 return next
               })
             }
-          })
-          .catch(() => {})
-      } else if (kind === 'playlist' && typeof library.listPlaylists === 'function') {
-        library
-          .listPlaylists()
-          .then((res) => {
-            if (!cancelled && res?.items) setPlaylists(res.items)
           })
           .catch(() => {})
       }
@@ -447,37 +436,6 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   }, [tracks, sortKey, sortOrder, album.data?.title])
 
   const sortedUrns = useMemo(() => sortedTracks.map((track) => track.urn), [sortedTracks])
-
-  const addToPlaylistMenuItems = useMemo((): MenuItemSpec[] => {
-    if (!addToPlaylistMenuState || !library) return []
-    const track = addToPlaylistMenuState.track
-    const list = playlists ?? []
-    const items: MenuItemSpec[] = [
-      {
-        id: 'create-new-playlist',
-        label: '新建歌单',
-        icon: '＋',
-        onSelect: async () => {
-          const name = window.prompt('歌单名称：')
-          if (name && name.trim()) {
-            const p = await library.createPlaylist(name.trim())
-            if (p) await library.addTracks(p.urn, [track.urn])
-          }
-        },
-        divider: list.length > 0,
-      },
-      ...list.map((playlist) => ({
-        id: playlist.urn,
-        label: playlist.name,
-        icon: '♪',
-        disabled: playlist.isSmart,
-        onSelect: async () => {
-          await library.addTracks(playlist.urn, [track.urn])
-        },
-      })),
-    ]
-    return items
-  }, [addToPlaylistMenuState, library, playlists])
 
   if (album.status === 'loading' || album.status === 'idle') {
     return h(Pending, { label: 'Loading album…' })
@@ -987,17 +945,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             albumTitle: detail.title,
             inLibrary: track.loved === true || savedTrackUrns.has(track.urn),
             onAddToFavorites: handleTrackAddToFavorites,
-            onOpenPlaylistMenu: async (t, anchor) => {
-              if (library && typeof library.listPlaylists === 'function') {
-                try {
-                  const res = await library.listPlaylists()
-                  if (res?.items) setPlaylists(res.items)
-                } catch {
-                  // Ignore and proceed with available playlists
-                }
-              }
-              setAddToPlaylistMenuState({ track: t, anchor })
-            },
+            onOpenPlaylistMenu: (t, anchor) => saveToPlaylistMenu.open(t, anchor),
             onPress: () => {
               void player?.playFromContext(track.urn, sortedUrns, {
                 context: { kind: 'album', urn: detail.urn, label: detail.title },
@@ -1025,14 +973,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       items: sortMenuItems,
       title: '排序方式',
     }),
-    h(ContextMenu, {
-      open: addToPlaylistMenuState !== null,
-      onClose: () => setAddToPlaylistMenuState(null),
-      x: addToPlaylistMenuState?.anchor.x ?? 0,
-      y: addToPlaylistMenuState?.anchor.y ?? 0,
-      items: addToPlaylistMenuItems,
-      title: '添加到歌单',
-    }),
+    h(SaveToPlaylistPopover, saveToPlaylistMenu.menuProps),
   )
 }
 

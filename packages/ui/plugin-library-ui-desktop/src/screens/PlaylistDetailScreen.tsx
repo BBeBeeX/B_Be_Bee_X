@@ -6,7 +6,7 @@ import { usePlaylist } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import type { MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { useTrackMenu } from '@BBeBee/ui-menus'
-import { ContextMenu, EmptyState, List, Text } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
 import { QuadArtworkCollage } from '../components/QuadArtworkCollage.js'
@@ -294,8 +294,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
   const menu = useTrackMenu(ctx, { fromPlaylistUrn: urn })
-  const { openAddToPlaylistMenu, closeAddToPlaylistMenu, addToPlaylistMenuState, addToPlaylistMenuItems } =
-    useTrackLibraryInfo(ctx)
+  const { openAddToPlaylistMenu, saveToPlaylistMenuProps } = useTrackLibraryInfo(ctx)
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -870,14 +869,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
       }),
     ),
     h(ContextMenu, menu.menuProps),
-    h(ContextMenu, {
-      open: addToPlaylistMenuState !== null,
-      onClose: closeAddToPlaylistMenu,
-      x: addToPlaylistMenuState?.anchor.x ?? 0,
-      y: addToPlaylistMenuState?.anchor.y ?? 0,
-      items: addToPlaylistMenuItems,
-      title: '添加到歌单',
-    }),
+    h(SaveToPlaylistPopover, saveToPlaylistMenuProps),
     h(ContextMenu, {
       open: sortMenuAnchor !== null,
       onClose: () => setSortMenuAnchor(null),

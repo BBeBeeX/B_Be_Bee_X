@@ -6,7 +6,7 @@ import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { LIBRARY_VIEWS } from '@BBeBee/plugin-library/views'
 import { useCollectionDetail, type CollectionMember } from '@BBeBee/plugin-library/hooks'
 import { serviceOf, type MenuAnchor } from '@BBeBee/ui-core'
-import { Artwork, Button, ContextMenu, EmptyState, List, Text } from '@BBeBee/ui-kit-desktop'
+import { Artwork, Button, ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { TrackLibraryActionButton } from '../components/TrackLibraryActionButton.js'
@@ -185,10 +185,9 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
     isTrackInLibrary,
     handleAddToFavorites,
     openAddToPlaylistMenu,
-    closeAddToPlaylistMenu,
-    addToPlaylistMenuState,
-    addToPlaylistMenuItems,
+    saveToPlaylistMenuProps,
   } = useTrackLibraryInfo(ctx)
+
 
   if (!id) return h(EmptyState, { title: 'No collection chosen' })
   if (state.status === 'error') {
@@ -258,13 +257,6 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
       }),
     ),
     h(ContextMenu, menu.menuProps),
-    h(ContextMenu, {
-      open: addToPlaylistMenuState !== null,
-      onClose: closeAddToPlaylistMenu,
-      x: addToPlaylistMenuState?.anchor.x ?? 0,
-      y: addToPlaylistMenuState?.anchor.y ?? 0,
-      items: addToPlaylistMenuItems,
-      title: '添加到歌单',
-    }),
+    h(SaveToPlaylistPopover, saveToPlaylistMenuProps),
   )
 }

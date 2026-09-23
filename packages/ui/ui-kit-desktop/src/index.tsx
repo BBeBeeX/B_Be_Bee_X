@@ -29,3 +29,10 @@ export { List } from './components/List.js'
 export { EmptyState } from './components/EmptyState.js'
 export { JsonTree, type JsonDirective } from './components/JsonTree.js'
 export { Toast } from './components/Toast.js'
+export {
+  SaveToPlaylistPopover,
+  type SaveToPlaylistPopoverProps,
+  type PlaylistSaveOption,
+  type CollectionSaveOption,
+} from './components/SaveToPlaylistPopover.js'
+
