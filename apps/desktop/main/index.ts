@@ -687,7 +687,6 @@ protocol.registerSchemesAsPrivileged([
   {
     scheme: 'bbebee-file',
     privileges: {
-      standard: true,
       secure: true,
       supportFetchAPI: true,
       corsEnabled: true,
@@ -696,6 +695,18 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ])
+
+function toNativePath(uriOrUrl: string): string {
+  const fileUrl = uriOrUrl.replace(/^bbebee-file:\/*/, 'file:///')
+  if (fileUrl.startsWith('file://')) {
+    const p = fileURLToPath(fileUrl)
+    if (/^\/[a-zA-Z]:[\\/]/.test(p)) {
+      return decodeURIComponent(p.slice(1))
+    }
+    return p
+  }
+  return uriOrUrl
+}
 
 function getFileMimeType(filePath: string): string {
   const ext = extname(filePath).toLowerCase()
@@ -793,8 +804,7 @@ void app.whenReady().then(async () => {
 
   protocol.handle('bbebee-file', (request) => {
     try {
-      const fileUrl = request.url.replace(/^bbebee-file:\/*/, 'file:///')
-      const filePath = fileURLToPath(fileUrl)
+      const filePath = toNativePath(request.url)
       if (existsSync(filePath)) {
         const stats = statSync(filePath)
         const rangeHeader = request.headers.get('range')
@@ -842,12 +852,15 @@ void app.whenReady().then(async () => {
         })
       }
     } catch {
-      // Fall through to net.fetch if path parsing fails
+      // ignore path resolution failure
     }
 
-    const fallbackUrl = request.url.replace(/^bbebee-file:\/*/, 'file:///')
-    return net.fetch(fallbackUrl, {
-      headers: request.headers,
+    return new Response('File Not Found', {
+      status: 404,
+      statusText: 'Not Found',
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+      },
     })
   })
 
