@@ -1,0 +1,650 @@
+import { createElement as h, useEffect, useRef, useState } from 'react'
+import type { ReactElement } from 'react'
+import type { Context } from 'cordis'
+import type { PlayMode } from '@BBeBee/protocol'
+import { formatDuration } from '@BBeBee/toolkit'
+import { NOW_PLAYING_VIEWS } from '@BBeBee/plugin-now-playing/views'
+import {
+  useDuration,
+  usePosition,
+  useTransport,
+  useTransportAvailability,
+} from '@BBeBee/plugin-player/hooks'
+import { Artwork, IconButton, Slider, Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
+import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
+import type { ArtworkProps } from '@BBeBee/ui-core'
+import { tokens } from '@BBeBee/ui-tokens'
+import { DesktopLyricsToggle } from './DesktopLyricsToggle.js'
+
+/**
+ * Button on the bottom transport bar to open/toggle the queue panel.
+ */
+function QueueButton({
+  ctx,
+  currentRoute,
+}: {
+  ctx: Context
+  currentRoute?: string
+}): ReactElement {
+  const [activeRoute, setActiveRoute] = useState<string | undefined>(currentRoute)
+
+  useEffect(() => {
+    if (currentRoute !== undefined) {
+      setActiveRoute(currentRoute)
+    }
+  }, [currentRoute])
+
+  useEffect(() => {
+    const off = ctx.on('ui/navigate', (id: string) => {
+      setActiveRoute(id)
+    })
+    return () => void off()
+  }, [ctx])
+
+  const isQueueActive = activeRoute === 'queue.view'
+
+  const handleClick = () => {
+    ctx.ui?.navigate?.('queue.view')
+  }
+
+  return h(
+    'button',
+    {
+      type: 'button',
+      'aria-label': '播放队列',
+      title: '播放队列',
+      'data-testid': 'queue-button',
+      onClick: handleClick,
+      style: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 30,
+        height: 30,
+        borderRadius: tokens.radius.sm,
+        border: isQueueActive ? '1px solid #1DB954' : '1px solid rgba(255, 255, 255, 0.16)',
+        background: isQueueActive ? 'rgba(29, 185, 84, 0.2)' : 'transparent',
+        color: isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.7)',
+        cursor: 'pointer',
+        transition: 'all 0.15s ease',
+        outline: 'none',
+        flexShrink: 0,
+      },
+      onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+        e.currentTarget.style.borderColor = isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.4)'
+        e.currentTarget.style.color = isQueueActive ? '#1DB954' : '#FFFFFF'
+        e.currentTarget.style.transform = 'scale(1.05)'
+      },
+      onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+        e.currentTarget.style.borderColor = isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.16)'
+        e.currentTarget.style.color = isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.7)'
+        e.currentTarget.style.transform = 'scale(1)'
+      },
+    },
+    tablerIcon('playlist', { size: 20 }),
+  )
+}
+
+/**
+ * `<Artwork>`, with the cover resolved through `ctx.cache` first.
+ */
+export function CachedArtwork({ ctx, ...props }: ArtworkProps & { ctx: Context }): ReactElement {
+  const artwork = useResolvedArtwork(ctx, props.artwork)
+  return h(Artwork, { ...props, artwork })
+}
+
+export const PLAY_MODE_INFO: Record<PlayMode, { label: string; next: string }> = {
+  sequence: { label: '顺序播放', next: '切换为列表循环' },
+  'list-loop': { label: '列表循环', next: '切换为单曲循环' },
+  'single-loop': { label: '单曲循环', next: '切换为随机播放' },
+  shuffle: { label: '随机播放', next: '切换为顺序播放' },
+}
+
+export function renderPlayModeIcon(mode: PlayMode): ReactElement {
+  switch (mode) {
+    case 'shuffle':
+      return tablerIcon('shuffle', { size: 22 }) as ReactElement
+    case 'single-loop':
+      return tablerIcon('repeat-once', { size: 22 }) as ReactElement
+    case 'list-loop':
+      return tablerIcon('repeat', { size: 22 }) as ReactElement
+    case 'sequence':
+    default:
+      return tablerIcon('list-numbers', { size: 22 }) as ReactElement
+  }
+}
+
+export function renderVolumeIcon(volume: number, muted: boolean, size = 22): ReactElement {
+  if (muted) {
+    return tablerIcon('volume-off', { size }) as ReactElement
+  }
+  if (volume <= 0) {
+    return tablerIcon('volume-3', { size }) as ReactElement
+  }
+  if (volume <= 0.33) {
+    return tablerIcon('volume-3', { size }) as ReactElement
+  }
+  if (volume <= 0.66) {
+    return tablerIcon('volume-2', { size }) as ReactElement
+  }
+  return tablerIcon('volume', { size }) as ReactElement
+}
+
+export function VerticalSlider({
+  value,
+  onChange,
+}: {
+  value: number
+  onChange: (val: number) => void
+}): ReactElement {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const isDragging = useRef(false)
+  const [hovered, setHovered] = useState(false)
+  const [dragging, setDragging] = useState(false)
+
+  const updateFromPointer = (clientY: number) => {
+    if (!trackRef.current) return
+    const rect = trackRef.current.getBoundingClientRect()
+    const ratio = 1 - (clientY - rect.top) / rect.height
+    const clamped = Math.max(0, Math.min(100, Math.round(ratio * 100)))
+    onChange(clamped)
+  }
+
+  const handlePointerDown = (e: { clientY: number; preventDefault: () => void }) => {
+    e.preventDefault()
+    isDragging.current = true
+    setDragging(true)
+    updateFromPointer(e.clientY)
+
+    const onPointerMove = (ev: MouseEvent) => {
+      if (isDragging.current) {
+        updateFromPointer(ev.clientY)
+      }
+    }
+    const onPointerUp = () => {
+      isDragging.current = false
+      setDragging(false)
+      window.removeEventListener('mousemove', onPointerMove)
+      window.removeEventListener('mouseup', onPointerUp)
+    }
+    window.addEventListener('mousemove', onPointerMove)
+    window.addEventListener('mouseup', onPointerUp)
+  }
+
+  const isInteracting = hovered || dragging
+
+  return h(
+    'div',
+    {
+      ref: trackRef,
+      role: 'slider',
+      tabIndex: 0,
+      'aria-label': 'Vertical volume slider',
+      'aria-valuemin': 0,
+      'aria-valuemax': 100,
+      'aria-valuenow': value,
+      'aria-orientation': 'vertical',
+      onMouseDown: handlePointerDown,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      onKeyDown: (e: { key: string; preventDefault: () => void }) => {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
+          e.preventDefault()
+          onChange(Math.min(100, value + 5))
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
+          e.preventDefault()
+          onChange(Math.max(0, value - 5))
+        }
+      },
+      style: {
+        position: 'relative',
+        width: 20,
+        height: 100,
+        display: 'flex',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        touchAction: 'none',
+        outline: 'none',
+      },
+    },
+    // Track rail
+    h('div', {
+      style: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        width: 3,
+        borderRadius: 1.5,
+        backgroundColor: 'rgba(255, 255, 255, 0.18)',
+      },
+    }),
+    // Filled bar
+    h('div', {
+      style: {
+        position: 'absolute',
+        bottom: 0,
+        width: 3,
+        height: `${value}%`,
+        borderRadius: 1.5,
+        backgroundColor: isInteracting ? '#1DB954' : '#FFFFFF',
+      },
+    }),
+    // Thumb
+    h('div', {
+      style: {
+        position: 'absolute',
+        bottom: `calc(${value}% - 5px)`,
+        width: 10,
+        height: 10,
+        borderRadius: '50%',
+        backgroundColor: '#FFFFFF',
+        boxShadow: '0 1px 4px rgba(0, 0, 0, 0.5)',
+        opacity: isInteracting ? 1 : 0,
+        transition: 'opacity 0.15s ease',
+      },
+    }),
+  )
+}
+
+export function PlayModeButton({ ctx, mode }: { ctx: Context; mode?: PlayMode }): ReactElement {
+  const currentMode = mode ?? 'sequence'
+  const info = PLAY_MODE_INFO[currentMode] ?? PLAY_MODE_INFO.sequence
+  const handleClick = () => {
+    ctx.player.cyclePlayMode()
+  }
+
+  return h(
+    'button',
+    {
+      type: 'button',
+      'aria-label': `播放模式: ${info.label}`,
+      title: `${info.label} (${info.next})`,
+      onClick: handleClick,
+      style: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 32,
+        height: 32,
+        borderRadius: tokens.radius.pill,
+        border: 'none',
+        background: 'transparent',
+        color: 'rgba(255, 255, 255, 0.7)',
+        cursor: 'pointer',
+        transition: 'color 0.15s ease, transform 0.15s ease',
+        outline: 'none',
+      },
+      onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+        e.currentTarget.style.color = '#FFFFFF'
+        e.currentTarget.style.transform = 'scale(1.1)'
+      },
+      onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+        e.currentTarget.style.color = 'rgba(255, 255, 255, 0.7)'
+        e.currentTarget.style.transform = 'scale(1)'
+      },
+    },
+    renderPlayModeIcon(currentMode),
+  )
+}
+
+export function VolumeControl({
+  ctx,
+  volume,
+  muted,
+}: {
+  ctx: Context
+  volume: number
+  muted: boolean
+}): ReactElement {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const percent = Math.round(volume * 100)
+
+  return h(
+    'div',
+    {
+      ref: containerRef,
+      style: { position: 'relative', display: 'inline-flex', alignItems: 'center' },
+    },
+    h(
+      'button',
+      {
+        type: 'button',
+        'aria-label': 'Volume',
+        title: muted ? '已静音 (点击展开调节栏)' : `音量 ${percent}% (点击展开调节栏)`,
+        onClick: () => setOpen((prev) => !prev),
+        style: {
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 32,
+          height: 32,
+          borderRadius: tokens.radius.pill,
+          border: 'none',
+          background: open ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+          color: muted ? '#A0A0AE' : 'rgba(255, 255, 255, 0.8)',
+          cursor: 'pointer',
+          transition: 'all 0.15s ease',
+          outline: 'none',
+        },
+        onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.color = '#FFFFFF'
+          e.currentTarget.style.transform = 'scale(1.1)'
+        },
+        onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.color = muted ? '#A0A0AE' : 'rgba(255, 255, 255, 0.8)'
+          e.currentTarget.style.transform = 'scale(1)'
+        },
+      },
+      renderVolumeIcon(volume, muted),
+    ),
+    open
+      ? h(
+          'div',
+          {
+            role: 'dialog',
+            'aria-label': 'Volume control popover',
+            style: {
+              position: 'absolute',
+              bottom: '100%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              marginBottom: 10,
+              width: 44,
+              padding: '10px 4px 8px',
+              borderRadius: 10,
+              backgroundColor: '#1A1A22',
+              border: '1px solid rgba(255, 255, 255, 0.14)',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.65)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+              zIndex: 100,
+            },
+          },
+          h(
+            'span',
+            { style: { fontSize: 11, color: '#A0A0AE', userSelect: 'none', minHeight: 14 } },
+            `${percent}%`,
+          ),
+          h(VerticalSlider, {
+            value: percent,
+            onChange: (val) => {
+              if (muted) ctx.player.setMuted(false)
+              ctx.player.setVolume(val / 100)
+            },
+          }),
+          h(
+            'button',
+            {
+              type: 'button',
+              'aria-label': muted ? '恢复声音' : '静音',
+              title: muted ? '恢复声音' : '静音',
+              onClick: () => ctx.player.setMuted(!muted),
+              style: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 28,
+                height: 28,
+                borderRadius: tokens.radius.pill,
+                border: 'none',
+                background: muted ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
+                color: muted ? '#F87171' : 'rgba(255, 255, 255, 0.7)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              },
+            },
+            renderVolumeIcon(volume, muted, 16),
+          ),
+        )
+      : null,
+  )
+}
+
+export interface NowPlayingBarProps {
+  ctx: Context
+  currentRoute?: string
+  onOpenNowPlaying?: () => void
+}
+
+/** The persistent transport bar. Desktop's answer to "now playing". */
+export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayingBarProps): ReactElement {
+  const [coverHovered, setCoverHovered] = useState(false)
+  const [seekingPosition, setSeekingPosition] = useState<number | undefined>(undefined)
+  const state = useTransport(ctx)
+  const position = usePosition(ctx)
+  const duration = useDuration(ctx)
+  const can = useTransportAvailability(ctx)
+  const displayPosition = seekingPosition ?? position
+
+  const handleOpenNowPlaying = () => {
+    onOpenNowPlaying?.()
+    ctx.ui?.navigate?.(NOW_PLAYING_VIEWS.nowPlaying)
+  }
+
+  return h(
+    'div',
+    {
+      role: 'region',
+      'aria-label': 'Now playing',
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: tokens.space[4],
+        padding: `${tokens.space[2]}px ${tokens.space[4]}px`,
+        borderTop: 'none',
+        background: '#000000',
+      },
+    },
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: tokens.space[3],
+          width: 240,
+          minWidth: 180,
+          overflow: 'hidden',
+        },
+      },
+      h(
+        'div',
+        {
+          role: 'button',
+          tabIndex: 0,
+          'aria-label': 'Open now playing',
+          onClick: handleOpenNowPlaying,
+          onKeyDown: (e: { key: string; preventDefault: () => void }) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              handleOpenNowPlaying()
+            }
+          },
+          onMouseEnter: () => setCoverHovered(true),
+          onMouseLeave: () => setCoverHovered(false),
+          style: {
+            position: 'relative',
+            width: tokens.size.artworkThumb,
+            height: tokens.size.artworkThumb,
+            borderRadius: tokens.radius.sm,
+            overflow: 'hidden',
+            cursor: 'pointer',
+            flexShrink: 0,
+          },
+        },
+        h(CachedArtwork, {
+          ctx,
+          artwork: state.nowPlaying?.artwork,
+          seed: state.trackUrn,
+          size: tokens.size.artworkThumb,
+          radius: tokens.radius.sm,
+        }),
+        h(
+          'div',
+          {
+            style: {
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(0, 0, 0, 0.5)',
+              opacity: coverHovered ? 1 : 0,
+              transition: `opacity ${tokens.duration.fast}ms ease`,
+              pointerEvents: 'none',
+            },
+          },
+          tablerIcon('maximize', { size: 22, color: '#FFFFFF' }),
+        ),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+            overflow: 'hidden',
+          },
+        },
+        h(Text, {
+          variant: 'sm',
+          numberOfLines: 1,
+          children: state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'Nothing playing'),
+        }),
+        state.nowPlaying?.artist
+          ? h(Text, {
+              variant: 'xs',
+              tone: 'muted',
+              numberOfLines: 1,
+              children: state.nowPlaying.artist,
+            })
+          : null,
+      ),
+    ),
+    h(
+      'div',
+      {
+        style: {
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: tokens.space[1],
+        },
+      },
+      h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: tokens.space[3] } },
+        h(PlayModeButton, { ctx, mode: state.playMode }),
+        h(IconButton, {
+          icon: 'skip-back',
+          accessibilityLabel: 'Previous track',
+          disabled: !can.canPrevious,
+          onPress: () => void ctx.player.previous(),
+        }),
+        h(IconButton, {
+          // One control, two states: a play button that is sometimes a pause
+          // button is what every player has, and two controls would be wrong.
+          icon: can.canPause ? 'pause-filled' : 'play-filled',
+          accessibilityLabel: can.canPause ? 'Pause' : 'Play',
+          variant: 'primary',
+          disabled: !can.canPlay && !can.canPause,
+          onPress: () => ctx.player.togglePlay(),
+        }),
+        h(IconButton, {
+          icon: 'skip-forward',
+          accessibilityLabel: 'Next track',
+          disabled: !can.canNext,
+          onPress: () => void ctx.player.next(),
+        }),
+        h(VolumeControl, { ctx, volume: state.volume, muted: state.muted }),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            width: '100%',
+            maxWidth: 560,
+            display: 'flex',
+            alignItems: 'center',
+            gap: tokens.space[2],
+          },
+        },
+        // `stalled` is not `paused`: the UI says buffering and the lock screen
+        // keeps reporting playing, so neither flickers on an underrun.
+        state.status === 'stalled'
+          ? h(Text, { variant: 'xs', tone: 'muted', children: 'Buffering…' })
+          : null,
+        h(
+          'span',
+          { style: { minWidth: 36, textAlign: 'right', display: 'inline-block' } },
+          h(Text, {
+            variant: 'xs',
+            tone: 'muted',
+            children: formatDuration(displayPosition),
+          }),
+        ),
+        h(Slider, {
+          value: duration ? Math.min(displayPosition, duration) : displayPosition,
+          max: duration ?? 0,
+          disabled: !can.canSeek,
+          accessibilityLabel: 'Seek',
+          onChange: (value: number) => setSeekingPosition(value),
+          onCommit: (value: number) => {
+            setSeekingPosition(undefined)
+            void ctx.player.seek(value)
+          },
+        }),
+        h(
+          'span',
+          { style: { minWidth: 36, display: 'inline-block' } },
+          h(Text, {
+            variant: 'xs',
+            tone: 'muted',
+            children: formatDuration(duration),
+          }),
+        ),
+      ),
+    ),
+    h(
+      'div',
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: tokens.space[2],
+          width: 240,
+          minWidth: 180,
+        },
+      },
+      h(DesktopLyricsToggle, { ctx }),
+      h(QueueButton, { ctx, currentRoute }),
+    ),
+  )
+}

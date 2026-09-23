@@ -41,8 +41,11 @@ packages/ui/<package>/src/
 
 Key rules:
 1. **No Monolithic Single-File Packages**: Screens, modals, and row components must be factored into their own files under `src/components/`, `src/components/modals/`, or `src/screens/`.
-2. **Pure Helper Hoisting**: Pure helpers that calculate or format domain data across multiple packages (e.g. `formatDuration`, `formatTotalDuration`, `splitArtists`) belong in `@BBeBee/toolkit` (Layer 4 pure library), never copy-pasted or duplicated inside UI packages.
-3. **Thin Plugin Entry**: `src/index.tsx` serves as the Cordis plugin lifecycle entry (`apply(ctx)`) registering routes/slots/views, while re-exporting components and public utilities to maintain 100% test compatibility.
+2. **UI Kit Component Extraction**: UI kit packages (`ui-kit-mobile`, `ui-kit-desktop`) split styling and primitives into `primitives.ts`, individual atomic controls into `src/components/*.tsx` (Button, Text, TextField, Slider, Sheet, ContextMenu, List, Artwork, TrackRow, Toast, JsonTree), and barrel re-export through `src/index.tsx`.
+3. **Menu Controller Decomposition**: Complex context menu packages (`ui-menus`) separate submenu builders into `src/submenus/*.ts`, menu hooks into `src/menus/*.ts`, and anchor/controller utilities into `src/types.ts`.
+4. **Multi-Mode Screen Decomposition**: Screens with multiple display modes or complex interaction trees (such as `LibraryScreen`) isolate view modes into `src/components/views/*` (`CollapsedLibraryView`, `ExpandedLibraryView`, `SidebarFolderView`), action and hydration logic into `src/hooks/*` (`useLibraryHydration`, `useLibraryActions`, `useTableSort`), and control toolbars into `src/components/*` (`LibraryToolbar`, `LibraryModals`, `LibraryCreateDropdown`).
+5. **Pure Helper Hoisting**: Pure helpers that calculate or format domain data across multiple packages (e.g. `formatDuration`, `formatTotalDuration`, `splitArtists`) belong in `@BBeBee/toolkit` (Layer 4 pure library), never copy-pasted or duplicated inside UI packages.
+6. **Thin Plugin Entry**: `src/index.tsx` serves as the Cordis plugin lifecycle entry (`apply(ctx)`) registering routes/slots/views, while re-exporting components and public utilities to maintain 100% test compatibility.
 
 ---
 

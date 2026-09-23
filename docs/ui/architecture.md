@@ -61,7 +61,11 @@ packages/ui/<package>/src/
 └── index.tsx            ← Plugin registration facade (apply(ctx)) and backward-compatible re-exports
 ```
 
-Reusable pure logic that outgrows one feature (such as formatting durations, artwork IDs, and string helpers) belongs in `@BBeBee/toolkit` (Layer 4 pure library), maintaining a single source of truth across desktop and mobile without duplication.
+Reaching beyond basic organization, UI packages and UI infrastructure follow consistent modularization rules:
+- **UI Kit Component Structure**: Core UI kit packages (`ui-kit-mobile`, `ui-kit-desktop`) isolate theme tokens and styling primitives into `primitives.ts`, component definitions into atomic files under `src/components/*.tsx` (`Button`, `Text`, `TextField`, `Slider`, `Sheet`, `ContextMenu`, `List`, `Artwork`, `TrackRow`, `Toast`, `JsonTree`), and barrel re-export through `src/index.tsx`.
+- **Menu Controller Architecture**: Context menu hooks in `ui-menus` separate submenus (`src/submenus/*.ts`), individual entity menus (`src/menus/*.ts`), and anchor positioning utilities (`src/types.ts`).
+- **Screen View Decomposition**: Heavy screens with multiple view modes (such as `LibraryScreen`) decouple view renderings into `src/components/views/*` (`CollapsedLibraryView`, `ExpandedLibraryView`, `SidebarFolderView`), action and data hydration into `src/hooks/*` (`useLibraryHydration`, `useLibraryActions`), and control bars/modals into `src/components/*`.
+- **Pure Helper Hoisting**: Reusable pure logic that outgrows one feature (such as formatting durations, artwork IDs, and string helpers) belongs in `@BBeBee/toolkit` (Layer 4 pure library), maintaining a single source of truth across desktop and mobile without duplication.
 
 ---
 
