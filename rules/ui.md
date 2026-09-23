@@ -165,6 +165,15 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 - **Dedicated Modals**:
   - `EditPlaylistModal`: Modify cover art (file picker or URL), title, and multiline description.
   - `RenameFolderModal`: Rename folder title and save via `ctx.library.renameCollection`.
+  - `ConfirmDeleteModal`: Secondary confirmation modal for destructive deletion of playlists and albums. Displays entity-specific warning ("确定要删除歌单“{name}”吗？此操作无法撤销。" / "确定要从音乐库中删除专辑“{name}”吗？") with a high-danger action button and cancel option; supports `Escape` dismissal. Deletion only executes after explicit confirmation.
+- **Album Context Menu**:
+  - Album rows support right-click / context menu actions matching playlist aesthetics: `delete-album` (danger tone with divider, opens `ConfirmDeleteModal` to remove from library and folders), `toggle-pin` (pin/unpin album), and `add-to-collection` (move to folder, subfolder, or root).
+- **Folder Mobility & Root List Coherence**:
+  - Playlists nested inside folders are automatically hidden from the library's root list (`containedPlaylistUrns`). Moving a playlist back to the root level restores it to the root list immediately.
+  - Context menus for entities inside folders provide a "移至根目录" option and automatically remove the item from the source folder when moving to another destination folder, with instant 0ms optimistic UI updates.
+- **Viewport Boundary Awareness**:
+  - Context submenus (Flyouts) dynamically compute horizontal (left/right) and vertical (up/down) flipping relative to the viewport.
+  - Submenu height is dynamically clamped (`maxHeight = Math.max(120, viewportHeight - flyoutTop - 8)`) with internal scrolling (`overflowY: 'auto'`), guaranteeing that nested menus never overflow the application window boundary.
 
 ---
 
@@ -178,11 +187,16 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 - **Action Bar Sort Dropdown (`ContextMenu`)**:
   - Dedicated sort dropdown button (e.g. `默认顺序 ≣` / `自定义顺序 ≣` / `标题 ≣`).
   - Clicking reveals a structured `ContextMenu` with sort key options and an asc/desc toggle option.
-- **Unified Row Library Action Button (`TrackLibraryActionButton`)**:
+- **Unified Row Library Action Button (`TrackLibraryActionButton`) & Popover**:
   - Replaces previous static checkmark or favorite icon in track rows across `LocalMusicScreen`, `PlaylistDetailScreen`, `FavoritesScreen`, and `CollectionScreen`.
   - Hidden by default; smoothly fades in on row hover (`opacity: 1`).
   - **Not in library**: displays `＋` icon, clicking adds track directly to favorites (`library.setSaved(track.urn, true)`).
-  - **In library / favorites / playlist / collection**: displays `🖤` icon, clicking opens "添加到歌单" submenu allowing immediate addition to existing playlists or creating a new playlist.
+  - **In library / favorites / playlist / collection**: displays `💚` (green heart), clicking opens a dedicated Spotify-style `SaveToPlaylistPopover` instead of a raw context menu:
+    - Real-time search filter for existing playlists;
+    - Inline "＋ 新建歌单" quick creation input;
+    - "已点赞的歌曲" group with immediate favorite toggle;
+    - Playlist rows with checkbox toggles and folder rows expanding nested sub-playlists;
+    - Viewport boundary detection with horizontal/vertical auto-flipping and clamping.
 - **Playback Queue Coherence**:
   - Playing a single track or clicking "Play All / Play Album" passes the currently sorted/filtered track URN sequence to `ctx.player.playFromContext`.
   - Up-next playback order strictly follows the visual sorted order on screen.

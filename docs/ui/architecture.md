@@ -315,7 +315,7 @@ Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `Unif
 - **Container styling**: High-contrast dark streaming card (`#242424`), 8px border radius, 4px padding, `0 12px 32px rgba(0,0,0,0.55)` depth shadow, and subtle 1px border (`rgba(255, 255, 255, 0.08)`).
 - **Dividers**: Menu items support `divider: true` to draw a 1px translucent separator line above critical or dangerous operations.
 - **Icons**: Standard operations (`pencil`, `delete`, `pin`, `create-playlist`, `create-folder`, `folder`, `play`, `download`, `playlist-add`) resolve to sharp outline SVG icons with consistent 16px geometry.
-- **Submenus**: Submenu triggers render a crisp solid triangle (`▶`). Submenus dynamically exclude cyclic candidates (e.g. "Add to other playlists" excludes the source playlist, "Move to folder" excludes the current folder and descendant folders).
+- **Submenus & Viewport Clamping**: Submenu triggers render a crisp solid triangle (`▶`). Submenus dynamically exclude cyclic candidates (e.g. "Add to other playlists" excludes the source playlist, "Move to folder" excludes the current folder and descendant folders). Submenu positioning computes real-time horizontal and vertical viewport flipping, dynamically clamping `maxHeight` and enabling internal scrolling so flyout menus never overflow the screen.
 
 #### Entity Context Menu Specifications
 - **Track Context Menu**:
@@ -328,9 +328,13 @@ Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `Unif
   - `go-to-album`: Navigate to album detail view when `track.albumUrn` is present.
 - **Playlist Context Menu**:
   - `edit-details`: Opens `EditPlaylistModal` to modify cover art (via local file chooser or remote URL), title, and description via `ctx.library.updatePlaylist`.
-  - `delete-playlist`: Danger tone with top divider, deletes playlist and refreshes library view.
+  - `delete-playlist`: Danger tone with top divider, triggers `ConfirmDeleteModal` for explicit secondary confirmation before invoking `ctx.library.deletePlaylist`.
   - `toggle-pin`: Pin/unpin from top of library list.
   - `add-to-playlist`: "Add to other playlists", excluding current playlist.
+  - `add-to-collection`: "Move to folder", supports existing folders, creating new folders, or moving to root with automatic source folder cleanup.
+- **Album Context Menu**:
+  - `delete-album`: Danger tone with top divider, triggers `ConfirmDeleteModal` for explicit secondary confirmation before removing the album from the library (`ctx.library.setSaved(urn, false)`) and any enclosing folder (`ctx.library.removeFromCollection`).
+  - `toggle-pin`: Pin/unpin album in library list.
   - `add-to-collection`: "Move to folder", supports existing folders, creating new folders, or moving to root.
 - **Folder (Collection) Context Menu**:
   - `rename-collection`: Opens `RenameFolderModal` to update folder title via `ctx.library.renameCollection`.
@@ -343,7 +347,7 @@ Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `Unif
 
 #### Library Presentation Modes
 - **Collapsed mode** (72px rail): Minimalist icon list with consistent folder outline icons. When entering a folder, displays a `<` return button below the top brand logo to navigate back to the root library.
-- **Sidebar mode** (260–340px): Standard view featuring inline expandable folders via rotating triangle controls (`▼` / `▲`), indented child items (28px padding), and dedicated folder detail view (`< Folder Title`).
+- **Sidebar mode** (260–340px): Standard view featuring inline expandable folders via rotating triangle controls (`▼` / `▲`), indented child items (28px padding), and dedicated folder detail view (`< Folder Title`). Playlists inside folders are automatically hidden from the root list (`containedPlaylistUrns`) and restored when moved to root.
 - **Expanded mode** (full-canvas): High-density 3-column table view (`Title`, `Date Added`, `Last Played`) with top breadcrumb navigation (`音乐库 < 文件夹名`).
 
 ### Detail screens, sorting & media views
@@ -351,7 +355,7 @@ Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `Unif
 1. **Album, Playlist, Local Music & Favorites Track Tables**:
    - **Table Header Sorting**: Column headers (`#`, `标题`, `专辑`, `添加日期`, `🕒 时长`, `播放量`) support interactive sorting with ascending/descending directional indicators (`▲` / `▼`). Column headers omit `✔`.
    - **Action Bar Sort Menu**: Dropdown `ContextMenu` ("默认顺序 ≣" / "自定义顺序 ≣") providing rapid switching between sorting keys and directions.
-   - **Row Hover Library Action (`TrackLibraryActionButton`)**: Across track rows in `LocalMusicScreen`, `PlaylistDetailScreen`, `FavoritesScreen`, and `CollectionScreen`, the static checkmark is replaced with a hover action icon. When hovered, tracks not in library show `＋` (clicking saves to Favorites via `library.setSaved(track.urn, true)`); tracks in library show `🖤` (clicking opens the "添加到歌单" submenu).
+   - **Row Hover Library Action (`TrackLibraryActionButton`) & Popover**: Across track rows in `LocalMusicScreen`, `PlaylistDetailScreen`, `FavoritesScreen`, and `CollectionScreen`, the static checkmark is replaced with a hover action icon. When hovered, tracks not in library show `＋` (clicking saves to Favorites via `library.setSaved(track.urn, true)`); tracks in library show `💚` (green heart), clicking opens a dedicated Spotify-style `SaveToPlaylistPopover` offering real-time playlist search, inline playlist creation, liked songs toggle, and folder tree navigation.
    - **Album Header & Menu**: `AlbumScreen` features an Action Bar heart button (`♥`/`♡`) bound to `library.setSaved(album.urn, isSaved)` displaying saved albums in the user's Library. Local albums (`BBeBee:local:`) omit download buttons in header and rows, and omit the download menu item. Three-dot menu provides "加入文件夹", "添加到音乐库/从音乐库中删除", "加入播放列表", and "睡眠定时器" (omitting "加入歌单" and "转至专辑").
    - **Playback Queue Alignment**: Playing tracks from a sorted table (single-tap or "Play All") passes the sorted URN sequence to `ctx.player.playFromContext`, ensuring the playback queue matches visual order.
    - **Playlist Item ID Decoupling**: In `PlaylistDetailScreen`, rows wrap data as `{ item, track, trackUrn, originalIndex }`, preserving item IDs across sort operations so that removals and context menus act on the correct playlist item.

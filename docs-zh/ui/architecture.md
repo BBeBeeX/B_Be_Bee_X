@@ -253,6 +253,54 @@ export const usePosition = () =>
 
 ---
 
+## 6. 上下文菜单、音乐库与详情页规范
+
+### 上下文菜单与音乐库交互
+
+桌面端右键、移动端长按，共用一套菜单。`TrackRow.onMore`、`UnifiedLibraryRow.onMore` 与头部操作项将坐标锚点传递给页面；页面持有 `@BBeBee/ui-menus` 的控制器并渲染 UI Kit 的 `ContextMenu`。菜单模型在 `@BBeBee/ui-menus` 中统一定义，UI Kit 仅负责渲染菜单项与布局，保持双端操作文案、图标与顺序的一致性。
+
+#### 视觉规范与视口边界保护
+- **容器样式**：高对比度流媒体暗色卡片（`#242424`），8px 圆角，4px 内边距，深度阴影 `0 12px 32px rgba(0,0,0,0.55)`，1px 微弱边框。
+- **操作项分割与图标**：高危或分组操作支持 `divider: true` 分割线。标准操作（编辑、删除、置顶、文件夹、播放、下载等）映射至 16px 矢量线性图标。
+- **子菜单视口边界自适应**：二级子菜单（Flyout）实时计算水平（左/右）与垂直（上/下）视口空间，超出时自动翻转并贴合窗口底边，动态计算 `maxHeight` 并开启内部滚动条（`overflowY: 'auto'`），确保子菜单 100% 完整显示在可视区域内，绝不超出应用窗口边界。
+
+#### 实体菜单规范
+- **曲目菜单**：
+  - `add-to-playlist`：添加到歌单子菜单。单曲不归属于文件夹，不提供加入文件夹选项。
+  - `remove-from-playlist`：高危删除色，仅在歌单详情页渲染。
+  - `add-favourite` / `remove-favourite`：喜欢/取消喜欢。
+  - `enqueue` / `download` / `sleep-timer` / `go-to-album`：入队、下载、睡眠定时器与转至专辑。
+- **歌单菜单**：
+  - `edit-details`：打开 `EditPlaylistModal` 修改封面、名称与描述。
+  - `delete-playlist`：高危红字，点击唤起 `ConfirmDeleteModal` 二次确认弹窗，确认后调用 `ctx.library.deletePlaylist`。
+  - `toggle-pin`：置顶/取消置顶。
+  - `add-to-playlist`：复制添加至其他歌单。
+  - `add-to-collection`：移动至文件夹（支持跨文件夹移动与“移至根目录”，触发原文件夹清理）。
+- **专辑菜单**：
+  - `delete-album`：高危红字，点击唤起 `ConfirmDeleteModal` 二次确认弹窗，确认后调用 `ctx.library.setSaved(urn, false)`（若在文件夹内，一并解除文件夹关联）。
+  - `toggle-pin`：置顶/取消置顶。
+  - `add-to-collection`：移动至文件夹（支持跨文件夹移动与移至根目录）。
+- **文件夹菜单**：
+  - `rename-collection`：打开 `RenameFolderModal` 重命名。
+  - `delete-collection`：高危删除，级联删除关系。
+  - `toggle-pin`：置顶/取消置顶。
+  - `create-playlist` & `create-folder`：在当前文件夹内快速创建歌单或子文件夹。
+  - `move-to-folder`：移动至其他文件夹或根目录。
+  - `add-to-playlist` / `enqueue`：使用 `collectAllFolderTracks` 递归汇总子歌单与专辑中的曲目。
+
+#### 音乐库展示模式与文件夹收纳
+- **折叠模式（72px）**：极简图标磁贴，进入文件夹显示 `<` 返回根目录按钮。
+- **侧边栏模式（260–340px）**：支持内联展开折叠（`▼`/`▲`）与子项缩进（28px），点击进入文件夹详情。文件夹内的歌单自动在根列表中隐藏（`containedPlaylistUrns`），移回根目录时恢复显示。
+- **展开模式（全屏）**：高密度三列表格，顶部面包屑导航（`音乐库 < 文件夹名`）。
+
+### 详情页与曲目交互规范
+
+- **表格列交互排序**：列头（`#`、`标题`、`专辑`、`添加日期`、`时长`、`播放量`）点击切换升序/降序，带方向指示箭头。操作栏提供专属排序菜单 `ContextMenu`。
+- **曲目行悬浮操作按钮与爱心弹窗**：
+  - 悬停浮现操作按钮：未入库曲目显示 `＋`，点击保存至“最喜欢的音乐”；
+  - 已入库曲目（绿心）：点击弹出 Spotify 风格的 `SaveToPlaylistPopover` 浮动卡片，支持实时过滤歌单、快速新建歌单、已点赞歌曲快捷切换、以及歌单/文件夹收纳。
+- **播放队列一致性**：表格排序后点击播放，向播放器传递当前排好序的曲目 URN 序列，确保下一首与视觉顺序一致。
+- **歌单项 ID 解耦**：歌单详情页将行数据包装为 `{ item, track, trackUrn, originalIndex }`，确保排序后删除等操作准确作用于对应的 `PlaylistItem.id`。
 
 ---
 
