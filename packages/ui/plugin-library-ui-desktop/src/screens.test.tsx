@@ -24,7 +24,7 @@ afterEach(cleanup)
 const TRACK = 'BBeBee:demo:track:one'
 const PLAYLIST_URN = 'BBeBee:local:playlist:one'
 const ALBUM_URN = 'BBeBee:demo:album:one'
-const COLLECTION_ID = 'col-1'
+const COLLECTION_DETAIL_ID = 'col-detail'
 
 const track: Track = {
   urn: TRACK,
@@ -83,21 +83,32 @@ class LibraryStub extends Service {
   async moveCollection(id: string, parentId: string | null): Promise<void> {
     this.calls.push(`move-collection:${id}:${parentId}`)
   }
+  collectionItems: Record<string, { urn: string; position: string }[]> = {
+    [COLLECTION_DETAIL_ID]: [
+      { urn: TRACK, position: 'a' },
+      { urn: ALBUM_URN, position: 'b' },
+      { urn: PLAYLIST_URN, position: 'c' },
+    ],
+  }
   async addToCollection(id: string, urns: readonly string[]): Promise<number> {
     this.calls.push(`add-to-collection:${id}:${urns.join(',')}`)
+    const existing = this.collectionItems[id] ?? []
+    this.collectionItems[id] = [
+      ...existing,
+      ...urns.map((urn, i) => ({ urn, position: String.fromCharCode(97 + existing.length + i) })),
+    ]
+    this.ctx.emit('library/collections-changed')
     return urns.length
   }
+  async removeFromCollection(id: string, urns: readonly string[]): Promise<void> {
+    this.calls.push(`remove-from-collection:${id}:${urns.join(',')}`)
+    const existing = this.collectionItems[id] ?? []
+    this.collectionItems[id] = existing.filter((item) => !urns.includes(item.urn))
+    this.ctx.emit('library/collections-changed')
+  }
   async listCollectionItems(id: string): Promise<Paged<{ urn: string; position: string }>> {
-    return id === COLLECTION_ID
-      ? {
-          items: [
-            { urn: TRACK, position: 'a' },
-            { urn: ALBUM_URN, position: 'b' },
-            { urn: PLAYLIST_URN, position: 'c' },
-          ],
-          hasMore: false,
-        }
-      : { items: [], hasMore: false }
+    const items = this.collectionItems[id] ?? []
+    return { items, hasMore: false }
   }
   async getPlaylist(urn: string): Promise<PlaylistDetail | undefined> {
     const found = this.playlists.find((p) => p.urn === urn) as PlaylistDetail | undefined
@@ -639,6 +650,37 @@ describe('LibraryScreen', () => {
       expect(library.calls).toContain('collection-delete:col-1')
     })
   })
+
+  it('hides playlists from root list when they are inside a folder and restores them when moved to root', async () => {
+    const { ctx, library } = await harness()
+    library.collections = [{ id: 'col-1', name: 'Ambient mix', position: 'a', createdAt: 0 }]
+    await withListLayout(async () => {
+      const { container } = render(h(LibraryScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+      // Initially, Road trip is at root
+      expect(container.textContent).toContain('Road trip')
+
+      // Move Road trip into folder col-1
+      await act(async () => {
+        await library.addToCollection('col-1', [PLAYLIST_URN])
+        await tick()
+      })
+
+      // Playlist must disappear from root!
+      expect(container.textContent).not.toContain('Road trip')
+
+      // Move Road trip back to root (remove from folder)
+      await act(async () => {
+        await library.removeFromCollection('col-1', [PLAYLIST_URN])
+        await tick()
+      })
+
+      // Playlist must reappear in root!
+      expect(container.textContent).toContain('Road trip')
+    })
+  })
 })
 
 describe('collectAllFolderTracks', () => {
@@ -883,7 +925,7 @@ describe('CollectionScreen', () => {
   it('renders tracks, albums and playlists as folder members', async () => {
     const { ctx, ui } = await harness()
     await withListLayout(async () => {
-      const { container, getByText } = render(h(CollectionScreen, { ctx, id: COLLECTION_ID }))
+      const { container, getByText } = render(h(CollectionScreen, { ctx, id: COLLECTION_DETAIL_ID }))
       await act(async () => {
         await tick()
       })

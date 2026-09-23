@@ -61,6 +61,9 @@ class LibraryStub extends Service {
     this.calls.push(`collect:${id}:${urns.join(',')}`)
     return urns.length
   }
+  async removeFromCollection(id: string, urns: readonly string[]) {
+    this.calls.push(`uncollect:${id}:${urns.join(',')}`)
+  }
   async createPlaylist(name: string) {
     this.calls.push(`create:${name}`)
     return { urn: 'BBeBee:local:playlist:new', name }
@@ -383,6 +386,57 @@ describe('the add-to-collection submenu', () => {
     expect(submenu).toBeTruthy()
     await submenu!.items[0]?.onSelect?.()
     expect(h.library.calls).toContain('collect:col-1:BBeBee:local:playlist:1')
+  })
+
+  it('moves to root when currentFolderId is provided and removes from original folder', async () => {
+    const h = await harness()
+    let movedTarget: string | null | undefined
+    const submenu = addToCollectionSubmenu(
+      h.library as unknown as LibraryService,
+      ['BBeBee:local:playlist:1'],
+      h.library.collections,
+      {
+        currentFolderId: 'col-1',
+        onMoved: (target) => {
+          movedTarget = target
+        },
+      },
+    )!
+    const moveRoot = submenu.items.find((i) => i.id === '__move_root')
+    expect(moveRoot).toBeTruthy()
+    expect(moveRoot?.label).toBe('移至根目录')
+    expect(submenu.items.some((i) => i.id === 'col-1')).toBe(false)
+
+    await moveRoot?.onSelect?.()
+    expect(h.library.calls).toContain('uncollect:col-1:BBeBee:local:playlist:1')
+    expect(movedTarget).toBeNull()
+  })
+
+  it('moves to another folder, removing from current folder and adding to target folder', async () => {
+    const h = await harness()
+    let movedTarget: string | null | undefined
+    const cols = [
+      { id: 'col-1', name: 'Folder 1', position: 'a', createdAt: 0 },
+      { id: 'col-2', name: 'Folder 2', position: 'b', createdAt: 0 },
+    ]
+    const submenu = addToCollectionSubmenu(
+      h.library as unknown as LibraryService,
+      ['BBeBee:local:playlist:1'],
+      cols,
+      {
+        currentFolderId: 'col-1',
+        onMoved: (target) => {
+          movedTarget = target
+        },
+      },
+    )!
+    const targetFolder = submenu.items.find((i) => i.id === 'col-2')
+    expect(targetFolder).toBeTruthy()
+
+    await targetFolder?.onSelect?.()
+    expect(h.library.calls).toContain('uncollect:col-1:BBeBee:local:playlist:1')
+    expect(h.library.calls).toContain('collect:col-2:BBeBee:local:playlist:1')
+    expect(movedTarget).toBe('col-2')
   })
 })
 

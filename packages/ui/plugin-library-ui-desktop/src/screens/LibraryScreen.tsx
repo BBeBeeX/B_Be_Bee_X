@@ -318,6 +318,46 @@ export function LibraryScreen({
     }
   }, [ctx, collections.data, generation])
 
+  // Track which playlists are contained inside any collection/folder
+  const [containedPlaylistUrns, setContainedPlaylistUrns] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    const list = collections.data ?? []
+    let cancelled = false
+    if (list.length === 0) {
+      setContainedPlaylistUrns(new Set())
+      return
+    }
+
+    Promise.all(
+      list.map(async (c) => {
+        try {
+          const page = await ctx.library.listCollectionItems(c.id, { limit: 1000 })
+          return (page?.items ?? [])
+            .filter((item) => tryParseUrn(item.urn)?.kind === 'playlist')
+            .map((item) => item.urn)
+        } catch {
+          return []
+        }
+      }),
+    )
+      .then((results) => {
+        if (cancelled) return
+        const set = new Set<string>()
+        for (const urns of results) {
+          for (const urn of urns) {
+            set.add(urn)
+          }
+        }
+        setContainedPlaylistUrns(set)
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [ctx, collections.data, generation])
+
   // First favorite track cover
   useEffect(() => {
     const firstUrn = savedTrackEntries.data?.[0]?.urn
@@ -434,7 +474,32 @@ export function LibraryScreen({
   )
 
   const openPlaylistMenu = useCallback(
-    (playlist: Playlist, anchor?: MenuAnchor, isPinned?: boolean) => {
+    (playlist: Playlist, anchor?: MenuAnchor, isPinned?: boolean, folderId?: string) => {
+      const handleMoved = (targetFolderId?: string | null) => {
+        if (targetFolderId) {
+          setContainedPlaylistUrns((prev) => new Set([...prev, playlist.urn]))
+        } else if (targetFolderId === null) {
+          setContainedPlaylistUrns((prev) => {
+            const next = new Set(prev)
+            next.delete(playlist.urn)
+            return next
+          })
+        }
+        if (folderId) {
+          setFolderItemsMap((prev) => {
+            const existing = prev.get(folderId)
+            if (!existing) return prev
+            const next = new Map(prev)
+            next.set(
+              folderId,
+              existing.filter((item) => item.urn !== playlist.urn && item.id !== playlist.urn),
+            )
+            return next
+          })
+        }
+        setGeneration((n) => n + 1)
+      }
+
       void ctx.library
         .getPlaylist(playlist.urn)
         .then((detail) =>
@@ -444,6 +509,8 @@ export function LibraryScreen({
             anchor,
             {
               pinned: isPinned,
+              currentFolderId: folderId,
+              onMoved: handleMoved,
               onTogglePin: () => void togglePin(playlist),
               onEdit: () => setEditingPlaylist(detail ?? playlist),
               onDelete: () => {
@@ -458,6 +525,8 @@ export function LibraryScreen({
         .catch(() =>
           playlistMenu.open(playlist, [], anchor, {
             pinned: isPinned,
+            currentFolderId: folderId,
+            onMoved: handleMoved,
             onTogglePin: () => void togglePin(playlist),
             onEdit: () => setEditingPlaylist(playlist),
             onDelete: () => {
@@ -534,9 +603,25 @@ export function LibraryScreen({
   )
 
   const openAlbumMenu = useCallback(
-    (album: { urn: string; title: string }, anchor?: MenuAnchor, isPinned?: boolean) => {
+    (album: { urn: string; title: string }, anchor?: MenuAnchor, isPinned?: boolean, folderId?: string) => {
       albumMenu.open(album.title, [album.urn], anchor, {
         pinned: isPinned,
+        currentFolderId: folderId,
+        onMoved: () => {
+          if (folderId) {
+            setFolderItemsMap((prev) => {
+              const existing = prev.get(folderId)
+              if (!existing) return prev
+              const next = new Map(prev)
+              next.set(
+                folderId,
+                existing.filter((item) => item.urn !== album.urn && item.id !== album.urn),
+              )
+              return next
+            })
+          }
+          setGeneration((n) => n + 1)
+        },
         onTogglePin: () => void togglePin({ id: album.urn, urn: album.urn }),
       })
     },
@@ -678,35 +763,37 @@ export function LibraryScreen({
   }, [ctx, isItemPinned, localTracks, localUrns, historyMap, openBuiltinMenu, player])
 
   const playlistItems: UnifiedItem[] = useMemo(() => {
-    return (playlists.data ?? []).map((playlist) => {
-      const isPinned = isItemPinned({ id: playlist.urn, urn: playlist.urn })
-      const addedAt =
-        playlist.createdAt ??
-        playlist.updatedAt ??
-        allSaved.data?.find((e) => e.urn === playlist.urn)?.addedAt ??
-        Date.now()
-      return {
-        id: playlist.urn,
-        urn: playlist.urn,
-        kind: 'playlist',
-        title: playlist.name,
-        subtitle: playlist.isSmart
-          ? '智能歌单'
-          : `歌单 • Revers`,
-        creator: 'Revers',
-        artwork: playlist.artwork ?? playlistFirstTrackArtworks.get(playlist.urn),
-        artworkSeed: playlist.urn,
-        pinned: isPinned,
-        addedAt,
-        lastPlayedAt: 0,
-        onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.playlist, { urn: playlist.urn }),
-        onPlay: () => playPlaylist(playlist.urn, playlist.name),
-        onDelete: () =>
-          void ctx.library.deletePlaylist(playlist.urn).catch(fail('could not delete the playlist')),
-        onMore: (anchor) => openPlaylistMenu(playlist, anchor, isPinned),
-      }
-    })
-  }, [allSaved.data, ctx, isItemPinned, openPlaylistMenu, playPlaylist, playlistFirstTrackArtworks, playlists.data])
+    return (playlists.data ?? [])
+      .filter((playlist) => !containedPlaylistUrns.has(playlist.urn))
+      .map((playlist) => {
+        const isPinned = isItemPinned({ id: playlist.urn, urn: playlist.urn })
+        const addedAt =
+          playlist.createdAt ??
+          playlist.updatedAt ??
+          allSaved.data?.find((e) => e.urn === playlist.urn)?.addedAt ??
+          Date.now()
+        return {
+          id: playlist.urn,
+          urn: playlist.urn,
+          kind: 'playlist',
+          title: playlist.name,
+          subtitle: playlist.isSmart
+            ? '智能歌单'
+            : `歌单 • Revers`,
+          creator: 'Revers',
+          artwork: playlist.artwork ?? playlistFirstTrackArtworks.get(playlist.urn),
+          artworkSeed: playlist.urn,
+          pinned: isPinned,
+          addedAt,
+          lastPlayedAt: 0,
+          onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.playlist, { urn: playlist.urn }),
+          onPlay: () => playPlaylist(playlist.urn, playlist.name),
+          onDelete: () =>
+            void ctx.library.deletePlaylist(playlist.urn).catch(fail('could not delete the playlist')),
+          onMore: (anchor) => openPlaylistMenu(playlist, anchor, isPinned),
+        }
+      })
+  }, [allSaved.data, containedPlaylistUrns, ctx, isItemPinned, openPlaylistMenu, playPlaylist, playlistFirstTrackArtworks, playlists.data])
 
   const albumItems: UnifiedItem[] = useMemo(() => {
     return (savedAlbumEntries.data ?? []).map((entry) => {
@@ -846,15 +933,37 @@ export function LibraryScreen({
           const parsed = tryParseUrn(entry.urn)
           const kind = parsed?.kind
 
-          const matchedPlaylist = playlistItems.find((p) => p.urn === entry.urn || p.id === entry.urn)
+          const matchedPlaylist = (playlists.data ?? []).find((p) => p.urn === entry.urn)
           if (matchedPlaylist) {
-            results.push(matchedPlaylist)
+            const isPinned = isItemPinned({ id: matchedPlaylist.urn, urn: matchedPlaylist.urn })
+            results.push({
+              id: matchedPlaylist.urn,
+              urn: matchedPlaylist.urn,
+              kind: 'playlist',
+              title: matchedPlaylist.name,
+              subtitle: matchedPlaylist.isSmart ? '智能歌单' : '歌单 • Revers',
+              creator: 'Revers',
+              artwork: matchedPlaylist.artwork ?? playlistFirstTrackArtworks.get(matchedPlaylist.urn),
+              artworkSeed: matchedPlaylist.urn,
+              pinned: isPinned,
+              addedAt: matchedPlaylist.createdAt ?? Date.now(),
+              lastPlayedAt: 0,
+              onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.playlist, { urn: matchedPlaylist.urn }),
+              onPlay: () => playPlaylist(matchedPlaylist.urn, matchedPlaylist.name),
+              onDelete: () =>
+                void ctx.library.deletePlaylist(matchedPlaylist.urn).catch(fail('could not delete the playlist')),
+              onMore: (anchor) => openPlaylistMenu(matchedPlaylist, anchor, isPinned, collectionId),
+            })
             continue
           }
 
           const matchedAlbum = albumItems.find((a) => a.urn === entry.urn || a.id === entry.urn)
           if (matchedAlbum) {
-            results.push(matchedAlbum)
+            results.push({
+              ...matchedAlbum,
+              onMore: (anchor) =>
+                openAlbumMenu({ urn: entry.urn, title: matchedAlbum.title }, anchor, matchedAlbum.pinned, collectionId),
+            })
             continue
           }
 
@@ -927,6 +1036,7 @@ export function LibraryScreen({
                       },
                       anchor,
                       isPinned,
+                      collectionId,
                     ),
                 })
                 continue
@@ -960,7 +1070,7 @@ export function LibraryScreen({
                     else ctx.ui.navigate(ALBUM_VIEWS.album, { urn: entry.urn })
                   },
                   onPlay: () => playAlbum(entry.urn, title),
-                  onMore: (anchor) => openAlbumMenu({ urn: entry.urn, title }, anchor, isPinned),
+                  onMore: (anchor) => openAlbumMenu({ urn: entry.urn, title }, anchor, isPinned, collectionId),
                 })
                 continue
               }
@@ -993,7 +1103,7 @@ export function LibraryScreen({
     },
     [
       ctx,
-      playlistItems,
+      playlists.data,
       albumItems,
       localTracks,
       historyMap,
@@ -1032,7 +1142,11 @@ export function LibraryScreen({
           let hasDiff = false
           for (const res of results) {
             const existing = prev.get(res.id)
-            if (!existing || existing.length !== res.items.length) {
+            if (
+              !existing ||
+              existing.length !== res.items.length ||
+              existing.some((it, idx) => it.id !== res.items[idx]?.id)
+            ) {
               hasDiff = true
               break
             }

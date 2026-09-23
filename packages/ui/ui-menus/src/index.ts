@@ -104,7 +104,7 @@ export function addToCollectionSubmenu(
     createLabel?: string
     currentFolderId?: string
     onSelectFolder?: (folderId: string | null) => void | Promise<void>
-    onMoved?: () => void
+    onMoved?: (targetFolderId?: string | null) => void
   },
 ): SubmenuSpec | undefined {
   const allowedUrns = urns.filter((urn) => {
@@ -127,13 +127,17 @@ export function addToCollectionSubmenu(
           await opts.onSelectFolder(null)
         } else {
           await library.removeFromCollection(opts.currentFolderId!, allowedUrns).catch(() => {})
-          opts.onMoved?.()
+          opts.onMoved?.(null)
         }
       },
     })
   }
 
-  for (const collection of collections) {
+  const candidateCollections = opts?.currentFolderId
+    ? collections.filter((c) => c.id !== opts.currentFolderId)
+    : collections
+
+  for (const collection of candidateCollections) {
     items.push({
       id: collection.id,
       label: collection.name,
@@ -146,7 +150,7 @@ export function addToCollectionSubmenu(
             await library.removeFromCollection(opts.currentFolderId, allowedUrns).catch(() => {})
           }
           await library.addToCollection(collection.id, allowedUrns)
-          opts?.onMoved?.()
+          opts?.onMoved?.(collection.id)
         }
       },
     })
@@ -168,7 +172,7 @@ export function addToCollectionSubmenu(
             await library.removeFromCollection(opts.currentFolderId, allowedUrns).catch(() => {})
           }
           await library.addToCollection(collection.id, allowedUrns)
-          opts?.onMoved?.()
+          opts?.onMoved?.(collection.id)
         }
       },
     },
@@ -388,6 +392,13 @@ export function trackMenuItems(
   return items
 }
 
+export interface AddToCollectionOptions {
+  pinned?: boolean
+  currentFolderId?: string
+  onTogglePin?: () => void
+  onMoved?: (targetFolderId?: string | null) => void
+}
+
 /**
  * The one-item menu for an entity that is only a candidate for a folder:
  * an album (or anything else) whose useful action here is "put this in a
@@ -397,10 +408,21 @@ export function addToCollectionOnlyItems(
   ctx: Context,
   urns: readonly string[],
   collections: readonly Collection[],
-  opts: { pinned?: boolean; onTogglePin?: () => void } = {},
+  opts: AddToCollectionOptions = {},
 ): MenuItemSpec[] {
   const library = serviceOf<LibraryService>(ctx, 'library')
-  const submenu = addToCollectionSubmenu(library, urns, collections)
+  const submenu = addToCollectionSubmenu(
+    library,
+    urns,
+    opts.currentFolderId ? collections.filter((c) => c.id !== opts.currentFolderId) : collections,
+    {
+      title: '移动至文件夹',
+      searchPlaceholder: '查找文件夹',
+      createLabel: '新建文件夹',
+      currentFolderId: opts.currentFolderId,
+      onMoved: opts.onMoved,
+    },
+  )
   const items: MenuItemSpec[] = []
   if (opts.onTogglePin) {
     items.push({
@@ -419,7 +441,7 @@ export interface AddToCollectionController extends MenuController {
     title: string,
     urns: readonly string[],
     anchor?: MenuAnchor,
-    opts?: { pinned?: boolean; onTogglePin?: () => void },
+    opts?: AddToCollectionOptions,
   ): void
 }
 
@@ -427,14 +449,14 @@ export interface AddToCollectionController extends MenuController {
 export function useAddToCollection(ctx: Context): AddToCollectionController {
   const state = useMenuState<
     { title: string; urns: readonly string[] },
-    { pinned?: boolean; onTogglePin?: () => void }
+    AddToCollectionOptions
   >()
   const open = useCallback(
     (
       title: string,
       urns: readonly string[],
       anchor?: MenuAnchor,
-      opts?: { pinned?: boolean; onTogglePin?: () => void },
+      opts?: AddToCollectionOptions,
     ) => state.show({ title, urns }, anchor, ctx, opts),
     [state, ctx],
   )
@@ -462,7 +484,7 @@ export interface PlaylistMenuOptions {
   onTogglePin?: () => void
   onEdit?: () => void
   onDelete?: () => void
-  onMoved?: () => void
+  onMoved?: (targetFolderId?: string | null) => void
 }
 
 /**
