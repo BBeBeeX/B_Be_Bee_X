@@ -529,6 +529,27 @@ describe('playFromContext', () => {
     expect(player.state.trackUrn).toBe(urn('b'))
     expect(player.queue.map((i) => i.trackUrn)).toEqual([urn('b'), urn('d'), urn('e')])
   })
+
+  it('plays the clicked track when tapping in context under shuffle mode', async () => {
+    const { player } = await harness()
+    player.setShuffle(true)
+
+    // In shuffle mode, clicking track 'c' in playlist [a, b, c, d, e] must play track 'c'
+    await player.playFromContext(urn('c'), [urn('a'), urn('b'), urn('c'), urn('d'), urn('e')])
+    expect(player.state.trackUrn).toBe(urn('c'))
+    expect(player.state.status).toBe('playing')
+    // The upcoming queue should contain all other 4 tracks
+    expect(player.upcoming().map((i) => i.trackUrn)).toHaveLength(4)
+    expect(player.upcoming().map((i) => i.trackUrn)).not.toContain(urn('c'))
+  })
+
+  it('plays the specified track in playNow with startIndex under shuffle mode', async () => {
+    const { player } = await harness()
+    player.setShuffle(true)
+
+    await player.playNow([urn('a'), urn('b'), urn('c'), urn('d')], { startIndex: 2 })
+    expect(player.state.trackUrn).toBe(urn('c'))
+  })
 })
 
 describe('queue deduplication', () => {

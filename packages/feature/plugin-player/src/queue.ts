@@ -32,6 +32,8 @@ export class QueueModel {
   /** Invalidated on every structural change; recomputed lazily. */
   private orderCache?: string[]
 
+  private shuffleFirstId?: string
+
   get items(): readonly QueueItem[] {
     return this.entries.map((e) => e.item)
   }
@@ -61,14 +63,25 @@ export class QueueModel {
     this.entries = [...entries].sort((a, b) => (a.position < b.position ? -1 : 1))
     this.shuffleOn = opts.shuffle ?? false
     if (opts.seed !== undefined) this.seed = opts.seed
+    this.shuffleFirstId = undefined
     this.orderCache = undefined
   }
 
   setShuffle(on: boolean, seed?: number): void {
     this.shuffleOn = on
+    if (!on) this.shuffleFirstId = undefined
     // A new seed on each enable, so shuffling twice is not the same order —
     // but the seed persists, so *relaunching* is.
     if (on) this.seed = seed ?? Math.floor(Math.random() * 0xffffffff)
+    this.orderCache = undefined
+  }
+
+  /**
+   * Rotates the shuffle permutation so that `firstId` is placed at index 0,
+   * with all other items following in the seeded permutation order.
+   */
+  rotateShuffle(firstId: string): void {
+    this.shuffleFirstId = firstId
     this.orderCache = undefined
   }
 
@@ -80,7 +93,14 @@ export class QueueModel {
   order(): string[] {
     if (!this.orderCache) {
       const ids = this.entries.map((e) => e.item.id)
-      this.orderCache = this.shuffleOn ? permute(ids, this.seed) : ids
+      let order = this.shuffleOn ? permute(ids, this.seed) : ids
+      if (this.shuffleOn && this.shuffleFirstId) {
+        const idx = order.indexOf(this.shuffleFirstId)
+        if (idx > 0) {
+          order = [...order.slice(idx), ...order.slice(0, idx)]
+        }
+      }
+      this.orderCache = order
     }
     return this.orderCache
   }
@@ -93,6 +113,7 @@ export class QueueModel {
   replace(items: QueueItem[]): QueueEntry[] {
     const positions = sequence(items.length)
     this.entries = items.map((item, i) => ({ item, position: positions[i]! }))
+    this.shuffleFirstId = undefined
     this.orderCache = undefined
     return this.entries
   }
@@ -123,12 +144,16 @@ export class QueueModel {
     const doomed = new Set(ids)
     const before = this.entries.length
     this.entries = this.entries.filter((e) => !doomed.has(e.item.id))
+    if (this.shuffleFirstId && doomed.has(this.shuffleFirstId)) {
+      this.shuffleFirstId = undefined
+    }
     this.orderCache = undefined
     return before === this.entries.length ? [] : [...doomed]
   }
 
   clear(): void {
     this.entries = []
+    this.shuffleFirstId = undefined
     this.orderCache = undefined
   }
 

@@ -713,7 +713,14 @@ export class Player extends Service implements PlayerService {
 
     this.playIntent = true
     const startAt = Math.max(0, Math.min(items.length - 1, startIndex))
-    const entry = this.model.entry(this.model.order()[startAt]!)
+    const targetItem =
+      opts.startIndex !== undefined || targetUrn !== undefined ? items[startAt] : undefined
+
+    if (targetItem && this.transport.shuffle) {
+      this.model.rotateShuffle(targetItem.id)
+    }
+
+    const entry = targetItem ? this.model.entry(targetItem.id) : this.model.first()
     if (entry) await this.start(entry, { autoplay: true })
   }
 
