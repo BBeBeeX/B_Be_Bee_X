@@ -751,7 +751,9 @@ void app.whenReady().then(async () => {
 
   protocol.handle('bbebee-file', (request) => {
     const fileUrl = request.url.replace(/^bbebee-file:\/*/, 'file:///')
-    return net.fetch(fileUrl)
+    return net.fetch(fileUrl, {
+      headers: request.headers,
+    })
   })
 
   registerHandlers()
