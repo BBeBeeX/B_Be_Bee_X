@@ -27,6 +27,7 @@ import { UnifiedLibraryRow, type UnifiedItem } from '../components/UnifiedLibrar
 import { EditPlaylistModal } from '../components/modals/EditPlaylistModal.js'
 import { RenameFolderModal } from '../components/modals/RenameFolderModal.js'
 import { CreateInFolderModal } from '../components/modals/CreateInFolderModal.js'
+import { ConfirmDeleteModal, type DeleteConfirmTarget } from '../components/modals/ConfirmDeleteModal.js'
 import {
   collectAllFolderTracks,
   fetchAllLocalTracks,
@@ -148,6 +149,7 @@ export function LibraryScreen({
   const [editingPlaylist, setEditingPlaylist] = useState<(Playlist & { description?: string }) | null>(null)
   const [renamingCollection, setRenamingCollection] = useState<Collection | null>(null)
   const [createInFolderModal, setCreateInFolderModal] = useState<{ type: 'playlist' | 'folder'; folderId: string } | null>(null)
+  const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<DeleteConfirmTarget | null>(null)
 
   const playlistMenu = usePlaylistMenu(ctx)
   const collectionMenu = useCollectionMenu(ctx)
@@ -514,10 +516,12 @@ export function LibraryScreen({
               onTogglePin: () => void togglePin(playlist),
               onEdit: () => setEditingPlaylist(detail ?? playlist),
               onDelete: () => {
-                void ctx.library
-                  .deletePlaylist(playlist.urn)
-                  .then(() => setGeneration((n) => n + 1))
-                  .catch(fail('could not delete the playlist'))
+                setConfirmDeleteTarget({
+                  type: 'playlist',
+                  urn: playlist.urn,
+                  name: playlist.name,
+                  folderId,
+                })
               },
             },
           ),
@@ -530,10 +534,12 @@ export function LibraryScreen({
             onTogglePin: () => void togglePin(playlist),
             onEdit: () => setEditingPlaylist(playlist),
             onDelete: () => {
-              void ctx.library
-                .deletePlaylist(playlist.urn)
-                .then(() => setGeneration((n) => n + 1))
-                .catch(fail('could not delete the playlist'))
+              setConfirmDeleteTarget({
+                type: 'playlist',
+                urn: playlist.urn,
+                name: playlist.name,
+                folderId,
+              })
             },
           }),
         )
@@ -623,6 +629,14 @@ export function LibraryScreen({
           setGeneration((n) => n + 1)
         },
         onTogglePin: () => void togglePin({ id: album.urn, urn: album.urn }),
+        onDelete: () => {
+          setConfirmDeleteTarget({
+            type: 'album',
+            urn: album.urn,
+            name: album.title,
+            folderId,
+          })
+        },
       })
     },
     [albumMenu, togglePin],
@@ -824,6 +838,7 @@ export function LibraryScreen({
           else ctx.ui.navigate(ALBUM_VIEWS.album, { urn: entry.urn })
         },
         onPlay: () => playAlbum(entry.urn, title),
+        onDelete: () => void ctx.library.setSaved(entry.urn, false).catch(fail('could not remove the album')),
         onMore: (anchor) => openAlbumMenu({ urn: entry.urn, title }, anchor, isPinned),
       }
     })
@@ -961,6 +976,10 @@ export function LibraryScreen({
           if (matchedAlbum) {
             results.push({
               ...matchedAlbum,
+              onDelete: () =>
+                void ctx.library
+                  .removeFromCollection(collectionId, [entry.urn])
+                  .catch(fail('could not remove album from folder')),
               onMore: (anchor) =>
                 openAlbumMenu({ urn: entry.urn, title: matchedAlbum.title }, anchor, matchedAlbum.pinned, collectionId),
             })
@@ -1070,6 +1089,10 @@ export function LibraryScreen({
                     else ctx.ui.navigate(ALBUM_VIEWS.album, { urn: entry.urn })
                   },
                   onPlay: () => playAlbum(entry.urn, title),
+                  onDelete: () =>
+                    void ctx.library
+                      .removeFromCollection(collectionId, [entry.urn])
+                      .catch(fail('could not remove album from folder')),
                   onMore: (anchor) => openAlbumMenu({ urn: entry.urn, title }, anchor, isPinned, collectionId),
                 })
                 continue
@@ -1624,6 +1647,40 @@ export function LibraryScreen({
             await ctx.library.createCollection(name, { parentId: createInFolderModal.folderId })
           }
           setGeneration((n) => n + 1)
+        },
+      }),
+      h(ConfirmDeleteModal, {
+        target: confirmDeleteTarget,
+        onClose: () => setConfirmDeleteTarget(null),
+        onConfirm: async () => {
+          if (!confirmDeleteTarget) return
+          const target = confirmDeleteTarget
+          setConfirmDeleteTarget(null)
+          try {
+            if (target.type === 'playlist') {
+              await ctx.library.deletePlaylist(target.urn)
+            } else if (target.type === 'album') {
+              await ctx.library.setSaved(target.urn, false)
+              if (target.folderId) {
+                await ctx.library.removeFromCollection(target.folderId, [target.urn])
+              }
+            }
+            if (target.folderId) {
+              setFolderItemsMap((prev) => {
+                const existing = prev.get(target.folderId!)
+                if (!existing) return prev
+                const next = new Map(prev)
+                next.set(
+                  target.folderId!,
+                  existing.filter((item) => item.urn !== target.urn && item.id !== target.urn),
+                )
+                return next
+              })
+            }
+            setGeneration((n) => n + 1)
+          } catch (e) {
+            fail(target.type === 'playlist' ? 'could not delete the playlist' : 'could not remove the album')(e)
+          }
         },
       }),
     )

@@ -397,6 +397,7 @@ export interface AddToCollectionOptions {
   currentFolderId?: string
   onTogglePin?: () => void
   onMoved?: (targetFolderId?: string | null) => void
+  onDelete?: () => void
 }
 
 /**
@@ -424,11 +425,25 @@ export function addToCollectionOnlyItems(
     },
   )
   const items: MenuItemSpec[] = []
+
+  // 1. 删除 (if provided)
+  if (opts.onDelete) {
+    items.push({
+      id: 'delete-album',
+      label: '删除',
+      icon: 'delete',
+      tone: 'danger',
+      divider: true,
+      onSelect: opts.onDelete,
+    })
+  }
+
+  // 2. 置顶歌单 / 专辑
   if (opts.onTogglePin) {
     items.push({
       id: 'toggle-pin',
       label: opts.pinned ? '取消置顶歌单' : '置顶歌单',
-      icon: '📌',
+      icon: 'pin',
       onSelect: opts.onTogglePin,
     })
   }

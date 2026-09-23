@@ -451,6 +451,20 @@ describe('addToCollectionOnlyItems', () => {
     const bare = new Context()
     expect(addToCollectionOnlyItems(bare, ['x'], [])).toEqual([])
   })
+
+  it('offers delete-album when onDelete is provided', async () => {
+    const h = await harness()
+    const onDelete = vi.fn()
+    const items = addToCollectionOnlyItems(h.ctx, ['BBeBee:demo:album:1'], h.library.collections, {
+      onDelete,
+    })
+    const deleteItem = items.find((i) => i.id === 'delete-album')
+    expect(deleteItem).toBeDefined()
+    expect(deleteItem?.label).toBe('删除')
+    expect(deleteItem?.tone).toBe('danger')
+    deleteItem?.onSelect?.()
+    expect(onDelete).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('playlistMenuItems', () => {

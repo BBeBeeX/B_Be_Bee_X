@@ -611,17 +611,18 @@ describe('LibraryScreen', () => {
     })
   })
 
-  it('deletes playlist and collection via context menu', async () => {
+  it('deletes playlist, album, and collection via context menu with confirmation', async () => {
     const { ctx, library } = await harness()
     library.playlists = [storedPlaylist]
     library.collections = [{ id: 'col-1', name: 'My Folder', position: 'a', createdAt: 0 }]
+    library.saved = [ALBUM_URN]
     await withListLayout(async () => {
-      const { getByText } = render(h(LibraryScreen, { ctx }))
+      const { getByText, getByTestId, queryByTestId } = render(h(LibraryScreen, { ctx }))
       await act(async () => {
         await tick()
       })
 
-      // Delete playlist
+      // Delete playlist: cancel first
       const playlistRow = getByText('Road trip').closest('[style*="cursor: pointer"]') as HTMLElement
       await act(async () => {
         fireEvent.contextMenu(playlistRow)
@@ -633,7 +634,70 @@ describe('LibraryScreen', () => {
         deletePlaylistItem.click()
         await tick()
       })
+      // Modal should be shown, not deleted yet
+      expect(library.calls).not.toContain(`delete:${PLAYLIST_URN}`)
+      expect(getByText('确定要删除歌单“Road trip”吗？此操作无法撤销。')).toBeTruthy()
+
+      // Cancel deletion
+      await act(async () => {
+        getByTestId('confirm-delete-cancel').click()
+        await tick()
+      })
+      expect(queryByTestId('confirm-delete-button')).toBeNull()
+      expect(library.calls).not.toContain(`delete:${PLAYLIST_URN}`)
+
+      // Re-open context menu and confirm delete
+      await act(async () => {
+        fireEvent.contextMenu(playlistRow)
+        await tick()
+      })
+      await act(async () => {
+        getByText('删除').click()
+        await tick()
+      })
+      await act(async () => {
+        getByTestId('confirm-delete-button').click()
+        await tick()
+      })
       expect(library.calls).toContain(`delete:${PLAYLIST_URN}`)
+
+      // Delete album: cancel first then confirm
+      const albumRow = getByText('Homogenic').closest('[style*="cursor: pointer"]') as HTMLElement
+      await act(async () => {
+        fireEvent.contextMenu(albumRow)
+        await tick()
+      })
+      const deleteAlbumItem = getByText('删除')
+      expect(deleteAlbumItem).toBeTruthy()
+      await act(async () => {
+        deleteAlbumItem.click()
+        await tick()
+      })
+      expect(library.calls).not.toContain(`save:${ALBUM_URN}:false`)
+      expect(getByText('确定要从音乐库中删除专辑“Homogenic”吗？')).toBeTruthy()
+
+      // Cancel deletion
+      await act(async () => {
+        getByTestId('confirm-delete-cancel').click()
+        await tick()
+      })
+      expect(queryByTestId('confirm-delete-button')).toBeNull()
+      expect(library.calls).not.toContain(`save:${ALBUM_URN}:false`)
+
+      // Re-open context menu and confirm delete
+      await act(async () => {
+        fireEvent.contextMenu(albumRow)
+        await tick()
+      })
+      await act(async () => {
+        getByText('删除').click()
+        await tick()
+      })
+      await act(async () => {
+        getByTestId('confirm-delete-button').click()
+        await tick()
+      })
+      expect(library.calls).toContain(`save:${ALBUM_URN}:false`)
 
       // Delete collection
       const folderRow = getByText('My Folder').closest('[style*="cursor: pointer"]') as HTMLElement
@@ -648,6 +712,37 @@ describe('LibraryScreen', () => {
         await tick()
       })
       expect(library.calls).toContain('collection-delete:col-1')
+    })
+  })
+
+  it('deletes an album inside a folder via context menu removing it from folder and library', async () => {
+    const { ctx, library } = await harness()
+    library.collections = [{ id: 'col-1', name: 'My Folder', position: 'a', createdAt: 0 }]
+    library.collectionItems = {
+      'col-1': [{ urn: ALBUM_URN, position: 'a' }],
+    }
+    library.saved = [ALBUM_URN]
+    await withListLayout(async () => {
+      const { getByText, getByTestId } = render(h(LibraryScreen, { ctx, folderId: 'col-1' }))
+      await act(async () => {
+        await tick()
+      })
+
+      const albumRow = getByText('Homogenic').closest('[style*="cursor: pointer"]') as HTMLElement
+      await act(async () => {
+        fireEvent.contextMenu(albumRow)
+        await tick()
+      })
+      await act(async () => {
+        getByText('删除').click()
+        await tick()
+      })
+      await act(async () => {
+        getByTestId('confirm-delete-button').click()
+        await tick()
+      })
+      expect(library.calls).toContain(`save:${ALBUM_URN}:false`)
+      expect(library.calls).toContain(`remove-from-collection:col-1:${ALBUM_URN}`)
     })
   })
 
