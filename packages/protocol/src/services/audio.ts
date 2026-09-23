@@ -32,6 +32,7 @@ export interface AudioSourceHandle {
   pause(): void
   stop(): void
   readonly positionMs: number
+  seek?(atMs: number): void
   /** Fires when the source reaches its natural end. */
   onEnded(cb: () => void): Disposable
   /**

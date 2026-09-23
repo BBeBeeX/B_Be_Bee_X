@@ -565,12 +565,16 @@ export class Player extends Service implements PlayerService {
       this.set({ positionMs: target })
       return
     }
-    const wasPlaying = isPlayingLike(this.transport.status)
-    if (wasPlaying) this.source.play(target)
-    else {
-      this.source.pause()
-      this.source.play(target)
-      this.source.pause()
+    if (typeof this.source.seek === 'function') {
+      this.source.seek(target)
+    } else {
+      const wasPlaying = isPlayingLike(this.transport.status)
+      if (wasPlaying) this.source.play(target)
+      else {
+        this.source.pause()
+        this.source.play(target)
+        this.source.pause()
+      }
     }
     this.set({ positionMs: target })
     this.ownCtx.emit('player/position', target, this.transport.durationMs)

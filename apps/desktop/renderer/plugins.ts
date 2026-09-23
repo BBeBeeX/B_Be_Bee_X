@@ -77,7 +77,11 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   // screen is reached from the list, so it has no placement (docs/08 §3).
   '@BBeBee/plugin-library': {},
   '@BBeBee/plugin-library-ui-desktop': {},
-  '@BBeBee/plugin-player': {},
+  '@BBeBee/plugin-player': {
+    config: {
+      bufferMaxBytes: 500 * 1024 * 1024,
+    },
+  },
   // The "what is playing" surfaces and the up-next list, extracted from
   // `plugin-player`: the full-screen player, the bar that opens it, and the
   // queue screen. `plugin-player` itself is headless now — commands only.

@@ -54,6 +54,7 @@ export interface MediaElementLike {
   currentTime: number
   duration: number
   paused: boolean
+  seeking?: boolean
   error?: { code?: number; message?: string } | null
   play(): Promise<void> | void
   pause(): void
@@ -144,6 +145,14 @@ class BufferedHandle implements AudioSourceHandle {
     this.stopSource()
   }
 
+  seek(atMs: number): void {
+    if (this.disposed) return
+    this.offsetSeconds = Math.max(0, Math.min(atMs / 1000, this.buffer.duration))
+    if (this.playing) {
+      this.play(atMs)
+    }
+  }
+
   stop(): void {
     this.playing = false
     this.offsetSeconds = 0
@@ -220,7 +229,8 @@ class StreamedHandle implements AudioSourceHandle {
   }
   private readonly onRecoverNative = () => {
     /*
-     * The element's own clock is authoritative as soon as it can play.
+     * The element's own clock is authoritative as soon as it can play,
+     * unless an explicit seek is still in flight (element.seeking).
      *
      * A `play(atMs)` issued before metadata is stored by the element as its
      * *default playback start position*, and that path does not fire `seeked`
@@ -228,7 +238,9 @@ class StreamedHandle implements AudioSourceHandle {
      * every streamed track with `play(0)`, which is exactly that call, and the
      * position then reported 0 for the whole track while the audio played.
      */
-    this.pendingSeekSeconds = undefined
+    if (!this.element.seeking) {
+      this.pendingSeekSeconds = undefined
+    }
     this.setStalled(false)
   }
   private readonly onSeekedNative = () => {
@@ -279,22 +291,26 @@ class StreamedHandle implements AudioSourceHandle {
     return Math.round(this.element.currentTime * 1000)
   }
 
+  seek(atMs: number): void {
+    const seconds = Math.max(0, atMs / 1000)
+    /*
+     * Only a seek that moves the element can be pending.
+     *
+     * Setting `currentTime` to where the element already is fires no
+     * `seeked` event, so recording the target as pending would never clear
+     * it — and `positionMs` would report that target for the whole track.
+     * A fresh element is at 0, so `play(0)` is precisely the case that used
+     * to stick: the progress bar sat at zero while the audio played.
+     */
+    if (seconds !== this.element.currentTime) {
+      this.pendingSeekSeconds = seconds
+      this.element.currentTime = seconds
+    }
+  }
+
   play(atMs?: number): void {
     if (atMs !== undefined) {
-      const seconds = Math.max(0, atMs / 1000)
-      /*
-       * Only a seek that moves the element can be pending.
-       *
-       * Setting `currentTime` to where the element already is fires no
-       * `seeked` event, so recording the target as pending would never clear
-       * it — and `positionMs` would report that target for the whole track.
-       * A fresh element is at 0, so `play(0)` is precisely the case that used
-       * to stick: the progress bar sat at zero while the audio played.
-       */
-      if (seconds !== this.element.currentTime) {
-        this.pendingSeekSeconds = seconds
-        this.element.currentTime = seconds
-      }
+      this.seek(atMs)
     }
     const res = this.element.play()
     if (res && typeof (res as Promise<void>).catch === 'function') {

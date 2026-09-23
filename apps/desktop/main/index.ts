@@ -34,8 +34,9 @@ import {
   type CloseContext,
 } from './window-policy.js'
 import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
-import { existsSync, mkdirSync } from 'node:fs'
+import { dirname, join, extname } from 'node:path'
+import { existsSync, mkdirSync, statSync, createReadStream } from 'node:fs'
+import { Readable } from 'node:stream'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -686,13 +687,54 @@ protocol.registerSchemesAsPrivileged([
   {
     scheme: 'bbebee-file',
     privileges: {
+      standard: true,
       secure: true,
       supportFetchAPI: true,
       corsEnabled: true,
       stream: true,
+      bypassCSP: true,
     },
   },
 ])
+
+function getFileMimeType(filePath: string): string {
+  const ext = extname(filePath).toLowerCase()
+  switch (ext) {
+    case '.mp3': return 'audio/mpeg'
+    case '.flac': return 'audio/flac'
+    case '.wav': return 'audio/wav'
+    case '.m4a': return 'audio/mp4'
+    case '.aac': return 'audio/aac'
+    case '.ogg': case '.oga': return 'audio/ogg'
+    case '.opus': return 'audio/opus'
+    case '.weba': return 'audio/webm'
+    case '.jpg': case '.jpeg': return 'image/jpeg'
+    case '.png': return 'image/png'
+    case '.webp': return 'image/webp'
+    case '.gif': return 'image/gif'
+    case '.svg': return 'image/svg+xml'
+    default: return 'application/octet-stream'
+  }
+}
+
+function parseByteRange(rangeHeader: string, totalSize: number): { start: number; end: number } | undefined {
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim())
+  if (!match) return undefined
+  const [, startStr, endStr] = match
+  if (!startStr && !endStr) return undefined
+  if (!startStr) {
+    const suffix = parseInt(endStr ?? '', 10)
+    if (isNaN(suffix) || suffix <= 0) return undefined
+    const start = Math.max(0, totalSize - suffix)
+    return { start, end: totalSize - 1 }
+  }
+  const start = parseInt(startStr, 10)
+  if (isNaN(start) || start >= totalSize) return undefined
+  let end = endStr ? parseInt(endStr, 10) : totalSize - 1
+  if (isNaN(end) || end >= totalSize) end = totalSize - 1
+  if (start > end) return undefined
+  return { start, end }
+}
 
 void app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
@@ -750,8 +792,61 @@ void app.whenReady().then(async () => {
   })
 
   protocol.handle('bbebee-file', (request) => {
-    const fileUrl = request.url.replace(/^bbebee-file:\/*/, 'file:///')
-    return net.fetch(fileUrl, {
+    try {
+      const fileUrl = request.url.replace(/^bbebee-file:\/*/, 'file:///')
+      const filePath = fileURLToPath(fileUrl)
+      if (existsSync(filePath)) {
+        const stats = statSync(filePath)
+        const rangeHeader = request.headers.get('range')
+        const contentType = getFileMimeType(filePath)
+        const baseHeaders: Record<string, string> = {
+          'Accept-Ranges': 'bytes',
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': contentType,
+        }
+
+        if (rangeHeader) {
+          const range = parseByteRange(rangeHeader, stats.size)
+          if (!range) {
+            return new Response(null, {
+              status: 416,
+              statusText: 'Range Not Satisfiable',
+              headers: {
+                ...baseHeaders,
+                'Content-Range': `bytes */${stats.size}`,
+              },
+            })
+          }
+
+          const chunkSize = range.end - range.start + 1
+          const nodeStream = createReadStream(filePath, { start: range.start, end: range.end })
+          return new Response(Readable.toWeb(nodeStream) as ReadableStream, {
+            status: 206,
+            statusText: 'Partial Content',
+            headers: {
+              ...baseHeaders,
+              'Content-Range': `bytes ${range.start}-${range.end}/${stats.size}`,
+              'Content-Length': String(chunkSize),
+            },
+          })
+        }
+
+        const nodeStream = createReadStream(filePath)
+        return new Response(Readable.toWeb(nodeStream) as ReadableStream, {
+          status: 200,
+          statusText: 'OK',
+          headers: {
+            ...baseHeaders,
+            'Content-Length': String(stats.size),
+          },
+        })
+      }
+    } catch {
+      // Fall through to net.fetch if path parsing fails
+    }
+
+    const fallbackUrl = request.url.replace(/^bbebee-file:\/*/, 'file:///')
+    return net.fetch(fallbackUrl, {
       headers: request.headers,
     })
   })

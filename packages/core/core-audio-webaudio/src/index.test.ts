@@ -20,6 +20,7 @@ class FakeMediaElement {
   currentTime = 0
   duration = 120
   paused = true
+  seeking = false
   error: { code?: number; message?: string } | null = null
   private readonly listeners = new Map<string, Set<() => void>>()
 
@@ -161,6 +162,42 @@ describe('core-audio-webaudio', () => {
     elements[0]!.emit('seeked')
     elements[0]!.currentTime = 13
     expect(source.positionMs).toBe(13_000)
+  })
+
+  it('does not drop pending seek on stall recovery before seeked fires', async () => {
+    const { audio, elements } = await harness()
+    const source = await audio.load('https://example.org/a.mp3', { strategy: 'stream' })
+    const el = elements[0]!
+    el.currentTime = 0
+    el.seeking = true
+    source.seek!(413_280)
+    expect(source.positionMs).toBe(413_280)
+    expect(el.currentTime).toBe(413.28)
+
+    // Stall occurs
+    el.emit('waiting')
+    // Stream recovers before seeked finishes
+    el.emit('canplaythrough')
+    // positionMs must still hold the seek target
+    expect(source.positionMs).toBe(413_280)
+
+    // Now seek lands
+    el.seeking = false
+    el.emit('seeked')
+    el.currentTime = 414
+    expect(source.positionMs).toBe(414_000)
+  })
+
+  it('supports seek() directly while remaining paused', async () => {
+    const { audio, elements } = await harness()
+    const source = await audio.load('https://example.org/a.mp3', { strategy: 'stream' })
+    const el = elements[0]!
+    expect(el.paused).toBe(true)
+
+    source.seek!(60_000)
+    expect(el.currentTime).toBe(60)
+    expect(el.paused).toBe(true)
+    expect(source.positionMs).toBe(60_000)
   })
 
   it('mute restores the level it replaced', async () => {
