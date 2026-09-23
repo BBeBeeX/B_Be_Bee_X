@@ -46,8 +46,9 @@ export class FsNode extends Service implements FsService {
   /* ── Uri <-> path ───────────────────────────────────────────────────── */
 
   private toPath(uri: Uri): string {
-    if (uri.startsWith('file://')) {
-      const p = fileURLToPath(uri)
+    const fileUri = uri.startsWith('bbebee-file:') ? (uri.replace(/^bbebee-file:\/*/, 'file:///') as Uri) : uri
+    if (fileUri.startsWith('file://')) {
+      const p = fileURLToPath(fileUri)
       // When running on non-Windows/WSL or if fileURLToPath produced a path with
       // a leading slash before a Windows drive letter (e.g. /C:/...), strip the leading slash.
       if (/^\/[a-zA-Z]:[\\/]/.test(p)) {
@@ -105,28 +106,29 @@ export class FsNode extends Service implements FsService {
    */
   private scopeOf(uri: Uri, gate: CapabilityConfig | undefined): Scope {
     const paths = this.ctx.paths
+    const checkUri = uri.startsWith('bbebee-file:') ? (uri.replace(/^bbebee-file:\/*/, 'file:///') as Uri) : uri
 
     // `temp` before `appData`: scratch space is semantically a cache (the OS
     // may reclaim it at any time), and the download flow writes there before
     // moving into place. Without this it lands in `all` on a real desktop and
     // forces `plugin-download` to ask for `fs:write:all`.
-    if (uriContains(paths.temp, uri)) return 'cache'
-    if (uriContains(paths.cache, uri)) return 'cache'
-    if (uriContains(paths.downloads, uri)) return 'downloads'
+    if (uriContains(paths.temp, checkUri)) return 'cache'
+    if (uriContains(paths.cache, checkUri)) return 'cache'
+    if (uriContains(paths.downloads, checkUri)) return 'downloads'
     // Before appData: logs live inside it but are a shared resource.
-    if (uriContains(paths.logs, uri)) return 'logs'
-    if (paths.music && uriContains(paths.music, uri)) return 'media'
+    if (uriContains(paths.logs, checkUri)) return 'logs'
+    if (paths.music && uriContains(paths.music, checkUri)) return 'media'
 
     if (gate) {
       const own = paths.pluginData(gate.scopeId)
-      if (uriContains(own, uri)) return 'own'
+      if (uriContains(own, checkUri)) return 'own'
       // Inside appData but NOT this plugin's directory: another plugin's data,
       // the settings store, or the secrets file. Not ours — deny.
-      if (uriContains(paths.appData, uri)) return 'all'
+      if (uriContains(paths.appData, checkUri)) return 'all'
     }
 
     // Ungated callers (the kernel, core services, tests) own all of appData.
-    if (uriContains(paths.appData, uri)) return 'own'
+    if (uriContains(paths.appData, checkUri)) return 'own'
     return 'all'
   }
 

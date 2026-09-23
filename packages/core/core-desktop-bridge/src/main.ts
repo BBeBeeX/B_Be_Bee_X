@@ -308,8 +308,11 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     if (typeof uri !== 'string') throw new TypeError('bridge: expected a uri')
     // SAF content:// uris are opaque and are granted by the user picking them.
     if (uri.startsWith('content://')) return
+    const normalizedUri = uri.startsWith('bbebee-file:')
+      ? uri.replace(/^bbebee-file:\/*/, 'file:///')
+      : uri
     const allRoots = [...roots(), ...extraRoots]
-    if (!allRoots.some((root) => uriContains(root, uri))) {
+    if (!allRoots.some((root) => uriContains(root, normalizedUri))) {
       throw new Error(`bridge: ${uri} is outside every application directory`)
     }
   }

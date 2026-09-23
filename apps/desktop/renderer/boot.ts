@@ -207,7 +207,7 @@ export async function boot(): Promise<App> {
        *  - For remote streams, `transport` (`bridgeFetch()`) routes through `main`
        *    to bypass renderer CORS restrictions and support custom headers.
        */
-      [
+       [
         AudioWebAudio,
         {
           fetchBytes: async (
@@ -215,16 +215,31 @@ export async function boot(): Promise<App> {
             opts: { headers?: Record<string, string>; signal?: AbortSignal },
           ) => {
             const isLocal =
-              src.startsWith('file:') || src.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(src)
+              src.startsWith('file:') ||
+              src.startsWith('bbebee-file:') ||
+              src.startsWith('/') ||
+              /^[a-zA-Z]:[\\/]/.test(src)
             if (isLocal) {
               opts?.signal?.throwIfAborted()
               const bridge = window.BBeBeeBridge
               if (bridge) {
-                const raw = await bridge.call('fs', 'readBytes', [src])
-                opts?.signal?.throwIfAborted()
-                if (raw instanceof ArrayBuffer) return raw
-                const bytes = raw as Uint8Array
-                return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+                try {
+                  const fsUri = src.startsWith('bbebee-file:')
+                    ? src.replace(/^bbebee-file:\/*/, 'file:///')
+                    : src
+                  const raw = await bridge.call('fs', 'readBytes', [fsUri])
+                  opts?.signal?.throwIfAborted()
+                  if (raw instanceof ArrayBuffer) return raw
+                  const bytes = raw as Uint8Array
+                  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+                } catch {
+                  // Fall through to window.fetch if bridge readBytes rejects
+                }
+              }
+              if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+                const response = await window.fetch(src, { signal: opts?.signal })
+                if (!response.ok) throw new Error(`audio: ${response.status} loading ${src}`)
+                return response.arrayBuffer()
               }
             }
             const fetchFn = transport ?? fetch
