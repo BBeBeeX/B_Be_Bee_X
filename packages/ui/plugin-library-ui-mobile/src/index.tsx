@@ -236,7 +236,7 @@ export function LibraryScreen({ ctx }: { ctx: Context }): ReactElement {
               h(
                 Text,
                 { variant: 'sm', tone: 'muted' },
-                'A folder of your own: albums, playlists and tracks in one place. Collections can nest.',
+                'A folder of your own: albums and playlists in one place. Collections can nest.',
               ),
             )
           }
@@ -660,7 +660,7 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
         empty: h(EmptyState, {
           icon: '🗂',
           title: 'Nothing in this collection yet',
-          description: 'Add albums or playlists from the library, or tracks from any list.',
+          description: 'Add albums or playlists from the library.',
         }),
         renderItem: (member) => {
           if (member.kind === 'track' && member.track) {

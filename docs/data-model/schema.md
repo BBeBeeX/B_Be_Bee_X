@@ -536,6 +536,11 @@ The service emits `library/changed(kind, urns)` for favourites and playlist edit
 `library/collections-changed()` for collections: a collection has no URN and no `UrnKind`, so
 folding it into `library/changed` would mean emitting a kind that named something else.
 
+A collection is an organizational container for collection-level entities (playlists, albums,
+artists, and child collections). A collection **cannot** contain individual tracks; tracks belong
+exclusively to playlists or albums. `addToCollection` validates entity kinds and rejects any `track`
+URN with a `LibraryError` whose code is `invalid-urn`.
+
 ### 4.7 Playback
 
 ```sql

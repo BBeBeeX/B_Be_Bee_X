@@ -176,7 +176,6 @@ describe('trackMenuItems', () => {
     const items = trackMenuItems(h.ctx, { track }, { playlists })
     expect(items.map((i) => i.id)).toEqual([
       'add-to-playlist',
-      'add-to-collection',
       'remove-favourite',
       'enqueue',
       'download',
@@ -187,7 +186,7 @@ describe('trackMenuItems', () => {
   it('omits what the build cannot do rather than offering a failing item', async () => {
     const h = await harness({ downloads: false, player: false, ui: false })
     const items = trackMenuItems(h.ctx, { track: { ...track, loved: false } }, {})
-    expect(items.map((i) => i.id)).toEqual(['add-to-playlist', 'add-to-collection', 'add-favourite'])
+    expect(items.map((i) => i.id)).toEqual(['add-to-playlist', 'add-favourite'])
   })
 
   it('offers “remove from this playlist” only inside a playlist', async () => {
@@ -353,16 +352,22 @@ describe('the add-to-playlist submenu', () => {
 describe('the add-to-collection submenu', () => {
   it('filters, creates and lists, exactly like the playlist one', async () => {
     const h = await harness()
-    const submenu = addToCollectionSubmenu(h.library as unknown as LibraryService, [URN], h.library.collections)
+    const submenu = addToCollectionSubmenu(h.library as unknown as LibraryService, [ALBUM], h.library.collections)
     expect(submenu?.searchPlaceholder).toBe('查找合集')
     expect(submenu?.create?.label).toBe('新建合集')
     expect(submenu?.items.map((i) => i.label)).toEqual(['Shelf'])
 
     await submenu!.create?.onSelect('New shelf')
-    expect(h.library.calls).toEqual(['collection:New shelf', 'collect:col-new:BBeBee:local:track:1'])
+    expect(h.library.calls).toEqual(['collection:New shelf', `collect:col-new:${ALBUM}`])
 
     await submenu!.items[0]?.onSelect?.()
-    expect(h.library.calls).toContain('collect:col-1:BBeBee:local:track:1')
+    expect(h.library.calls).toContain(`collect:col-1:${ALBUM}`)
+  })
+
+  it('rejects track URNs and returns undefined when only tracks are passed', async () => {
+    const h = await harness()
+    const submenu = addToCollectionSubmenu(h.library as unknown as LibraryService, [URN], h.library.collections)
+    expect(submenu).toBeUndefined()
   })
 
   it('adds a playlist itself, so its songs are in the library through it', async () => {

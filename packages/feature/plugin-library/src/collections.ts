@@ -1,9 +1,10 @@
 /**
- * Collections: nested folders of arbitrary URNs.
+ * Collections: nested folders of collection-level entities.
  *
- * A collection is a shelf, not a playlist: its members may be tracks, albums,
- * artists or playlists, membership is unique per collection, and order is a
- * fractional index among siblings so a drop writes one row (docs/07 §4.6).
+ * A collection is a shelf, not a playlist: its members may be albums,
+ * artists or playlists (folders do not contain individual tracks),
+ * membership is unique per collection, and order is a fractional index among
+ * siblings so a drop writes one row (docs/07 §4.6).
  *
  * Deleting one takes its children with it through the schema's
  * `ON DELETE CASCADE`; the service does not walk the tree itself, because two
@@ -165,8 +166,12 @@ function toCollection(row: CollectionRow): Collection {
 
 function assertUrn(urn: string): void {
   try {
-    parseUrn(urn)
+    const parsed = parseUrn(urn)
+    if (parsed.kind === 'track') {
+      throw new LibraryError('folders cannot contain individual tracks', 'invalid-urn')
+    }
   } catch (error) {
+    if (error instanceof LibraryError) throw error
     throw new LibraryError(`invalid urn ${JSON.stringify(urn)}`, 'invalid-urn', { cause: error })
   }
 }

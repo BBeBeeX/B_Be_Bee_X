@@ -19,6 +19,7 @@
 
 import { useCallback, useState } from 'react'
 import type { Context } from 'cordis'
+import { parseUrn } from '@BBeBee/protocol'
 import type {} from '@BBeBee/protocol'
 import type {
   ContextMenuProps,
@@ -105,7 +106,14 @@ export function addToCollectionSubmenu(
     onMoved?: () => void
   },
 ): SubmenuSpec | undefined {
-  if (!library || (urns.length === 0 && !opts?.onSelectFolder)) return undefined
+  const allowedUrns = urns.filter((urn) => {
+    try {
+      return parseUrn(urn).kind !== 'track'
+    } catch {
+      return true
+    }
+  })
+  if (!library || (allowedUrns.length === 0 && !opts?.onSelectFolder)) return undefined
   const items: MenuItemSpec[] = []
 
   if (opts?.currentFolderId) {
@@ -117,7 +125,7 @@ export function addToCollectionSubmenu(
         if (opts.onSelectFolder) {
           await opts.onSelectFolder(null)
         } else {
-          await library.removeFromCollection(opts.currentFolderId!, urns).catch(() => {})
+          await library.removeFromCollection(opts.currentFolderId!, allowedUrns).catch(() => {})
           opts.onMoved?.()
         }
       },
@@ -134,9 +142,9 @@ export function addToCollectionSubmenu(
           await opts.onSelectFolder(collection.id)
         } else {
           if (opts?.currentFolderId && opts.currentFolderId !== collection.id) {
-            await library.removeFromCollection(opts.currentFolderId, urns).catch(() => {})
+            await library.removeFromCollection(opts.currentFolderId, allowedUrns).catch(() => {})
           }
-          await library.addToCollection(collection.id, urns)
+          await library.addToCollection(collection.id, allowedUrns)
           opts?.onMoved?.()
         }
       },
@@ -156,9 +164,9 @@ export function addToCollectionSubmenu(
           await opts.onSelectFolder(collection.id)
         } else {
           if (opts?.currentFolderId && opts.currentFolderId !== collection.id) {
-            await library.removeFromCollection(opts.currentFolderId, urns).catch(() => {})
+            await library.removeFromCollection(opts.currentFolderId, allowedUrns).catch(() => {})
           }
-          await library.addToCollection(collection.id, urns)
+          await library.addToCollection(collection.id, allowedUrns)
           opts?.onMoved?.()
         }
       },
@@ -301,11 +309,6 @@ export function trackMenuItems(
 
   const submenu = addToPlaylistSubmenu(library, [track.urn], opts.playlists ?? [])
   if (submenu) items.push({ id: 'add-to-playlist', label: '加入歌单', icon: '＋', submenu })
-
-  const collectionSubmenu = addToCollectionSubmenu(library, [track.urn], opts.collections ?? [])
-  if (collectionSubmenu) {
-    items.push({ id: 'add-to-collection', label: '加入合集', icon: '🗂', submenu: collectionSubmenu })
-  }
 
   if (library && opts.fromPlaylistUrn && target.playlistItemId) {
     const playlistUrn = opts.fromPlaylistUrn

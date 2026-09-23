@@ -73,3 +73,10 @@ Each piece of application state has exactly ONE owner:
 - Plugin configuration → `@BBeBee/kernel`
 
 **React holds no domain state** — only view/transient UI state.
+
+---
+
+## 6. Collections & Folders Structure
+
+- **Entity hierarchy**: Folders (`collections`) organize collection-level entities: `playlist`, `album`, `artist`, and child folders (`collection`).
+- **No direct tracks**: Folders **never** hold individual tracks (`track` URNs). Individual tracks belong exclusively to playlists or albums. `ctx.library.addToCollection` rejects `track` URNs with `LibraryError(..., 'invalid-urn')`.

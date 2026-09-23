@@ -160,8 +160,8 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 - **Dark Card Theme**: `#242424` background, 8px border radius, 4px padding, `0 12px 32px rgba(0,0,0,0.55)` depth shadow, and 1px border (`rgba(255, 255, 255, 0.08)`).
 - **Dividers**: Menu items support `divider: true` to render a 1px translucent separator line (`rgba(255, 255, 255, 0.08)`).
 - **Outline Icons**: Standard actions map to high-precision SVG outlines: `pencil`, `delete`, `pin`, `create-playlist`, `create-folder`, `folder`, `play`, `download`, `playlist-add`.
-- **Submenu Trigger**: Small solid triangle (`▶`).
-- **Recursive Track Gathering**: When adding a folder's contents to other playlists ("添加至其他歌单"), the system uses `collectAllFolderTracks` to recursively scan all direct tracks, nested playlist tracks, nested album tracks, and all descendant subfolders without duplicates.
+- **Folder (Collection) Semantics**: Folders are directory containers for collection-level entities (playlists, albums, artists, child folders). Folders **never** contain individual tracks; individual tracks belong to playlists and albums. Track context menus only offer "添加到歌单" (`add-to-playlist`), never "加入合集 / 移动至文件夹" (`add-to-collection`).
+- **Recursive Track Gathering**: When adding a folder's contents to other playlists ("添加至其他歌单") or playing a folder, `collectAllFolderTracks` recursively scans all nested playlist tracks, nested album tracks, and all descendant subfolders without duplicates (folders do not contain direct tracks).
 - **Dedicated Modals**:
   - `EditPlaylistModal`: Modify cover art (file picker or URL), title, and multiline description.
   - `RenameFolderModal`: Rename folder title and save via `ctx.library.renameCollection`.

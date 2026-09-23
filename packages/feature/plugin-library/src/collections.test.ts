@@ -12,6 +12,7 @@ import plugin from './index.js'
 
 const TRACK = 'BBeBee:demo:track:one'
 const ALBUM = 'BBeBee:demo:album:first'
+const PLAYLIST = 'BBeBee:demo:playlist:favs'
 
 async function harness() {
   const ctx = new Context()
@@ -45,16 +46,24 @@ describe('collections', () => {
     })
   })
 
+  it('refuses to add individual tracks to a collection', async () => {
+    const { library } = await harness()
+    const collection = await library.createCollection('Shelf')
+    await expect(library.addToCollection(collection.id, [TRACK])).rejects.toMatchObject({
+      code: 'invalid-urn',
+    })
+  })
+
   it('adds unique members, keeps order, and removes them', async () => {
     const { library } = await harness()
     const collection = await library.createCollection('Shelf')
 
-    expect(await library.addToCollection(collection.id, [TRACK, ALBUM, TRACK])).toBe(2)
+    expect(await library.addToCollection(collection.id, [PLAYLIST, ALBUM, PLAYLIST])).toBe(2)
     const page = await library.listCollectionItems(collection.id)
-    expect(page.items.map((item) => item.urn)).toEqual([TRACK, ALBUM])
+    expect(page.items.map((item) => item.urn)).toEqual([PLAYLIST, ALBUM])
     expect(page.items[0]!.position < page.items[1]!.position).toBe(true)
 
-    await library.removeFromCollection(collection.id, [TRACK])
+    await library.removeFromCollection(collection.id, [PLAYLIST])
     const after = await library.listCollectionItems(collection.id)
     expect(after.items.map((item) => item.urn)).toEqual([ALBUM])
   })
@@ -63,7 +72,7 @@ describe('collections', () => {
     const { library } = await harness()
     const parent = await library.createCollection('Parent')
     const child = await library.createCollection('Child', { parentId: parent.id })
-    await library.addToCollection(parent.id, [TRACK])
+    await library.addToCollection(parent.id, [PLAYLIST])
 
     await library.renameCollection(parent.id, 'Renamed')
     expect((await library.listCollections()).find((c) => c.id === parent.id)?.name).toBe('Renamed')
@@ -86,9 +95,9 @@ describe('collections', () => {
     ctx.on('library/collections-changed', () => void events++)
 
     const collection = await library.createCollection('Shelf')
-    await library.addToCollection(collection.id, [TRACK])
+    await library.addToCollection(collection.id, [PLAYLIST])
     await library.renameCollection(collection.id, 'Shelf 2')
-    await library.removeFromCollection(collection.id, [TRACK])
+    await library.removeFromCollection(collection.id, [PLAYLIST])
     await library.deleteCollection(collection.id)
 
     expect(events).toBe(5)

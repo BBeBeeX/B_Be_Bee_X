@@ -193,6 +193,10 @@ export interface LibraryService {
   /**
    * Add entities to a collection. Membership is by URN, so the same URN twice
    * in one collection is one row. Returns how many were added.
+   *
+   * Folders only contain collection-level entities (playlists, albums, artists,
+   * child folders). Individual tracks cannot be added directly to a folder and
+   * will be rejected with an `invalid-urn` LibraryError.
    */
   addToCollection(id: string, urns: readonly string[]): Promise<number>
 

@@ -231,7 +231,7 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
         empty: h(EmptyState, {
           icon: '🗂',
           title: 'Nothing in this collection yet',
-          description: 'Add albums or playlists from the library, or tracks from any list.',
+          description: 'Add albums or playlists from the library.',
         }),
         renderItem: (member) => {
           if (member.kind === 'track' && member.track) {

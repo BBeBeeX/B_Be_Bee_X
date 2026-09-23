@@ -317,7 +317,15 @@ Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `Unif
 - **Icons**: Standard operations (`pencil`, `delete`, `pin`, `create-playlist`, `create-folder`, `folder`, `play`, `download`, `playlist-add`) resolve to sharp outline SVG icons with consistent 16px geometry.
 - **Submenus**: Submenu triggers render a crisp solid triangle (`▶`). Submenus dynamically exclude cyclic candidates (e.g. "Add to other playlists" excludes the source playlist, "Move to folder" excludes the current folder and descendant folders).
 
-#### Playlist & Folder Menu Specifications
+#### Entity Context Menu Specifications
+- **Track Context Menu**:
+  - `add-to-playlist`: "Add to playlist" submenu. Tracks belong exclusively to playlists or albums and cannot be added directly to folders.
+  - `remove-from-playlist`: Danger tone with divider, shown only when the row is rendered within a playlist.
+  - `add-favourite` / `remove-favourite`: Heart/unheart track in library and source.
+  - `enqueue`: Append track to end of playback queue.
+  - `download`: Queue track for offline download.
+  - `sleep-timer`: Configure playback sleep timer countdown.
+  - `go-to-album`: Navigate to album detail view when `track.albumUrn` is present.
 - **Playlist Context Menu**:
   - `edit-details`: Opens `EditPlaylistModal` to modify cover art (via local file chooser or remote URL), title, and description via `ctx.library.updatePlaylist`.
   - `delete-playlist`: Danger tone with top divider, deletes playlist and refreshes library view.
@@ -330,7 +338,7 @@ Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `Unif
   - `toggle-pin`: Pin/unpin folder in library list.
   - `create-playlist` & `create-folder`: Creates items directly within the selected folder.
   - `move-to-folder`: Move folder to another folder or root via `ctx.library.moveCollection`.
-  - `add-to-playlist`: "Add to other playlists". Uses `collectAllFolderTracks` to **recursively traverse** all direct tracks, nested playlist tracks, nested album tracks, and all nested subfolder contents without duplicates.
+  - `add-to-playlist`: "Add to other playlists". Uses `collectAllFolderTracks` to **recursively traverse** all nested playlist tracks, nested album tracks, and all nested subfolder contents without duplicates (folders do not contain direct tracks).
   - `enqueue`: Plays all aggregated tracks across the folder hierarchy.
 
 #### Library Presentation Modes
