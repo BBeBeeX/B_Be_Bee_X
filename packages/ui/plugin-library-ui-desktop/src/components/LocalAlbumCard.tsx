@@ -2,6 +2,7 @@ import { createElement as h, useState } from 'react'
 import type { KeyboardEvent, MouseEvent, ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { Album } from '@BBeBee/protocol'
+import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { CachedArtwork } from './CachedArtwork.js'
 
 export function LocalAlbumCard({
@@ -61,7 +62,7 @@ export function LocalAlbumCard({
       },
       album.artwork
         ? h(CachedArtwork, { ctx, artwork: album.artwork, seed: album.urn, size: 200, radius: 6 })
-        : h('span', { style: { color: '#7f7f7f', fontSize: 48 } }, '💿'),
+        : tablerIcon('disc', { size: 48, color: '#7f7f7f' }),
       // Floating Green Play Button
       onPlay
         ? h(
@@ -97,7 +98,7 @@ export function LocalAlbumCard({
                 zIndex: 2,
               },
             },
-            '▶',
+            tablerIcon('play', { size: 22, color: '#000000' }),
           )
         : null,
     ),

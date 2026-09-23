@@ -83,7 +83,7 @@ export interface RouteContribution {
   id: string                       // 'scrobble.history'
   path: string                     // '/scrobble/history'
   title: string                    // i18n key
-  icon?: string                    // name from the shared icon set
+  icon?: string                    // name from the shared icon set (Tabler icons, stroke 1.25 on desktop)
   /** Where the shell should offer navigation to it. */
   placement?: ('sidebar' | 'tab-bar' | 'more-menu')[]
   order?: number
@@ -314,8 +314,8 @@ Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `Unif
 #### Visual and Component Model
 - **Container styling**: High-contrast dark streaming card (`#242424`), 8px border radius, 4px padding, `0 12px 32px rgba(0,0,0,0.55)` depth shadow, and subtle 1px border (`rgba(255, 255, 255, 0.08)`).
 - **Dividers**: Menu items support `divider: true` to draw a 1px translucent separator line above critical or dangerous operations.
-- **Icons**: Standard operations (`pencil`, `delete`, `pin`, `create-playlist`, `create-folder`, `folder`, `play`, `download`, `playlist-add`) resolve to sharp outline SVG icons with consistent 16px geometry.
-- **Submenus & Viewport Clamping**: Submenu triggers render a crisp solid triangle (`▶`). Submenus dynamically exclude cyclic candidates (e.g. "Add to other playlists" excludes the source playlist, "Move to folder" excludes the current folder and descendant folders). Submenu positioning computes real-time horizontal and vertical viewport flipping, dynamically clamping `maxHeight` and enabling internal scrolling so flyout menus never overflow the screen.
+- **Icons**: Standard operations (`pencil`, `trash`, `pin`, `plus`, `folder`, `play-filled`, `download`, `playlist`) resolve to Tabler SVG icons (`stroke: 1.25`) with consistent 16px geometry.
+- **Submenus & Viewport Clamping**: Submenu triggers render a chevron indicator (`chevron-right`). Submenus dynamically exclude cyclic candidates (e.g. "Add to other playlists" excludes the source playlist, "Move to folder" excludes the current folder and descendant folders). Submenu positioning computes real-time horizontal and vertical viewport flipping, dynamically clamping `maxHeight` and enabling internal scrolling so flyout menus never overflow the screen.
 
 #### Entity Context Menu Specifications
 - **Track Context Menu**:
@@ -346,20 +346,20 @@ Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `Unif
   - `enqueue`: Plays all aggregated tracks across the folder hierarchy.
 
 #### Library Presentation Modes
-- **Collapsed mode** (72px rail): Minimalist icon list with consistent folder outline icons. When entering a folder, displays a `<` return button below the top brand logo to navigate back to the root library.
-- **Sidebar mode** (260–340px): Standard view featuring inline expandable folders via rotating triangle controls (`▼` / `▲`), indented child items (28px padding), and dedicated folder detail view (`< Folder Title`). Playlists inside folders are automatically hidden from the root list (`containedPlaylistUrns`) and restored when moved to root.
+- **Collapsed mode** (72px rail): Minimalist icon list with consistent folder outline icons. When entering a folder, displays a `chevron-left` return button below the top brand logo to navigate back to the root library.
+- **Sidebar mode** (260–340px): Standard view featuring inline expandable folders via rotating chevron controls (`chevron-down` / `chevron-right`), indented child items (28px padding), and dedicated folder detail view (`chevron-left Folder Title`). Playlists inside folders are automatically hidden from the root list (`containedPlaylistUrns`) and restored when moved to root.
 - **Expanded mode** (full-canvas): High-density 3-column table view (`Title`, `Date Added`, `Last Played`) with top breadcrumb navigation (`音乐库 < 文件夹名`).
 
 ### Detail screens, sorting & media views
 
 1. **Album, Playlist, Local Music & Favorites Track Tables**:
-   - **Table Header Sorting**: Column headers (`#`, `标题`, `专辑`, `添加日期`, `🕒 时长`, `播放量`) support interactive sorting with ascending/descending directional indicators (`▲` / `▼`). Column headers omit `✔`.
-   - **Action Bar Sort Menu**: Dropdown `ContextMenu` ("默认顺序 ≣" / "自定义顺序 ≣") providing rapid switching between sorting keys and directions.
-   - **Row Hover Library Action (`TrackLibraryActionButton`) & Popover**: Across track rows in `LocalMusicScreen`, `PlaylistDetailScreen`, `FavoritesScreen`, and `CollectionScreen`, the static checkmark is replaced with a hover action icon. When hovered, tracks not in library show `＋` (clicking saves to Favorites via `library.setSaved(track.urn, true)`); tracks in library show `💚` (green heart), clicking opens a dedicated Spotify-style `SaveToPlaylistPopover` offering real-time playlist search, inline playlist creation, liked songs toggle, and folder tree navigation.
-   - **Album Header & Menu**: `AlbumScreen` features an Action Bar heart button (`♥`/`♡`) bound to `library.setSaved(album.urn, isSaved)` displaying saved albums in the user's Library. Local albums (`BBeBee:local:`) omit download buttons in header and rows, and omit the download menu item. Three-dot menu provides "加入文件夹", "添加到音乐库/从音乐库中删除", "加入播放列表", and "睡眠定时器" (omitting "加入歌单" and "转至专辑").
+   - **Table Header Sorting**: Column headers (`#`, `标题`, `专辑`, `添加日期`, `时长` with Tabler `clock` icon, `播放量`) support interactive sorting with ascending/descending directional indicators (`chevron-up` / `chevron-down`). Column headers omit the legacy checkmark.
+   - **Action Bar Sort Menu**: Dropdown `ContextMenu` ("默认顺序" / "自定义顺序" with Tabler `arrows-sort` or `list` icon) providing rapid switching between sorting keys and directions.
+   - **Row Hover Library Action (`TrackLibraryActionButton`) & Popover**: Across track rows in `LocalMusicScreen`, `PlaylistDetailScreen`, `FavoritesScreen`, and `CollectionScreen`, the static checkmark is replaced with a hover action icon. When hovered, tracks not in library show `plus` (clicking saves to Favorites via `library.setSaved(track.urn, true)`); tracks in library show `heart-filled` (green heart), clicking opens a dedicated Spotify-style `SaveToPlaylistPopover` offering real-time playlist search, inline playlist creation, liked songs toggle, and folder tree navigation.
+   - **Album Header & Menu**: `AlbumScreen` features an Action Bar heart button (`heart` / `heart-filled`) bound to `library.setSaved(album.urn, isSaved)` displaying saved albums in the user's Library. Local albums (`BBeBee:local:`) omit download buttons in header and rows, and omit the download menu item. Three-dot menu provides "加入文件夹", "添加到音乐库/从音乐库中删除", "加入播放列表", and "睡眠定时器" (omitting "加入歌单" and "转至专辑").
    - **Playback Queue Alignment**: Playing tracks from a sorted table (single-tap or "Play All") passes the sorted URN sequence to `ctx.player.playFromContext`, ensuring the playback queue matches visual order.
    - **Playlist Item ID Decoupling**: In `PlaylistDetailScreen`, rows wrap data as `{ item, track, trackUrn, originalIndex }`, preserving item IDs across sort operations so that removals and context menus act on the correct playlist item.
-   - **Favorites Parity (`FavoritesScreen`)**: Styled with immersive purple gradient header, 56px play button, shuffle, real-time search filter, and `FavoriteTrackTableRow` with hover `TrackLibraryActionButton` (`🖤` submenu).
+   - **Favorites Parity (`FavoritesScreen`)**: Styled with immersive purple gradient header, 56px play button, shuffle, real-time search filter, and `FavoriteTrackTableRow` with hover `TrackLibraryActionButton` (`heart-filled` / `heart` submenu).
 
 2. **Local Music Dual Views (Tracks & Albums)**:
    - **Full Pagination**: `fetchAllLocalTracks` and `fetchAllLocalAlbums` recursively paginate in batches of 500 until all local items are retrieved, removing the former 100-item truncation.
@@ -441,7 +441,7 @@ The desktop shell organizes primary navigation between the left sidebar and the 
 
 2. **TopBar Interactive Search & 2×2 Matrix Dropdown**:
    - **Dynamic Search Icon Shift**:
-     - *Idle state*: The search icon (`🔍`) rests at the left padding (`left: 12px`).
+     - *Idle state*: The search icon (`search`) rests at the left padding (`left: 12px`).
      - *Active / Focused state*: The icon smoothly slides across to the far right (`right: 12px`, with transition `all 200ms cubic-bezier(0.4, 0, 0.2, 1)`) and functions as an interactive submit button (`cursor: pointer`).
      - *Dismissal*: Clicking outside the search area or pressing `Escape` unfocuses the input, dismisses the dropdown, and resets the icon back to the left edge.
    - **2×2 Matrix Floating Dropdown Panel**:

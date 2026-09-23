@@ -57,7 +57,7 @@ export function useTrackLibraryInfo(ctx: Context) {
       {
         id: 'create-new-playlist',
         label: '新建歌单',
-        icon: '＋',
+        icon: 'plus',
         onSelect: async () => {
           const name = window.prompt('歌单名称：')
           if (name && name.trim()) {
@@ -70,7 +70,7 @@ export function useTrackLibraryInfo(ctx: Context) {
       ...list.map((playlist) => ({
         id: playlist.urn,
         label: playlist.name,
-        icon: '♪',
+        icon: 'music',
         disabled: playlist.isSmart,
         onSelect: async () => {
           await library.addTracks(playlist.urn, [track.urn])

@@ -6,7 +6,7 @@ import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { LIBRARY_VIEWS } from '@BBeBee/plugin-library/views'
 import { useCollectionDetail, type CollectionMember } from '@BBeBee/plugin-library/hooks'
 import { serviceOf, type MenuAnchor } from '@BBeBee/ui-core'
-import { Artwork, Button, ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text } from '@BBeBee/ui-kit-desktop'
+import { Artwork, Button, ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { TrackLibraryActionButton } from '../components/TrackLibraryActionButton.js'
@@ -117,14 +117,16 @@ function CollectionTrackTableRow({
             background: 'none',
             border: 'none',
             color: '#b3b3b3',
-            fontSize: 16,
             cursor: 'pointer',
             padding: 4,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             opacity: hovered ? 1 : 0,
             transition: 'opacity 0.15s ease',
           },
         },
-        '⋯',
+        tablerIcon('dots', { size: 16 }),
       ),
     ),
   )
@@ -156,14 +158,18 @@ function MemberRow({ member, onOpen }: { member: CollectionMember; onOpen: () =>
         color: 'inherit',
       },
     },
-    h(Text, { variant: 'md' }, member.kind === 'album' ? '💿' : member.kind === 'playlist' ? '≡' : '•'),
+    member.kind === 'album'
+      ? tablerIcon('disc', { size: 18 })
+      : member.kind === 'playlist'
+        ? tablerIcon('playlist', { size: 18 })
+        : tablerIcon('dots', { size: 18 }),
     h(
       'div',
       { style: { flex: 1, minWidth: 0 } },
       h(Text, { numberOfLines: 1 }, member.title),
       member.subtitle ? h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1 }, member.subtitle) : null,
     ),
-    openable ? h(Text, { tone: 'muted', children: '›' }) : null,
+    openable ? tablerIcon('chevron-right', { size: 16, color: '#b3b3b3' }) : null,
   )
 }
 
@@ -228,7 +234,7 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
         estimatedItemSize: tokens.size.row,
         keyExtractor: (member) => member.urn,
         empty: h(EmptyState, {
-          icon: '🗂',
+          icon: 'folder',
           title: 'Nothing in this collection yet',
           description: 'Add albums or playlists from the library.',
         }),

@@ -30,6 +30,7 @@
   "dependencies": {
     "@BBeBee/kernel": "workspace:*",
     "@BBeBee/protocol": "workspace:*",
+    "@BBeBee/ui-kit-desktop": "workspace:*",
     "cordis": "4.0.0-rc.9",
     "react": "19.2.3"
   },

@@ -179,7 +179,7 @@ export function SearchScreen({
         ? null
         : search.status === 'error' && search.error
           ? h(EmptyState, {
-              icon: '⚠',
+              icon: 'alert',
               title: 'Search failed',
               description: search.error.message,
               action: h(Button, {
@@ -206,7 +206,7 @@ export function SearchScreen({
                   estimatedItemSize: tokens.size.row,
                   keyExtractor: (row) => row.key,
                   empty: h(EmptyState, {
-                    icon: '🔎',
+                    icon: 'search',
                     title: 'Nothing found',
                     description: 'No selected source had a match. Try a different search or source set.',
                   }),

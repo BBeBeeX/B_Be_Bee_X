@@ -921,7 +921,7 @@ describe('FavoritesScreen', () => {
 
       const btn = getByLabelText('Add Alpha to playlist')
       expect(btn).toBeTruthy()
-      expect(btn.textContent).toBe('♥')
+      expect(btn.querySelector('[data-icon="heart-filled"]')).toBeTruthy()
 
       await act(async () => {
         btn.click()
@@ -1180,7 +1180,7 @@ describe('LocalMusicScreen', () => {
 
       const addBtn = getByLabelText('Add Alpha to favourites')
       expect(addBtn).toBeTruthy()
-      expect(addBtn.textContent).toBe('＋')
+      expect(addBtn.querySelector('[data-icon="plus"]')).toBeTruthy()
 
       await act(async () => {
         addBtn.click()

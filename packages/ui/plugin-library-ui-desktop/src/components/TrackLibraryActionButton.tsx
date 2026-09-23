@@ -2,6 +2,7 @@ import { createElement as h, useEffect, useState } from 'react'
 import type { MouseEvent, ReactElement } from 'react'
 import type { Track } from '@BBeBee/protocol'
 import type { MenuAnchor } from '@BBeBee/ui-core'
+import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 
 export function TrackLibraryActionButton({
   track,
@@ -52,6 +53,6 @@ export function TrackLibraryActionButton({
         transition: 'opacity 0.15s ease',
       },
     },
-    inLibrary ? '♥' : '＋',
+    inLibrary ? tablerIcon('heart-filled', { size: 16 }) : tablerIcon('plus', { size: 16 }),
   )
 }

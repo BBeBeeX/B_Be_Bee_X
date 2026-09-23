@@ -12,6 +12,7 @@
 
 import { createElement as h, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import type { Context } from 'cordis'
+import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useSearchSourceSelection, type SearchInterfaceKind } from '@BBeBee/plugin-sources/hooks'
 
 export interface ElectronCSSProperties extends CSSProperties {
@@ -88,18 +89,7 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
           e.currentTarget.style.color = '#A0A0AE'
         },
       },
-      h(
-        'svg',
-        { width: 10, height: 10, viewBox: '0 0 10 10', 'aria-hidden': true },
-        h('line', {
-          x1: '1',
-          y1: '5',
-          x2: '9',
-          y2: '5',
-          stroke: 'currentColor',
-          strokeWidth: 1.2,
-        }),
-      ),
+      tablerIcon('minus', { size: 14 }),
     ),
     // Maximize / Restore Button (□ / ❐)
     h(
@@ -131,35 +121,8 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
         },
       },
       isMaximized
-        ? h(
-            'svg',
-            { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'none', 'aria-hidden': true },
-            h('rect', {
-              x: '2.5',
-              y: '2.5',
-              width: '6',
-              height: '6',
-              stroke: 'currentColor',
-              strokeWidth: 1.1,
-            }),
-            h('path', {
-              d: 'M1.5 3.5V8.5H6.5',
-              stroke: 'currentColor',
-              strokeWidth: 1.1,
-            }),
-          )
-        : h(
-            'svg',
-            { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'none', 'aria-hidden': true },
-            h('rect', {
-              x: '1.5',
-              y: '1.5',
-              width: '7',
-              height: '7',
-              stroke: 'currentColor',
-              strokeWidth: 1.2,
-            }),
-          ),
+        ? tablerIcon('copy', { size: 13 })
+        : tablerIcon('square', { size: 13 }),
     ),
     // Close Button (✕)
     h(
@@ -190,26 +153,7 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
           e.currentTarget.style.color = '#A0A0AE'
         },
       },
-      h(
-        'svg',
-        { width: 10, height: 10, viewBox: '0 0 10 10', 'aria-hidden': true },
-        h('line', {
-          x1: '1.5',
-          y1: '1.5',
-          x2: '8.5',
-          y2: '8.5',
-          stroke: 'currentColor',
-          strokeWidth: 1.2,
-        }),
-        h('line', {
-          x1: '8.5',
-          y1: '1.5',
-          x2: '1.5',
-          y2: '8.5',
-          stroke: 'currentColor',
-          strokeWidth: 1.2,
-        }),
-      ),
+      tablerIcon('x', { size: 14 }),
     ),
   )
 }
@@ -387,23 +331,7 @@ export function TopBar({
               if (!menuOpen) e.currentTarget.style.backgroundColor = 'transparent'
             },
           },
-          h(
-            'svg',
-            {
-              width: 16,
-              height: 16,
-              viewBox: '0 0 24 24',
-              fill: 'none',
-              stroke: 'currentColor',
-              strokeWidth: 2.2,
-              strokeLinecap: 'round',
-              strokeLinejoin: 'round',
-              'aria-hidden': true,
-            },
-            h('circle', { cx: '5', cy: '12', r: '1.5', fill: 'currentColor' }),
-            h('circle', { cx: '12', cy: '12', r: '1.5', fill: 'currentColor' }),
-            h('circle', { cx: '19', cy: '12', r: '1.5', fill: 'currentColor' }),
-          ),
+          tablerIcon('dots', { size: 16 }),
         ),
         // Dropdown popup
         menuOpen
@@ -519,21 +447,7 @@ export function TopBar({
             }
           },
         },
-        h(
-          'svg',
-          {
-            width: 16,
-            height: 16,
-            viewBox: '0 0 24 24',
-            fill: 'none',
-            stroke: 'currentColor',
-            strokeWidth: 2.2,
-            strokeLinecap: 'round',
-            strokeLinejoin: 'round',
-            'aria-hidden': true,
-          },
-          h('polyline', { points: '15 18 9 12 15 6' }),
-        ),
+        tablerIcon('chevron-left', { size: 16 }),
       ),
       // Forward Button (→)
       h(
@@ -570,21 +484,7 @@ export function TopBar({
             }
           },
         },
-        h(
-          'svg',
-          {
-            width: 16,
-            height: 16,
-            viewBox: '0 0 24 24',
-            fill: 'none',
-            stroke: 'currentColor',
-            strokeWidth: 2.2,
-            strokeLinecap: 'round',
-            strokeLinejoin: 'round',
-            'aria-hidden': true,
-          },
-          h('polyline', { points: '9 18 15 12 9 6' }),
-        ),
+        tablerIcon('chevron-right', { size: 16 }),
       ),
     ),
     // Center Group: Home Button, Search Bar
@@ -632,22 +532,7 @@ export function TopBar({
             e.currentTarget.style.transform = 'scale(1)'
           },
         },
-        h(
-          'svg',
-          {
-            width: 18,
-            height: 18,
-            viewBox: '0 0 24 24',
-            fill: 'none',
-            stroke: 'currentColor',
-            strokeWidth: 2.2,
-            strokeLinecap: 'round',
-            strokeLinejoin: 'round',
-            'aria-hidden': true,
-          },
-          h('path', { d: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' }),
-          h('polyline', { points: '9 22 9 12 15 12 15 22' }),
-        ),
+        tablerIcon('home', { size: 18 }),
       ),
       // Search Bar Container with Dropdown
       h(
@@ -671,23 +556,11 @@ export function TopBar({
         },
         // When not active: Search icon at far left
         !searchActive
-          ? h(
-              'svg',
-              {
-                width: 16,
-                height: 16,
-                viewBox: '0 0 24 24',
-                fill: 'none',
-                stroke: '#A0A0AE',
-                strokeWidth: 2.2,
-                strokeLinecap: 'round',
-                strokeLinejoin: 'round',
-                'aria-hidden': true,
-                style: { flexShrink: 0, pointerEvents: 'none' },
-              },
-              h('circle', { cx: '11', cy: '11', r: '8' }),
-              h('line', { x1: '21', y1: '21', x2: '16.65', y2: '16.65' }),
-            )
+          ? tablerIcon('search', {
+              size: 16,
+              color: '#A0A0AE',
+              style: { pointerEvents: 'none' },
+            })
           : null,
         // Search input
         h('input', {
@@ -739,7 +612,7 @@ export function TopBar({
                   fontSize: 14,
                 },
               },
-              '×',
+              tablerIcon('x', { size: 14 }),
             )
           : null,
         // When active: Search icon jumps to the far right as a clickable action button
@@ -778,22 +651,7 @@ export function TopBar({
                   e.currentTarget.style.transform = 'scale(1)'
                 },
               },
-              h(
-                'svg',
-                {
-                  width: 15,
-                  height: 15,
-                  viewBox: '0 0 24 24',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  strokeWidth: 2.2,
-                  strokeLinecap: 'round',
-                  strokeLinejoin: 'round',
-                  'aria-hidden': true,
-                },
-                h('circle', { cx: '11', cy: '11', r: '8' }),
-                h('line', { x1: '21', y1: '21', x2: '16.65', y2: '16.65' }),
-              ),
+              tablerIcon('search', { size: 15 }),
             )
           : null,
         // 2×2 Matrix Dropdown Float
@@ -1109,22 +967,7 @@ export function TopBar({
             e.currentTarget.style.boxShadow = 'none'
           },
         },
-        h(
-          'svg',
-          {
-            width: 16,
-            height: 16,
-            viewBox: '0 0 24 24',
-            fill: 'none',
-            stroke: 'currentColor',
-            strokeWidth: 2,
-            strokeLinecap: 'round',
-            strokeLinejoin: 'round',
-            'aria-hidden': true,
-          },
-          h('path', { d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' }),
-          h('circle', { cx: '12', cy: '7', r: '4' }),
-        ),
+        tablerIcon('user', { size: 16 }),
       ),
       // Contiguous Window Controls Group
       h(WindowControls, null),

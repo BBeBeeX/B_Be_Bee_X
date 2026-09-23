@@ -265,13 +265,16 @@ describe('NowPlayingBar', () => {
       const out = html(h(NowPlayingBar, { ctx }))
       if (mode === 'single-loop') {
         expect(out).toContain('播放模式: 单曲循环')
-        expect(out).toContain('>1<')
+        expect(out).toContain('data-icon="repeat-once"')
       } else if (mode === 'sequence') {
         expect(out).toContain('播放模式: 顺序播放')
+        expect(out).toContain('data-icon="list-numbers"')
       } else if (mode === 'list-loop') {
         expect(out).toContain('播放模式: 列表循环')
+        expect(out).toContain('data-icon="repeat"')
       } else if (mode === 'shuffle') {
         expect(out).toContain('播放模式: 随机播放')
+        expect(out).toContain('data-icon="shuffle"')
       }
     }
   })
@@ -279,36 +282,30 @@ describe('NowPlayingBar', () => {
   it('renders mute icon with x when muted', async () => {
     const { ctx } = await harness({ status: 'playing', muted: true, volume: 0.8 })
     const out = html(h(NowPlayingBar, { ctx }))
-    expect(out).toContain('x1="23"')
-    expect(out).toContain('y1="9"')
+    expect(out).toContain('data-icon="volume-off"')
     expect(out).toContain('title="已静音 (点击展开调节栏)"')
   })
 
   it('renders volume waves corresponding to volume level when unmuted', async () => {
-    // 0 volume: no wave
+    // 0 volume: volume-3
     const { ctx: ctx0 } = await harness({ status: 'playing', muted: false, volume: 0 })
     const out0 = html(h(NowPlayingBar, { ctx: ctx0 }))
-    expect(out0).not.toContain('M15.54')
+    expect(out0).toContain('data-icon="volume-3"')
 
-    // Low volume: 1 wave
+    // Low volume: volume-3
     const { ctx: ctxLow } = await harness({ status: 'playing', muted: false, volume: 0.2 })
     const outLow = html(h(NowPlayingBar, { ctx: ctxLow }))
-    expect(outLow).toContain('M15.54')
-    expect(outLow).not.toContain('M18.36')
+    expect(outLow).toContain('data-icon="volume-3"')
 
-    // Medium volume: 2 waves
+    // Medium volume: volume-2
     const { ctx: ctxMed } = await harness({ status: 'playing', muted: false, volume: 0.5 })
     const outMed = html(h(NowPlayingBar, { ctx: ctxMed }))
-    expect(outMed).toContain('M15.54')
-    expect(outMed).toContain('M18.36')
-    expect(outMed).not.toContain('M21.19')
+    expect(outMed).toContain('data-icon="volume-2"')
 
-    // High volume: 3 waves
+    // High volume: volume
     const { ctx: ctxHigh } = await harness({ status: 'playing', muted: false, volume: 0.9 })
     const outHigh = html(h(NowPlayingBar, { ctx: ctxHigh }))
-    expect(outHigh).toContain('M15.54')
-    expect(outHigh).toContain('M18.36')
-    expect(outHigh).toContain('M21.19')
+    expect(outHigh).toContain('data-icon="volume"')
   })
 
   it('cycles play mode when clicking play mode button', async () => {

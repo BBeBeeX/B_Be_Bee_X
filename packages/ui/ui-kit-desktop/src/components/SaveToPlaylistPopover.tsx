@@ -4,6 +4,7 @@ import type { KeyboardEvent, ReactElement } from 'react'
 import type { ArtworkRef } from '@BBeBee/protocol'
 import { tokens } from '@BBeBee/ui-tokens'
 import { Artwork } from './Artwork.js'
+import { tablerIcon } from '../icons/index.js'
 
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect
 
@@ -237,11 +238,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
             gap: 6,
           },
         },
-        h(
-          'span',
-          { style: { color: '#a7a7a7', fontSize: 13, display: 'flex', alignItems: 'center' } },
-          '🔍',
-        ),
+        tablerIcon('search', { size: 14, color: '#a7a7a7' }),
         h('input', {
           ref: inputRef,
           type: 'text',
@@ -333,8 +330,6 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                 'span',
                 {
                   style: {
-                    fontSize: 18,
-                    fontWeight: 400,
                     color: '#ffffff',
                     width: 36,
                     height: 36,
@@ -343,7 +338,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                     justifyContent: 'center',
                   },
                 },
-                '＋',
+                tablerIcon('plus', { size: 18, color: '#ffffff' }),
               ),
               h(
                 'div',
@@ -384,11 +379,10 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#ffffff',
-                fontSize: 15,
                 flexShrink: 0,
               },
             },
-            '♥',
+            tablerIcon('heart-filled', { size: 16, color: '#ffffff' }),
           ),
           // Title + Subtitle
           h(
@@ -419,7 +413,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                   gap: 3,
                 },
               },
-              '📌 ',
+              tablerIcon('pin', { size: 12, color: '#a7a7a7' }),
               `${(props.likedCount ?? 0).toLocaleString()} 首歌曲`,
             ),
           ),
@@ -503,7 +497,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                     gap: 3,
                   },
                 },
-                playlist.pinned ? '📌 ' : null,
+                playlist.pinned ? tablerIcon('pin', { size: 12, color: '#1ed760' }) : null,
                 `${playlist.trackCount ?? 0} 首歌曲`,
               ),
             ),
@@ -542,11 +536,10 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: '#b3b3b3',
-                  fontSize: 17,
                   flexShrink: 0,
                 },
               },
-              '📁',
+              tablerIcon('folder', { size: 18, color: '#b3b3b3' }),
             ),
             // Title + Subtitle
             h(
@@ -572,7 +565,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                 `${collection.playlistCount ?? collection.playlists.length} 个歌单`,
               ),
             ),
-            h('span', { style: { color: '#a7a7a7', fontSize: 14, fontWeight: 700 } }, '›'),
+            tablerIcon('chevron-right', { size: 14, color: '#a7a7a7' }),
           )
         }),
       ),
@@ -708,8 +701,6 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                   'span',
                   {
                     style: {
-                      fontSize: 18,
-                      fontWeight: 400,
                       color: '#ffffff',
                       width: 32,
                       height: 32,
@@ -718,7 +709,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                       justifyContent: 'center',
                     },
                   },
-                  '＋',
+                  tablerIcon('plus', { size: 16, color: '#ffffff' }),
                 ),
                 h(
                   'div',
@@ -858,12 +849,10 @@ function CheckmarkCircle({ checked }: { checked: boolean }): ReactElement {
           alignItems: 'center',
           justifyContent: 'center',
           color: '#000000',
-          fontSize: 12,
-          fontWeight: 800,
           flexShrink: 0,
         },
       },
-      '✓',
+      tablerIcon('check', { size: 12, stroke: 2, color: '#000000' }),
     )
   }
   return h('div', {

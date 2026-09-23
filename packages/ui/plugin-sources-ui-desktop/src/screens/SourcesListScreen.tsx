@@ -130,7 +130,7 @@ export function SourcesListScreen({ ctx }: { ctx: Context }): ReactElement {
                           }),
                         )
                       : h(IconButton, {
-                          icon: '🗑',
+                          icon: 'trash',
                           accessibilityLabel: `Delete ${source.name}`,
                           onPress: () => setConfirming(source.id),
                           testID: `sources-list-delete-${source.id}`,
@@ -208,7 +208,7 @@ function LocalFolders({
             children: dir.enabled ? 'Disable' : 'Enable',
           }),
           h(IconButton, {
-            icon: '🗑',
+            icon: 'trash',
             accessibilityLabel: `Remove ${dir.uri}`,
             onPress: () => void scanner.removeSpecifiedDir(dir.id),
             testID: `source-folder-remove-${dir.id}`,

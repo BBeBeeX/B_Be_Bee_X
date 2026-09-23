@@ -67,7 +67,7 @@ export function TrackRow(props: TrackRowProps) {
           'span',
           { onClick: (e: { stopPropagation: () => void }) => e.stopPropagation() },
           h(IconButton, {
-            icon: props.track.loved ? '♥' : '♡',
+            icon: props.track.loved ? 'heart-filled' : 'heart',
             accessibilityLabel: props.track.loved ? 'Unlike' : 'Like',
             variant: props.track.loved ? 'primary' : 'ghost',
             onPress: props.onToggleLoved,
@@ -79,7 +79,7 @@ export function TrackRow(props: TrackRowProps) {
           'span',
           { onClick: (e: { stopPropagation: () => void }) => e.stopPropagation() },
           h(IconButton, {
-            icon: '⬇',
+            icon: 'download',
             accessibilityLabel: 'Download',
             onPress: props.onDownload,
           }),
@@ -98,7 +98,7 @@ export function TrackRow(props: TrackRowProps) {
               visibility: hovered ? 'visible' : 'hidden',
             },
           },
-          h(IconButton, { icon: '⋯', accessibilityLabel: 'More', onPress: () => {} }),
+          h(IconButton, { icon: 'dots', accessibilityLabel: 'More', onPress: () => {} }),
         )
       : null,
   )

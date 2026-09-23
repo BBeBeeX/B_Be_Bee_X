@@ -96,7 +96,7 @@ export function DownloadsScreen({ ctx }: { ctx: Context }): ReactElement {
     ),
     tasks.length === 0
       ? h(EmptyState, {
-          icon: '⬇',
+          icon: 'download',
           title: 'No downloads',
           description:
             'A remote track is kept here after it plays once, so the next play needs no network. Tracks you download explicitly are saved and never evicted; cached ones are.',
@@ -258,7 +258,7 @@ function actionsFor(
       }),
       h(IconButton, {
         key: 'remove',
-        icon: '🗑',
+        icon: 'trash',
         accessibilityLabel: `Delete ${task.title}`,
         onPress: () => void ctx.downloads.remove(task.id),
         testID: `download-remove-${task.id}`,
@@ -278,7 +278,7 @@ function actionsFor(
       }),
       h(IconButton, {
         key: 'remove',
-        icon: '🗑',
+        icon: 'trash',
         accessibilityLabel: `Delete ${task.title}`,
         onPress: () => void ctx.downloads.remove(task.id),
         testID: `download-remove-${task.id}`,
@@ -312,7 +312,7 @@ function actionsFor(
   actions.push(
     h(IconButton, {
       key: 'cancel',
-      icon: '✕',
+      icon: 'x',
       accessibilityLabel: `Cancel ${task.title}`,
       onPress: () => void ctx.downloads.cancel(task.id),
       testID: `download-cancel-${task.id}`,

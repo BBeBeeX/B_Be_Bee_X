@@ -17,6 +17,7 @@ import { useDesktopLyricsState } from '@BBeBee/plugin-desktop-lyrics/hooks'
 import { serviceOf } from '@BBeBee/ui-core'
 import { DEFAULT_APP_SETTINGS, type AppSettings, type SettingsService } from '@BBeBee/protocol'
 import { tokens } from '@BBeBee/ui-tokens'
+import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 
 export interface DesktopLyricsProps {
   ctx: Context
@@ -388,7 +389,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => void ctx.player?.previous?.(),
           style: buttonStyle,
         },
-        '⏮',
+        tablerIcon('skip-back', { size: 14 }),
       ),
       // Play / Pause Button
       h(
@@ -400,7 +401,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => void ctx.player?.togglePlay?.(),
           style: { ...buttonStyle, color: '#A78BFA' },
         },
-        isPlaying ? '⏸' : '▶',
+        tablerIcon(isPlaying ? 'pause-filled' : 'play-filled', { size: 14 }),
       ),
       // Next Track Button
       h(
@@ -412,7 +413,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => void ctx.player?.next?.(),
           style: buttonStyle,
         },
-        '⏭',
+        tablerIcon('skip-forward', { size: 14 }),
       ),
       // Separator
       h('span', { style: { color: 'rgba(255, 255, 255, 0.2)', margin: '0 4px' } }, '|'),
@@ -487,7 +488,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => setLocked(!locked),
           style: buttonStyle,
         },
-        locked ? '🔒' : '🔓',
+        tablerIcon(locked ? 'lock' : 'lock-open', { size: 14 }),
       ),
       // Close Button
       h(
@@ -499,7 +500,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => setVisible(false),
           style: { ...buttonStyle, color: '#F87171' },
         },
-        '✕',
+        tablerIcon('x', { size: 14 }),
       ),
     ),
 

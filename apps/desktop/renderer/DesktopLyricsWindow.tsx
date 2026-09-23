@@ -1,5 +1,6 @@
 import { createElement as h, useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
+import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import type { DesktopLyricsPayload, DesktopLyricsAction } from './desktop-lyrics-types.js'
 
 const DEFAULT_PAYLOAD: DesktopLyricsPayload = {
@@ -116,7 +117,7 @@ export function DesktopLyricsWindow(): ReactElement {
             title: '上一首',
             onClick: () => sendAction({ type: 'prev-track' }),
           },
-          '⏮',
+          tablerIcon('skip-back', { size: 14 }),
         ),
         // Play/Pause button
         h(
@@ -126,7 +127,7 @@ export function DesktopLyricsWindow(): ReactElement {
             title: playing ? '暂停' : '播放',
             onClick: () => sendAction({ type: 'toggle-play' }),
           },
-          playing ? '⏸' : '▶',
+          tablerIcon(playing ? 'pause' : 'play', { size: 14 }),
         ),
         // Next button
         h(
@@ -136,7 +137,7 @@ export function DesktopLyricsWindow(): ReactElement {
             title: '下一首',
             onClick: () => sendAction({ type: 'next-track' }),
           },
-          '⏭',
+          tablerIcon('skip-forward', { size: 14 }),
         ),
         // Separator
         h('div', { style: separatorStyle }),
@@ -170,7 +171,7 @@ export function DesktopLyricsWindow(): ReactElement {
             title: locked ? '解除锁定' : '锁定歌词 (鼠标穿透)',
             onClick: () => sendAction({ type: 'toggle-lock' }),
           },
-          locked ? '🔒' : '🔓',
+          tablerIcon(locked ? 'lock' : 'lock-open', { size: 14 }),
         ),
         // Close button
         h(
@@ -180,7 +181,7 @@ export function DesktopLyricsWindow(): ReactElement {
             title: '关闭桌面歌词',
             onClick: () => sendAction({ type: 'close' }),
           },
-          '✕',
+          tablerIcon('x', { size: 14 }),
         ),
       ),
     // Current Line

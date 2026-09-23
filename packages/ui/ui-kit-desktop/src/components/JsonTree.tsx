@@ -2,6 +2,7 @@ import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactElement } from 'react'
 import { tokens, type Palette } from '@BBeBee/ui-tokens'
 import { c } from '../theme.js'
+import { tablerIcon } from '../icons/index.js'
 
 let jsonEpoch = 0
 
@@ -115,7 +116,21 @@ function JsonBranch(props: {
         outline: 'none',
       },
     },
-    h('span', { style: { color: palette.text.disabled, userSelect: 'none' } }, open ? '▼' : '▶'),
+    h(
+      'span',
+      {
+        style: {
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 14,
+          height: 14,
+          userSelect: 'none',
+          color: palette.text.disabled,
+        },
+      },
+      tablerIcon(open ? 'chevron-down' : 'chevron-right', { size: 12 }),
+    ),
     props.name !== undefined
       ? h('span', { style: { color: palette.text.secondary } }, props.name)
       : null,

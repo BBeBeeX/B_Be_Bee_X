@@ -2,6 +2,7 @@ import { createElement as h, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { ArtworkRef, Track } from '@BBeBee/protocol'
+import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { CachedArtwork } from './CachedArtwork.js'
 
 export function QuadArtworkCollage({
@@ -72,10 +73,9 @@ export function QuadArtworkCollage({
           alignItems: 'center',
           justifyContent: 'center',
           color: '#7f7f7f',
-          fontSize: Math.floor(size / 3),
         },
       },
-      '♪',
+      tablerIcon('music', { size: Math.floor(size / 3), color: '#7f7f7f' }),
     )
   }
 
@@ -114,7 +114,7 @@ export function QuadArtworkCollage({
               zIndex: 2,
             },
           },
-          h('span', { style: { fontSize: 32 } }, '✎'),
+          tablerIcon('pencil', { size: 36, color: '#FFFFFF' }),
           h('span', { style: { fontSize: 14, fontWeight: 600 } }, '选择照片'),
         )
       : null,

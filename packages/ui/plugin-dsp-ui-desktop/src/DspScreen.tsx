@@ -9,7 +9,7 @@
 import { createElement as h, useState, useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import { Button, Slider } from '@BBeBee/ui-kit-desktop'
+import { Button, Slider, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
 import { useDsp } from '@BBeBee/plugin-dsp/hooks'
 import { EQ_PRESETS } from '@BBeBee/plugin-dsp/effects'
@@ -499,13 +499,15 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                     'span',
                     {
                       style: {
-                        fontSize: 10,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         marginLeft: 2,
                         transform: isDropdownOpen ? 'rotate(180deg)' : 'none',
                         transition: 'transform 0.2s',
                       },
                     },
-                    '▼',
+                    tablerIcon('chevron-down', { size: 12 }),
                   ),
                 ),
                 // Dropdown Menu Popover
@@ -616,7 +618,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                               padding: '2px 6px',
                             },
                           },
-                          '✕',
+                          tablerIcon('x', { size: 12 }),
                         ),
                       )
                     }),

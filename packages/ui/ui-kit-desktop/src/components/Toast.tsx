@@ -35,7 +35,7 @@ export function Toast(props: ToastProps) {
     h(Text, { children: props.message }),
     props.action as ReactNode,
     props.onDismiss
-      ? h(IconButton, { icon: '×', accessibilityLabel: 'Dismiss', onPress: props.onDismiss })
+      ? h(IconButton, { icon: 'x', accessibilityLabel: 'Dismiss', onPress: props.onDismiss })
       : null,
   )
 }

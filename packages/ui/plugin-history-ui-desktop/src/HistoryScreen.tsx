@@ -289,7 +289,7 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
     // Track List or Empty State
     uniqueRecords.length === 0 && !loading
       ? h(EmptyState, {
-          icon: '🎵',
+          icon: 'music',
           title: selectedDate ? `${selectedDate} 无播放记录` : '暂无播放记录',
           description: selectedDate
             ? '这一天还没有听歌，挑选一首开始播放吧。'

@@ -19,7 +19,7 @@ import {
   useTracksByUrn,
   useTransport,
 } from '@BBeBee/plugin-player/hooks'
-import { Artwork, ContextMenu, EmptyState } from '@BBeBee/ui-kit-desktop'
+import { Artwork, ContextMenu, EmptyState, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -343,14 +343,14 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
             e.currentTarget.style.transform = 'scale(1)'
           },
         },
-        '✕',
+        tablerIcon('x', { size: 16 }),
       ),
     )
 
   const renderQueueContent = () => {
     if (queue.length === 0) {
       return h(EmptyState, {
-        icon: '🎵',
+        icon: 'music',
         title: 'Nothing queued',
         description: 'Play something from your library and it will show up here.',
       })
@@ -367,7 +367,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
     const currentItem = queue[currentIdx] ?? queue[0]
     if (!currentItem) {
       return h(EmptyState, {
-        icon: '🎵',
+        icon: 'music',
         title: 'Nothing queued',
         description: 'Play something from your library and it will show up here.',
       })
@@ -486,7 +486,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
   const renderHistoryContent = () => {
     if (uniqueHistoryRecords.length === 0 && !historyLoading) {
       return h(EmptyState, {
-        icon: '🎵',
+        icon: 'music',
         title: '暂无播放记录',
         description: '从曲库播放音乐后，最近播放的歌曲将显示在这里。',
       })

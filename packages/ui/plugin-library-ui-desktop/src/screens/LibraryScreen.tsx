@@ -20,7 +20,7 @@ import {
 } from '@BBeBee/plugin-library/hooks'
 import type { MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { serviceOf } from '@BBeBee/ui-core'
-import { Button, ContextMenu, EmptyState, List, Text, TextField } from '@BBeBee/ui-kit-desktop'
+import { Button, ContextMenu, EmptyState, List, Text, TextField, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useAddToCollection, useCollectionMenu, usePlaylistMenu } from '@BBeBee/ui-menus'
 import { CachedArtwork } from '../components/CachedArtwork.js'
 import { UnifiedLibraryRow, type UnifiedItem } from '../components/UnifiedLibraryRow.js'
@@ -657,13 +657,13 @@ export function LibraryScreen({
           {
             id: 'play-all',
             label: '播放全部',
-            icon: '▶',
+            icon: tablerIcon('play', { size: 16 }),
             onSelect: onPlay,
           },
           {
             id: 'toggle-pin',
             label: isPinned ? '取消置顶歌单' : '置顶歌单',
-            icon: '📌',
+            icon: tablerIcon('pin', { size: 16 }),
             onSelect: () => void togglePin(item),
           },
         ],
@@ -1262,21 +1262,25 @@ export function LibraryScreen({
     {
       id: 'creator',
       label: '创建者',
+      icon: sortMode === 'creator' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortMode('creator'),
     },
     {
       id: 'recent-added',
       label: '最近添加',
+      icon: sortMode === 'recent-added' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortMode('recent-added'),
     },
     {
       id: 'recent-played',
       label: '最近播放',
+      icon: sortMode === 'recent-played' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortMode('recent-played'),
     },
     {
       id: 'alphabetical',
       label: '按字母排序',
+      icon: sortMode === 'alphabetical' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortMode('alphabetical'),
     },
   ]
@@ -1313,18 +1317,16 @@ export function LibraryScreen({
         'span',
         {
           style: {
+            transform: isCreateMenuOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+            transition: 'transform 0.25s cubic-bezier(0.2, 0, 0, 1)',
+            lineHeight: 1,
+            marginRight: 2,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            transform: isCreateMenuOpen ? 'rotate(45deg)' : 'rotate(0deg)',
-            transition: 'transform 0.25s cubic-bezier(0.2, 0, 0, 1)',
-            fontSize: 16,
-            fontWeight: 600,
-            lineHeight: 1,
-            marginRight: 2,
           },
         },
-        '+',
+        tablerIcon('plus', { size: 16 }),
       ),
       h('span', { style: { fontSize: 13, fontWeight: 600 } }, '创建'),
     )
@@ -1391,11 +1393,10 @@ export function LibraryScreen({
               alignItems: 'center',
               justifyContent: 'center',
               color: '#FFFFFF',
-              fontSize: 14,
               flexShrink: 0,
             },
           },
-          '♫+',
+          tablerIcon('playlist-add', { size: 18 }),
         ),
         h(
           'div',
@@ -1444,11 +1445,10 @@ export function LibraryScreen({
               alignItems: 'center',
               justifyContent: 'center',
               color: '#FFFFFF',
-              fontSize: 14,
               flexShrink: 0,
             },
           },
-          '📁',
+          tablerIcon('folder', { size: 18 }),
         ),
         h(
           'div',
@@ -1733,13 +1733,7 @@ export function LibraryScreen({
             e.currentTarget.style.backgroundColor = 'transparent'
           },
         },
-        h(
-          'svg',
-          { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'currentColor' },
-          h('rect', { x: 3, y: 4, width: 3, height: 16, rx: 1 }),
-          h('rect', { x: 8.5, y: 4, width: 3, height: 16, rx: 1 }),
-          h('rect', { x: 14.5, y: 4.5, width: 3, height: 15.5, rx: 1, transform: 'rotate(15 14.5 4.5)' }),
-        ),
+        tablerIcon('books', { size: 24 }),
       ),
       activeFolderId !== null
         ? h(
@@ -1770,20 +1764,7 @@ export function LibraryScreen({
                 e.currentTarget.style.backgroundColor = '#242424'
               },
             },
-            h(
-              'svg',
-              {
-                width: 18,
-                height: 18,
-                viewBox: '0 0 24 24',
-                fill: 'none',
-                stroke: 'currentColor',
-                strokeWidth: 2.5,
-                strokeLinecap: 'round',
-                strokeLinejoin: 'round',
-              },
-              h('polyline', { points: '15 18 9 12 15 6' }),
-            ),
+            tablerIcon('chevron-left', { size: 18 }),
           )
         : null,
       h(
@@ -1830,12 +1811,10 @@ export function LibraryScreen({
                 justifyContent: 'center',
                 transform: isCreateMenuOpen ? 'rotate(45deg)' : 'rotate(0deg)',
                 transition: 'transform 0.25s cubic-bezier(0.2, 0, 0, 1)',
-                fontSize: 18,
-                fontWeight: 600,
                 lineHeight: 1,
               },
             },
-            '+',
+            tablerIcon('plus', { size: 18 }),
           ),
         ),
         renderCreateMenu(true),
@@ -1886,7 +1865,7 @@ export function LibraryScreen({
               },
             },
             isFav
-              ? h('span', { style: { fontSize: 20, color: '#FFFFFF' } }, '♥')
+              ? tablerIcon('heart-filled', { size: 22, color: '#FFFFFF' })
               : item.kind === 'collection'
                 ? h(
                     'div',
@@ -1902,20 +1881,7 @@ export function LibraryScreen({
                         color: '#CCCCCC',
                       },
                     },
-                    h(
-                      'svg',
-                      {
-                        width: 24,
-                        height: 24,
-                        viewBox: '0 0 24 24',
-                        fill: 'none',
-                        stroke: 'currentColor',
-                        strokeWidth: 2,
-                        strokeLinecap: 'round',
-                        strokeLinejoin: 'round',
-                      },
-                      h('path', { d: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' }),
-                    ),
+                    tablerIcon('folder', { size: 24 }),
                   )
               : item.artwork
                 ? h(CachedArtwork, {
@@ -1925,11 +1891,13 @@ export function LibraryScreen({
                     size: 48,
                     radius: isArt ? 24 : 4,
                   })
-                : h(
-                    'span',
-                    { style: { fontSize: 20, color: '#A0A0A0' } },
-                    isArt ? '👤' : item.kind === 'local' ? '📁' : item.kind === 'album' ? '💿' : '♪',
-                  ),
+                : (isArt
+                    ? tablerIcon('user', { size: 20, color: '#A0A0A0' })
+                    : item.kind === 'local'
+                      ? tablerIcon('folder', { size: 20, color: '#A0A0A0' })
+                      : item.kind === 'album'
+                        ? tablerIcon('disc', { size: 20, color: '#A0A0A0' })
+                        : tablerIcon('music', { size: 20, color: '#A0A0A0' })),
           )
         }),
       ),
@@ -1994,21 +1962,7 @@ export function LibraryScreen({
               },
               '音乐库',
             ),
-            h(
-              'svg',
-              {
-                width: 18,
-                height: 18,
-                viewBox: '0 0 24 24',
-                fill: 'none',
-                stroke: 'currentColor',
-                strokeWidth: 2.5,
-                strokeLinecap: 'round',
-                strokeLinejoin: 'round',
-                style: { color: '#666666' },
-              },
-              h('polyline', { points: '15 18 9 12 15 6' }),
-            ),
+            tablerIcon('chevron-left', { size: 18, color: '#666666' }),
             h(
               'h1',
               { style: { fontSize: 24, fontWeight: 700, color: '#FFFFFF', margin: 0 } },
@@ -2054,7 +2008,7 @@ export function LibraryScreen({
                       e.currentTarget.style.color = '#A0A0AE'
                     },
                   },
-                  h('span', { style: { fontSize: 16, fontWeight: 700 } }, '⋯'),
+                  tablerIcon('dots', { size: 16 }),
                 )
               : null,
             h(
@@ -2084,23 +2038,7 @@ export function LibraryScreen({
                   e.currentTarget.style.color = '#A0A0AE'
                 },
               },
-              h(
-                'svg',
-                {
-                  width: 16,
-                  height: 16,
-                  viewBox: '0 0 24 24',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  strokeWidth: 2,
-                  strokeLinecap: 'round',
-                  strokeLinejoin: 'round',
-                },
-                h('polyline', { points: '4 14 10 14 10 20' }),
-                h('polyline', { points: '20 10 14 10 14 4' }),
-                h('line', { x1: '14', y1: '10', x2: '21', y2: '3' }),
-                h('line', { x1: '10', y1: '14', x2: '3', y2: '21' }),
-              ),
+              tablerIcon('minimize', { size: 16 }),
             ),
           ),
         ),
@@ -2145,7 +2083,7 @@ export function LibraryScreen({
                   width: 220,
                 },
               },
-              h('span', { style: { color: '#888888', fontSize: 13 } }, '🔍'),
+              h('span', { style: { color: '#888888', display: 'inline-flex', alignItems: 'center' } }, tablerIcon('search', { size: 14 })),
               h('input', {
                 value: searchQuery,
                 onChange: (e: { target: { value: string } }) => setSearchQuery(e.target.value),
@@ -2179,7 +2117,7 @@ export function LibraryScreen({
                 },
               },
               h('span', null, sortLabels[sortMode]),
-              h('span', { style: { fontSize: 16 } }, '≣'),
+              h('span', { style: { display: 'inline-flex', alignItems: 'center' } }, tablerIcon('list', { size: 16 })),
             ),
           ),
         ),
@@ -2205,7 +2143,7 @@ export function LibraryScreen({
           ),
           filteredFolderItems.length === 0
             ? h(EmptyState, {
-                icon: '🗂',
+                icon: 'folder',
                 title: '文件夹为空',
                 description: '点击创建添加歌单，或从音乐库中添加内容。',
               })
@@ -2252,7 +2190,7 @@ export function LibraryScreen({
                         },
                       },
                       isFav
-                        ? h('span', { style: { fontSize: 20, color: '#FFFFFF' } }, '♥')
+                        ? tablerIcon('heart-filled', { size: 20, color: '#FFFFFF' })
                         : item.artwork
                           ? h(CachedArtwork, {
                               ctx,
@@ -2261,11 +2199,13 @@ export function LibraryScreen({
                               size: 48,
                               radius: isArt ? 24 : 4,
                             })
-                          : h(
-                              'span',
-                              { style: { fontSize: 20, color: '#A0A0A0' } },
-                              isArt ? '👤' : item.kind === 'local' ? '📁' : item.kind === 'album' ? '💿' : '♪',
-                            ),
+                          : isArt
+                            ? tablerIcon('user', { size: 24, color: '#A0A0A0' })
+                            : item.kind === 'local'
+                              ? tablerIcon('folder', { size: 24, color: '#A0A0A0' })
+                              : item.kind === 'album'
+                                ? tablerIcon('disc', { size: 24, color: '#A0A0A0' })
+                                : tablerIcon('music', { size: 24, color: '#A0A0A0' }),
                     ),
                     h(
                       'div',
@@ -2288,7 +2228,7 @@ export function LibraryScreen({
                         'div',
                         { style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
                         item.pinned
-                          ? h('span', { title: '已置顶', style: { fontSize: 12, color: '#1DB954', marginRight: 2 } }, '📌')
+                          ? h('span', { title: '已置顶', style: { display: 'inline-flex', alignItems: 'center', color: '#1DB954', marginRight: 2 } }, tablerIcon('pin', { size: 12, color: '#1DB954' }))
                           : null,
                         h(
                           'span',
@@ -2383,14 +2323,7 @@ export function LibraryScreen({
                 e.currentTarget.style.color = '#A0A0AE'
               },
             },
-            h(
-              'svg',
-              { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-              h('polyline', { points: '4 14 10 14 10 20' }),
-              h('polyline', { points: '20 10 14 10 14 4' }),
-              h('line', { x1: '14', y1: '10', x2: '21', y2: '3' }),
-              h('line', { x1: '10', y1: '14', x2: '3', y2: '21' }),
-            ),
+            tablerIcon('minimize', { size: 16 }),
           ),
         ),
       ),
@@ -2448,7 +2381,7 @@ export function LibraryScreen({
                 width: 220,
               },
             },
-            h('span', { style: { color: '#888888', fontSize: 13 } }, '🔍'),
+            tablerIcon('search', { size: 14, color: '#888888' }),
             h('input', {
               value: searchQuery,
               onChange: (e: { target: { value: string } }) => setSearchQuery(e.target.value),
@@ -2482,7 +2415,7 @@ export function LibraryScreen({
               },
             },
             h('span', null, sortLabels[sortMode]),
-            h('span', { style: { fontSize: 16 } }, '≣'),
+            tablerIcon('list', { size: 16 }),
           ),
         ),
       ),
@@ -2549,7 +2482,7 @@ export function LibraryScreen({
                   },
                 },
                 isFav
-                  ? h('span', { style: { fontSize: 20, color: '#FFFFFF' } }, '♥')
+                  ? tablerIcon('heart-filled', { size: 22, color: '#FFFFFF' })
                   : item.artwork
                     ? h(CachedArtwork, {
                         ctx,
@@ -2558,11 +2491,13 @@ export function LibraryScreen({
                         size: 48,
                         radius: isArt ? 24 : 4,
                       })
-                    : h(
-                        'span',
-                        { style: { fontSize: 20, color: '#A0A0A0' } },
-                        isArt ? '👤' : item.kind === 'local' ? '📁' : item.kind === 'album' ? '💿' : '♪',
-                      ),
+                    : (isArt
+                        ? tablerIcon('user', { size: 20, color: '#A0A0A0' })
+                        : item.kind === 'local'
+                          ? tablerIcon('folder', { size: 20, color: '#A0A0A0' })
+                          : item.kind === 'album'
+                            ? tablerIcon('disc', { size: 20, color: '#A0A0A0' })
+                            : tablerIcon('music', { size: 20, color: '#A0A0A0' })),
               ),
               h(
                 'div',
@@ -2572,7 +2507,7 @@ export function LibraryScreen({
                   'div',
                   { style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
                   item.pinned
-                    ? h('span', { title: '已置顶', style: { fontSize: 12, color: '#1DB954', marginRight: 2 } }, '📌')
+                    ? tablerIcon('pin', { size: 12, color: '#1DB954', style: { marginRight: 2 } })
                     : null,
                   h('span', { style: { color: '#A0A0AE', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, item.subtitle),
                 ),
@@ -2641,21 +2576,7 @@ export function LibraryScreen({
             onClick: () => setActiveFolderId(null),
             title: '返回音乐库',
           },
-          h(
-            'svg',
-            {
-              width: 20,
-              height: 20,
-              viewBox: '0 0 24 24',
-              fill: 'none',
-              stroke: 'currentColor',
-              strokeWidth: 2.5,
-              strokeLinecap: 'round',
-              strokeLinejoin: 'round',
-              style: { color: '#FFFFFF', flexShrink: 0 },
-            },
-            h('polyline', { points: '15 18 9 12 15 6' }),
-          ),
+          tablerIcon('chevron-left', { size: 20, color: '#FFFFFF' }),
           h(
             'span',
             {
@@ -2710,7 +2631,7 @@ export function LibraryScreen({
                     e.currentTarget.style.color = '#A0A0AE'
                   },
                 },
-                h('span', { style: { fontSize: 16, fontWeight: 700 } }, '⋯'),
+                tablerIcon('dots', { size: 16 }),
               )
             : null,
           h(
@@ -2740,23 +2661,7 @@ export function LibraryScreen({
                 e.currentTarget.style.color = '#A0A0AE'
               },
             },
-            h(
-              'svg',
-              {
-                width: 16,
-                height: 16,
-                viewBox: '0 0 24 24',
-                fill: 'none',
-                stroke: 'currentColor',
-                strokeWidth: 2,
-                strokeLinecap: 'round',
-                strokeLinejoin: 'round',
-              },
-              h('polyline', { points: '15 3 21 3 21 9' }),
-              h('polyline', { points: '9 21 3 21 3 15' }),
-              h('line', { x1: '21', y1: '3', x2: '14', y2: '10' }),
-              h('line', { x1: '3', y1: '21', x2: '10', y2: '14' }),
-            ),
+            tablerIcon('maximize', { size: 16 }),
           ),
         ),
       ),
@@ -2811,7 +2716,7 @@ export function LibraryScreen({
                 justifyContent: 'center',
               },
             },
-            '🔍',
+            tablerIcon('search', { size: 16 }),
           ),
           searchOpen
             ? h(TextField, {
@@ -2841,7 +2746,7 @@ export function LibraryScreen({
             },
           },
           h('span', null, sortLabels[sortMode]),
-          h('span', { style: { fontSize: 16 } }, '≣'),
+          h('span', { style: { display: 'inline-flex', alignItems: 'center' } }, tablerIcon('list', { size: 16 })),
         ),
       ),
       h(
@@ -2849,7 +2754,7 @@ export function LibraryScreen({
         { style: { flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' } },
         filteredFolderItems.length === 0
           ? h(EmptyState, {
-              icon: '🗂',
+              icon: 'folder',
               title: '文件夹为空',
               description: '点击创建添加歌单，或从音乐库中添加内容。',
             })
@@ -2911,20 +2816,8 @@ export function LibraryScreen({
           title: '收起音乐库',
         },
         isHeaderHovered
-          ? h(
-              'svg',
-              { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', style: { color: '#FFFFFF' } },
-              h('rect', { x: 3, y: 3, width: 18, height: 18, rx: 2 }),
-              h('line', { x1: 9, y1: 3, x2: 9, y2: 21 }),
-              h('path', { d: 'm14 9-3 3 3 3' }),
-            )
-          : h(
-              'svg',
-              { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'currentColor', style: { color: '#A0A0AE' } },
-              h('rect', { x: 3, y: 4, width: 3, height: 16, rx: 1 }),
-              h('rect', { x: 8.5, y: 4, width: 3, height: 16, rx: 1 }),
-              h('rect', { x: 14.5, y: 4.5, width: 3, height: 15.5, rx: 1, transform: 'rotate(15 14.5 4.5)' }),
-            ),
+          ? tablerIcon('layout-sidebar-left-collapse', { size: 22, color: '#FFFFFF' })
+          : tablerIcon('books', { size: 22, color: '#A0A0AE' }),
         h(
           'span',
           {
@@ -2970,14 +2863,7 @@ export function LibraryScreen({
               e.currentTarget.style.color = '#A0A0AE'
             },
           },
-          h(
-            'svg',
-            { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-            h('polyline', { points: '15 3 21 3 21 9' }),
-            h('polyline', { points: '9 21 3 21 3 15' }),
-            h('line', { x1: '21', y1: '3', x2: '14', y2: '10' }),
-            h('line', { x1: '3', y1: '21', x2: '10', y2: '14' }),
-          ),
+          tablerIcon('maximize', { size: 16 }),
         ),
       ),
     ),
@@ -3049,7 +2935,7 @@ export function LibraryScreen({
               justifyContent: 'center',
             },
           },
-          '🔍',
+          tablerIcon('search', { size: 16 }),
         ),
         searchOpen
           ? h(TextField, {
@@ -3079,7 +2965,7 @@ export function LibraryScreen({
           },
         },
         h('span', null, sortLabels[sortMode]),
-        h('span', { style: { fontSize: 16 } }, '≣'),
+        tablerIcon('list', { size: 16 }),
       ),
     ),
     error ? h(Text, { variant: 'sm', tone: 'error', testID: 'playlists-error' }, error) : null,
@@ -3088,7 +2974,7 @@ export function LibraryScreen({
       { style: { flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' } },
       filteredItems.length === 0
         ? h(EmptyState, {
-            icon: '♪',
+            icon: 'music',
             title: '没有找到内容',
             description: '导入音乐源、扫描本地文件夹或调整筛选条件。',
           })

@@ -27,7 +27,7 @@ import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { formatDuration, formatTotalDuration } from '@BBeBee/toolkit'
 import { addToCollectionSubmenu, sleepTimerSubmenu, useSaveToPlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
-import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover } from '@BBeBee/ui-kit-desktop'
+import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -91,7 +91,7 @@ function TrackLibraryActionButton({
         transition: 'opacity 0.15s ease',
       },
     },
-    inLibrary ? '♥' : '＋',
+    inLibrary ? tablerIcon('heart-filled', { size: 16 }) : tablerIcon('plus', { size: 16 }),
   )
 }
 
@@ -160,7 +160,7 @@ function AlbumTrackTableRow({
           color: hovered ? '#FFFFFF' : '#b3b3b3',
         },
       },
-      hovered ? '▶' : String(index + 1),
+      hovered ? tablerIcon('play', { size: 14 }) : String(index + 1),
     ),
     // Col 2: Title and Artist
     h(
@@ -260,7 +260,7 @@ function AlbumTrackTableRow({
                 transition: 'opacity 0.15s ease',
               },
             },
-            '⬇',
+            tablerIcon('download', { size: 16 }),
           )
         : null,
       onOpenPlaylistMenu
@@ -306,7 +306,7 @@ function AlbumTrackTableRow({
             transition: 'opacity 0.15s ease',
           },
         },
-        '⋯',
+        tablerIcon('dots', { size: 16 }),
       ),
     ),
   )
@@ -442,7 +442,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   }
   if (album.status === 'error' || !album.data) {
     return h(EmptyState, {
-      icon: '⚠',
+      icon: 'alert',
       title: 'Album unavailable',
       description: album.error?.message,
     })
@@ -467,7 +467,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
     albumMenuItems.push({
       id: 'add-to-folder',
       label: '加入文件夹',
-      icon: '🗂',
+      icon: tablerIcon('folder', { size: 16 }),
       submenu: collectionSubmenu,
     })
   }
@@ -475,7 +475,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   albumMenuItems.push({
     id: 'toggle-library',
     label: isSaved ? '从音乐库中删除' : '添加到音乐库',
-    icon: isSaved ? '♡' : '♥',
+    icon: isSaved ? tablerIcon('heart', { size: 16 }) : tablerIcon('heart-filled', { size: 16 }),
     tone: isSaved ? 'danger' : undefined,
     onSelect: () => void handleToggleSave(),
   })
@@ -484,7 +484,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
     albumMenuItems.push({
       id: 'enqueue',
       label: '加入播放列表',
-      icon: '＋',
+      icon: tablerIcon('plus', { size: 16 }),
       onSelect: () => player.enqueueLast(sortedUrns),
     })
   }
@@ -493,7 +493,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
     albumMenuItems.push({
       id: 'download',
       label: '下载',
-      icon: '⬇',
+      icon: tablerIcon('download', { size: 16 }),
       onSelect: () => void downloads.enqueue(sortedUrns),
     })
   }
@@ -503,7 +503,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
     albumMenuItems.push({
       id: 'sleep-timer',
       label: sleepTimer?.state.active ? '睡眠定时器 (已开启)' : '睡眠定时器',
-      icon: '⏱',
+      icon: tablerIcon('clock', { size: 16 }),
       submenu: sleepSubmenu,
     })
   }
@@ -519,7 +519,9 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
 
   const renderSortIndicator = (key: AlbumSortKey) => {
     if (sortKey !== key) return null
-    return h('span', { style: { marginLeft: 4, fontSize: 11 } }, sortOrder === 'asc' ? '▲' : '▼')
+    return sortOrder === 'asc'
+      ? tablerIcon('chevron-up', { size: 12, style: { marginLeft: 4 } })
+      : tablerIcon('chevron-down', { size: 12, style: { marginLeft: 4 } })
   }
 
   const sortLabelMap: Record<AlbumSortKey, string> = {
@@ -533,32 +535,38 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const sortMenuItems: MenuItemSpec[] = [
     {
       id: 'sort-trackNo',
-      label: (sortKey === 'trackNo' ? '✓ ' : '    ') + '默认顺序',
+      label: '默认顺序',
+      icon: sortKey === 'trackNo' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('trackNo'),
     },
     {
       id: 'sort-title',
-      label: (sortKey === 'title' ? '✓ ' : '    ') + '标题',
+      label: '标题',
+      icon: sortKey === 'title' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('title'),
     },
     {
       id: 'sort-album',
-      label: ((sortKey === 'album' || sortKey === 'plays') ? '✓ ' : '    ') + '专辑',
+      label: '专辑',
+      icon: (sortKey === 'album' || sortKey === 'plays') ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('album'),
     },
     {
       id: 'sort-duration',
-      label: (sortKey === 'duration' ? '✓ ' : '    ') + '时长',
+      label: '时长',
+      icon: sortKey === 'duration' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('duration'),
     },
     {
       id: 'order-asc',
-      label: (sortOrder === 'asc' ? '✓ ' : '    ') + '升序',
+      label: '升序',
+      icon: sortOrder === 'asc' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortOrder('asc'),
     },
     {
       id: 'order-desc',
-      label: (sortOrder === 'desc' ? '✓ ' : '    ') + '降序',
+      label: '降序',
+      icon: sortOrder === 'desc' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortOrder('desc'),
     },
   ]
@@ -657,7 +665,9 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
                 flexShrink: 0,
               },
             },
-            (detail.artists?.[0]?.name?.[0] || '♪').toUpperCase(),
+            detail.artists?.[0]?.name?.[0]
+              ? detail.artists[0].name[0].toUpperCase()
+              : tablerIcon('music', { size: 14 }),
           ),
           h('span', { style: { fontWeight: 700, color: '#FFFFFF' } }, detail.artists?.map((a) => a.name).join(', ') || '未知艺人'),
           yearText ? h('span', null, ` • ${yearText}`) : null,
@@ -700,11 +710,10 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
               justifyContent: 'center',
               boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3)',
               color: '#000000',
-              fontSize: 22,
-              paddingLeft: 4,
+              paddingLeft: 2,
             },
           },
-          h('span', null, '▶'),
+          tablerIcon('play', { size: 24, color: '#000000' }),
           h(
             'span',
             {
@@ -728,7 +737,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           {
             type: 'button',
             title: '随机播放',
-            style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+            style: { background: 'none', border: 'none', color: '#b3b3b3', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
             onClick: () => {
               if (sortedUrns.length > 0) {
                 const shuffled = [...sortedUrns].sort(() => Math.random() - 0.5)
@@ -736,7 +745,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
               }
             },
           },
-          '🔀',
+          tablerIcon('shuffle', { size: 22 }),
         ),
         h(
           'button',
@@ -749,13 +758,17 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             style: {
               background: 'none',
               border: 'none',
-              fontSize: 22,
               color: isSaved ? '#1ed760' : '#b3b3b3',
               cursor: 'pointer',
               padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             },
           },
-          isSaved ? '♥' : '♡',
+          isSaved
+            ? tablerIcon('heart-filled', { size: 22, color: '#1ed760' })
+            : tablerIcon('heart', { size: 22 }),
         ),
         !isLocalAlbum && downloads
           ? h(
@@ -764,10 +777,10 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
                 type: 'button',
                 'data-testid': 'album-download-all',
                 title: '下载全部',
-                style: { background: 'none', border: 'none', fontSize: 22, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+                style: { background: 'none', border: 'none', color: '#b3b3b3', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
                 onClick: () => void downloads.enqueue(sortedUrns),
               },
-              '⬇',
+              tablerIcon('download', { size: 20 }),
             )
           : null,
         h(
@@ -776,7 +789,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             type: 'button',
             'data-testid': 'album-more-trigger',
             title: '更多选项',
-            style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+            style: { background: 'none', border: 'none', color: '#b3b3b3', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
             onClick: async (e) => {
               const rect = e.currentTarget.getBoundingClientRect()
               if (library) {
@@ -790,7 +803,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
               setAlbumMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
             },
           },
-          '⋯',
+          tablerIcon('dots', { size: 20 }),
         ),
       ),
       h(
@@ -819,7 +832,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             },
           },
           h('span', null, sortLabelMap[sortKey]),
-          h('span', { style: { fontSize: 16 } }, '≣'),
+          tablerIcon('list', { size: 16 }),
         ),
       ),
     ),
@@ -922,9 +935,13 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             padding: 0,
             fontSize: 13,
             fontWeight: 500,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 4,
           },
         },
-        '🕒',
+        tablerIcon('clock', { size: 14 }),
         renderSortIndicator('duration'),
       ),
     ),

@@ -5,7 +5,7 @@ import type { PlayerService, Track } from '@BBeBee/protocol'
 import { useSaved } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import { serviceOf, type MenuAnchor, type MenuItemSpec } from '@BBeBee/ui-core'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -72,7 +72,7 @@ function FavoriteTrackTableRow({
           color: hovered ? '#FFFFFF' : '#b3b3b3',
         },
       },
-      hovered ? '▶' : String(index + 1),
+      hovered ? tablerIcon('play', { size: 14, color: '#FFFFFF' }) : String(index + 1),
     ),
     // Col 2: Artwork + Title + Artist
     h(
@@ -196,14 +196,16 @@ function FavoriteTrackTableRow({
             background: 'none',
             border: 'none',
             color: '#b3b3b3',
-            fontSize: 16,
             cursor: 'pointer',
             padding: 4,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             opacity: hovered ? 1 : 0,
             transition: 'opacity 0.15s ease',
           },
         },
-        '⋯',
+        tablerIcon('dots', { size: 16 }),
       ),
     ),
   )
@@ -278,7 +280,9 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
 
   const renderSortIndicator = (key: FavoriteSortKey) => {
     if (sortKey !== key) return null
-    return h('span', { style: { marginLeft: 4, fontSize: 11 } }, sortOrder === 'asc' ? '▲' : '▼')
+    return sortOrder === 'asc'
+      ? tablerIcon('chevron-up', { size: 12, style: { marginLeft: 4 } })
+      : tablerIcon('chevron-down', { size: 12, style: { marginLeft: 4 } })
   }
 
   const sortLabelMap: Record<FavoriteSortKey, string> = {
@@ -292,38 +296,45 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   const sortMenuItems: MenuItemSpec[] = [
     {
       id: 'sort-default',
-      label: (sortKey === 'default' ? '✓ ' : '    ') + '默认顺序',
+      label: '默认顺序',
+      icon: sortKey === 'default' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('default'),
     },
     {
       id: 'sort-title',
-      label: (sortKey === 'title' ? '✓ ' : '    ') + '标题',
+      label: '标题',
+      icon: sortKey === 'title' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('title'),
     },
     {
       id: 'sort-artist',
-      label: (sortKey === 'artist' ? '✓ ' : '    ') + '艺人',
+      label: '艺人',
+      icon: sortKey === 'artist' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('artist'),
     },
     {
       id: 'sort-album',
-      label: (sortKey === 'album' ? '✓ ' : '    ') + '专辑',
+      label: '专辑',
+      icon: sortKey === 'album' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('album'),
     },
     {
       id: 'sort-duration',
-      label: (sortKey === 'duration' ? '✓ ' : '    ') + '时长',
+      label: '时长',
+      icon: sortKey === 'duration' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('duration'),
       divider: true,
     },
     {
       id: 'order-asc',
-      label: (sortOrder === 'asc' ? '✓ ' : '    ') + '升序',
+      label: '升序',
+      icon: sortOrder === 'asc' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortOrder('asc'),
     },
     {
       id: 'order-desc',
-      label: (sortOrder === 'desc' ? '✓ ' : '    ') + '降序',
+      label: '降序',
+      icon: sortOrder === 'desc' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortOrder('desc'),
     },
   ]
@@ -421,18 +432,17 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
               justifyContent: 'center',
               boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3)',
               color: '#000000',
-              fontSize: 22,
-              paddingLeft: 4,
+              paddingLeft: 2,
             },
           },
-          '▶',
+          tablerIcon('play', { size: 24, color: '#000000' }),
         ),
         h(
           'button',
           {
             type: 'button',
             title: '随机播放',
-            style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+            style: { background: 'none', border: 'none', color: '#b3b3b3', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
             onClick: () => {
               if (sortedUrns.length > 0) {
                 const shuffled = [...sortedUrns].sort(() => Math.random() - 0.5)
@@ -440,7 +450,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
               }
             },
           },
-          '🔀',
+          tablerIcon('shuffle', { size: 22 }),
         ),
       ),
       h(
@@ -458,7 +468,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
               gap: 6,
             },
           },
-          h('span', { style: { color: '#b3b3b3', fontSize: 14 } }, '🔍'),
+          tablerIcon('search', { size: 14, color: '#b3b3b3' }),
           h('input', {
             type: 'text',
             placeholder: '在已点赞歌曲中搜索',
@@ -497,7 +507,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
             },
           },
           h('span', null, sortLabelMap[sortKey]),
-          h('span', { style: { fontSize: 16 } }, '≣'),
+          tablerIcon('list', { size: 16 }),
         ),
       ),
     ),
@@ -601,9 +611,13 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
             cursor: 'pointer',
             fontSize: 13,
             fontWeight: 500,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 4,
           },
         },
-        '🕒',
+        tablerIcon('clock', { size: 14 }),
         renderSortIndicator('duration'),
       ),
     ),
@@ -612,7 +626,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
       ? h(EmptyState, { title: '加载中…' })
       : sortedTracks.length === 0
       ? h(EmptyState, {
-          icon: '♡',
+          icon: 'heart',
           title: '暂无已点赞歌曲',
           description: '在曲库中收藏歌曲后，歌曲将在此显示。',
         })

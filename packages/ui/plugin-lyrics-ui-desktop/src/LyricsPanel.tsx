@@ -14,6 +14,7 @@ import { createElement as h, useCallback, useEffect, useRef, useState } from 're
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import { formatDuration, type LyricLine } from '@BBeBee/toolkit'
+import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useNowPlaying } from '@BBeBee/plugin-player/hooks'
 import { useActiveLyricIndex, useLyrics } from '@BBeBee/plugin-lyrics/hooks'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -230,7 +231,7 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
                 textAlign: 'center',
               },
             },
-            h('span', { style: { fontSize: 28 } }, '⚠️'),
+            tablerIcon('alert', { size: 32, color: '#F87171' }),
             h('span', { style: { fontSize: 15, color: '#F87171' } }, error || 'Failed to load lyrics'),
             h(
               'button',
@@ -275,7 +276,7 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
                 textAlign: 'center',
               },
             },
-            h('span', { style: { fontSize: 36, opacity: 0.6 } }, '♪'),
+            tablerIcon('music', { size: 36, style: { opacity: 0.6 } }),
             h(
               'span',
               { style: { fontSize: 16 } },
@@ -410,20 +411,7 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
               e.currentTarget.style.transform = 'translateX(-50%) scale(1)'
             },
           },
-          h(
-            'svg',
-            {
-              width: 14,
-              height: 14,
-              viewBox: '0 0 24 24',
-              fill: 'none',
-              stroke: 'currentColor',
-              strokeWidth: 2.5,
-              strokeLinecap: 'round',
-              strokeLinejoin: 'round',
-            },
-            h('polyline', { points: '6 9 12 15 18 9' }),
-          ),
+          tablerIcon('chevron-down', { size: 14 }),
           '回到当前歌词',
         )
       : null,

@@ -35,4 +35,5 @@ export {
   type PlaylistSaveOption,
   type CollectionSaveOption,
 } from './components/SaveToPlaylistPopover.js'
+export { tablerIcon } from './icons/index.js'
 

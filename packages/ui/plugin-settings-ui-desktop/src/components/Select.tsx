@@ -1,5 +1,6 @@
 import { createElement as h } from 'react'
 import type { ChangeEvent, ReactElement } from 'react'
+import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 
 export interface SelectOption<T extends string> {
   value: T
@@ -93,25 +94,14 @@ export function Select<T extends string>({
       ),
     ),
     // Downward chevron icon
-    h(
-      'svg',
-      {
-        width: 12,
-        height: 12,
-        viewBox: '0 0 24 24',
-        fill: 'none',
-        stroke: 'currentColor',
-        strokeWidth: 2,
-        strokeLinecap: 'round',
-        strokeLinejoin: 'round',
-        style: {
-          position: 'absolute',
-          right: 10,
-          pointerEvents: 'none',
-          color: disabled ? '#6A6A6A' : '#8E8E93',
-        },
+    tablerIcon('chevron-down', {
+      size: 12,
+      color: disabled ? '#6A6A6A' : '#8E8E93',
+      style: {
+        position: 'absolute',
+        right: 10,
+        pointerEvents: 'none',
       },
-      h('polyline', { points: '6 9 12 15 18 9' }),
-    ),
+    }),
   )
 }

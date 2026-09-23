@@ -6,7 +6,7 @@ import { usePlaylist } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import type { MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { useTrackMenu } from '@BBeBee/ui-menus'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
 import { QuadArtworkCollage } from '../components/QuadArtworkCollage.js'
@@ -82,7 +82,7 @@ function PlaylistTrackTableRow({
           color: hovered ? '#FFFFFF' : '#b3b3b3',
         },
       },
-      hovered ? '▶' : String(index + 1),
+      hovered ? tablerIcon('play', { size: 14, color: '#FFFFFF' }) : String(index + 1),
     ),
     // Col 2: Artwork + Title + Artist
     h(
@@ -115,7 +115,7 @@ function PlaylistTrackTableRow({
         },
         track.artwork
           ? h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 })
-          : h('span', { style: { color: '#7f7f7f', fontSize: 16 } }, '♪'),
+          : tablerIcon('music', { size: 18, color: '#7f7f7f' }),
       ),
       h(
         'div',
@@ -229,14 +229,16 @@ function PlaylistTrackTableRow({
                 background: 'none',
                 border: 'none',
                 color: '#b3b3b3',
-                fontSize: 18,
                 cursor: 'pointer',
                 padding: '2px 4px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 opacity: hovered ? 1 : 0,
                 transition: 'opacity 0.15s ease',
               },
             },
-            '×',
+            tablerIcon('x', { size: 16 }),
           )
         : null,
       h(
@@ -266,14 +268,16 @@ function PlaylistTrackTableRow({
             background: 'none',
             border: 'none',
             color: '#b3b3b3',
-            fontSize: 16,
             cursor: 'pointer',
             padding: 4,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             opacity: hovered ? 1 : 0,
             transition: 'opacity 0.15s ease',
           },
         },
-        '⋯',
+        tablerIcon('dots', { size: 16 }),
       ),
     ),
   )
@@ -371,7 +375,9 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
 
   const renderSortIndicator = (key: PlaylistSortKey) => {
     if (sortKey !== key) return null
-    return h('span', { style: { marginLeft: 4, fontSize: 11 } }, sortOrder === 'asc' ? '▲' : '▼')
+    return sortOrder === 'asc'
+      ? tablerIcon('chevron-up', { size: 12, style: { marginLeft: 4 } })
+      : tablerIcon('chevron-down', { size: 12, style: { marginLeft: 4 } })
   }
 
   const sortLabelMap: Record<PlaylistSortKey, string> = {
@@ -386,43 +392,51 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   const sortMenuItems: MenuItemSpec[] = [
     {
       id: 'sort-custom',
-      label: (sortKey === 'custom' ? '✓ ' : '    ') + '自定义顺序',
+      label: '自定义顺序',
+      icon: sortKey === 'custom' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('custom'),
     },
     {
       id: 'sort-title',
-      label: (sortKey === 'title' ? '✓ ' : '    ') + '标题',
+      label: '标题',
+      icon: sortKey === 'title' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('title'),
     },
     {
       id: 'sort-artist',
-      label: (sortKey === 'artist' ? '✓ ' : '    ') + '艺人',
+      label: '艺人',
+      icon: sortKey === 'artist' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('artist'),
     },
     {
       id: 'sort-album',
-      label: (sortKey === 'album' ? '✓ ' : '    ') + '专辑',
+      label: '专辑',
+      icon: sortKey === 'album' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('album'),
     },
     {
       id: 'sort-dateAdded',
-      label: (sortKey === 'dateAdded' ? '✓ ' : '    ') + '添加日期',
+      label: '添加日期',
+      icon: sortKey === 'dateAdded' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('dateAdded'),
     },
     {
       id: 'sort-duration',
-      label: (sortKey === 'duration' ? '✓ ' : '    ') + '时长',
+      label: '时长',
+      icon: sortKey === 'duration' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortKey('duration'),
       divider: true,
     },
     {
       id: 'order-asc',
-      label: (sortOrder === 'asc' ? '✓ ' : '    ') + '升序',
+      label: '升序',
+      icon: sortOrder === 'asc' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortOrder('asc'),
     },
     {
       id: 'order-desc',
-      label: (sortOrder === 'desc' ? '✓ ' : '    ') + '降序',
+      label: '降序',
+      icon: sortOrder === 'desc' ? tablerIcon('check', { size: 14 }) : undefined,
       onSelect: () => setSortOrder('desc'),
     },
   ]
@@ -564,29 +578,28 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
               justifyContent: 'center',
               boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3)',
               color: '#000000',
-              fontSize: 22,
-              paddingLeft: 4,
+              paddingLeft: 2,
             },
           },
-          '▶',
+          tablerIcon('play', { size: 24, color: '#000000' }),
         ),
         h(
           'button',
           {
             type: 'button',
             title: '下载',
-            style: { background: 'none', border: 'none', fontSize: 22, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+            style: { background: 'none', border: 'none', color: '#b3b3b3', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
           },
-          '⬇',
+          tablerIcon('download', { size: 20 }),
         ),
         h(
           'button',
           {
             type: 'button',
             title: '更多选项',
-            style: { background: 'none', border: 'none', fontSize: 24, color: '#b3b3b3', cursor: 'pointer', padding: 0 },
+            style: { background: 'none', border: 'none', color: '#b3b3b3', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
           },
-          '⋯',
+          tablerIcon('dots', { size: 20 }),
         ),
       ),
       h(
@@ -604,7 +617,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
               gap: 6,
             },
           },
-          h('span', { style: { color: '#b3b3b3', fontSize: 14 } }, '🔍'),
+          tablerIcon('search', { size: 14, color: '#b3b3b3' }),
           h('input', {
             type: 'text',
             placeholder: '在歌单中搜索',
@@ -643,7 +656,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             },
           },
           h('span', null, sortLabelMap[sortKey]),
-          h('span', { style: { fontSize: 16 } }, '≣'),
+          tablerIcon('list', { size: 16 }),
         ),
       ),
     ),
@@ -681,7 +694,8 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             gap: 6,
           },
         },
-        '+ 添加',
+        tablerIcon('plus', { size: 14 }),
+        '添加',
       ),
       h(
         'button',
@@ -702,7 +716,8 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             gap: 6,
           },
         },
-        '✎ 名称和详情',
+        tablerIcon('pencil', { size: 14 }),
+        '名称和详情',
       ),
     ),
     error ? h('div', { style: { padding: '0 32px 8px 32px' } }, h(Text, { variant: 'sm', tone: 'error' }, error)) : null,
@@ -823,9 +838,13 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             cursor: 'pointer',
             fontSize: 13,
             fontWeight: 500,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 4,
           },
         },
-        '🕒',
+        tablerIcon('clock', { size: 14 }),
         renderSortIndicator('duration'),
       ),
     ),
@@ -839,7 +858,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
         estimatedItemSize: tokens.size.row,
         keyExtractor: (row) => row.item.id,
         empty: h(EmptyState, {
-          icon: '♪',
+          icon: 'music',
           title: 'Nothing here yet',
           description: detail.isSmart
             ? 'No track in the catalogue matches this playlist\'s rules right now.'

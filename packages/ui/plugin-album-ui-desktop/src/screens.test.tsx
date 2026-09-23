@@ -285,21 +285,21 @@ describe('AlbumScreen', () => {
       })
 
       const heart = getByTestId('album-heart-trigger')
-      expect(heart.textContent).toBe('♡')
+      expect(heart.querySelector('[data-icon="heart"]')).toBeTruthy()
 
       await act(async () => {
         heart.click()
         await tick()
       })
       expect(library.calls).toContain(`save:${ALBUM_URN}:true`)
-      expect(heart.textContent).toBe('♥')
+      expect(heart.querySelector('[data-icon="heart-filled"]')).toBeTruthy()
 
       await act(async () => {
         heart.click()
         await tick()
       })
       expect(library.calls).toContain(`save:${ALBUM_URN}:false`)
-      expect(heart.textContent).toBe('♡')
+      expect(heart.querySelector('[data-icon="heart"]')).toBeTruthy()
     })
   })
 
@@ -364,7 +364,7 @@ describe('AlbumScreen', () => {
         albumCol.click()
         await tick()
       })
-      expect(albumCol.textContent).toContain('▲')
+      expect(albumCol.querySelector('[data-icon="chevron-up"]')).toBeTruthy()
     })
   })
 
@@ -379,7 +379,7 @@ describe('AlbumScreen', () => {
       const addButtons = getAllByTitle('加入最喜欢的音乐')
       expect(addButtons.length).toBeGreaterThan(0)
       const firstBtn = addButtons[0]!
-      expect(firstBtn.textContent).toBe('＋')
+      expect(firstBtn.querySelector('[data-icon="plus"]')).toBeTruthy()
 
       // Click '+'
       await act(async () => {
@@ -390,7 +390,7 @@ describe('AlbumScreen', () => {
       // Saved in library
       expect(library.calls).toContain(`save:${TRACK_A}:true`)
       // Row immediately updates to green heart '♥'
-      expect(firstBtn.textContent).toBe('♥')
+      expect(firstBtn.querySelector('[data-icon="heart-filled"]')).toBeTruthy()
 
       // Clicking '♥' opens playlist menu
       await act(async () => {

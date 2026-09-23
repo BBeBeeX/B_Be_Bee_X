@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { ArtworkRef } from '@BBeBee/protocol'
 import type { MenuAnchor } from '@BBeBee/ui-core'
-import { Text } from '@BBeBee/ui-kit-desktop'
+import { Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from './CachedArtwork.js'
 
@@ -85,7 +85,7 @@ export function UnifiedLibraryRow({
         },
       },
       isFav
-        ? h('span', { style: { fontSize: 20, color: '#FFFFFF' } }, '♥')
+        ? tablerIcon('heart-filled', { size: 24, color: '#FFFFFF' })
         : isFolder || item.kind === 'collection'
           ? h(
               'div',
@@ -101,20 +101,7 @@ export function UnifiedLibraryRow({
                   color: '#CCCCCC',
                 },
               },
-              h(
-                'svg',
-                {
-                  width: 24,
-                  height: 24,
-                  viewBox: '0 0 24 24',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  strokeWidth: 2,
-                  strokeLinecap: 'round',
-                  strokeLinejoin: 'round',
-                },
-                h('path', { d: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' }),
-              ),
+              tablerIcon('folder', { size: 24, color: '#CCCCCC' }),
             )
           : item.artwork
             ? h(CachedArtwork, {
@@ -124,10 +111,15 @@ export function UnifiedLibraryRow({
                 size: 48,
                 radius: isArt ? 24 : 4,
               })
-            : h(
-                'span',
-                { style: { fontSize: 20, color: '#A0A0A0' } },
-                isArt ? '👤' : item.kind === 'local' ? '📁' : item.kind === 'album' ? '💿' : item.kind === 'playlist' ? '♪' : '🗂',
+            : tablerIcon(
+                isArt
+                  ? 'user'
+                  : item.kind === 'local'
+                    ? 'folder'
+                    : item.kind === 'album'
+                      ? 'disc'
+                      : 'music',
+                { size: 24, color: '#A0A0A0' },
               ),
       isHovered
         ? h(
@@ -148,7 +140,7 @@ export function UnifiedLibraryRow({
                 cursor: 'pointer',
               },
             },
-            h('span', { style: { color: '#ffffff', fontSize: 16, marginLeft: 2 } }, '▶'),
+            tablerIcon('play', { size: 18, color: '#FFFFFF' }),
           )
         : null,
     ),
@@ -165,7 +157,7 @@ export function UnifiedLibraryRow({
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
         item.pinned
-          ? h('span', { title: '已置顶', style: { fontSize: 12, color: '#1DB954', marginRight: 2 } }, '📌')
+          ? tablerIcon('pin', { size: 14, color: '#1DB954', style: { marginRight: 2 } })
           : null,
         h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1 }, item.subtitle),
       ),
@@ -211,10 +203,9 @@ export function UnifiedLibraryRow({
                 display: 'inline-flex',
                 transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                 transition: 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)',
-                fontSize: 10,
               },
             },
-            '▼',
+            tablerIcon('chevron-down', { size: 14 }),
           ),
         )
       : null,

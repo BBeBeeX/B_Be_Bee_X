@@ -17,6 +17,7 @@ import {
 } from 'react'
 import type { Context } from 'cordis'
 import type { RouteContribution, SettingsContribution } from '@BBeBee/protocol'
+import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { TopBar, WindowControls, type ElectronCSSProperties, type TopBarProps } from './TopBar.js'
 
 /** What the sidebar can navigate to: a route, or a settings page. */
@@ -583,7 +584,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                         gap: 12,
                       },
                     },
-                    h('span', { style: { fontSize: 40, opacity: 0.6 } }, '♪'),
+                    tablerIcon('music', { size: 48, style: { opacity: 0.6 } }),
                     h('div', { style: { fontSize: 15, fontWeight: 500 } }, '选择歌单或专辑开始播放'),
                   )
                 : h(

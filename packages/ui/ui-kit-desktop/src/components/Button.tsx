@@ -2,6 +2,7 @@ import { createElement as h, type ReactElement, type ReactNode } from 'react'
 import { tokens } from '@BBeBee/ui-tokens'
 import type { ButtonProps, IconButtonProps } from '@BBeBee/ui-core'
 import { buttonStyle, common, useHover } from '../theme.js'
+import { tablerIcon } from '../icons/index.js'
 
 export function Button(props: ButtonProps) {
   const { variant = 'primary', disabled = false, loading = false } = props
@@ -25,6 +26,11 @@ export function Button(props: ButtonProps) {
 export function IconButton(props: IconButtonProps): ReactElement {
   const { variant = 'ghost', disabled = false, size = tokens.size.icon } = props
   const [hovered, hoverProps] = useHover()
+  const renderedIcon = tablerIcon(props.icon, {
+    size,
+    'data-icon': typeof props.icon === 'string' ? props.icon : undefined,
+  }) as ReactNode
+
   return h(
     'button',
     {
@@ -45,6 +51,6 @@ export function IconButton(props: IconButtonProps): ReactElement {
         borderRadius: tokens.radius.pill,
       },
     },
-    props.icon,
+    renderedIcon,
   )
 }

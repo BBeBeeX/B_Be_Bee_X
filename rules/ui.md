@@ -110,7 +110,19 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 - Sidebar & Navigation Exclusions:
   - Left navigation rail strictly hosts content and library browsing (`library.view`, `history.view`, playlists).
   - `settings.view` and `sources.search` are explicitly excluded from sidebar rendering. Settings is opened via the TopBar user avatar; Search is driven by the TopBar search bar.
-- Bottom player bar: Center cluster order is `[PlayMode] [Previous] [Play/Pause] [Next] [Volume]`. Play mode cycles sequence/single-loop/list-loop/shuffle. Volume icon indicates sound state (muted 'x' or loudness waves) and clicks to pop up a vertical volume bar with a bottom mute toggle.
+- Bottom player bar: Center cluster order is `[PlayMode] [Previous] [Play/Pause] [Next] [Volume]`. Play mode cycles sequence/single-loop/list-loop/shuffle. Volume icon indicates sound state (muted `volume-off` or loudness wave tiers `volume-3` / `volume-2` / `volume`) and clicks to pop up a vertical volume bar with a bottom mute toggle.
+
+### 4.1 Tabler Icons & Stroke Standard (`stroke = 1.25`)
+All visual icons across desktop UI components are standardized on **Tabler Icons SVG paths**:
+1. **Global Stroke Width**: Standardized strictly to `stroke="1.25"` (`DEFAULT_STROKE_WIDTH = 1.25` in `packages/ui/ui-kit-desktop/src/icons/tabler.ts`).
+2. **Zero Handwritten SVG / Unicode Glyphs**: Never use raw unicode/emoji glyphs (e.g. `▶`, `⏸`, `⏮`, `⏭`, `🗑`, `✕`, `＋`, `♡`, `♥`, `⬇`, `⏱`, `📁`, `🗂`, `💿`, `🎵`, `♪`, `⋯`, `📌`, `▲`, `▼`, `✓`, `🕒`, `🔀`, `⚙`, `≣`, `🔍`) or ad-hoc `<svg>` elements in UI components. All icons must be rendered via `tablerIcon(name, props)`, `TablerIcon`, or components consuming `IconName` (e.g. `IconButton`, `EmptyState`).
+3. **Semantic Registry**: `packages/ui/ui-kit-desktop/src/icons/registry.ts` provides centralized alias mappings (`ICON_ALIASES`) mapping semantic names to Tabler definitions:
+   - Navigation & search: `home`, `search`
+   - Playback & volume: `play-filled`, `pause-filled`, `skip-back`, `skip-forward`, `volume`, `volume-2`, `volume-3`, `volume-off`
+   - Modes: `shuffle`, `repeat`, `repeat-once`, `list-numbers`
+   - Curation & actions: `heart`, `heart-filled`, `plus`, `minus`, `trash`, `x`, `pin`, `pencil`, `download`, `clock`, `history`, `playlist`, `list`, `arrows-sort`, `dots`, `folder`, `music`, `disc`
+   - Direction & UI: `chevron-left`, `chevron-right`, `chevron-down`, `chevron-up`, `check`, `alert`, `settings`, `adjustments`
+4. **Accessible Rendering**: SVG icons render with `aria-hidden="true"` and `data-icon="{name}"`. Tests assert against `querySelector('[data-icon="..."]')` or `data-testid`, never `textContent`.
 
 ### Artwork & Fallback
 - Artwork renders `blurhash` first, then falls back to `artworks.dominant_color`.
@@ -152,14 +164,14 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 ## 6. Library Sidebars & Context Menus Specification
 
 ### Library Layout Modes
-- **Collapsed Mode (72px)**: Minimal compact rail showing icon tiles. Folders render dedicated folder outline SVG icons. Entering a folder reveals a `<` return button beneath the top logo to return to the root library.
-- **Sidebar Mode (260–340px)**: Standard library navigation. Folders feature inline expand/collapse via rotating triangle arrows (`▼` / `▲`), indenting children by 28px left padding. Clicking the folder row navigates into the folder details screen (`< 文件夹名称`).
+- **Collapsed Mode (72px)**: Minimal compact rail showing icon tiles. Folders render dedicated folder outline SVG icons. Entering a folder reveals a `chevron-left` return button beneath the top logo to return to the root library.
+- **Sidebar Mode (260–340px)**: Standard library navigation. Folders feature inline expand/collapse via rotating chevron indicators (`chevron-down` / `chevron-right`), indenting children by 28px left padding. Clicking the folder row navigates into the folder details screen (`chevron-left 文件夹名称`).
 - **Expanded Mode (Full Canvas)**: High-density 3-column table view with breadcrumbs (`音乐库 < 文件夹名称`), interactive search, and responsive sizing.
 
 ### Context Menu Design Standards
 - **Dark Card Theme**: `#242424` background, 8px border radius, 4px padding, `0 12px 32px rgba(0,0,0,0.55)` depth shadow, and 1px border (`rgba(255, 255, 255, 0.08)`).
 - **Dividers**: Menu items support `divider: true` to render a 1px translucent separator line (`rgba(255, 255, 255, 0.08)`).
-- **Outline Icons**: Standard actions map to high-precision SVG outlines: `pencil`, `delete`, `pin`, `create-playlist`, `create-folder`, `folder`, `play`, `download`, `playlist-add`.
+- **Outline Icons**: Standard actions map to Tabler SVG icons (`stroke: 1.25`): `pencil`, `trash`, `pin`, `plus`, `folder`, `play-filled`, `download`, `playlist`.
 - **Folder (Collection) Semantics**: Folders are directory containers for collection-level entities (playlists, albums, artists, child folders). Folders **never** contain individual tracks; individual tracks belong to playlists and albums. Track context menus only offer "添加到歌单" (`add-to-playlist`), never "加入合集 / 移动至文件夹" (`add-to-collection`).
 - **Recursive Track Gathering**: When adding a folder's contents to other playlists ("添加至其他歌单") or playing a folder, `collectAllFolderTracks` recursively scans all nested playlist tracks, nested album tracks, and all descendant subfolders without duplicates (folders do not contain direct tracks).
 - **Dedicated Modals**:
@@ -181,19 +193,19 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 
 ### Track Table Sorting & Row Interactions (`AlbumScreen`, `PlaylistDetailScreen`, `LocalMusicScreen`, `FavoritesScreen`, `CollectionScreen`)
 - **Interactive Header Columns**:
-  - Clicking column headers (`#`, `标题`, `专辑`, `添加日期`, `🕒 时长`, `播放量`) toggles between ascending (`asc`) and descending (`desc`) order.
-  - Active sorted column displays a subtle directional arrow indicator (`▲` for ascending, `▼` for descending).
-  - Column headers omit the green checkmark (`✔`), presenting clean column names and `🕒`.
+  - Clicking column headers (`#`, `标题`, `专辑`, `添加日期`, `时长` with Tabler `clock` icon, `播放量`) toggles between ascending (`asc`) and descending (`desc`) order.
+  - Active sorted column displays a subtle directional arrow indicator (`chevron-up` for ascending, `chevron-down` for descending).
+  - Column headers omit the legacy checkmark, presenting clean column names and the Tabler `clock` icon.
 - **Action Bar Sort Dropdown (`ContextMenu`)**:
-  - Dedicated sort dropdown button (e.g. `默认顺序 ≣` / `自定义顺序 ≣` / `标题 ≣`).
+  - Dedicated sort dropdown button (e.g. `默认顺序` / `自定义顺序` / `标题` accompanied by Tabler `arrows-sort` or `list` icon).
   - Clicking reveals a structured `ContextMenu` with sort key options and an asc/desc toggle option.
 - **Unified Row Library Action Button (`TrackLibraryActionButton`) & Popover**:
   - Replaces previous static checkmark or favorite icon in track rows across `LocalMusicScreen`, `PlaylistDetailScreen`, `FavoritesScreen`, and `CollectionScreen`.
   - Hidden by default; smoothly fades in on row hover (`opacity: 1`).
-  - **Not in library**: displays `＋` icon, clicking adds track directly to favorites (`library.setSaved(track.urn, true)`).
-  - **In library / favorites / playlist / collection**: displays `💚` (green heart), clicking opens a dedicated Spotify-style `SaveToPlaylistPopover` instead of a raw context menu:
+  - **Not in library**: displays `plus` icon (`tablerIcon('plus')`), clicking adds track directly to favorites (`library.setSaved(track.urn, true)`).
+  - **In library / favorites / playlist / collection**: displays `heart-filled` (green heart via `tablerIcon('heart-filled')`), clicking opens a dedicated Spotify-style `SaveToPlaylistPopover` instead of a raw context menu:
     - Real-time search filter for existing playlists;
-    - Inline "＋ 新建歌单" quick creation input;
+    - Inline "新建歌单" quick creation input with `plus` icon;
     - "已点赞的歌曲" group with immediate favorite toggle;
     - Playlist rows with checkbox toggles and folder rows expanding nested sub-playlists;
     - Viewport boundary detection with horizontal/vertical auto-flipping and clamping.
@@ -207,8 +219,8 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
   - Local album safety: detects `urn.startsWith('BBeBee:local:')` to omit download button in header and row items, and removes download menu item.
   - Three-dot menu: "加入合集" renamed to "加入文件夹", "添加至最喜欢的音乐" updated to "添加到音乐库/从音乐库中删除", redundant "加入歌单" and "转至专辑" items removed.
 - **Favorites Screen Parity (`FavoritesScreen`)**:
-  - Aligned with `LocalMusicScreen`: purple gradient background (`#4c1d95`), no-cover text Hero Header ("已点赞的歌曲"), action bar with 56px play button (`▶`), shuffle, search input, and sort dropdown.
-  - Rows render as `FavoriteTrackTableRow`: index/hover play, 40px cover art, title/artist, album, hover `TrackLibraryActionButton` (`🖤` submenu), hover `⋯` more button, and duration.
+  - Aligned with `LocalMusicScreen`: purple gradient background (`#4c1d95`), no-cover text Hero Header ("已点赞的歌曲"), action bar with 56px play button (`play-filled`), shuffle (`shuffle`), search input, and sort dropdown (`arrows-sort`).
+  - Rows render as `FavoriteTrackTableRow`: index/hover play, 40px cover art, title/artist, album, hover `TrackLibraryActionButton` (`heart-filled` / `heart` submenu), hover `dots` more button, and duration.
 
 ### Local Music Dual Views & Pagination (`LocalMusicScreen`)
 - **Full Loading (No 100 Limit)**:
@@ -217,7 +229,7 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 - **Local Album Grid (`LocalAlbumCard`)**:
   - Groups local tracks by album name, deriving artwork from the first track with artwork.
   - Cards display album cover, title, artist, and track count.
-  - Hovering reveals a green play button (`▶`) for instant playback of the album's tracks.
+  - Hovering reveals a green play button (`play-filled`) for instant playback of the album's tracks.
   - Clicking the card navigates directly to the album view (`album.view`).
 - **Album Grid Sorting**: Action bar sort menu dynamically adapts when album view is active, providing album-specific sort keys: default order, album title, artist, release year, track count.
 

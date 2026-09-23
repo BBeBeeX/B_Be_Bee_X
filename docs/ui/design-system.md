@@ -125,8 +125,8 @@ The scale relies on **"weight follows size"**:
 - **Track rows (`TrackRow`, height `56px`)**:
   - Displays index number, artwork thumbnail (`48px` square, `radius.sm: 4px`), track title in
     `#FFFFFF`, artists in `#B3B3B3`, album name, and duration.
-  - On hover, the row illuminates (`#282828`), the track number is replaced by a play icon (`▶`),
-    and quick actions (heart/loved toggle button `♥`/`♡` via `onToggleLoved`, context menu `···`) become visible.
+  - On hover, the row illuminates (`#282828`), the track number is replaced by a play icon (`play-filled`),
+    and quick actions (heart/saved toggle button `heart` / `heart-filled` via `onToggleLoved`, context menu `dots`) become visible.
   - When actively playing, the track title, track number, and equalizer icon illuminate in
     signature green (`#1DB954`).
 - **Scrubbers & sliders (`Slider`, `VerticalSlider`)**:
@@ -146,7 +146,7 @@ The scale relies on **"weight follows size"**:
 - **TopBar search bar & dynamic icon shift**:
   - Centered search input (`360px` default width, `max-width: 480px`, `height: 36px`, pill radius `radius.pill: 999`, background `#282828`).
   - **Dynamic icon positioning**:
-    - *Idle state*: Search icon (`🔍`) sits at the left padding (`left: 12px`), with placeholder text `"搜索歌曲、专辑、艺人..."`.
+    - *Idle state*: Search icon (`search`) sits at the left padding (`left: 12px`), with placeholder text `"搜索歌曲、专辑、艺人..."`.
     - *Active / Focused state*: Search icon smoothly slides across the input to the far right (`right: 12px`, `all 200ms cubic-bezier(0.4, 0, 0.2, 1)`), functioning as a clickable search trigger.
     - *Dismissal*: Clicking outside the search area or pressing `Escape` resets the icon back to the left.
 - **2×2 Search Matrix Floating Dropdown**:
@@ -184,7 +184,7 @@ The scale relies on **"weight follows size"**:
     Center: Search input with dynamic search icon shift and 2×2 matrix dropdown (Search Scope sources + Search History).
     Right: User profile avatar button linking directly to Settings Center (`settings.view`).
   - **Center main content card (`#121212`, rounded corners)**: Scrollable canvas hosting the
-    dynamic gradient hero header, action bar (large green circular play button, heart/save, `···`),
+    dynamic gradient hero header, action bar (large green circular play button `play-filled`, heart/save `heart` / `heart-filled`, more options `dots`),
     and virtualized track list or media card grid. The Library view organizes items through
     top-level scopes (`All`, `Local`, `Favorites`) and content views (`Tracks`, `Albums`).
   - **Persistent bottom playback bar (sunken `#000000` / `#181818`)**: Spans the entire window width.
@@ -202,6 +202,20 @@ The scale relies on **"weight follows size"**:
   - Full-screen now-playing sheet: Expanding the mini-player slides up an immersive player featuring
     large square cover art, bold geometric typography, scrub bar, circular transport controls, and
     swipe-up lyrics pane.
+
+### 6.7 Iconography & stroke standard (Tabler Icons, stroke = 1.25)
+
+All iconography across the desktop UI is standardized on **Tabler Icons SVG paths** with a unified line weight:
+- **Global Stroke Width**: Standardized to `stroke="1.25"` (`DEFAULT_STROKE_WIDTH = 1.25` in `packages/ui/ui-kit-desktop/src/icons/tabler.ts`).
+  A 1.25 stroke provides crisp, high-precision geometry on dark backgrounds without visual heaviness or blur at small font scales.
+- **Zero Raw Unicode / Handwritten SVG**: UI components must never render raw Unicode glyphs or custom `<svg>` definitions directly. All icons are rendered via `tablerIcon(name, props)`, `TablerIcon`, or components accepting `IconName` (e.g. `IconButton`, `EmptyState`).
+- **Standard Sizes**:
+  - `sm`: 14–16px (table row actions, column headers, metadata badges)
+  - `md`: 18–20px (sidebar nav, action bars, slider thumbs, standard buttons)
+  - `lg`: 24–28px (transport play controls, modal headers)
+  - `xl`: 32–48px (large hero play buttons, empty states)
+- **Centralized Registry**: `packages/ui/ui-kit-desktop/src/icons/registry.ts` provides aliases mapping intuitive names (`play`, `pause`, `previous`, `next`, `volume-mute`, `favorite`, `favorite-filled`, `filter`, `close`, `add`, `more`, `folder`, etc.) to official Tabler icon definitions.
+- **Accessible & Test-Friendly**: SVG elements emit `aria-hidden="true"` and `data-icon="{name}"`. Test suites query `[data-icon="..."]` or `data-testid` instead of asserting against text node values.
 
 **Component parity is a contract.** Both kits export the same component names with the same props —
 `Button`, `IconButton`, `TrackRow`, `Slider`, `Sheet`/`Dialog`, `List`, `EmptyState`, `Toast`,

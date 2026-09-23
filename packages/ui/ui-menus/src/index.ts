@@ -196,7 +196,7 @@ export function sleepTimerSubmenu(
     items.push({
       id: 'timer-cancel',
       label: '关闭睡眠定时器',
-      icon: '✕',
+      icon: 'x',
       tone: 'danger',
       onSelect: () => sleepTimer.cancel(),
     })
@@ -313,7 +313,7 @@ export function trackMenuItems(
   const items: MenuItemSpec[] = []
 
   const submenu = addToPlaylistSubmenu(library, [track.urn], opts.playlists ?? [])
-  if (submenu) items.push({ id: 'add-to-playlist', label: '加入歌单', icon: '＋', submenu })
+  if (submenu) items.push({ id: 'add-to-playlist', label: '加入歌单', icon: 'plus', submenu })
 
   if (library && opts.fromPlaylistUrn && target.playlistItemId) {
     const playlistUrn = opts.fromPlaylistUrn
@@ -321,7 +321,7 @@ export function trackMenuItems(
     items.push({
       id: 'remove-from-playlist',
       label: '从此歌单中删除',
-      icon: '－',
+      icon: 'minus',
       tone: 'danger',
       onSelect: () => library.removeItems(playlistUrn, [itemId]),
     })
@@ -331,7 +331,7 @@ export function trackMenuItems(
     items.push({
       id: 'remove-favourite',
       label: '从“最喜欢的音乐”中删除',
-      icon: '♡',
+      icon: 'heart',
       tone: 'danger',
       onSelect: async () => {
         await sources?.setLoved(track.urn, false)
@@ -342,7 +342,7 @@ export function trackMenuItems(
     items.push({
       id: 'add-favourite',
       label: '添加至“最喜欢的音乐”',
-      icon: '♥',
+      icon: 'heart-filled',
       onSelect: async () => {
         await sources?.setLoved(track.urn, true)
         await library?.setSaved(track.urn, true)
@@ -354,7 +354,7 @@ export function trackMenuItems(
     items.push({
       id: 'enqueue',
       label: '加入播放列表',
-      icon: '＋',
+      icon: 'plus',
       onSelect: () => player.enqueueLast([track.urn]),
     })
   }
@@ -363,7 +363,7 @@ export function trackMenuItems(
     items.push({
       id: 'download',
       label: '下载',
-      icon: '⬇',
+      icon: 'download',
       onSelect: () => void downloads.enqueue([track.urn]),
     })
   }
@@ -374,7 +374,7 @@ export function trackMenuItems(
     items.push({
       id: 'sleep-timer',
       label: sleepTimer?.state.active ? '睡眠定时器 (已开启)' : '睡眠定时器',
-      icon: '⏱',
+      icon: 'clock',
       submenu: sleepSubmenu,
     })
   }
@@ -384,7 +384,7 @@ export function trackMenuItems(
     items.push({
       id: 'go-to-album',
       label: '转至专辑',
-      icon: '▸',
+      icon: 'disc',
       onSelect: () => ui.navigate(ALBUM_VIEWS.album, { urn: albumUrn }),
     })
   }

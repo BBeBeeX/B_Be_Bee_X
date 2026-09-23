@@ -41,6 +41,7 @@ Test conventions, common gotchas, and milestone status for BBeBee.
 | `CapabilityError: host … not allowed` | Source rule accessed undeclared host. Add host to `allowedHosts` |
 | Test fails with `Element is not defined` | Missing `// @vitest-environment jsdom` comment at the top of test file |
 | `Error occurred in handler for 'BBeBee:call': EPERM ...` | Windows legacy junction points (`Documents\My Music`) have Deny Read ACLs. `FsNode.list` probes directory symlinks with `opendir` to skip unreadable ones; IPC bridge wraps calls in `BridgeEnvelope` to prevent Electron from logging unhandled rejections. |
+| UI test fails asserting icon text (e.g. `textContent === '♥'`) | Desktop icons render Tabler SVG elements with `data-icon="{name}"`. Query with `container.querySelector('[data-icon="heart"]')` or `data-testid` instead of asserting against text node content. |
 
 ---
 

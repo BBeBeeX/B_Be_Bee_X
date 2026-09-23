@@ -1,6 +1,7 @@
 import { createElement as h, type ReactElement } from 'react'
 import type { EffectNode } from '@BBeBee/plugin-inspector'
 import type { PcbNode, ViewLevel } from './pcb-topology-types.js'
+import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 
 export const STATE_COLOR: Record<string, string> = {
   ACTIVE: '#3ECF8E',
@@ -139,9 +140,12 @@ export function NodeDetailsPanel({
             fontSize: 16,
             padding: 4,
             lineHeight: 1,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           },
         },
-        '✕',
+        tablerIcon('x', { size: 14 }),
       ),
     ),
 

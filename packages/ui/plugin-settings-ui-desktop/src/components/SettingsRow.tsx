@@ -1,5 +1,6 @@
 import { createElement as h } from 'react'
 import type { ReactElement, ReactNode } from 'react'
+import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 
 export interface SettingsRowProps {
   title: string
@@ -85,24 +86,13 @@ export function SettingsRow({
                   e.currentTarget.style.color = '#8E8E93'
                 },
               },
-              h(
-                'svg',
-                {
-                  width: 14,
-                  height: 14,
-                  viewBox: '0 0 24 24',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  strokeWidth: 2.5,
-                  strokeLinecap: 'round',
-                  strokeLinejoin: 'round',
-                  style: {
-                    transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                    transition: 'transform 0.2s ease',
-                  },
+              tablerIcon('chevron-right', {
+                size: 14,
+                style: {
+                  transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s ease',
                 },
-                h('polyline', { points: '9 18 15 12 9 6' }),
-              ),
+              }),
             )
           : null,
         h(

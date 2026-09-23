@@ -1,7 +1,7 @@
 import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
 import type { Playlist } from '@BBeBee/protocol'
-import { Button } from '@BBeBee/ui-kit-desktop'
+import { Button, tablerIcon } from '@BBeBee/ui-kit-desktop'
 
 export function EditPlaylistModal({
   playlist,
@@ -110,7 +110,7 @@ export function EditPlaylistModal({
               padding: 4,
             },
           },
-          '✕',
+          tablerIcon('x', { size: 18 }),
         ),
       ),
       h(
@@ -143,7 +143,7 @@ export function EditPlaylistModal({
                 alt: '封面预览',
                 style: { width: '100%', height: '100%', objectFit: 'cover' },
               })
-            : h('span', { style: { fontSize: 48, color: '#555555' } }, '♫'),
+            : tablerIcon('music', { size: 48, color: '#555555' }),
           h(
             'div',
             {
@@ -161,21 +161,7 @@ export function EditPlaylistModal({
                 transition: 'opacity 0.2s ease',
               },
             },
-            h(
-              'svg',
-              {
-                width: 36,
-                height: 36,
-                viewBox: '0 0 24 24',
-                fill: 'none',
-                stroke: 'currentColor',
-                strokeWidth: 2,
-                strokeLinecap: 'round',
-                strokeLinejoin: 'round',
-              },
-              h('path', { d: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z' }),
-              h('circle', { cx: 12, cy: 13, r: 4 }),
-            ),
+            tablerIcon('camera', { size: 36, color: '#FFFFFF' }),
             h('span', { style: { fontSize: 13, fontWeight: 600 } }, '选择照片'),
           ),
           h('input', {

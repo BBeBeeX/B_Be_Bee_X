@@ -28,7 +28,7 @@ import {
   useTransport,
   useTransportAvailability,
 } from '@BBeBee/plugin-player/hooks'
-import { Artwork, IconButton, Slider, Text } from '@BBeBee/ui-kit-desktop'
+import { Artwork, IconButton, Slider, Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { serviceOf, useServiceState, type ArtworkProps } from '@BBeBee/ui-core'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
@@ -174,23 +174,7 @@ function QueueButton({
         e.currentTarget.style.transform = 'scale(1)'
       },
     },
-    h(
-      'svg',
-      {
-        width: 16,
-        height: 16,
-        viewBox: '0 0 24 24',
-        fill: 'none',
-        stroke: 'currentColor',
-        strokeWidth: 2,
-        strokeLinecap: 'round',
-        strokeLinejoin: 'round',
-      },
-      h('line', { x1: '3', y1: '6', x2: '21', y2: '6' }),
-      h('line', { x1: '3', y1: '12', x2: '21', y2: '12' }),
-      h('line', { x1: '3', y1: '18', x2: '13', y2: '18' }),
-      h('polyline', { points: '16 15 19 18 16 21' }),
-    ),
+    tablerIcon('playlist', { size: 16 }),
   )
 }
 
@@ -216,189 +200,31 @@ const PLAY_MODE_INFO: Record<PlayMode, { label: string; next: string }> = {
 function renderPlayModeIcon(mode: PlayMode): ReactElement {
   switch (mode) {
     case 'shuffle':
-      return h(
-        'svg',
-        {
-          width: 18,
-          height: 18,
-          viewBox: '0 0 24 24',
-          fill: 'none',
-          stroke: 'currentColor',
-          strokeWidth: 2,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
-        },
-        h('polyline', { points: '16 3 21 3 21 8' }),
-        h('line', { x1: '4', y1: '20', x2: '21', y2: '3' }),
-        h('polyline', { points: '21 16 21 21 16 21' }),
-        h('line', { x1: '15', y1: '15', x2: '21', y2: '21' }),
-        h('line', { x1: '4', y1: '4', x2: '9', y2: '9' }),
-      )
+      return tablerIcon('shuffle', { size: 18 }) as ReactElement
     case 'single-loop':
-      return h(
-        'svg',
-        {
-          width: 18,
-          height: 18,
-          viewBox: '0 0 24 24',
-          fill: 'none',
-          stroke: 'currentColor',
-          strokeWidth: 2,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
-        },
-        h('path', { d: 'M17 2l4 4-4 4' }),
-        h('path', { d: 'M3 11v-1a4 4 0 0 1 4-4h14' }),
-        h('path', { d: 'M7 22l-4-4 4-4' }),
-        h('path', { d: 'M21 13v1a4 4 0 0 1-4 4H3' }),
-        h(
-          'text',
-          {
-            x: '12',
-            y: '15',
-            textAnchor: 'middle',
-            fontSize: '9',
-            fontWeight: 'bold',
-            fill: 'currentColor',
-            stroke: 'none',
-          },
-          '1',
-        ),
-      )
+      return tablerIcon('repeat-once', { size: 18 }) as ReactElement
     case 'list-loop':
-      return h(
-        'svg',
-        {
-          width: 18,
-          height: 18,
-          viewBox: '0 0 24 24',
-          fill: 'none',
-          stroke: 'currentColor',
-          strokeWidth: 2,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
-        },
-        h('path', { d: 'M17 2l4 4-4 4' }),
-        h('path', { d: 'M3 11v-1a4 4 0 0 1 4-4h14' }),
-        h('path', { d: 'M7 22l-4-4 4-4' }),
-        h('path', { d: 'M21 13v1a4 4 0 0 1-4 4H3' }),
-      )
+      return tablerIcon('repeat', { size: 18 }) as ReactElement
     case 'sequence':
     default:
-      return h(
-        'svg',
-        {
-          width: 18,
-          height: 18,
-          viewBox: '0 0 24 24',
-          fill: 'none',
-          stroke: 'currentColor',
-          strokeWidth: 2,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
-        },
-        h('line', { x1: '3', y1: '6', x2: '17', y2: '6' }),
-        h('line', { x1: '3', y1: '12', x2: '17', y2: '12' }),
-        h('line', { x1: '3', y1: '18', x2: '13', y2: '18' }),
-        h('polyline', { points: '16 15 19 18 16 21' }),
-      )
+      return tablerIcon('list-numbers', { size: 18 }) as ReactElement
   }
-}
-
-function renderMuteIcon(size = 18): ReactElement {
-  return h(
-    'svg',
-    {
-      width: size,
-      height: size,
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      strokeWidth: 2,
-      strokeLinecap: 'round',
-      strokeLinejoin: 'round',
-    },
-    h('polygon', { points: '11 5 6 9 2 9 2 15 6 15 11 19 11 5', fill: 'currentColor' }),
-    h('line', { x1: '23', y1: '9', x2: '17', y2: '15' }),
-    h('line', { x1: '17', y1: '9', x2: '23', y2: '15' }),
-  )
 }
 
 function renderVolumeIcon(volume: number, muted: boolean, size = 18): ReactElement {
   if (muted) {
-    return renderMuteIcon(size)
+    return tablerIcon('volume-off', { size }) as ReactElement
   }
   if (volume <= 0) {
-    return h(
-      'svg',
-      {
-        width: size,
-        height: size,
-        viewBox: '0 0 24 24',
-        fill: 'none',
-        stroke: 'currentColor',
-        strokeWidth: 2,
-        strokeLinecap: 'round',
-        strokeLinejoin: 'round',
-      },
-      h('polygon', { points: '11 5 6 9 2 9 2 15 6 15 11 19 11 5', fill: 'currentColor' }),
-    )
+    return tablerIcon('volume-3', { size }) as ReactElement
   }
   if (volume <= 0.33) {
-    // 1 wave (low)
-    return h(
-      'svg',
-      {
-        width: size,
-        height: size,
-        viewBox: '0 0 24 24',
-        fill: 'none',
-        stroke: 'currentColor',
-        strokeWidth: 2,
-        strokeLinecap: 'round',
-        strokeLinejoin: 'round',
-      },
-      h('polygon', { points: '11 5 6 9 2 9 2 15 6 15 11 19 11 5', fill: 'currentColor' }),
-      h('path', { d: 'M15.54 8.46a5 5 0 0 1 0 7.07' }),
-    )
+    return tablerIcon('volume-3', { size }) as ReactElement
   }
   if (volume <= 0.66) {
-    // 2 waves (medium)
-    return h(
-      'svg',
-      {
-        width: size,
-        height: size,
-        viewBox: '0 0 24 24',
-        fill: 'none',
-        stroke: 'currentColor',
-        strokeWidth: 2,
-        strokeLinecap: 'round',
-        strokeLinejoin: 'round',
-      },
-      h('polygon', { points: '11 5 6 9 2 9 2 15 6 15 11 19 11 5', fill: 'currentColor' }),
-      h('path', { d: 'M15.54 8.46a5 5 0 0 1 0 7.07' }),
-      h('path', { d: 'M18.36 5.64a9 9 0 0 1 0 12.72' }),
-    )
+    return tablerIcon('volume-2', { size }) as ReactElement
   }
-  // 3 waves (high)
-  return h(
-    'svg',
-    {
-      width: size,
-      height: size,
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      strokeWidth: 2,
-      strokeLinecap: 'round',
-      strokeLinejoin: 'round',
-    },
-    h('polygon', { points: '11 5 6 9 2 9 2 15 6 15 11 19 11 5', fill: 'currentColor' }),
-    h('path', { d: 'M15.54 8.46a5 5 0 0 1 0 7.07' }),
-    h('path', { d: 'M18.36 5.64a9 9 0 0 1 0 12.72' }),
-    h('path', { d: 'M21.19 2.81a13 13 0 0 1 0 18.38' }),
-  )
+  return tablerIcon('volume', { size }) as ReactElement
 }
 
 function VerticalSlider({
@@ -686,7 +512,7 @@ function VolumeControl({
                 transition: 'all 0.15s ease',
               },
             },
-            muted ? renderMuteIcon(16) : renderVolumeIcon(volume, false, 16),
+            renderVolumeIcon(volume, muted, 16),
           ),
         )
       : null,
@@ -786,24 +612,7 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
               pointerEvents: 'none',
             },
           },
-          h(
-            'svg',
-            {
-              width: 18,
-              height: 18,
-              viewBox: '0 0 24 24',
-              fill: 'none',
-              stroke: '#FFFFFF',
-              strokeWidth: 2,
-              strokeLinecap: 'round',
-              strokeLinejoin: 'round',
-              'aria-hidden': true,
-            },
-            h('polyline', { points: '15 3 21 3 21 9' }),
-            h('polyline', { points: '9 21 3 21 3 15' }),
-            h('line', { x1: '21', y1: '3', x2: '14', y2: '10' }),
-            h('line', { x1: '3', y1: '21', x2: '10', y2: '14' }),
-          ),
+          tablerIcon('maximize', { size: 18, color: '#FFFFFF' }),
         ),
       ),
       h(
@@ -849,7 +658,7 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
         { style: { display: 'flex', alignItems: 'center', gap: tokens.space[3] } },
         h(PlayModeButton, { ctx, mode: state.playMode }),
         h(IconButton, {
-          icon: '⏮',
+          icon: 'skip-back',
           accessibilityLabel: 'Previous track',
           disabled: !can.canPrevious,
           onPress: () => void ctx.player.previous(),
@@ -857,14 +666,14 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
         h(IconButton, {
           // One control, two states: a play button that is sometimes a pause
           // button is what every player has, and two controls would be wrong.
-          icon: can.canPause ? '⏸' : '▶',
+          icon: can.canPause ? 'pause-filled' : 'play-filled',
           accessibilityLabel: can.canPause ? 'Pause' : 'Play',
           variant: 'primary',
           disabled: !can.canPlay && !can.canPause,
           onPress: () => ctx.player.togglePlay(),
         }),
         h(IconButton, {
-          icon: '⏭',
+          icon: 'skip-forward',
           accessibilityLabel: 'Next track',
           disabled: !can.canNext,
           onPress: () => void ctx.player.next(),
@@ -1010,21 +819,7 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
           e.currentTarget.style.transform = 'scale(1)'
         },
       },
-      h(
-        'svg',
-        {
-          width: 22,
-          height: 22,
-          viewBox: '0 0 24 24',
-          fill: 'none',
-          stroke: 'currentColor',
-          strokeWidth: 2.2,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
-          'aria-hidden': true,
-        },
-        h('polyline', { points: '6 9 12 15 18 9' }),
-      ),
+      tablerIcon('chevron-down', { size: 22 }),
     ),
     (() => {
       const playerMain = h(
@@ -1118,13 +913,13 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
           { style: { display: 'flex', alignItems: 'center', gap: tokens.space[4] } },
           h(PlayModeButton, { ctx, mode: state.playMode }),
           h(IconButton, {
-            icon: '⏮',
+            icon: 'skip-back',
             accessibilityLabel: 'Previous track',
             disabled: !can.canPrevious,
             onPress: () => void ctx.player.previous(),
           }),
           h(IconButton, {
-            icon: can.canPause ? '⏸' : '▶',
+            icon: can.canPause ? 'pause-filled' : 'play-filled',
             accessibilityLabel: can.canPause ? 'Pause' : 'Play',
             variant: 'primary',
             size: tokens.size.iconLarge,
@@ -1132,7 +927,7 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
             onPress: () => ctx.player.togglePlay(),
           }),
           h(IconButton, {
-            icon: '⏭',
+            icon: 'skip-forward',
             accessibilityLabel: 'Next track',
             disabled: !can.canNext,
             onPress: () => void ctx.player.next(),
