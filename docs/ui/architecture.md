@@ -46,6 +46,23 @@ The headless package works alone. A plugin with no UI package still functions; i
 contributes nothing visible, which is exactly what happens on a target where its view was not
 written.
 
+### 1.1 Package internal organization & component decomposition
+
+To prevent UI packages from turning into monolithic files containing thousands of lines, each UI package is decomposed into single-responsibility submodules:
+
+```
+packages/ui/<package>/src/
+├── components/          ← Reusable presentation elements, artwork tiles, cards, track rows
+│   ├── sections/        ← Partitioned feature sections (e.g. settings panels)
+│   └── modals/          ← Dedicated dialogs and modal edit flows
+├── screens/             ← Top-level screens / view targets (e.g. SearchScreen, PlaylistDetailScreen)
+├── hooks/               ← Local UI state & interaction hooks (e.g. useTrackLibraryInfo)
+├── utils/               ← Pure UI data transformers and helpers
+└── index.tsx            ← Plugin registration facade (apply(ctx)) and backward-compatible re-exports
+```
+
+Reusable pure logic that outgrows one feature (such as formatting durations, artwork IDs, and string helpers) belongs in `@BBeBee/toolkit` (Layer 4 pure library), maintaining a single source of truth across desktop and mobile without duplication.
+
 ---
 
 ## 2. Contributions are descriptors

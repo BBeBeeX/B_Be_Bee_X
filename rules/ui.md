@@ -23,6 +23,27 @@ View packages import from headless packages through **public subpaths only**:
 - Descriptor view IDs (`@BBeBee/plugin-library/views`)
 - Never deep-import into `src/*` of another package.
 
+### 1.1 Package Internal Organization & Single Responsibility Principle (SRP)
+
+UI packages (`-ui-desktop`, `-ui-mobile`, and UI kit packages) must not be written as giant monolithic files. Instead, code is organized into single-responsibility submodules:
+
+```
+packages/ui/<package>/src/
+├── components/          ← Reusable presentation components, rows, artwork, cards
+│   ├── sections/        ← Partitioned feature sections (e.g. settings categories)
+│   └── modals/          ← Dedicated dialogs and modal flows
+├── screens/             ← Dedicated view/screen components (e.g. SearchScreen, PlaylistDetailScreen)
+├── hooks/               ← UI-specific custom React hooks
+├── utils/               ← Pure UI data transformers and helpers
+└── index.tsx            ← Thin Cordis plugin entry point (`apply(ctx)` registering views/descriptors)
+                         and barrel re-exports of screens/components for backwards compatibility & tests
+```
+
+Key rules:
+1. **No Monolithic Single-File Packages**: Screens, modals, and row components must be factored into their own files under `src/components/`, `src/components/modals/`, or `src/screens/`.
+2. **Pure Helper Hoisting**: Pure helpers that calculate or format domain data across multiple packages (e.g. `formatDuration`, `formatTotalDuration`, `splitArtists`) belong in `@BBeBee/toolkit` (Layer 4 pure library), never copy-pasted or duplicated inside UI packages.
+3. **Thin Plugin Entry**: `src/index.tsx` serves as the Cordis plugin lifecycle entry (`apply(ctx)`) registering routes/slots/views, while re-exporting components and public utilities to maintain 100% test compatibility.
+
 ---
 
 ## 2. Descriptors, Not Components

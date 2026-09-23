@@ -89,6 +89,7 @@ Composition root is exactly 4 files: `apps/mobile/src/{boot,plugins}.ts` and `ap
 3. Dependencies are declared via `inject: [...]`. Optional dependencies use `ctx.inject([...], ...)`.
 4. Log through `ctx.logger`, never `console.log`.
 5. Reusable pure helpers belong in `@BBeBee/toolkit`, not duplicated in feature packages.
+6. Decompose large UI packages into single-responsibility submodules (`src/{components,screens,hooks,utils,index.tsx}`); avoid monolithic single-file packages.
 
 ```ts
 import type { Context } from '@BBeBee/protocol'

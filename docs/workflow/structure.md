@@ -165,8 +165,9 @@ B_Be_Bee/
 │   │   │                                       regex-guard.ts the ReDoS bound
 │   │   ├── toolkit/                ✅        pure helpers that outgrew one plugin: stable ids
 │   │   │                                       (stableId, artworkId), splitArtists,
-│   │   │                                       formatDuration, permute. Same charter as
-│   │   │                                       source-rules — no Cordis, no I/O, no deps
+│   │   │                                       formatDuration, formatTotalDuration, permute.
+│   │   │                                       Same charter as source-rules — no Cordis,
+│   │   │                                       no I/O, no deps
 │   │   ├── plugin-source-runtime/  ✅        binds source-rules to ctx.http · ctx.js (06 §4)
 │   │   ├── plugin-sources/         ✅        the ctx.sources registry + catalogue (06 §4.1)
 │   │   ├── plugin-album/           ✅        the album page: route + view id, reads through
@@ -208,26 +209,28 @@ B_Be_Bee/
 │   │   ├── ui-parity/              ✅        the component contract, and the check that both
 │   │   │                                       kits meet it (08 §6)
 │   │   ├── ui-kit-mobile/          ✅        React Native components
-│   │   ├── ui-kit-desktop/         ✅        React DOM components
+│   │   ├── ui-kit-desktop/         ✅        React DOM components (modular components & theme)
 │   │   ├── plugin-queue-ui-desktop/  ✅      ┐ the up-next queue
 │   │   ├── plugin-queue-ui-mobile/   ✅      ┘
 │   │   ├── plugin-now-playing-ui-desktop/ ✅ ┐ full-screen player + bar / mini-player
 │   │   ├── plugin-now-playing-ui-mobile/  ✅ ┘
 │   │   ├── plugin-sources-ui-desktop/ ✅     ┐ search, source list, import review,
-│   │   ├── plugin-sources-ui-mobile/  ✅     ┘ test screen (08 §4)
+│   │   ├── plugin-sources-ui-mobile/  ✅     ┘ test screen (modular screens) (08 §4)
 │   │   ├── plugin-album-ui-desktop/  ✅      ┐ one album: header, tracks, actions (08 §4)
 │   │   ├── plugin-album-ui-mobile/   ✅      ┘
 │   │   ├── plugin-download-ui-desktop/ ✅    ┐ the download queue and cache (08 §4)
 │   │   ├── plugin-download-ui-mobile/  ✅    ┘
 │   │   ├── plugin-library-ui-desktop/ ✅     ┐ the library (playlists, albums, collections),
-│   │   ├── plugin-library-ui-mobile/  ✅     ┘ one playlist, one collection, favourites (08 §4)
+│   │   ├── plugin-library-ui-mobile/  ✅     ┘ one playlist, one collection, favourites (modular screens & modals) (08 §4)
 │   │   ├── plugin-local-scanner-ui-desktop/ ✅ ┐ settings: scan roots
 │   │   ├── plugin-local-scanner-ui-mobile/  ✅ ┘
 │   │   ├── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered
 │   │   ├── plugin-lyrics-ui-desktop/ ✅      now-playing lyrics panel, smooth auto-scrolling
 │   │   ├── plugin-desktop-lyrics-ui-desktop/ ✅ desktop lyrics button + secondary window adapter
 │   │   ├── plugin-dsp-ui-desktop/  ✅        ┐ 10-band EQ sliders, chain ordering, effect bypass,
-│   │   └── plugin-dsp-ui-mobile/   ✅        ┘ and settings integration (08 §4)
+│   │   ├── plugin-dsp-ui-mobile/   ✅        ┘ and settings integration (08 §4)
+│   │   ├── plugin-settings-ui-desktop/ ✅    ┐ settings center: modular sections & diagnostics,
+│   │   └── plugin-settings-ui-mobile/  ✅    ┘ and category tabs (08 §5)
 │   │
 │   └── tooling/                            🔧 OUTSIDE THE LAYER MODEL
 │       │                                      Development aids. Nothing here ships in an app
