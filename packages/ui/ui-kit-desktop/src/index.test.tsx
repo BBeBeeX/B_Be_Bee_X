@@ -565,5 +565,44 @@ describe('ContextMenu', () => {
     fireEvent.mouseEnter(queue)
     expect(container.textContent).not.toContain('Road trip')
   })
+
+  it('constrains submenu position and maxHeight so it stays within viewport boundaries', () => {
+    window.innerHeight = 600
+    window.innerWidth = 800
+
+    const { container } = render(h(ContextMenu, { open: true, onClose: () => {}, x: 100, y: 500, items }))
+    const add = Array.from(container.querySelectorAll('[role="menuitem"]')).find((node) =>
+      node.textContent?.startsWith('加入歌单'),
+    ) as HTMLElement
+
+    vi.spyOn(add, 'getBoundingClientRect').mockReturnValue({
+      top: 500,
+      bottom: 536,
+      left: 100,
+      right: 348,
+      width: 248,
+      height: 36,
+      x: 100,
+      y: 500,
+      toJSON: () => {},
+    })
+
+    fireEvent.mouseEnter(add)
+    const menus = container.querySelectorAll('[role="menu"]')
+    expect(menus.length).toBe(2)
+    const submenuEl = menus[1] as HTMLElement
+    const top = Number.parseFloat(submenuEl.style.top)
+    const maxHeight = Number.parseFloat(submenuEl.style.maxHeight)
+
+    expect(top).toBeGreaterThanOrEqual(8)
+    expect(top + maxHeight).toBeLessThanOrEqual(window.innerHeight - 8)
+  })
+
+  it('closes the menu on window resize', () => {
+    const onClose = vi.fn()
+    render(h(ContextMenu, { open: true, onClose, x: 10, y: 10, items }))
+    window.dispatchEvent(new Event('resize'))
+    expect(onClose).toHaveBeenCalledOnce()
+  })
 })
 

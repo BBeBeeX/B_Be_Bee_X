@@ -1,4 +1,4 @@
-import { createElement as h, Fragment, useEffect, useState } from 'react'
+import { createElement as h, Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type React from 'react'
 import type { KeyboardEvent, ReactElement } from 'react'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -7,6 +7,8 @@ import { c, common, useHover } from '../theme.js'
 import { Button } from './Button.js'
 import { Text } from './Text.js'
 import { TextField } from './TextField.js'
+
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect
 
 const MENU_WIDTH = 248
 
@@ -17,6 +19,8 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
   const [filter, setFilter] = useState('')
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState('')
+  const menuRef = useRef<HTMLDivElement>(null)
+  const submenuRef = useRef<HTMLDivElement>(null)
   const p = c()
 
   useEffect(() => {
@@ -27,7 +31,12 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
     setDraft('')
   }, [props.open])
 
-  if (!props.open) return null
+  useEffect(() => {
+    if (!props.open) return
+    const handleResize = () => props.onClose()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [props.open, props.onClose])
 
   const submenu = props.items.find((item) => item.id === submenuState?.id)?.submenu
   const needle = filter.trim().toLowerCase()
@@ -50,12 +59,30 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
   const viewportWidth = typeof window === 'undefined' ? 1024 : window.innerWidth
   const viewportHeight = typeof window === 'undefined' ? 768 : window.innerHeight
   const left = Math.max(8, Math.min(props.x, viewportWidth - width - 8))
-  const top = Math.max(8, Math.min(props.y, Math.max(8, viewportHeight - 240)))
+
+  // Estimate primary menu height to keep it fully within viewport
+  const primaryEstimatedHeight = (props.title ? 32 : 0) + props.items.length * 36 + 16
+  const top =
+    props.y + primaryEstimatedHeight + 8 <= viewportHeight
+      ? Math.max(8, props.y)
+      : Math.max(8, viewportHeight - primaryEstimatedHeight - 8)
+  const primaryMaxHeight = Math.max(120, viewportHeight - top - 8)
+
+  // Estimate submenu height to flip upwards if it overflows viewport bottom
+  const submenuEstimatedHeight = submenu
+    ? (submenu.title ? 32 : 0) +
+      (submenu.searchPlaceholder ? 42 : 0) +
+      (submenu.create ? 42 : 0) +
+      Math.max(1, visible.length) * 36 +
+      16
+    : 160
 
   let flyoutLeft: number
   let flyoutTop: number
+
   if (submenuState?.rect && (submenuState.rect.right > 0 || submenuState.rect.left > 0)) {
     const r = submenuState.rect
+    // Horizontal positioning: prefer right, flip to left, fallback clamp
     if (r.right + width + 8 <= viewportWidth) {
       flyoutLeft = r.right + 2
     } else if (r.left - width - 2 >= 8) {
@@ -63,8 +90,17 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
     } else {
       flyoutLeft = Math.max(8, viewportWidth - width - 8)
     }
-    flyoutTop = Math.max(8, Math.min(r.top, viewportHeight - 240))
+
+    // Vertical positioning: try downward from row top, or flip upward to row bottom, or pin within viewport
+    if (r.top + submenuEstimatedHeight + 8 <= viewportHeight) {
+      flyoutTop = r.top
+    } else if (r.bottom - submenuEstimatedHeight >= 8) {
+      flyoutTop = r.bottom - submenuEstimatedHeight
+    } else {
+      flyoutTop = Math.max(8, viewportHeight - submenuEstimatedHeight - 8)
+    }
   } else {
+    // Fallback when trigger rect is unavailable
     if (left + width + width + 8 <= viewportWidth) {
       flyoutLeft = left + width + 2
     } else if (left - width - 2 >= 8) {
@@ -72,8 +108,91 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
     } else {
       flyoutLeft = Math.max(8, viewportWidth - width - 8)
     }
-    flyoutTop = top
+
+    if (top + submenuEstimatedHeight + 8 <= viewportHeight) {
+      flyoutTop = top
+    } else {
+      flyoutTop = Math.max(8, viewportHeight - submenuEstimatedHeight - 8)
+    }
   }
+
+  flyoutTop = Math.max(8, flyoutTop)
+  const flyoutMaxHeight = Math.max(120, viewportHeight - flyoutTop - 8)
+
+  useIsomorphicLayoutEffect(() => {
+    if (!props.open) return
+    const el = menuRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    if (rect.height <= 0) return
+    const vpHeight = window.innerHeight
+    let adjTop = props.y
+    if (adjTop + rect.height + 8 > vpHeight) {
+      adjTop = Math.max(8, vpHeight - rect.height - 8)
+    }
+    adjTop = Math.max(8, adjTop)
+    const maxH = Math.max(120, vpHeight - adjTop - 8)
+    el.style.top = `${adjTop}px`
+    el.style.maxHeight = `${maxH}px`
+  }, [props.open, props.items.length, props.y])
+
+  useIsomorphicLayoutEffect(() => {
+    if (!props.open) return
+    const el = submenuRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    if (rect.height <= 0) return
+
+    const vpHeight = window.innerHeight
+    const vpWidth = window.innerWidth
+    const realHeight = rect.height
+    const realWidth = rect.width || width
+
+    let adjTop: number
+    let adjLeft: number
+
+    if (submenuState?.rect && (submenuState.rect.right > 0 || submenuState.rect.left > 0)) {
+      const r = submenuState.rect
+      if (r.right + realWidth + 8 <= vpWidth) {
+        adjLeft = r.right + 2
+      } else if (r.left - realWidth - 2 >= 8) {
+        adjLeft = r.left - realWidth - 2
+      } else {
+        adjLeft = Math.max(8, vpWidth - realWidth - 8)
+      }
+
+      if (r.top + realHeight + 8 <= vpHeight) {
+        adjTop = r.top
+      } else if (r.bottom - realHeight >= 8) {
+        adjTop = r.bottom - realHeight
+      } else {
+        adjTop = Math.max(8, vpHeight - realHeight - 8)
+      }
+    } else {
+      if (left + realWidth + realWidth + 8 <= vpWidth) {
+        adjLeft = left + realWidth + 2
+      } else if (left - realWidth - 2 >= 8) {
+        adjLeft = left - realWidth - 2
+      } else {
+        adjLeft = Math.max(8, vpWidth - realWidth - 8)
+      }
+
+      if (top + realHeight + 8 <= vpHeight) {
+        adjTop = top
+      } else {
+        adjTop = Math.max(8, vpHeight - realHeight - 8)
+      }
+    }
+
+    adjTop = Math.max(8, adjTop)
+    const maxH = Math.max(120, vpHeight - adjTop - 8)
+
+    el.style.top = `${adjTop}px`
+    el.style.left = `${adjLeft}px`
+    el.style.maxHeight = `${maxH}px`
+  }, [props.open, submenuState?.id, submenuState?.rect, filter, visible.length, creating])
+
+  if (!props.open) return null
 
   return h(
     'div',
@@ -89,6 +208,7 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
     h(
       'div',
       {
+        ref: menuRef,
         role: 'menu',
         ...common(props),
         'aria-label': props.accessibilityLabel ?? props.title ?? 'Actions',
@@ -101,7 +221,8 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
           left,
           top,
           width,
-          maxHeight: '70vh',
+          maxWidth: 'calc(100vw - 16px)',
+          maxHeight: primaryMaxHeight,
           overflowY: 'auto',
           padding: 4,
           borderRadius: 8,
@@ -158,6 +279,7 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
       ? h(
           'div',
           {
+            ref: submenuRef,
             role: 'menu',
             'aria-label': submenu.title ?? 'Submenu',
             onClick: (event: { stopPropagation(): void }) => event.stopPropagation(),
@@ -166,7 +288,8 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
               left: flyoutLeft,
               top: flyoutTop,
               width,
-              maxHeight: '70vh',
+              maxWidth: 'calc(100vw - 16px)',
+              maxHeight: flyoutMaxHeight,
               overflowY: 'auto',
               padding: 4,
               borderRadius: 8,
