@@ -224,7 +224,11 @@ export class FsBridge extends Service implements FsService {
     return this.call<number>('freeSpace', [uri])
   }
   async toPlayableUri(uri: Uri) {
-    return this.call<Uri>('toPlayableUri', [uri])
+    const raw = await this.call<Uri>('toPlayableUri', [uri])
+    if (raw.startsWith('file://')) {
+      return raw.replace(/^file:\/\//, 'bbebee-file://') as Uri
+    }
+    return raw
   }
   async pickDirectory() {
     return this.call<Uri | undefined>('pickDirectory', [])

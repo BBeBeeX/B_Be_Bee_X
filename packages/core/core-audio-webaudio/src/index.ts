@@ -419,7 +419,11 @@ export class AudioWebAudio extends Service implements AudioService {
 
   private async loadBuffered(src: string, opts: LoadOptions): Promise<AudioSourceHandle> {
     const fetchBytes = this.config.fetchBytes ?? defaultFetchBytes
-    const bytes = await fetchBytes(src, { headers: opts.headers, signal: opts.signal })
+    const targetSrc =
+      typeof src === 'string' && src.startsWith('file://') && typeof window !== 'undefined'
+        ? src.replace(/^file:\/\//, 'bbebee-file://')
+        : src
+    const bytes = await fetchBytes(targetSrc, { headers: opts.headers, signal: opts.signal })
     opts.signal?.throwIfAborted()
 
     const decode = (this.context as BaseAudioContext & { decodeAudioData: DecodeFn }).decodeAudioData
@@ -443,7 +447,11 @@ export class AudioWebAudio extends Service implements AudioService {
     const element = createElement()
   
     element.crossOrigin = 'anonymous'
-    element.src = src
+    const targetSrc =
+      typeof src === 'string' && src.startsWith('file://') && typeof window !== 'undefined'
+        ? src.replace(/^file:\/\//, 'bbebee-file://')
+        : src
+    element.src = targetSrc
 
     const context = this.context as BaseAudioContext & {
       createMediaElementSource?: (el: unknown) => AudioNode

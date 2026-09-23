@@ -133,33 +133,68 @@ export class PlayerStore {
   }
 
   async saveState(state: PersistedState): Promise<void> {
-    await this.db.exec(
-      `INSERT INTO playback_state
-         (id, current_item_id, position_ms, repeat_mode, shuffle, shuffle_seed,
-          volume, muted, device_id, updated_at)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         current_item_id = excluded.current_item_id,
-         position_ms     = excluded.position_ms,
-         repeat_mode     = excluded.repeat_mode,
-         shuffle         = excluded.shuffle,
-         shuffle_seed    = excluded.shuffle_seed,
-         volume          = excluded.volume,
-         muted           = excluded.muted,
-         device_id       = excluded.device_id,
-         updated_at      = excluded.updated_at`,
-      [
-        state.currentItemId ?? null,
-        Math.round(state.positionMs),
-        state.repeat,
-        state.shuffle ? 1 : 0,
-        state.shuffleSeed,
-        state.volume,
-        state.muted ? 1 : 0,
-        this.deviceId,
-        Date.now(),
-      ],
-    )
+    try {
+      await this.db.exec(
+        `INSERT INTO playback_state
+           (id, current_item_id, position_ms, repeat_mode, shuffle, shuffle_seed,
+            volume, muted, device_id, updated_at)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           current_item_id = excluded.current_item_id,
+           position_ms     = excluded.position_ms,
+           repeat_mode     = excluded.repeat_mode,
+           shuffle         = excluded.shuffle,
+           shuffle_seed    = excluded.shuffle_seed,
+           volume          = excluded.volume,
+           muted           = excluded.muted,
+           device_id       = excluded.device_id,
+           updated_at      = excluded.updated_at`,
+        [
+          state.currentItemId ?? null,
+          Math.round(state.positionMs),
+          state.repeat,
+          state.shuffle ? 1 : 0,
+          state.shuffleSeed,
+          state.volume,
+          state.muted ? 1 : 0,
+          this.deviceId,
+          Date.now(),
+        ],
+      )
+    } catch (error) {
+      if (state.currentItemId && String(error).includes('FOREIGN KEY')) {
+        // When currentItemId is not yet written to queue_items (e.g. async queue persistence in flight),
+        // gracefully fall back to saving without current_item_id so position, volume, and modes are preserved.
+        await this.db.exec(
+          `INSERT INTO playback_state
+             (id, current_item_id, position_ms, repeat_mode, shuffle, shuffle_seed,
+              volume, muted, device_id, updated_at)
+           VALUES (1, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             current_item_id = excluded.current_item_id,
+             position_ms     = excluded.position_ms,
+             repeat_mode     = excluded.repeat_mode,
+             shuffle         = excluded.shuffle,
+             shuffle_seed    = excluded.shuffle_seed,
+             volume          = excluded.volume,
+             muted           = excluded.muted,
+             device_id       = excluded.device_id,
+             updated_at      = excluded.updated_at`,
+          [
+            Math.round(state.positionMs),
+            state.repeat,
+            state.shuffle ? 1 : 0,
+            state.shuffleSeed,
+            state.volume,
+            state.muted ? 1 : 0,
+            this.deviceId,
+            Date.now(),
+          ],
+        )
+        return
+      }
+      throw error
+    }
   }
 
   /* ── history ───────────────────────────────────────────────────────── */
