@@ -389,7 +389,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => void ctx.player?.previous?.(),
           style: buttonStyle,
         },
-        tablerIcon('skip-back', { size: 14 }),
+        tablerIcon('skip-back', { size: 18 }),
       ),
       // Play / Pause Button
       h(
@@ -401,7 +401,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => void ctx.player?.togglePlay?.(),
           style: { ...buttonStyle, color: '#A78BFA' },
         },
-        tablerIcon(isPlaying ? 'pause-filled' : 'play-filled', { size: 14 }),
+        tablerIcon(isPlaying ? 'pause-filled' : 'play-filled', { size: 18 }),
       ),
       // Next Track Button
       h(
@@ -413,7 +413,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => void ctx.player?.next?.(),
           style: buttonStyle,
         },
-        tablerIcon('skip-forward', { size: 14 }),
+        tablerIcon('skip-forward', { size: 18 }),
       ),
       // Separator
       h('span', { style: { color: 'rgba(255, 255, 255, 0.2)', margin: '0 4px' } }, '|'),
@@ -488,7 +488,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => setLocked(!locked),
           style: buttonStyle,
         },
-        tablerIcon(locked ? 'lock' : 'lock-open', { size: 14 }),
+        tablerIcon(locked ? 'lock' : 'lock-open', { size: 18 }),
       ),
       // Close Button
       h(
@@ -500,7 +500,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => setVisible(false),
           style: { ...buttonStyle, color: '#F87171' },
         },
-        tablerIcon('x', { size: 14 }),
+        tablerIcon('x', { size: 18 }),
       ),
     ),
 

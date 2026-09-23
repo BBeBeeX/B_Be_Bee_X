@@ -76,7 +76,7 @@ function LocalTrackTableRow({
           color: hovered ? '#FFFFFF' : '#b3b3b3',
         },
       },
-      hovered ? tablerIcon('play', { size: 14, color: '#FFFFFF' }) : String(index + 1),
+      hovered ? tablerIcon('play', { size: 18, color: '#FFFFFF' }) : String(index + 1),
     ),
     // Col 2: Artwork + Title + Artist
     h(
@@ -109,7 +109,7 @@ function LocalTrackTableRow({
         },
         track.artwork
           ? h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 })
-          : tablerIcon('music', { size: 18, color: '#7f7f7f' }),
+          : tablerIcon('music', { size: 22, color: '#7f7f7f' }),
       ),
       h(
         'div',
@@ -228,7 +228,7 @@ function LocalTrackTableRow({
             transition: 'opacity 0.15s ease',
           },
         },
-        tablerIcon('dots', { size: 16 }),
+        tablerIcon('dots', { size: 20 }),
       ),
     ),
   )
@@ -394,8 +394,8 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   const renderTrackSortIndicator = (key: LocalTrackSortKey) => {
     if (trackSortKey !== key) return null
     return trackSortOrder === 'asc'
-      ? tablerIcon('chevron-up', { size: 12, style: { marginLeft: 4 } })
-      : tablerIcon('chevron-down', { size: 12, style: { marginLeft: 4 } })
+      ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
+      : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
   }
 
   const trackSortLabelMap: Record<LocalTrackSortKey, string> = {
@@ -418,44 +418,44 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
     {
       id: 'sort-default',
       label: '默认顺序',
-      icon: trackSortKey === 'default' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: trackSortKey === 'default' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setTrackSortKey('default'),
     },
     {
       id: 'sort-title',
       label: '标题',
-      icon: trackSortKey === 'title' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: trackSortKey === 'title' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setTrackSortKey('title'),
     },
     {
       id: 'sort-artist',
       label: '艺人',
-      icon: trackSortKey === 'artist' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: trackSortKey === 'artist' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setTrackSortKey('artist'),
     },
     {
       id: 'sort-album',
       label: '专辑',
-      icon: trackSortKey === 'album' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: trackSortKey === 'album' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setTrackSortKey('album'),
     },
     {
       id: 'sort-duration',
       label: '时长',
-      icon: trackSortKey === 'duration' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: trackSortKey === 'duration' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setTrackSortKey('duration'),
       divider: true,
     },
     {
       id: 'order-asc',
       label: '升序',
-      icon: trackSortOrder === 'asc' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: trackSortOrder === 'asc' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setTrackSortOrder('asc'),
     },
     {
       id: 'order-desc',
       label: '降序',
-      icon: trackSortOrder === 'desc' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: trackSortOrder === 'desc' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setTrackSortOrder('desc'),
     },
   ]
@@ -464,44 +464,44 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
     {
       id: 'sort-default',
       label: '默认顺序',
-      icon: albumSortKey === 'default' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: albumSortKey === 'default' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setAlbumSortKey('default'),
     },
     {
       id: 'sort-title',
       label: '专辑名称',
-      icon: albumSortKey === 'title' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: albumSortKey === 'title' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setAlbumSortKey('title'),
     },
     {
       id: 'sort-artist',
       label: '艺人',
-      icon: albumSortKey === 'artist' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: albumSortKey === 'artist' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setAlbumSortKey('artist'),
     },
     {
       id: 'sort-year',
       label: '年份',
-      icon: albumSortKey === 'year' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: albumSortKey === 'year' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setAlbumSortKey('year'),
     },
     {
       id: 'sort-count',
       label: '曲目数',
-      icon: albumSortKey === 'count' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: albumSortKey === 'count' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setAlbumSortKey('count'),
       divider: true,
     },
     {
       id: 'order-asc',
       label: '升序',
-      icon: albumSortOrder === 'asc' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: albumSortOrder === 'asc' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setAlbumSortOrder('asc'),
     },
     {
       id: 'order-desc',
       label: '降序',
-      icon: albumSortOrder === 'desc' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: albumSortOrder === 'desc' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setAlbumSortOrder('desc'),
     },
   ]
@@ -649,7 +649,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
               paddingLeft: 2,
             },
           },
-          tablerIcon('play', { size: 24, color: '#000000' }),
+          tablerIcon('play', { size: 28, color: '#000000' }),
         ),
         h(
           'button',
@@ -664,7 +664,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
               }
             },
           },
-          tablerIcon('shuffle', { size: 22 }),
+          tablerIcon('shuffle', { size: 26 }),
         ),
       ),
       h(
@@ -682,7 +682,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
               gap: 6,
             },
           },
-          tablerIcon('search', { size: 14, color: '#b3b3b3' }),
+          tablerIcon('search', { size: 18, color: '#b3b3b3' }),
           h('input', {
             type: 'text',
             placeholder: viewMode === 'tracks' ? '在本地文件中搜索' : '在本地专辑中搜索',
@@ -714,7 +714,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
               padding: 4,
             },
           },
-          tablerIcon('settings', { size: 18 }),
+          tablerIcon('settings', { size: 22 }),
         ),
         h(
           'button',
@@ -739,7 +739,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
             },
           },
           h('span', null, viewMode === 'tracks' ? trackSortLabelMap[trackSortKey] : albumSortLabelMap[albumSortKey]),
-          tablerIcon('list', { size: 16 }),
+          tablerIcon('list', { size: 20 }),
         ),
       ),
     ),
@@ -850,7 +850,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                   gap: 4,
                 },
               },
-              tablerIcon('clock', { size: 14 }),
+              tablerIcon('clock', { size: 18 }),
               renderTrackSortIndicator('duration'),
             ),
           ),

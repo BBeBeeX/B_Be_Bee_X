@@ -115,7 +115,7 @@ export const tokens = {
   },
   duration: { fast: 120, normal: 200, slow: 320 } as const,
   /** Hit targets. 44 is the smallest either OS considers reliably tappable. */
-  size: { touchTarget: 44, icon: 20, iconLarge: 28, row: 56, artworkThumb: 48 } as const,
+  size: { touchTarget: 44, icon: 24, iconLarge: 32, row: 56, artworkThumb: 48 } as const,
   z: { base: 0, sticky: 10, overlay: 100, toast: 1000 } as const,
 } as const
 

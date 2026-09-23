@@ -657,13 +657,13 @@ export function LibraryScreen({
           {
             id: 'play-all',
             label: '播放全部',
-            icon: tablerIcon('play', { size: 16 }),
+            icon: tablerIcon('play', { size: 20 }),
             onSelect: onPlay,
           },
           {
             id: 'toggle-pin',
             label: isPinned ? '取消置顶歌单' : '置顶歌单',
-            icon: tablerIcon('pin', { size: 16 }),
+            icon: tablerIcon('pin', { size: 20 }),
             onSelect: () => void togglePin(item),
           },
         ],
@@ -1262,25 +1262,25 @@ export function LibraryScreen({
     {
       id: 'creator',
       label: '创建者',
-      icon: sortMode === 'creator' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortMode === 'creator' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortMode('creator'),
     },
     {
       id: 'recent-added',
       label: '最近添加',
-      icon: sortMode === 'recent-added' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortMode === 'recent-added' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortMode('recent-added'),
     },
     {
       id: 'recent-played',
       label: '最近播放',
-      icon: sortMode === 'recent-played' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortMode === 'recent-played' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortMode('recent-played'),
     },
     {
       id: 'alphabetical',
       label: '按字母排序',
-      icon: sortMode === 'alphabetical' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortMode === 'alphabetical' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortMode('alphabetical'),
     },
   ]
@@ -1326,7 +1326,7 @@ export function LibraryScreen({
             justifyContent: 'center',
           },
         },
-        tablerIcon('plus', { size: 16 }),
+        tablerIcon('plus', { size: 20 }),
       ),
       h('span', { style: { fontSize: 13, fontWeight: 600 } }, '创建'),
     )
@@ -1396,7 +1396,7 @@ export function LibraryScreen({
               flexShrink: 0,
             },
           },
-          tablerIcon('playlist-add', { size: 18 }),
+          tablerIcon('playlist-add', { size: 22 }),
         ),
         h(
           'div',
@@ -1448,7 +1448,7 @@ export function LibraryScreen({
               flexShrink: 0,
             },
           },
-          tablerIcon('folder', { size: 18 }),
+          tablerIcon('folder', { size: 22 }),
         ),
         h(
           'div',
@@ -1733,7 +1733,7 @@ export function LibraryScreen({
             e.currentTarget.style.backgroundColor = 'transparent'
           },
         },
-        tablerIcon('books', { size: 24 }),
+        tablerIcon('books', { size: 28 }),
       ),
       activeFolderId !== null
         ? h(
@@ -1764,7 +1764,7 @@ export function LibraryScreen({
                 e.currentTarget.style.backgroundColor = '#242424'
               },
             },
-            tablerIcon('chevron-left', { size: 18 }),
+            tablerIcon('chevron-left', { size: 22 }),
           )
         : null,
       h(
@@ -1814,7 +1814,7 @@ export function LibraryScreen({
                 lineHeight: 1,
               },
             },
-            tablerIcon('plus', { size: 18 }),
+            tablerIcon('plus', { size: 22 }),
           ),
         ),
         renderCreateMenu(true),
@@ -1865,7 +1865,7 @@ export function LibraryScreen({
               },
             },
             isFav
-              ? tablerIcon('heart-filled', { size: 22, color: '#FFFFFF' })
+              ? tablerIcon('heart-filled', { size: 26, color: '#FFFFFF' })
               : item.kind === 'collection'
                 ? h(
                     'div',
@@ -1881,7 +1881,7 @@ export function LibraryScreen({
                         color: '#CCCCCC',
                       },
                     },
-                    tablerIcon('folder', { size: 24 }),
+                    tablerIcon('folder', { size: 28 }),
                   )
               : item.artwork
                 ? h(CachedArtwork, {
@@ -1892,12 +1892,12 @@ export function LibraryScreen({
                     radius: isArt ? 24 : 4,
                   })
                 : (isArt
-                    ? tablerIcon('user', { size: 20, color: '#A0A0A0' })
+                    ? tablerIcon('user', { size: 24, color: '#A0A0A0' })
                     : item.kind === 'local'
-                      ? tablerIcon('folder', { size: 20, color: '#A0A0A0' })
+                      ? tablerIcon('folder', { size: 24, color: '#A0A0A0' })
                       : item.kind === 'album'
-                        ? tablerIcon('disc', { size: 20, color: '#A0A0A0' })
-                        : tablerIcon('music', { size: 20, color: '#A0A0A0' })),
+                        ? tablerIcon('disc', { size: 24, color: '#A0A0A0' })
+                        : tablerIcon('music', { size: 24, color: '#A0A0A0' })),
           )
         }),
       ),
@@ -1962,7 +1962,7 @@ export function LibraryScreen({
               },
               '音乐库',
             ),
-            tablerIcon('chevron-left', { size: 18, color: '#666666' }),
+            tablerIcon('chevron-left', { size: 22, color: '#666666' }),
             h(
               'h1',
               { style: { fontSize: 24, fontWeight: 700, color: '#FFFFFF', margin: 0 } },
@@ -2008,7 +2008,7 @@ export function LibraryScreen({
                       e.currentTarget.style.color = '#A0A0AE'
                     },
                   },
-                  tablerIcon('dots', { size: 16 }),
+                  tablerIcon('dots', { size: 20 }),
                 )
               : null,
             h(
@@ -2038,7 +2038,7 @@ export function LibraryScreen({
                   e.currentTarget.style.color = '#A0A0AE'
                 },
               },
-              tablerIcon('minimize', { size: 16 }),
+              tablerIcon('minimize', { size: 20 }),
             ),
           ),
         ),
@@ -2083,7 +2083,7 @@ export function LibraryScreen({
                   width: 220,
                 },
               },
-              h('span', { style: { color: '#888888', display: 'inline-flex', alignItems: 'center' } }, tablerIcon('search', { size: 14 })),
+              h('span', { style: { color: '#888888', display: 'inline-flex', alignItems: 'center' } }, tablerIcon('search', { size: 18 })),
               h('input', {
                 value: searchQuery,
                 onChange: (e: { target: { value: string } }) => setSearchQuery(e.target.value),
@@ -2117,7 +2117,7 @@ export function LibraryScreen({
                 },
               },
               h('span', null, sortLabels[sortMode]),
-              h('span', { style: { display: 'inline-flex', alignItems: 'center' } }, tablerIcon('list', { size: 16 })),
+              h('span', { style: { display: 'inline-flex', alignItems: 'center' } }, tablerIcon('list', { size: 20 })),
             ),
           ),
         ),
@@ -2190,7 +2190,7 @@ export function LibraryScreen({
                         },
                       },
                       isFav
-                        ? tablerIcon('heart-filled', { size: 20, color: '#FFFFFF' })
+                        ? tablerIcon('heart-filled', { size: 24, color: '#FFFFFF' })
                         : item.artwork
                           ? h(CachedArtwork, {
                               ctx,
@@ -2200,12 +2200,12 @@ export function LibraryScreen({
                               radius: isArt ? 24 : 4,
                             })
                           : isArt
-                            ? tablerIcon('user', { size: 24, color: '#A0A0A0' })
+                            ? tablerIcon('user', { size: 28, color: '#A0A0A0' })
                             : item.kind === 'local'
-                              ? tablerIcon('folder', { size: 24, color: '#A0A0A0' })
+                              ? tablerIcon('folder', { size: 28, color: '#A0A0A0' })
                               : item.kind === 'album'
-                                ? tablerIcon('disc', { size: 24, color: '#A0A0A0' })
-                                : tablerIcon('music', { size: 24, color: '#A0A0A0' }),
+                                ? tablerIcon('disc', { size: 28, color: '#A0A0A0' })
+                                : tablerIcon('music', { size: 28, color: '#A0A0A0' }),
                     ),
                     h(
                       'div',
@@ -2228,7 +2228,7 @@ export function LibraryScreen({
                         'div',
                         { style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
                         item.pinned
-                          ? h('span', { title: '已置顶', style: { display: 'inline-flex', alignItems: 'center', color: '#1DB954', marginRight: 2 } }, tablerIcon('pin', { size: 12, color: '#1DB954' }))
+                          ? h('span', { title: '已置顶', style: { display: 'inline-flex', alignItems: 'center', color: '#1DB954', marginRight: 2 } }, tablerIcon('pin', { size: 16, color: '#1DB954' }))
                           : null,
                         h(
                           'span',
@@ -2323,7 +2323,7 @@ export function LibraryScreen({
                 e.currentTarget.style.color = '#A0A0AE'
               },
             },
-            tablerIcon('minimize', { size: 16 }),
+            tablerIcon('minimize', { size: 20 }),
           ),
         ),
       ),
@@ -2381,7 +2381,7 @@ export function LibraryScreen({
                 width: 220,
               },
             },
-            tablerIcon('search', { size: 14, color: '#888888' }),
+            tablerIcon('search', { size: 18, color: '#888888' }),
             h('input', {
               value: searchQuery,
               onChange: (e: { target: { value: string } }) => setSearchQuery(e.target.value),
@@ -2415,7 +2415,7 @@ export function LibraryScreen({
               },
             },
             h('span', null, sortLabels[sortMode]),
-            tablerIcon('list', { size: 16 }),
+            tablerIcon('list', { size: 20 }),
           ),
         ),
       ),
@@ -2482,7 +2482,7 @@ export function LibraryScreen({
                   },
                 },
                 isFav
-                  ? tablerIcon('heart-filled', { size: 22, color: '#FFFFFF' })
+                  ? tablerIcon('heart-filled', { size: 26, color: '#FFFFFF' })
                   : item.artwork
                     ? h(CachedArtwork, {
                         ctx,
@@ -2492,12 +2492,12 @@ export function LibraryScreen({
                         radius: isArt ? 24 : 4,
                       })
                     : (isArt
-                        ? tablerIcon('user', { size: 20, color: '#A0A0A0' })
+                        ? tablerIcon('user', { size: 24, color: '#A0A0A0' })
                         : item.kind === 'local'
-                          ? tablerIcon('folder', { size: 20, color: '#A0A0A0' })
+                          ? tablerIcon('folder', { size: 24, color: '#A0A0A0' })
                           : item.kind === 'album'
-                            ? tablerIcon('disc', { size: 20, color: '#A0A0A0' })
-                            : tablerIcon('music', { size: 20, color: '#A0A0A0' })),
+                            ? tablerIcon('disc', { size: 24, color: '#A0A0A0' })
+                            : tablerIcon('music', { size: 24, color: '#A0A0A0' })),
               ),
               h(
                 'div',
@@ -2507,7 +2507,7 @@ export function LibraryScreen({
                   'div',
                   { style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
                   item.pinned
-                    ? tablerIcon('pin', { size: 12, color: '#1DB954', style: { marginRight: 2 } })
+                    ? tablerIcon('pin', { size: 16, color: '#1DB954', style: { marginRight: 2 } })
                     : null,
                   h('span', { style: { color: '#A0A0AE', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, item.subtitle),
                 ),
@@ -2576,7 +2576,7 @@ export function LibraryScreen({
             onClick: () => setActiveFolderId(null),
             title: '返回音乐库',
           },
-          tablerIcon('chevron-left', { size: 20, color: '#FFFFFF' }),
+          tablerIcon('chevron-left', { size: 24, color: '#FFFFFF' }),
           h(
             'span',
             {
@@ -2631,7 +2631,7 @@ export function LibraryScreen({
                     e.currentTarget.style.color = '#A0A0AE'
                   },
                 },
-                tablerIcon('dots', { size: 16 }),
+                tablerIcon('dots', { size: 20 }),
               )
             : null,
           h(
@@ -2661,7 +2661,7 @@ export function LibraryScreen({
                 e.currentTarget.style.color = '#A0A0AE'
               },
             },
-            tablerIcon('maximize', { size: 16 }),
+            tablerIcon('maximize', { size: 20 }),
           ),
         ),
       ),
@@ -2716,7 +2716,7 @@ export function LibraryScreen({
                 justifyContent: 'center',
               },
             },
-            tablerIcon('search', { size: 16 }),
+            tablerIcon('search', { size: 20 }),
           ),
           searchOpen
             ? h(TextField, {
@@ -2746,7 +2746,7 @@ export function LibraryScreen({
             },
           },
           h('span', null, sortLabels[sortMode]),
-          h('span', { style: { display: 'inline-flex', alignItems: 'center' } }, tablerIcon('list', { size: 16 })),
+          h('span', { style: { display: 'inline-flex', alignItems: 'center' } }, tablerIcon('list', { size: 20 })),
         ),
       ),
       h(
@@ -2816,8 +2816,8 @@ export function LibraryScreen({
           title: '收起音乐库',
         },
         isHeaderHovered
-          ? tablerIcon('layout-sidebar-left-collapse', { size: 22, color: '#FFFFFF' })
-          : tablerIcon('books', { size: 22, color: '#A0A0AE' }),
+          ? tablerIcon('layout-sidebar-left-collapse', { size: 26, color: '#FFFFFF' })
+          : tablerIcon('books', { size: 26, color: '#A0A0AE' }),
         h(
           'span',
           {
@@ -2863,7 +2863,7 @@ export function LibraryScreen({
               e.currentTarget.style.color = '#A0A0AE'
             },
           },
-          tablerIcon('maximize', { size: 16 }),
+          tablerIcon('maximize', { size: 20 }),
         ),
       ),
     ),
@@ -2935,7 +2935,7 @@ export function LibraryScreen({
               justifyContent: 'center',
             },
           },
-          tablerIcon('search', { size: 16 }),
+          tablerIcon('search', { size: 20 }),
         ),
         searchOpen
           ? h(TextField, {
@@ -2965,7 +2965,7 @@ export function LibraryScreen({
           },
         },
         h('span', null, sortLabels[sortMode]),
-        tablerIcon('list', { size: 16 }),
+        tablerIcon('list', { size: 20 }),
       ),
     ),
     error ? h(Text, { variant: 'sm', tone: 'error', testID: 'playlists-error' }, error) : null,

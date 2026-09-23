@@ -129,7 +129,7 @@ function JsonBranch(props: {
           color: palette.text.disabled,
         },
       },
-      tablerIcon(open ? 'chevron-down' : 'chevron-right', { size: 12 }),
+      tablerIcon(open ? 'chevron-down' : 'chevron-right', { size: 16 }),
     ),
     props.name !== undefined
       ? h('span', { style: { color: palette.text.secondary } }, props.name)

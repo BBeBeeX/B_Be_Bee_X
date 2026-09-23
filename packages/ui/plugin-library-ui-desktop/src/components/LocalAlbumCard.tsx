@@ -62,7 +62,7 @@ export function LocalAlbumCard({
       },
       album.artwork
         ? h(CachedArtwork, { ctx, artwork: album.artwork, seed: album.urn, size: 200, radius: 6 })
-        : tablerIcon('disc', { size: 48, color: '#7f7f7f' }),
+        : tablerIcon('disc', { size: 52, color: '#7f7f7f' }),
       // Floating Green Play Button
       onPlay
         ? h(
@@ -98,7 +98,7 @@ export function LocalAlbumCard({
                 zIndex: 2,
               },
             },
-            tablerIcon('play', { size: 22, color: '#000000' }),
+            tablerIcon('play', { size: 26, color: '#000000' }),
           )
         : null,
     ),

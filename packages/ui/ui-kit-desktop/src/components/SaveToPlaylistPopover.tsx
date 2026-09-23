@@ -238,7 +238,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
             gap: 6,
           },
         },
-        tablerIcon('search', { size: 14, color: '#a7a7a7' }),
+        tablerIcon('search', { size: 18, color: '#a7a7a7' }),
         h('input', {
           ref: inputRef,
           type: 'text',
@@ -338,7 +338,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                     justifyContent: 'center',
                   },
                 },
-                tablerIcon('plus', { size: 18, color: '#ffffff' }),
+                tablerIcon('plus', { size: 22, color: '#ffffff' }),
               ),
               h(
                 'div',
@@ -382,7 +382,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                 flexShrink: 0,
               },
             },
-            tablerIcon('heart-filled', { size: 16, color: '#ffffff' }),
+            tablerIcon('heart-filled', { size: 20, color: '#ffffff' }),
           ),
           // Title + Subtitle
           h(
@@ -413,7 +413,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                   gap: 3,
                 },
               },
-              tablerIcon('pin', { size: 12, color: '#a7a7a7' }),
+              tablerIcon('pin', { size: 16, color: '#a7a7a7' }),
               `${(props.likedCount ?? 0).toLocaleString()} 首歌曲`,
             ),
           ),
@@ -497,7 +497,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                     gap: 3,
                   },
                 },
-                playlist.pinned ? tablerIcon('pin', { size: 12, color: '#1ed760' }) : null,
+                playlist.pinned ? tablerIcon('pin', { size: 16, color: '#1ed760' }) : null,
                 `${playlist.trackCount ?? 0} 首歌曲`,
               ),
             ),
@@ -539,7 +539,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                   flexShrink: 0,
                 },
               },
-              tablerIcon('folder', { size: 18, color: '#b3b3b3' }),
+              tablerIcon('folder', { size: 22, color: '#b3b3b3' }),
             ),
             // Title + Subtitle
             h(
@@ -565,7 +565,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                 `${collection.playlistCount ?? collection.playlists.length} 个歌单`,
               ),
             ),
-            tablerIcon('chevron-right', { size: 14, color: '#a7a7a7' }),
+            tablerIcon('chevron-right', { size: 18, color: '#a7a7a7' }),
           )
         }),
       ),
@@ -709,7 +709,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                       justifyContent: 'center',
                     },
                   },
-                  tablerIcon('plus', { size: 16, color: '#ffffff' }),
+                  tablerIcon('plus', { size: 20, color: '#ffffff' }),
                 ),
                 h(
                   'div',
@@ -852,7 +852,7 @@ function CheckmarkCircle({ checked }: { checked: boolean }): ReactElement {
           flexShrink: 0,
         },
       },
-      tablerIcon('check', { size: 12, stroke: 2, color: '#000000' }),
+      tablerIcon('check', { size: 16, stroke: 2, color: '#000000' }),
     )
   }
   return h('div', {

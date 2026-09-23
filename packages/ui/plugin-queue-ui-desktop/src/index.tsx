@@ -343,7 +343,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
             e.currentTarget.style.transform = 'scale(1)'
           },
         },
-        tablerIcon('x', { size: 16 }),
+        tablerIcon('x', { size: 20 }),
       ),
     )
 

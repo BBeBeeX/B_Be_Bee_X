@@ -174,7 +174,7 @@ function QueueButton({
         e.currentTarget.style.transform = 'scale(1)'
       },
     },
-    tablerIcon('playlist', { size: 16 }),
+    tablerIcon('playlist', { size: 20 }),
   )
 }
 
@@ -200,18 +200,18 @@ const PLAY_MODE_INFO: Record<PlayMode, { label: string; next: string }> = {
 function renderPlayModeIcon(mode: PlayMode): ReactElement {
   switch (mode) {
     case 'shuffle':
-      return tablerIcon('shuffle', { size: 18 }) as ReactElement
+      return tablerIcon('shuffle', { size: 22 }) as ReactElement
     case 'single-loop':
-      return tablerIcon('repeat-once', { size: 18 }) as ReactElement
+      return tablerIcon('repeat-once', { size: 22 }) as ReactElement
     case 'list-loop':
-      return tablerIcon('repeat', { size: 18 }) as ReactElement
+      return tablerIcon('repeat', { size: 22 }) as ReactElement
     case 'sequence':
     default:
-      return tablerIcon('list-numbers', { size: 18 }) as ReactElement
+      return tablerIcon('list-numbers', { size: 22 }) as ReactElement
   }
 }
 
-function renderVolumeIcon(volume: number, muted: boolean, size = 18): ReactElement {
+function renderVolumeIcon(volume: number, muted: boolean, size = 22): ReactElement {
   if (muted) {
     return tablerIcon('volume-off', { size }) as ReactElement
   }
@@ -612,7 +612,7 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
               pointerEvents: 'none',
             },
           },
-          tablerIcon('maximize', { size: 18, color: '#FFFFFF' }),
+          tablerIcon('maximize', { size: 22, color: '#FFFFFF' }),
         ),
       ),
       h(
@@ -819,7 +819,7 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
           e.currentTarget.style.transform = 'scale(1)'
         },
       },
-      tablerIcon('chevron-down', { size: 22 }),
+      tablerIcon('chevron-down', { size: 26 }),
     ),
     (() => {
       const playerMain = h(

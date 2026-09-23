@@ -110,7 +110,7 @@ export function EditPlaylistModal({
               padding: 4,
             },
           },
-          tablerIcon('x', { size: 18 }),
+          tablerIcon('x', { size: 22 }),
         ),
       ),
       h(
@@ -143,7 +143,7 @@ export function EditPlaylistModal({
                 alt: '封面预览',
                 style: { width: '100%', height: '100%', objectFit: 'cover' },
               })
-            : tablerIcon('music', { size: 48, color: '#555555' }),
+            : tablerIcon('music', { size: 52, color: '#555555' }),
           h(
             'div',
             {
@@ -161,7 +161,7 @@ export function EditPlaylistModal({
                 transition: 'opacity 0.2s ease',
               },
             },
-            tablerIcon('camera', { size: 36, color: '#FFFFFF' }),
+            tablerIcon('camera', { size: 40, color: '#FFFFFF' }),
             h('span', { style: { fontSize: 13, fontWeight: 600 } }, '选择照片'),
           ),
           h('input', {

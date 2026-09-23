@@ -97,6 +97,14 @@ flowchart LR
 `chainInput` exists so that sources come and go without ever touching the effect chain, and
 effects are rebuilt without ever touching a playing source. The two lifetimes are decoupled.
 
+### Load strategies & resilient fallback
+
+`ctx.audio.load(src, { strategy })` implements two distinct loading pathways:
+- **`strategy: 'buffer'`**: Fetches binary bytes into an `ArrayBuffer` and decodes with `context.decodeAudioData()`. Creates an `AudioBufferSourceNode` connected to `chainInput`. Provides sample-accurate scheduling for prefetching and gapless track transitions.
+- **`strategy: 'stream'`**: Binds to a media element (`HTMLMediaElement`) via `context.createMediaElementSource()`. Keeps memory footprint constant regardless of track length and supports progressive buffering.
+- **Resilient Decode Fallback**: Chromium's built-in `decodeAudioData()` fails on certain formats (notably 24-bit Hi-Res FLAC files or FLAC files with ID3v2 metadata chunk headers) with `Unable to decode audio data`. `core-audio-webaudio` catches this error in `loadBuffered` and automatically falls back to `loadStreamed(src, opts)`. The media element utilizes Chromium's internal FFmpeg demuxer/decoder, allowing the file to play seamlessly through the Web Audio `chainInput` DSP pipeline.
+- **Desktop Scheme Rewriting**: Under Electron web security, renderer `fetch()` calls to `file://` URIs are rejected. The desktop core service automatically transforms `file://` URLs into the registered privileged protocol `bbebee-file://` before fetching or binding to media elements.
+
 ### Escape hatch
 
 If `react-native-audio-api` proves unworkable on a platform, `core-audio-rntp` can implement

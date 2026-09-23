@@ -145,7 +145,7 @@ export function NodeDetailsPanel({
             justifyContent: 'center',
           },
         },
-        tablerIcon('x', { size: 14 }),
+        tablerIcon('x', { size: 18 }),
       ),
     ),
 

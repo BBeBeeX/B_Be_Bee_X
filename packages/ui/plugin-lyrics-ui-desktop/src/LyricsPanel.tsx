@@ -231,7 +231,7 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
                 textAlign: 'center',
               },
             },
-            tablerIcon('alert', { size: 32, color: '#F87171' }),
+            tablerIcon('alert', { size: 36, color: '#F87171' }),
             h('span', { style: { fontSize: 15, color: '#F87171' } }, error || 'Failed to load lyrics'),
             h(
               'button',
@@ -276,7 +276,7 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
                 textAlign: 'center',
               },
             },
-            tablerIcon('music', { size: 36, style: { opacity: 0.6 } }),
+            tablerIcon('music', { size: 40, style: { opacity: 0.6 } }),
             h(
               'span',
               { style: { fontSize: 16 } },
@@ -411,7 +411,7 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
               e.currentTarget.style.transform = 'translateX(-50%) scale(1)'
             },
           },
-          tablerIcon('chevron-down', { size: 14 }),
+          tablerIcon('chevron-down', { size: 18 }),
           '回到当前歌词',
         )
       : null,

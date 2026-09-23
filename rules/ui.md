@@ -122,7 +122,12 @@ All visual icons across desktop UI components are standardized on **Tabler Icons
    - Modes: `shuffle`, `repeat`, `repeat-once`, `list-numbers`
    - Curation & actions: `heart`, `heart-filled`, `plus`, `minus`, `trash`, `x`, `pin`, `pencil`, `download`, `clock`, `history`, `playlist`, `list`, `arrows-sort`, `dots`, `folder`, `music`, `disc`
    - Direction & UI: `chevron-left`, `chevron-right`, `chevron-down`, `chevron-up`, `check`, `alert`, `settings`, `adjustments`
-4. **Accessible Rendering**: SVG icons render with `aria-hidden="true"` and `data-icon="{name}"`. Tests assert against `querySelector('[data-icon="..."]')` or `data-testid`, never `textContent`.
+4. **Standard Sizing & Scale**: Default icon size is `28px` (`DEFAULT_ICON_SIZE = 28` in `tabler.ts`). Tokens standard: `tokens.size.icon: 24`, `tokens.size.iconLarge: 32`. Sizing scale:
+   - `sm`: 16–20px (table row actions, column headers, metadata badges)
+   - `md`: 22–24px (sidebar nav, action bars, slider thumbs, standard buttons)
+   - `lg`: 28–32px (transport play controls, modal headers)
+   - `xl`: 36–52px (large hero play buttons, empty states)
+5. **Accessible Rendering**: SVG icons render with `aria-hidden="true"` and `data-icon="{name}"`. Tests assert against `querySelector('[data-icon="..."]')` or `data-testid`, never `textContent`.
 
 ### Artwork & Fallback
 - Artwork renders `blurhash` first, then falls back to `artworks.dominant_color`.

@@ -421,7 +421,7 @@ function renderMenuIcon(icon: React.ReactNode | string | undefined): React.React
     return h('span', { 'aria-hidden': true, style: { width: 18, height: 18, display: 'inline-block' } })
   }
 
-  const rendered = tablerIcon(icon, { size: 16 })
+  const rendered = tablerIcon(icon, { size: 20 })
 
   return h(
     'span',
@@ -523,7 +523,7 @@ function MenuRow({
               color: 'rgba(255, 255, 255, 0.7)',
             },
           },
-          tablerIcon('chevron-right', { size: 12 }),
+          tablerIcon('chevron-right', { size: 16 }),
         )
       : null,
   )

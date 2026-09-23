@@ -507,7 +507,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                         transition: 'transform 0.2s',
                       },
                     },
-                    tablerIcon('chevron-down', { size: 12 }),
+                    tablerIcon('chevron-down', { size: 16 }),
                   ),
                 ),
                 // Dropdown Menu Popover
@@ -618,7 +618,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                               padding: '2px 6px',
                             },
                           },
-                          tablerIcon('x', { size: 12 }),
+                          tablerIcon('x', { size: 16 }),
                         ),
                       )
                     }),

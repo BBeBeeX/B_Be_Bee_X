@@ -82,7 +82,7 @@ function PlaylistTrackTableRow({
           color: hovered ? '#FFFFFF' : '#b3b3b3',
         },
       },
-      hovered ? tablerIcon('play', { size: 14, color: '#FFFFFF' }) : String(index + 1),
+      hovered ? tablerIcon('play', { size: 18, color: '#FFFFFF' }) : String(index + 1),
     ),
     // Col 2: Artwork + Title + Artist
     h(
@@ -115,7 +115,7 @@ function PlaylistTrackTableRow({
         },
         track.artwork
           ? h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 })
-          : tablerIcon('music', { size: 18, color: '#7f7f7f' }),
+          : tablerIcon('music', { size: 22, color: '#7f7f7f' }),
       ),
       h(
         'div',
@@ -238,7 +238,7 @@ function PlaylistTrackTableRow({
                 transition: 'opacity 0.15s ease',
               },
             },
-            tablerIcon('x', { size: 16 }),
+            tablerIcon('x', { size: 20 }),
           )
         : null,
       h(
@@ -277,7 +277,7 @@ function PlaylistTrackTableRow({
             transition: 'opacity 0.15s ease',
           },
         },
-        tablerIcon('dots', { size: 16 }),
+        tablerIcon('dots', { size: 20 }),
       ),
     ),
   )
@@ -376,8 +376,8 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   const renderSortIndicator = (key: PlaylistSortKey) => {
     if (sortKey !== key) return null
     return sortOrder === 'asc'
-      ? tablerIcon('chevron-up', { size: 12, style: { marginLeft: 4 } })
-      : tablerIcon('chevron-down', { size: 12, style: { marginLeft: 4 } })
+      ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
+      : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
   }
 
   const sortLabelMap: Record<PlaylistSortKey, string> = {
@@ -393,50 +393,50 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
     {
       id: 'sort-custom',
       label: '自定义顺序',
-      icon: sortKey === 'custom' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortKey === 'custom' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortKey('custom'),
     },
     {
       id: 'sort-title',
       label: '标题',
-      icon: sortKey === 'title' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortKey === 'title' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortKey('title'),
     },
     {
       id: 'sort-artist',
       label: '艺人',
-      icon: sortKey === 'artist' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortKey === 'artist' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortKey('artist'),
     },
     {
       id: 'sort-album',
       label: '专辑',
-      icon: sortKey === 'album' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortKey === 'album' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortKey('album'),
     },
     {
       id: 'sort-dateAdded',
       label: '添加日期',
-      icon: sortKey === 'dateAdded' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortKey === 'dateAdded' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortKey('dateAdded'),
     },
     {
       id: 'sort-duration',
       label: '时长',
-      icon: sortKey === 'duration' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortKey === 'duration' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortKey('duration'),
       divider: true,
     },
     {
       id: 'order-asc',
       label: '升序',
-      icon: sortOrder === 'asc' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortOrder === 'asc' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortOrder('asc'),
     },
     {
       id: 'order-desc',
       label: '降序',
-      icon: sortOrder === 'desc' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortOrder === 'desc' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortOrder('desc'),
     },
   ]
@@ -581,7 +581,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
               paddingLeft: 2,
             },
           },
-          tablerIcon('play', { size: 24, color: '#000000' }),
+          tablerIcon('play', { size: 28, color: '#000000' }),
         ),
         h(
           'button',
@@ -590,7 +590,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             title: '下载',
             style: { background: 'none', border: 'none', color: '#b3b3b3', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
           },
-          tablerIcon('download', { size: 20 }),
+          tablerIcon('download', { size: 24 }),
         ),
         h(
           'button',
@@ -599,7 +599,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             title: '更多选项',
             style: { background: 'none', border: 'none', color: '#b3b3b3', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
           },
-          tablerIcon('dots', { size: 20 }),
+          tablerIcon('dots', { size: 24 }),
         ),
       ),
       h(
@@ -617,7 +617,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
               gap: 6,
             },
           },
-          tablerIcon('search', { size: 14, color: '#b3b3b3' }),
+          tablerIcon('search', { size: 18, color: '#b3b3b3' }),
           h('input', {
             type: 'text',
             placeholder: '在歌单中搜索',
@@ -656,7 +656,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             },
           },
           h('span', null, sortLabelMap[sortKey]),
-          tablerIcon('list', { size: 16 }),
+          tablerIcon('list', { size: 20 }),
         ),
       ),
     ),
@@ -694,7 +694,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             gap: 6,
           },
         },
-        tablerIcon('plus', { size: 14 }),
+        tablerIcon('plus', { size: 18 }),
         '添加',
       ),
       h(
@@ -716,7 +716,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             gap: 6,
           },
         },
-        tablerIcon('pencil', { size: 14 }),
+        tablerIcon('pencil', { size: 18 }),
         '名称和详情',
       ),
     ),
@@ -844,7 +844,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             gap: 4,
           },
         },
-        tablerIcon('clock', { size: 14 }),
+        tablerIcon('clock', { size: 18 }),
         renderSortIndicator('duration'),
       ),
     ),

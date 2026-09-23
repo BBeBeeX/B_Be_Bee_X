@@ -53,6 +53,6 @@ export function TrackLibraryActionButton({
         transition: 'opacity 0.15s ease',
       },
     },
-    inLibrary ? tablerIcon('heart-filled', { size: 16 }) : tablerIcon('plus', { size: 16 }),
+    inLibrary ? tablerIcon('heart-filled', { size: 20 }) : tablerIcon('plus', { size: 20 }),
   )
 }

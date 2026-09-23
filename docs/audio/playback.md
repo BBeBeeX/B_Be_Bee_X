@@ -92,6 +92,12 @@ Behaviours worth pinning down, because they are where players feel wrong:
 - **Shuffle** is a persisted **seed plus a permutation**, not a random pick each time. This makes
   the shuffled order stable across restarts, makes `previous()` meaningful, and lets the upcoming
   queue be displayed truthfully.
+  - **Selecting a track under Shuffle (`rotateShuffle`)**: When a user selects a specific track from
+    a list (e.g. clicking a song in an album or playlist while shuffle is active), the transport plays
+    that clicked track immediately. Rather than picking whatever song happened to land at that array
+    index, `QueueModel.rotateShuffle(firstId)` circularly rotates the permutation so the chosen track
+    is placed at index 0, followed by the remaining tracks in their pseudo-random order. If no track is
+    specified (e.g. clicking "Shuffle All"), playback starts with the head of the permutation.
 - **Repeat-one** does not re-resolve the stream; it reuses the loaded buffer.
 - **`stalled`** is distinct from `paused`. The UI shows a spinner, not a play button, and
   `ctx.mediaSession` keeps reporting `playing` so the lock screen does not flicker.
@@ -215,6 +221,18 @@ control arm of the regression test at
   audible double-fade — so the setting is a three-way choice: `gapless | crossfade | neither`.
 - **Prefetch** begins at `max(15s, crossfadeMs + 5s)` before the end, and is cancelled via
   `AbortSignal` if the queue changes.
+- **Decoder fallback on Hi-Res audio (`decodeAudioData` fallback)**:
+  When `strategy: 'buffer'` is selected for a local file, Web Audio's `decodeAudioData` is invoked.
+  Certain audio encodings (such as 24-bit Hi-Res FLAC or FLAC files with ID3v2 header prefixes)
+  are rejected by Chromium's native `decodeAudioData` with `Unable to decode audio data`.
+  `core-audio-webaudio` intercepts this decode failure and smoothly falls back to `loadStreamed`
+  via Chromium's internal FFmpeg media element decoder, keeping the `chainInput` DSP graph fully
+  intact without aborting playback.
+- **Desktop local audio scheme (`bbebee-file://`)**:
+  Standard Electron renderers disallow renderer `fetch()` and media loading from raw `file://` URLs
+  under Chromium web security rules (`bridge: refusing to fetch bbebee-file://`). The desktop main
+  process registers the custom privileged scheme `bbebee-file://` to securely stream and buffer
+  local music files directly from disk.
 
 ### Stream preferences
 

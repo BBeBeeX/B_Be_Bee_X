@@ -584,7 +584,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                         gap: 12,
                       },
                     },
-                    tablerIcon('music', { size: 48, style: { opacity: 0.6 } }),
+                    tablerIcon('music', { size: 52, style: { opacity: 0.6 } }),
                     h('div', { style: { fontSize: 15, fontWeight: 500 } }, '选择歌单或专辑开始播放'),
                   )
                 : h(

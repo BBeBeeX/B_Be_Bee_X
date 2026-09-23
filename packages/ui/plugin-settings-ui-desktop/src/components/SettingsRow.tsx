@@ -87,7 +87,7 @@ export function SettingsRow({
                 },
               },
               tablerIcon('chevron-right', {
-                size: 14,
+                size: 18,
                 style: {
                   transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
                   transition: 'transform 0.2s ease',

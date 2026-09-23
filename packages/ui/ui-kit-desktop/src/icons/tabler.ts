@@ -22,7 +22,7 @@ export function createSvgIcon(
   def: IconSvgDefinition,
   props: TablerIconProps = {},
 ): ReactElement {
-  const size = props.size ?? 24
+  const size = props.size ?? 28
   const stroke = props.stroke ?? DEFAULT_STROKE_WIDTH
   const color = props.color ?? 'currentColor'
 

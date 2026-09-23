@@ -117,7 +117,7 @@ export function DesktopLyricsWindow(): ReactElement {
             title: '上一首',
             onClick: () => sendAction({ type: 'prev-track' }),
           },
-          tablerIcon('skip-back', { size: 14 }),
+          tablerIcon('skip-back', { size: 18 }),
         ),
         // Play/Pause button
         h(
@@ -127,7 +127,7 @@ export function DesktopLyricsWindow(): ReactElement {
             title: playing ? '暂停' : '播放',
             onClick: () => sendAction({ type: 'toggle-play' }),
           },
-          tablerIcon(playing ? 'pause' : 'play', { size: 14 }),
+          tablerIcon(playing ? 'pause' : 'play', { size: 18 }),
         ),
         // Next button
         h(
@@ -137,7 +137,7 @@ export function DesktopLyricsWindow(): ReactElement {
             title: '下一首',
             onClick: () => sendAction({ type: 'next-track' }),
           },
-          tablerIcon('skip-forward', { size: 14 }),
+          tablerIcon('skip-forward', { size: 18 }),
         ),
         // Separator
         h('div', { style: separatorStyle }),
@@ -171,7 +171,7 @@ export function DesktopLyricsWindow(): ReactElement {
             title: locked ? '解除锁定' : '锁定歌词 (鼠标穿透)',
             onClick: () => sendAction({ type: 'toggle-lock' }),
           },
-          tablerIcon(locked ? 'lock' : 'lock-open', { size: 14 }),
+          tablerIcon(locked ? 'lock' : 'lock-open', { size: 18 }),
         ),
         // Close button
         h(
@@ -181,7 +181,7 @@ export function DesktopLyricsWindow(): ReactElement {
             title: '关闭桌面歌词',
             onClick: () => sendAction({ type: 'close' }),
           },
-          tablerIcon('x', { size: 14 }),
+          tablerIcon('x', { size: 18 }),
         ),
       ),
     // Current Line

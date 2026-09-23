@@ -95,7 +95,7 @@ export function Select<T extends string>({
     ),
     // Downward chevron icon
     tablerIcon('chevron-down', {
-      size: 12,
+      size: 16,
       color: disabled ? '#6A6A6A' : '#8E8E93',
       style: {
         position: 'absolute',

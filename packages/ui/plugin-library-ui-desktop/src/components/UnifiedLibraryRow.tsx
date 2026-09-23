@@ -85,7 +85,7 @@ export function UnifiedLibraryRow({
         },
       },
       isFav
-        ? tablerIcon('heart-filled', { size: 24, color: '#FFFFFF' })
+        ? tablerIcon('heart-filled', { size: 28, color: '#FFFFFF' })
         : isFolder || item.kind === 'collection'
           ? h(
               'div',
@@ -101,7 +101,7 @@ export function UnifiedLibraryRow({
                   color: '#CCCCCC',
                 },
               },
-              tablerIcon('folder', { size: 24, color: '#CCCCCC' }),
+              tablerIcon('folder', { size: 28, color: '#CCCCCC' }),
             )
           : item.artwork
             ? h(CachedArtwork, {
@@ -119,7 +119,7 @@ export function UnifiedLibraryRow({
                     : item.kind === 'album'
                       ? 'disc'
                       : 'music',
-                { size: 24, color: '#A0A0A0' },
+                { size: 28, color: '#A0A0A0' },
               ),
       isHovered
         ? h(
@@ -140,7 +140,7 @@ export function UnifiedLibraryRow({
                 cursor: 'pointer',
               },
             },
-            tablerIcon('play', { size: 18, color: '#FFFFFF' }),
+            tablerIcon('play', { size: 22, color: '#FFFFFF' }),
           )
         : null,
     ),
@@ -157,7 +157,7 @@ export function UnifiedLibraryRow({
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
         item.pinned
-          ? tablerIcon('pin', { size: 14, color: '#1DB954', style: { marginRight: 2 } })
+          ? tablerIcon('pin', { size: 18, color: '#1DB954', style: { marginRight: 2 } })
           : null,
         h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1 }, item.subtitle),
       ),
@@ -205,7 +205,7 @@ export function UnifiedLibraryRow({
                 transition: 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)',
               },
             },
-            tablerIcon('chevron-down', { size: 14 }),
+            tablerIcon('chevron-down', { size: 18 }),
           ),
         )
       : null,

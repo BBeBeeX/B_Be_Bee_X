@@ -42,6 +42,9 @@ Test conventions, common gotchas, and milestone status for BBeBee.
 | Test fails with `Element is not defined` | Missing `// @vitest-environment jsdom` comment at the top of test file |
 | `Error occurred in handler for 'BBeBee:call': EPERM ...` | Windows legacy junction points (`Documents\My Music`) have Deny Read ACLs. `FsNode.list` probes directory symlinks with `opendir` to skip unreadable ones; IPC bridge wraps calls in `BridgeEnvelope` to prevent Electron from logging unhandled rejections. |
 | UI test fails asserting icon text (e.g. `textContent === '♥'`) | Desktop icons render Tabler SVG elements with `data-icon="{name}"`. Query with `container.querySelector('[data-icon="heart"]')` or `data-testid` instead of asserting against text node content. |
+| `refusing to fetch bbebee-file://` or `Fetch API cannot load file://` | Electron Chromium web security restricts renderer `fetch()` on `file://` URLs. Desktop main registers privileged `bbebee-file://` scheme to stream and buffer local files. |
+| `Unable to decode audio data` (24-bit FLAC / ID3v2 tags) | Chromium's Web Audio `decodeAudioData` rejects 24-bit Hi-Res FLAC or ID3v2 chunks. `core-audio-webaudio` intercepts this and falls back to `loadStreamed` via Chromium's internal FFmpeg `<audio>` element. |
+| Clicking a track in Shuffle mode plays the wrong song | Shuffled order is a seeded permutation (`permute(ids, seed)`). Tapping a specific track must call `model.rotateShuffle(firstId)` to circularly rotate the permutation with the clicked track at index 0, rather than indexing into `order()[index]`. |
 
 ---
 

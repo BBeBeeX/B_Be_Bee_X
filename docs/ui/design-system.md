@@ -51,7 +51,7 @@ export const tokens = {
     lineHeight: { tight: 1.2, normal: 1.45, loose: 1.7 } as const,
   },
   duration: { fast: 120, normal: 200, slow: 320 } as const,
-  size: { touchTarget: 44, icon: 20, iconLarge: 28, row: 56, artworkThumb: 48 } as const,
+  size: { touchTarget: 44, icon: 24, iconLarge: 32, row: 56, artworkThumb: 48 } as const,
 } as const
 ```
 
@@ -209,11 +209,11 @@ All iconography across the desktop UI is standardized on **Tabler Icons SVG path
 - **Global Stroke Width**: Standardized to `stroke="1.25"` (`DEFAULT_STROKE_WIDTH = 1.25` in `packages/ui/ui-kit-desktop/src/icons/tabler.ts`).
   A 1.25 stroke provides crisp, high-precision geometry on dark backgrounds without visual heaviness or blur at small font scales.
 - **Zero Raw Unicode / Handwritten SVG**: UI components must never render raw Unicode glyphs or custom `<svg>` definitions directly. All icons are rendered via `tablerIcon(name, props)`, `TablerIcon`, or components accepting `IconName` (e.g. `IconButton`, `EmptyState`).
-- **Standard Sizes**:
-  - `sm`: 14–16px (table row actions, column headers, metadata badges)
-  - `md`: 18–20px (sidebar nav, action bars, slider thumbs, standard buttons)
-  - `lg`: 24–28px (transport play controls, modal headers)
-  - `xl`: 32–48px (large hero play buttons, empty states)
+- **Standard Sizes & Default Size**: Default icon size is `28px` (`DEFAULT_ICON_SIZE = 28` in `packages/ui/ui-kit-desktop/src/icons/tabler.ts`). Size scale:
+  - `sm`: 16–20px (table row actions, column headers, metadata badges)
+  - `md`: 22–24px (sidebar nav, action bars, slider thumbs, standard buttons, `tokens.size.icon = 24`)
+  - `lg`: 28–32px (transport play controls, modal headers, `tokens.size.iconLarge = 32`)
+  - `xl`: 36–52px (large hero play buttons, empty states)
 - **Centralized Registry**: `packages/ui/ui-kit-desktop/src/icons/registry.ts` provides aliases mapping intuitive names (`play`, `pause`, `previous`, `next`, `volume-mute`, `favorite`, `favorite-filled`, `filter`, `close`, `add`, `more`, `folder`, etc.) to official Tabler icon definitions.
 - **Accessible & Test-Friendly**: SVG elements emit `aria-hidden="true"` and `data-icon="{name}"`. Test suites query `[data-icon="..."]` or `data-testid` instead of asserting against text node values.
 

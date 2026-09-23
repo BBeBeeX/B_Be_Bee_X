@@ -72,7 +72,7 @@ function FavoriteTrackTableRow({
           color: hovered ? '#FFFFFF' : '#b3b3b3',
         },
       },
-      hovered ? tablerIcon('play', { size: 14, color: '#FFFFFF' }) : String(index + 1),
+      hovered ? tablerIcon('play', { size: 18, color: '#FFFFFF' }) : String(index + 1),
     ),
     // Col 2: Artwork + Title + Artist
     h(
@@ -205,7 +205,7 @@ function FavoriteTrackTableRow({
             transition: 'opacity 0.15s ease',
           },
         },
-        tablerIcon('dots', { size: 16 }),
+        tablerIcon('dots', { size: 20 }),
       ),
     ),
   )
@@ -281,8 +281,8 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   const renderSortIndicator = (key: FavoriteSortKey) => {
     if (sortKey !== key) return null
     return sortOrder === 'asc'
-      ? tablerIcon('chevron-up', { size: 12, style: { marginLeft: 4 } })
-      : tablerIcon('chevron-down', { size: 12, style: { marginLeft: 4 } })
+      ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
+      : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
   }
 
   const sortLabelMap: Record<FavoriteSortKey, string> = {
@@ -297,44 +297,44 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
     {
       id: 'sort-default',
       label: '默认顺序',
-      icon: sortKey === 'default' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortKey === 'default' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortKey('default'),
     },
     {
       id: 'sort-title',
       label: '标题',
-      icon: sortKey === 'title' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortKey === 'title' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortKey('title'),
     },
     {
       id: 'sort-artist',
       label: '艺人',
-      icon: sortKey === 'artist' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortKey === 'artist' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortKey('artist'),
     },
     {
       id: 'sort-album',
       label: '专辑',
-      icon: sortKey === 'album' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortKey === 'album' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortKey('album'),
     },
     {
       id: 'sort-duration',
       label: '时长',
-      icon: sortKey === 'duration' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortKey === 'duration' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortKey('duration'),
       divider: true,
     },
     {
       id: 'order-asc',
       label: '升序',
-      icon: sortOrder === 'asc' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortOrder === 'asc' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortOrder('asc'),
     },
     {
       id: 'order-desc',
       label: '降序',
-      icon: sortOrder === 'desc' ? tablerIcon('check', { size: 14 }) : undefined,
+      icon: sortOrder === 'desc' ? tablerIcon('check', { size: 18 }) : undefined,
       onSelect: () => setSortOrder('desc'),
     },
   ]
@@ -435,7 +435,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
               paddingLeft: 2,
             },
           },
-          tablerIcon('play', { size: 24, color: '#000000' }),
+          tablerIcon('play', { size: 28, color: '#000000' }),
         ),
         h(
           'button',
@@ -450,7 +450,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
               }
             },
           },
-          tablerIcon('shuffle', { size: 22 }),
+          tablerIcon('shuffle', { size: 26 }),
         ),
       ),
       h(
@@ -468,7 +468,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
               gap: 6,
             },
           },
-          tablerIcon('search', { size: 14, color: '#b3b3b3' }),
+          tablerIcon('search', { size: 18, color: '#b3b3b3' }),
           h('input', {
             type: 'text',
             placeholder: '在已点赞歌曲中搜索',
@@ -507,7 +507,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
             },
           },
           h('span', null, sortLabelMap[sortKey]),
-          tablerIcon('list', { size: 16 }),
+          tablerIcon('list', { size: 20 }),
         ),
       ),
     ),
@@ -617,7 +617,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
             gap: 4,
           },
         },
-        tablerIcon('clock', { size: 14 }),
+        tablerIcon('clock', { size: 18 }),
         renderSortIndicator('duration'),
       ),
     ),

@@ -126,7 +126,7 @@ function CollectionTrackTableRow({
             transition: 'opacity 0.15s ease',
           },
         },
-        tablerIcon('dots', { size: 16 }),
+        tablerIcon('dots', { size: 20 }),
       ),
     ),
   )
@@ -159,17 +159,17 @@ function MemberRow({ member, onOpen }: { member: CollectionMember; onOpen: () =>
       },
     },
     member.kind === 'album'
-      ? tablerIcon('disc', { size: 18 })
+      ? tablerIcon('disc', { size: 22 })
       : member.kind === 'playlist'
-        ? tablerIcon('playlist', { size: 18 })
-        : tablerIcon('dots', { size: 18 }),
+        ? tablerIcon('playlist', { size: 22 })
+        : tablerIcon('dots', { size: 22 }),
     h(
       'div',
       { style: { flex: 1, minWidth: 0 } },
       h(Text, { numberOfLines: 1 }, member.title),
       member.subtitle ? h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1 }, member.subtitle) : null,
     ),
-    openable ? tablerIcon('chevron-right', { size: 16, color: '#b3b3b3' }) : null,
+    openable ? tablerIcon('chevron-right', { size: 20, color: '#b3b3b3' }) : null,
   )
 }
 

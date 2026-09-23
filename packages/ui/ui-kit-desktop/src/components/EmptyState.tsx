@@ -32,7 +32,7 @@ export function EmptyState(props: EmptyStateProps) {
               marginBottom: tokens.space[1],
             },
           },
-          tablerIcon(props.icon, { size: 36 }),
+          tablerIcon(props.icon, { size: 40 }),
         )
       : null,
     h(Text, { variant: 'lg', children: props.title }),

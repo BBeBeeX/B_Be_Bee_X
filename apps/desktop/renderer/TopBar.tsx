@@ -89,7 +89,7 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
           e.currentTarget.style.color = '#A0A0AE'
         },
       },
-      tablerIcon('minus', { size: 14 }),
+      tablerIcon('minus', { size: 18 }),
     ),
     // Maximize / Restore Button (□ / ❐)
     h(
@@ -121,8 +121,8 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
         },
       },
       isMaximized
-        ? tablerIcon('copy', { size: 13 })
-        : tablerIcon('square', { size: 13 }),
+        ? tablerIcon('copy', { size: 17 })
+        : tablerIcon('square', { size: 17 }),
     ),
     // Close Button (✕)
     h(
@@ -153,7 +153,7 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
           e.currentTarget.style.color = '#A0A0AE'
         },
       },
-      tablerIcon('x', { size: 14 }),
+      tablerIcon('x', { size: 18 }),
     ),
   )
 }
@@ -331,7 +331,7 @@ export function TopBar({
               if (!menuOpen) e.currentTarget.style.backgroundColor = 'transparent'
             },
           },
-          tablerIcon('dots', { size: 16 }),
+          tablerIcon('dots', { size: 20 }),
         ),
         // Dropdown popup
         menuOpen
@@ -447,7 +447,7 @@ export function TopBar({
             }
           },
         },
-        tablerIcon('chevron-left', { size: 16 }),
+        tablerIcon('chevron-left', { size: 20 }),
       ),
       // Forward Button (→)
       h(
@@ -484,7 +484,7 @@ export function TopBar({
             }
           },
         },
-        tablerIcon('chevron-right', { size: 16 }),
+        tablerIcon('chevron-right', { size: 20 }),
       ),
     ),
     // Center Group: Home Button, Search Bar
@@ -532,7 +532,7 @@ export function TopBar({
             e.currentTarget.style.transform = 'scale(1)'
           },
         },
-        tablerIcon('home', { size: 18 }),
+        tablerIcon('home', { size: 22 }),
       ),
       // Search Bar Container with Dropdown
       h(
@@ -557,7 +557,7 @@ export function TopBar({
         // When not active: Search icon at far left
         !searchActive
           ? tablerIcon('search', {
-              size: 16,
+              size: 20,
               color: '#A0A0AE',
               style: { pointerEvents: 'none' },
             })
@@ -612,7 +612,7 @@ export function TopBar({
                   fontSize: 14,
                 },
               },
-              tablerIcon('x', { size: 14 }),
+              tablerIcon('x', { size: 18 }),
             )
           : null,
         // When active: Search icon jumps to the far right as a clickable action button
@@ -651,7 +651,7 @@ export function TopBar({
                   e.currentTarget.style.transform = 'scale(1)'
                 },
               },
-              tablerIcon('search', { size: 15 }),
+              tablerIcon('search', { size: 19 }),
             )
           : null,
         // 2×2 Matrix Dropdown Float
@@ -967,7 +967,7 @@ export function TopBar({
             e.currentTarget.style.boxShadow = 'none'
           },
         },
-        tablerIcon('user', { size: 16 }),
+        tablerIcon('user', { size: 20 }),
       ),
       // Contiguous Window Controls Group
       h(WindowControls, null),
