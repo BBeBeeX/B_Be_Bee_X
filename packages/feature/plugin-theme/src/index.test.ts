@@ -57,4 +57,31 @@ describe('ThemePlugin', () => {
     expect(ctx.theme.getThemes().some((t) => t.id === 'custom-neon')).toBe(false)
     expect(ctx.theme.getCurrentTheme().id).toBe('midnight-purple')
   })
+
+  it('supports removeTheme explicitly and prevents removing built-in themes', async () => {
+    const ctx = new Context()
+    await ctx.plugin(ThemePlugin)
+
+    expect(ctx.theme.removeTheme('midnight-purple')).toBe(false)
+    expect(ctx.theme.removeTheme('spotify')).toBe(false)
+
+    const customTheme: ThemeDefinition = {
+      id: 'custom-solar',
+      name: '暖阳金',
+      isDark: true,
+      tokens: {
+        ...midnightPurpleTheme.tokens,
+        brand: { ...midnightPurpleTheme.tokens.brand, primary: '#FFAA00' },
+      },
+    }
+
+    ctx.theme.registerTheme(customTheme)
+    await ctx.theme.setTheme('custom-solar')
+    expect(ctx.theme.getCurrentTheme().id).toBe('custom-solar')
+
+    const removed = ctx.theme.removeTheme('custom-solar')
+    expect(removed).toBe(true)
+    expect(ctx.theme.getThemes().some((t) => t.id === 'custom-solar')).toBe(false)
+    expect(ctx.theme.getCurrentTheme().id).toBe('midnight-purple')
+  })
 })

@@ -110,6 +110,13 @@ export interface ThemeService {
    */
   registerTheme(theme: ThemeDefinition): Disposable
 
+  /**
+   * Removes a custom theme by id. Built-in themes cannot be removed.
+   * If the removed theme is currently active, falls back to the default theme.
+   * Returns true if removed, false otherwise.
+   */
+  removeTheme(themeId: string): boolean
+
   /** Subscribes to theme changes. */
   onThemeChange(listener: (theme: ThemeDefinition) => void): Disposable
 }

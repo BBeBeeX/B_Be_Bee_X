@@ -650,7 +650,7 @@ export function Shell({ ctx }: { ctx: Context }) {
     BottomBar
       ? h(
           'footer',
-          { style: { background: 'var(--bg-app, #05060B)' } },
+          { style: { background: 'var(--player-bg, #000000)' } },
           h(BottomBar, {
             ctx,
             currentRoute: isQueueOpen ? 'queue.view' : currentId,

@@ -82,7 +82,7 @@ export function LocalAlbumCard({
                 width: 48,
                 height: 48,
                 borderRadius: '50%',
-                backgroundColor: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
+                background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
                 border: 'none',
                 cursor: 'pointer',
                 display: 'flex',

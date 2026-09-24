@@ -529,8 +529,8 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
         alignItems: 'center',
         gap: tokens.space[4],
         padding: `${tokens.space[2]}px ${tokens.space[4]}px`,
-        borderTop: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.08))',
-        background: 'var(--bg-primary, #080A12)',
+        borderTop: 'none',
+        background: 'var(--player-bg, #000000)',
       },
     },
     h(

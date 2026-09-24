@@ -898,7 +898,7 @@ export function TopBar({
                             onMouseLeave: (e: { currentTarget: HTMLElement }) => {
                               if (!disabled) {
                                 if (selected) {
-                                  e.currentTarget.style.backgroundColor = 'var(--button-primary-bg, var(--color-primary, #5F87FF))'
+                                  e.currentTarget.style.background = 'var(--button-primary-bg, var(--color-primary, #5F87FF))'
                                 } else {
                                   e.currentTarget.style.borderColor = 'var(--border-subtle, rgba(255, 255, 255, 0.12))'
                                   e.currentTarget.style.color = 'var(--text-secondary, #C5CAD8)'

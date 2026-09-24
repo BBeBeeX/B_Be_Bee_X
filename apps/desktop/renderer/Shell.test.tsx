@@ -275,8 +275,8 @@ describe('the desktop shell', () => {
     expect(main.style.background).toContain('--bg-primary')
     expect(main.style.borderRadius).toBe('8px')
 
-    // Bottom bar: theme app background
-    expect(footer.style.background).toContain('--bg-app')
+    // Bottom bar: theme player background
+    expect(footer.style.background).toContain('--player-bg')
 
     // Workspace container: 8px gap and 8px padding
     const workspace = nav.parentElement as HTMLElement

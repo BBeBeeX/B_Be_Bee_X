@@ -1,7 +1,9 @@
-import { createElement as h, useEffect, useState, type ReactElement } from 'react'
+import { createElement as h, useEffect, useRef, useState, type ReactElement } from 'react'
 import type { Context } from 'cordis'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { AppSettings, ThemeDefinition, ThemeService } from '@BBeBee/protocol'
+import { Sheet, tablerIcon } from '@BBeBee/ui-kit-desktop'
+import { midnightPurpleTheme } from '@BBeBee/ui-tokens'
 import { Select } from '../Select.js'
 import { SettingsRow } from '../SettingsRow.js'
 import { SettingsSection } from '../SettingsSection.js'
@@ -22,10 +24,15 @@ export function GeneralSection({
 
   const [themes, setThemes] = useState<readonly (ThemeDefinition | { id: string; name: string })[]>(() => {
     return themeService?.getThemes?.() ?? [
-      { id: 'midnight-purple', name: '蓝紫暗夜 (Midnight Purple)' },
+      { id: 'midnight-purple', name: 'Bee Music · Cyber Neon (蓝紫电光)' },
       { id: 'spotify', name: 'Spotify 经典绿 (Spotify Classic)' },
     ]
   })
+
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importJson, setImportJson] = useState('')
+  const [importError, setImportError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!ctx) return
@@ -51,6 +58,81 @@ export function GeneralSection({
     svc?.setTheme?.(themeId)
   }
 
+  const handleDeleteTheme = (themeId: string) => {
+    const svc = ctx ? serviceOf<ThemeService>(ctx, 'theme') : undefined
+    const success = svc?.removeTheme ? svc.removeTheme(themeId) : true
+    if (success) {
+      setThemes((prev) => prev.filter((t) => t.id !== themeId))
+      if (currentThemeId === themeId) {
+        handleThemeChange('midnight-purple')
+      }
+    }
+  }
+
+  const handleFileChange = (e: { target: { files: FileList | null; value: string } }) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const text = event.target?.result
+      if (typeof text === 'string') {
+        setImportJson(text)
+        setImportError(null)
+      }
+    }
+    reader.onerror = () => {
+      setImportError('读取文件失败')
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  const handleImportSubmit = () => {
+    try {
+      if (!importJson.trim()) {
+        throw new Error('请输入或选择色彩模式 JSON')
+      }
+      const parsed = JSON.parse(importJson) as Partial<ThemeDefinition>
+      if (!parsed || typeof parsed !== 'object') throw new Error('无效的 JSON 格式')
+      if (!parsed.id || typeof parsed.id !== 'string') throw new Error('缺少主题 id 字段')
+      if (!parsed.name || typeof parsed.name !== 'string') throw new Error('缺少主题 name 字段')
+
+      const newTheme: ThemeDefinition = {
+        id: parsed.id.trim(),
+        name: parsed.name.trim(),
+        description: parsed.description,
+        isDark: parsed.isDark ?? true,
+        tokens: {
+          ...midnightPurpleTheme.tokens,
+          ...(parsed.tokens || {}),
+          bg: { ...midnightPurpleTheme.tokens.bg, ...(parsed.tokens?.bg || {}) },
+          surface: { ...midnightPurpleTheme.tokens.surface, ...(parsed.tokens?.surface || {}) },
+          brand: { ...midnightPurpleTheme.tokens.brand, ...(parsed.tokens?.brand || {}) },
+          gradient: { ...midnightPurpleTheme.tokens.gradient, ...(parsed.tokens?.gradient || {}) },
+          text: { ...midnightPurpleTheme.tokens.text, ...(parsed.tokens?.text || {}) },
+          border: { ...midnightPurpleTheme.tokens.border, ...(parsed.tokens?.border || {}) },
+          semantic: { ...midnightPurpleTheme.tokens.semantic, ...(parsed.tokens?.semantic || {}) },
+          music: { ...midnightPurpleTheme.tokens.music, ...(parsed.tokens?.music || {}) },
+          glow: { ...midnightPurpleTheme.tokens.glow, ...(parsed.tokens?.glow || {}) },
+        },
+        cssVariables: parsed.cssVariables,
+      }
+
+      const svc = ctx ? serviceOf<ThemeService>(ctx, 'theme') : undefined
+      if (svc?.registerTheme) {
+        svc.registerTheme(newTheme)
+      } else {
+        setThemes((prev) => [...prev, newTheme])
+      }
+      handleThemeChange(newTheme.id)
+      setShowImportModal(false)
+      setImportJson('')
+      setImportError(null)
+    } catch (err: unknown) {
+      setImportError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return h(
     'div',
     { id: 'section-general' },
@@ -58,11 +140,11 @@ export function GeneralSection({
       SettingsSection,
       {
         title: '主题与色彩管理',
-        description: '切换播放器主题风格，支持深色蓝紫与经典绿色，或在运行时动态注册更多色彩',
+        description: '切换播放器主题风格，支持深色蓝紫与经典绿色，或动态导入/管理更多色彩方案',
       },
       h(SettingsRow, {
         title: '界面主题',
-        description: '选择全应用色彩方案',
+        description: '选择全应用色彩方案，或导入自定义主题',
         borderBottom: false,
         action: h(
           'div',
@@ -71,6 +153,7 @@ export function GeneralSection({
             const isSelected = currentThemeId === t.id
             const isMidnight = t.id === 'midnight-purple'
             const isSpotify = t.id === 'spotify'
+            const isCustom = !isMidnight && !isSpotify
             const swatchBg = isMidnight
               ? 'linear-gradient(135deg, #5F87FF 0%, #7C86FF 50%, #A99CFF 100%)'
               : isSpotify
@@ -116,8 +199,69 @@ export function GeneralSection({
                 },
               }),
               t.name,
+              isCustom
+                ? h(
+                    'span',
+                    {
+                      role: 'button',
+                      tabIndex: 0,
+                      title: `删除 ${t.name}`,
+                      'aria-label': `删除 ${t.name}`,
+                      'data-testid': `delete-theme-${t.id}`,
+                      onClick: (e: { stopPropagation(): void }) => {
+                        e.stopPropagation()
+                        handleDeleteTheme(t.id)
+                      },
+                      onKeyDown: (e: { key: string; stopPropagation(): void }) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.stopPropagation()
+                          handleDeleteTheme(t.id)
+                        }
+                      },
+                      style: {
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginLeft: 4,
+                        padding: 2,
+                        borderRadius: 4,
+                        color: 'var(--text-tertiary, #8B95B0)',
+                        cursor: 'pointer',
+                        opacity: 0.8,
+                      },
+                    },
+                    tablerIcon('trash', { size: 14 }),
+                  )
+                : null,
             )
           }),
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-testid': 'import-theme-button',
+              onClick: () => {
+                setImportJson('')
+                setImportError(null)
+                setShowImportModal(true)
+              },
+              style: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 14px',
+                borderRadius: 20,
+                border: '1px dashed var(--border-default, rgba(255, 255, 255, 0.25))',
+                background: 'rgba(255, 255, 255, 0.04)',
+                color: 'var(--text-secondary, #C5CAD8)',
+                cursor: 'pointer',
+                fontSize: 13,
+                transition: 'all 0.15s ease',
+              },
+            },
+            tablerIcon('plus', { size: 14 }),
+            '导入色彩模式',
+          ),
         ),
       }),
     ),
@@ -158,6 +302,146 @@ export function GeneralSection({
           onChange: onCloseToTrayChange,
         }),
       }),
+    ),
+    h(
+      Sheet,
+      {
+        open: showImportModal,
+        onClose: () => {
+          setShowImportModal(false)
+          setImportError(null)
+        },
+        title: '导入色彩模式',
+        accessibilityLabel: '导入色彩模式',
+      },
+      h(
+        'div',
+        { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+        h(
+          'p',
+          { style: { margin: 0, fontSize: 13, color: 'var(--text-secondary, #C5CAD8)', lineHeight: 1.5 } },
+          '支持从本地选择包含主题配置的 JSON 文件，或直接在下方输入/粘贴 JSON 配置。导入成功后将自动应用。',
+        ),
+        h(
+          'div',
+          { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+          h('input', {
+            ref: fileInputRef,
+            type: 'file',
+            accept: '.json,application/json',
+            'data-testid': 'import-theme-file-input',
+            style: { display: 'none' },
+            onChange: handleFileChange,
+          }),
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-testid': 'choose-theme-file-btn',
+              onClick: () => fileInputRef.current?.click(),
+              style: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 14px',
+                borderRadius: 6,
+                border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.15))',
+                background: 'rgba(255, 255, 255, 0.06)',
+                color: 'var(--text-primary, #FFFFFF)',
+                cursor: 'pointer',
+                fontSize: 13,
+              },
+            },
+            tablerIcon('upload', { size: 14 }),
+            '选择本地 JSON 文件',
+          ),
+        ),
+        h('textarea', {
+          value: importJson,
+          onChange: (e: { target: { value: string } }) => {
+            setImportJson(e.target.value)
+            setImportError(null)
+          },
+          placeholder:
+            '在此粘贴色彩模式 JSON 配置，例如：\n{\n  "id": "my-neon",\n  "name": "霓虹幻彩",\n  "tokens": {\n    "brand": { "primary": "#00FFCC" }\n  }\n}',
+          rows: 8,
+          'data-testid': 'import-theme-textarea',
+          style: {
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: 10,
+            borderRadius: 8,
+            background: 'rgba(0, 0, 0, 0.35)',
+            border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.12))',
+            color: 'var(--text-primary, #F5F7FF)',
+            fontFamily: 'monospace',
+            fontSize: 12,
+            lineHeight: 1.4,
+            resize: 'vertical',
+          },
+        }),
+        importError
+          ? h(
+              'div',
+              {
+                'data-testid': 'import-theme-error',
+                style: {
+                  color: 'var(--color-error, #F43F5E)',
+                  fontSize: 12,
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  background: 'rgba(244, 63, 94, 0.1)',
+                  border: '1px solid rgba(244, 63, 94, 0.25)',
+                },
+              },
+              importError,
+            )
+          : null,
+        h(
+          'div',
+          { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 } },
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-testid': 'cancel-import-theme',
+              onClick: () => {
+                setShowImportModal(false)
+                setImportError(null)
+              },
+              style: {
+                padding: '6px 14px',
+                borderRadius: 6,
+                border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.12))',
+                background: 'transparent',
+                color: 'var(--text-secondary, #C5CAD8)',
+                cursor: 'pointer',
+                fontSize: 13,
+              },
+            },
+            '取消',
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-testid': 'submit-import-theme',
+              onClick: handleImportSubmit,
+              style: {
+                padding: '6px 16px',
+                borderRadius: 6,
+                border: 'none',
+                background: 'var(--gradient-brand, linear-gradient(135deg, #5F87FF 0%, #A99CFF 100%))',
+                color: '#FFFFFF',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontSize: 13,
+              },
+            },
+            '导入并启用',
+          ),
+        ),
+      ),
     ),
   )
 }

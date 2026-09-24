@@ -7,8 +7,9 @@ import { describe, expect, it, afterEach, vi } from 'vitest'
 import { createElement as h } from 'react'
 import { fireEvent, render, cleanup, waitFor } from '@testing-library/react'
 import { Context, Service } from 'cordis'
-import type { AppSettings, SettingsService, CacheClass, CacheStats } from '@BBeBee/protocol'
+import type { AppSettings, SettingsService, CacheClass, CacheStats, ThemeDefinition } from '@BBeBee/protocol'
 import { DEFAULT_APP_SETTINGS } from '@BBeBee/protocol'
+import { midnightPurpleTheme, spotifyTheme } from '@BBeBee/ui-tokens'
 import { SettingsScreen } from './SettingsScreen.js'
 import { DebugScreen } from './DebugScreen.js'
 import { LogsScreen } from './LogsScreen.js'
@@ -176,12 +177,51 @@ async function harness(initialSettings: Partial<AppSettings> = {}) {
     getParams = () => ({})
   }
 
+  class ThemeStub extends Service {
+    public themes: ThemeDefinition[] = [midnightPurpleTheme, spotifyTheme]
+    public currentTheme: ThemeDefinition = this.themes[0]!
+    private appCtx: Context
+
+    constructor(ctx: Context) {
+      super(ctx, 'theme')
+      this.appCtx = ctx
+    }
+
+    getThemes = () => this.themes
+    getCurrentTheme = () => this.currentTheme
+    setTheme = async (id: string) => {
+      calls.push(`theme:setTheme:${id}`)
+      const found = this.themes.find((t) => t.id === id)
+      if (found) {
+        this.currentTheme = found
+        this.appCtx.emit('theme/changed', found)
+      }
+    }
+    registerTheme = (theme: ThemeDefinition) => {
+      calls.push(`theme:register:${theme.id}`)
+      this.themes.push(theme)
+      this.appCtx.emit('theme/registry-changed', this.themes)
+      return () => this.removeTheme(theme.id)
+    }
+    removeTheme = (id: string) => {
+      calls.push(`theme:remove:${id}`)
+      if (id === 'midnight-purple' || id === 'spotify') return false
+      this.themes = this.themes.filter((t) => t.id !== id)
+      if (this.currentTheme.id === id) {
+        this.currentTheme = this.themes[0]!
+      }
+      this.appCtx.emit('theme/registry-changed', this.themes)
+      return true
+    }
+  }
+
   const root = new Context()
   await root.plugin(SettingsStub)
   await root.plugin(CacheStub)
   await root.plugin(UiStub)
   await root.plugin(DspStub)
   await root.plugin(LogBufferStub)
+  await root.plugin(ThemeStub)
 
   let scoped: Context | undefined
   root.inject(['ui', 'settings'], (s) => void (scoped = s))
@@ -454,7 +494,7 @@ describe('SettingsScreen', () => {
     const { getByText, getByTestId } = render(h(SettingsScreen, { ctx }))
 
     expect(getByText('主题与色彩管理')).toBeTruthy()
-    expect(getByText('蓝紫暗夜 (Midnight Purple)')).toBeTruthy()
+    expect(getByText('Bee Music · Cyber Neon (蓝紫电光)')).toBeTruthy()
     expect(getByText('Spotify 经典绿 (Spotify Classic)')).toBeTruthy()
 
     const spotifyBtn = getByTestId('theme-option-spotify')
@@ -463,6 +503,53 @@ describe('SettingsScreen', () => {
 
     await waitFor(() => {
       expect(calls.some((c) => c.includes('"themeId":"spotify"'))).toBe(true)
+    })
+  })
+
+  it('imports and deletes custom color theme in GeneralSection', async () => {
+    const { ctx, calls } = await harness()
+    const { getByText, getAllByText, getByTestId, queryByTestId } = render(h(SettingsScreen, { ctx }))
+
+    // Open import modal
+    const importBtn = getByTestId('import-theme-button')
+    fireEvent.click(importBtn)
+    expect(getAllByText('导入色彩模式').length).toBeGreaterThanOrEqual(2)
+
+    // Try submitting empty JSON -> error
+    const submitBtn = getByTestId('submit-import-theme')
+    fireEvent.click(submitBtn)
+    expect(getByTestId('import-theme-error').textContent).toContain('请输入或选择色彩模式 JSON')
+
+    // Fill valid JSON
+    const textarea = getByTestId('import-theme-textarea')
+    fireEvent.change(textarea, {
+      target: {
+        value: JSON.stringify({
+          id: 'neon-cyber',
+          name: '霓虹赛博 (Neon Cyber)',
+          tokens: { brand: { primary: '#00FFFF' } },
+        }),
+      },
+    })
+
+    // Submit import
+    fireEvent.click(submitBtn)
+
+    await waitFor(() => {
+      expect(getByTestId('theme-option-neon-cyber')).toBeTruthy()
+      expect(getByText('霓虹赛博 (Neon Cyber)')).toBeTruthy()
+      expect(calls.some((c) => c.includes('theme:register:neon-cyber'))).toBe(true)
+      expect(calls.some((c) => c.includes('"themeId":"neon-cyber"'))).toBe(true)
+    })
+
+    // Now delete the custom theme
+    const deleteBtn = getByTestId('delete-theme-neon-cyber')
+    expect(deleteBtn).toBeTruthy()
+    fireEvent.click(deleteBtn)
+
+    await waitFor(() => {
+      expect(queryByTestId('theme-option-neon-cyber')).toBeNull()
+      expect(calls.some((c) => c.includes('theme:remove:neon-cyber'))).toBe(true)
     })
   })
 

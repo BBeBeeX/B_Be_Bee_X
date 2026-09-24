@@ -15,6 +15,7 @@ import {
 } from '@BBeBee/ui-tokens'
 
 const STORE_KEY = 'theme_preference'
+const CUSTOM_THEMES_STORE_KEY = 'theme_custom_themes'
 
 export class ThemePlugin extends Service implements ThemeService {
   static override readonly name = 'theme'
@@ -37,8 +38,19 @@ export class ThemePlugin extends Service implements ThemeService {
   async [Service.init]() {
     this.ownCtx.logger?.info?.('plugin-theme: initialized')
 
-    // 1. Try to restore persisted theme preference via store if available
+    // 1. Try to restore custom themes and active theme preference via store if available
     this.ownCtx.inject(['store'], (scoped) => {
+      void scoped.store.get<ThemeDefinition[]>(CUSTOM_THEMES_STORE_KEY).then((customList) => {
+        if (Array.isArray(customList)) {
+          for (const customTheme of customList) {
+            if (customTheme && customTheme.id && !(customTheme.id in builtInThemes)) {
+              this.registry.set(customTheme.id, customTheme)
+            }
+          }
+          this.ownCtx.emit('theme/registry-changed', this.getThemes())
+        }
+      }).catch(() => {})
+
       void scoped.store.get<string>(STORE_KEY).then((storedId) => {
         if (storedId && this.registry.has(storedId)) {
           this.activeThemeId = storedId
@@ -110,16 +122,45 @@ export class ThemePlugin extends Service implements ThemeService {
   registerTheme(theme: ThemeDefinition): Disposable {
     this.registry.set(theme.id, theme)
     this.ownCtx.logger.info(`theme: registered runtime theme "${theme.id}" (${theme.name})`)
+    if (!(theme.id in builtInThemes)) {
+      void this.persistCustomThemes()
+    }
     this.ownCtx.emit('theme/registry-changed', this.getThemes())
 
     return () => {
-      if (this.registry.delete(theme.id)) {
-        this.ownCtx.logger.info(`theme: unregistered runtime theme "${theme.id}"`)
-        if (this.activeThemeId === theme.id) {
-          void this.setTheme(defaultTheme.id)
-        }
-        this.ownCtx.emit('theme/registry-changed', this.getThemes())
+      this.removeTheme(theme.id)
+    }
+  }
+
+  removeTheme(themeId: string): boolean {
+    if (themeId in builtInThemes) {
+      this.ownCtx.logger.warn(`theme: cannot remove built-in theme "${themeId}"`)
+      return false
+    }
+
+    if (this.registry.delete(themeId)) {
+      this.ownCtx.logger.info(`theme: removed theme "${themeId}"`)
+      if (this.activeThemeId === themeId) {
+        void this.setTheme(defaultTheme.id)
       }
+      void this.persistCustomThemes()
+      this.ownCtx.emit('theme/registry-changed', this.getThemes())
+      return true
+    }
+
+    return false
+  }
+
+  private async persistCustomThemes(): Promise<void> {
+    try {
+      const store = (this.ownCtx as unknown as { reflect?: { get(k: string, req: boolean): unknown } })
+        .reflect?.get('store', false) as { set(k: string, v: unknown): Promise<void> } | undefined
+      if (store) {
+        const customThemes = this.getThemes().filter((t) => !(t.id in builtInThemes))
+        await store.set(CUSTOM_THEMES_STORE_KEY, customThemes)
+      }
+    } catch (err) {
+      this.ownCtx.logger?.warn?.(`theme: failed to persist custom themes: ${err}`)
     }
   }
 
