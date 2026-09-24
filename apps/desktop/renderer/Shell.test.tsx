@@ -64,7 +64,7 @@ class SleepTimerStub extends Service {
   state: SleepTimerState = { active: false }
   cancel = vi.fn(() => {
     this.state = { active: false }
-    this.ctx.emit('sleep-timer/changed')
+    this.ctx.emit('sleep-timer/changed', this.state)
   })
   constructor(ctx: Context) {
     super(ctx, 'sleepTimer')
@@ -681,7 +681,7 @@ describe('the desktop shell', () => {
         durationMs: 15 * 60 * 1000,
         targetEpochMs: Date.now() + 15 * 60 * 1000,
       }
-      ctx.emit('sleep-timer/changed')
+      ctx.emit('sleep-timer/changed', sleepTimerRef.state)
     })
 
     const indicator = container.querySelector('[data-testid="topbar-sleep-timer-indicator"]') as HTMLButtonElement

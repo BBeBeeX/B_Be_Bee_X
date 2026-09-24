@@ -18,11 +18,12 @@ export class WasapiAudioHandle implements AudioSourceHandle {
   constructor(
     context: BaseAudioContext,
     buffer: AudioBuffer,
+    durationMs?: number,
   ) {
     this.context = context
     this.buffer = buffer
     this.node = context.createGain()
-    this.durationMs = Math.round(buffer.duration * 1000)
+    this.durationMs = durationMs ?? Math.round(buffer.duration * 1000)
   }
 
   get positionMs(): number {

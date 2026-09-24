@@ -473,6 +473,7 @@ export class AudioWebAudio extends Service implements AudioService {
     const bytes = await fetchBytes(targetSrc, { headers: opts.headers, signal: opts.signal })
     opts.signal?.throwIfAborted()
 
+    const decode = (this.context as BaseAudioContext & { decodeAudioData: DecodeFn }).decodeAudioData
     let buffer: AudioBuffer
     try {
       buffer = await decode.call(this.context, bytes)

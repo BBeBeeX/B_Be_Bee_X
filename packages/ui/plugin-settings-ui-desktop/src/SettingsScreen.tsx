@@ -341,6 +341,8 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
           protocol: proxy.protocol,
           host: proxy.host,
           port: proxy.port,
+          username: proxy.username,
+          password: proxy.password,
         })
         setProxyTestResult(res)
       } else {
@@ -541,7 +543,19 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
         thirdPartySources,
         proxyTesting,
         proxyTestResult,
-        onUpdateProxy: (p) => void update({ proxy: p }),
+        onUpdateProxy: (p) => {
+          void update({ proxy: p })
+          const bridge = (
+            window as unknown as {
+              BBeBee?: {
+                proxy?: {
+                  set: (c: unknown) => Promise<void>
+                }
+              }
+            }
+          ).BBeBee
+          void bridge?.proxy?.set?.(p)
+        },
         onTestProxy: handleTestProxy,
       }),
 

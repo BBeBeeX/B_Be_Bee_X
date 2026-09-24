@@ -144,6 +144,12 @@ export class FfmpegDecoder {
     let codec: string | undefined = undefined
     let format: string | undefined = undefined
 
+    // Input #0, flac, from '...'
+    const formatMatch = /Input #0,\s*([^,]+),/i.exec(stderr)
+    if (formatMatch) {
+      format = formatMatch[1]?.trim()
+    }
+
     // Duration: 00:03:45.67
     const durationMatch = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(stderr)
     if (durationMatch) {

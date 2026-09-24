@@ -173,16 +173,13 @@ export class AudioWasapi extends Service implements AudioService {
                 )
 
           for (let c = 0; c < decoded.channels; c++) {
-            if (typeof buffer.copyToChannel === 'function') {
-              buffer.copyToChannel(decoded.pcm[c]!, c)
-            } else if (typeof buffer.getChannelData === 'function') {
-              const channelData = buffer.getChannelData(c)
-              channelData.set(decoded.pcm[c]!)
+            if (typeof buffer.getChannelData === 'function') {
+              buffer.getChannelData(c).set(decoded.pcm[c]!)
             }
           }
 
           opts.onBuffered?.(buffer.duration)
-          return new WasapiAudioHandle(this.context, buffer)
+          return new WasapiAudioHandle(this.context, buffer, decoded.durationMs)
         }
       } catch {
         // Fall back to standard byte fetch and decode

@@ -643,36 +643,128 @@ function registerHandlers(): void {
     return shell.openPath(localPath)
   })
 
-  ipcMain.handle('proxy:test', async (_event, config: { protocol: string; host: string; port: number }) => {
-    const start = Date.now()
-    const testUrl = 'https://www.google.com/generate_204'
-    try {
-      const proxyRule = `${config.protocol}://${config.host}:${config.port}`
-      const testSession = session.fromPartition('proxy-test-' + Date.now())
-      await testSession.setProxy({ proxyRules: proxyRule })
-      const res = await net.fetch(testUrl, { method: 'HEAD', signal: AbortSignal.timeout(5000) })
-      return { ok: res.status < 500, latencyMs: Date.now() - start }
-    } catch {
-      try {
-        const fallbackUrl = 'https://www.google.com'
-        const testSession = session.fromPartition('proxy-test-' + Date.now())
-        await testSession.setProxy({ proxyRules: `${config.protocol}://${config.host}:${config.port}` })
-        const res = await net.fetch(fallbackUrl, { method: 'HEAD', signal: AbortSignal.timeout(5000) })
-        return { ok: res.status < 500, latencyMs: Date.now() - start }
-      } catch (err2: unknown) {
-        return { ok: false, error: err2 instanceof Error ? err2.message : String(err2) }
+  function buildProxyRules(config: { protocol?: string; host?: string; port?: number }): string {
+    if (!config?.host || !config?.port) return ''
+    const proto = (config.protocol || 'http').toLowerCase()
+    const host = config.host.trim()
+    const port = config.port
+    if (proto === 'socks5' || proto === 'socks') {
+      return `socks5://${host}:${port}`
+    }
+    if (proto === 'socks4') {
+      return `socks4://${host}:${port}`
+    }
+    // For HTTP/HTTPS, explicitly forward both http and https via the proxy
+    return `http=${host}:${port};https=${host}:${port}`
+  }
+
+  let activeProxyAuth: { username?: string; password?: string } | null = null
+  let testProxyAuth: { username?: string; password?: string } | null = null
+
+  app.on('login', (event, _webContents, _details, authInfo, callback) => {
+    if (authInfo.isProxy) {
+      if (testProxyAuth && (testProxyAuth.username || testProxyAuth.password)) {
+        event.preventDefault()
+        callback(testProxyAuth.username || '', testProxyAuth.password || '')
+        return
+      }
+      if (activeProxyAuth && (activeProxyAuth.username || activeProxyAuth.password)) {
+        event.preventDefault()
+        callback(activeProxyAuth.username || '', activeProxyAuth.password || '')
+        return
       }
     }
   })
 
-  ipcMain.handle('proxy:set', async (_event, config: { enabled: boolean; protocol?: string; host?: string; port?: number }) => {
-    if (!config?.enabled || !config.host || !config.port) {
-      await session.defaultSession.setProxy({ mode: 'direct' })
-      return
-    }
-    const proxyRule = `${config.protocol || 'http'}://${config.host}:${config.port}`
-    await session.defaultSession.setProxy({ proxyRules: proxyRule })
-  })
+  ipcMain.handle(
+    'proxy:test',
+    async (
+      _event,
+      config: {
+        protocol: string
+        host: string
+        port: number
+        username?: string
+        password?: string
+      },
+    ) => {
+      const start = Date.now()
+      if (!config?.host || !config?.port) {
+        return { ok: false, error: '代理服务器地址或端口不能为空' }
+      }
+
+      const proxyRule = buildProxyRules(config)
+      const partition = 'proxy-test-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
+      const testSession = session.fromPartition(partition)
+
+      if (config.username || config.password) {
+        testProxyAuth = { username: config.username, password: config.password }
+      }
+
+      try {
+        await testSession.setProxy({ proxyRules: proxyRule })
+
+        const testUrls = [
+          'https://www.google.com/generate_204',
+          'https://www.gstatic.com/generate_204',
+          'https://www.google.com',
+        ]
+
+        let lastError: unknown = null
+        for (const url of testUrls) {
+          try {
+            // Note: Must use testSession.fetch, NOT net.fetch!
+            // net.fetch issues requests from session.defaultSession, bypassing testSession proxy.
+            const res = await testSession.fetch(url, {
+              method: 'GET',
+              signal: AbortSignal.timeout(10000),
+            })
+            if (res.status < 500) {
+              return { ok: true, latencyMs: Date.now() - start }
+            }
+          } catch (err) {
+            lastError = err
+          }
+        }
+
+        return {
+          ok: false,
+          error: lastError instanceof Error ? lastError.message : String(lastError || '连接超时'),
+        }
+      } catch (err: unknown) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      } finally {
+        testProxyAuth = null
+        await testSession.closeAllConnections().catch(() => {})
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'proxy:set',
+    async (
+      _event,
+      config: {
+        enabled: boolean
+        protocol?: string
+        host?: string
+        port?: number
+        username?: string
+        password?: string
+      },
+    ) => {
+      if (!config?.enabled || !config.host || !config.port) {
+        activeProxyAuth = null
+        await session.defaultSession.setProxy({ mode: 'direct' })
+        await session.defaultSession.closeAllConnections().catch(() => {})
+        return
+      }
+      activeProxyAuth = { username: config.username, password: config.password }
+      const proxyRule = buildProxyRules(config)
+      await session.defaultSession.setProxy({ proxyRules: proxyRule })
+      await session.defaultSession.closeAllConnections().catch(() => {})
+    },
+  )
 
   ipcMain.handle(
     'desktop-lyrics:set-visible',

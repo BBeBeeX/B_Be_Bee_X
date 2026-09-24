@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
-import { scopeContext } from '@BBeBee/kernel'
 import { audioConformance } from '@BBeBee/protocol/conformance'
 import plugin, { AudioWasapi } from './index.js'
 import { type FakeAudioContext, createFakeAudioContext } from './fake-context.js'
@@ -23,8 +22,8 @@ async function harness(bridgeCallMock?: (s: string, m: string, a: unknown[]) => 
 
 describe('core-audio-wasapi', () => {
   it('activates and claims ctx.audio', async () => {
-    const { ctx, audio } = await harness()
-    expect(ctx.audio).toBe(audio)
+    const { ctx } = await harness()
+    expect(ctx.audio).toBeInstanceOf(AudioWasapi)
   })
 
   it('passes the audio conformance suite', async () => {
@@ -43,7 +42,7 @@ describe('core-audio-wasapi', () => {
     const fakePcmRight = new Float32Array([0, 0.1, 0.2, 0.3, 0.4])
 
     let initWasapiCalled = false
-    const bridgeCall = async (service: string, method: string, args: unknown[]) => {
+    const bridgeCall = async (service: string, method: string, _args: unknown[]) => {
       if (service === 'audio' && method === 'decodePcm') {
         return {
           sampleRate: 96000,

@@ -68,6 +68,10 @@ declare global {
         setCloseToTray?(enabled: boolean): Promise<void>
         toggle?(): Promise<void>
       }
+      proxy?: {
+        test(config: unknown): Promise<{ ok: boolean; latencyMs?: number; error?: string }>
+        set(config: unknown): Promise<void>
+      }
       desktopLyrics?: {
         setVisible(visible: boolean, pos?: { x: number; y: number }): Promise<void>
         setPosition?(pos: { x: number; y: number }): Promise<void>
@@ -317,16 +321,26 @@ export async function boot(): Promise<App> {
    */
   await app.ready([...BOOTSTRAP_SERVICES], { timeoutMs: 15_000 })
 
-  // Sync closeToTray preference to Electron main process
+  // Sync closeToTray and proxy preference to Electron main process
   app.ctx.inject(['settings'], (scoped) => {
     void scoped.settings.get().then((s) => {
-      if (s && s.closeToTray !== undefined) {
-        void window.BBeBee?.window?.setCloseToTray?.(s.closeToTray)
+      if (s) {
+        if (s.closeToTray !== undefined) {
+          void window.BBeBee?.window?.setCloseToTray?.(s.closeToTray)
+        }
+        if (s.proxy) {
+          void window.BBeBee?.proxy?.set?.(s.proxy)
+        }
       }
     })
     scoped.on('settings/changed', (s) => {
-      if (s && s.closeToTray !== undefined) {
-        void window.BBeBee?.window?.setCloseToTray?.(s.closeToTray)
+      if (s) {
+        if (s.closeToTray !== undefined) {
+          void window.BBeBee?.window?.setCloseToTray?.(s.closeToTray)
+        }
+        if (s.proxy) {
+          void window.BBeBee?.proxy?.set?.(s.proxy)
+        }
       }
     })
   })
