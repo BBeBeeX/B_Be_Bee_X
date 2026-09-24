@@ -438,11 +438,10 @@ export interface CodecService {
 }
 ```
 
-Electron：`main` 中用 `music-metadata` 读标签；用 Web Audio 的 `decodeAudioData` 解码 PCM。
+Electron：`main` 中用 `music-metadata` 读标签；用 Web Audio 的 `decodeAudioData` 解码 PCM，并通过主进程 FFmpeg 解码桥（`audio.decodePcm`）完整支持 ALAC、24/32-bit Hi-Res 以及发烧级无损格式（APE、WavPack、DSF、DFF）。
 Expo：用 `react-native-audio-api` 的 `AudioDecoder` 解码 PCM，外加一个原生标签读取器。
 
-> ⚠️ `supportedFormats()` 随平台与操作系统版本而异。FLAC、ALAC、Opus 与 DSD
-> 的覆盖并不一致。扫描器会记录下它无法解码的内容，而不是悄悄跳过，让用户能看明白某个文件为何没有导入。
+> ⚠️ `supportedFormats()` 随平台与操作系统版本而异。桌面端现已通过集成 FFmpeg 覆盖了 ALAC、APE、WavPack、DSF、DFF、WMA 等无损格式及常规格式。扫描器会记录下它无法解码的内容，而不是悄悄跳过，让用户能看明白某个文件为何没有导入。
 
 ---
 

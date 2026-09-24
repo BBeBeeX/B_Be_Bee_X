@@ -106,6 +106,15 @@ effects are rebuilt without ever touching a playing source. The two lifetimes ar
 - **WASAPI Exclusive Output & Web Audio DSP (`@BBeBee/core-audio-wasapi`)**:
   Implements Paradigm 1 for high-fidelity bit-perfect output on Windows desktop:
   Web Audio continues to run the full `ctx.dsp` effect chain (10-band EQ, preamp, dynamic compressor) and UI visualizer (`AnalyserNode`). An `AudioWorklet` processor (`WasapiSinkProcessor`) taps into the master output and transfers 32-bit Float PCM to a lock-free `SharedRingBuffer`, bypassing Chromium's default `context.destination` and OS shared mixer. The Electron main process WASAPI client then drives the audio endpoint in exclusive mode (`AUDCLNT_SHAREMODE_EXCLUSIVE`) at the hardware's native sample rate and bit depth.
+- **Audio Output Engine Selection in Settings (`audioOutputEngine`)**:
+  Users can toggle between `'webaudio'` (System Default WebAudio) and `'wasapi'` (WASAPI Exclusive Hi-Res) in Settings under the *Audio Output Engine & Devices* section.
+  - **Shared WebAudio Mode**: Output routes through the operating system mixer, allowing concurrent audio playback from browsers, games, and system alerts.
+  - **WASAPI Exclusive Hi-Res Mode**: Locks the audio hardware endpoint exclusively. A prominent warning banner alerts the user:
+    > ⚠️ **Hardware Exclusivity Notice**: When WASAPI Exclusive mode is enabled, the player takes exclusive control over the sound card hardware. During playback, other applications (browsers, video players, system sounds) may be temporarily muted or fail to produce audio. Users may switch back to default WebAudio at any time.
+- **Audiophile Lossless Formats & Local Scanner Integration**:
+  Desktop integrates `ffmpeg` to decode formats beyond Chromium's built-in capability:
+  - **ALAC & `.m4a`**: Previously, ALAC tracks inside `.m4a` containers were rejected during scanning (`unsupported codec: ALAC is not supported on this platform`). With the FFmpeg decode bridge and `alac` added to `supportedFormats()`, ALAC files are fully imported and decoded.
+  - **Lossless Formats**: `.ape` (Monkey's Audio), `.wv` (WavPack), `.dsf`/`.dff` (DSD Audio), and `.m4b` (Audiobooks) are now included in local scanning (`DEFAULT_EXTENSIONS`), tag sniffing (`core-codec-node`), and PCM decoding.
 - **Desktop Scheme Rewriting**: Under Electron web security, renderer `fetch()` calls to `file://` URIs are rejected. The desktop core service automatically transforms `file://` URLs into the registered privileged protocol `bbebee-file://` before fetching or binding to media elements.
 
 ### Escape hatch

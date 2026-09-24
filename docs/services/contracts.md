@@ -484,12 +484,10 @@ export interface CodecService {
 }
 ```
 
-Electron: `music-metadata` in `main` for tags; Web Audio `decodeAudioData` for PCM.
+Electron: `music-metadata` in `main` for tags; Web Audio `decodeAudioData` for PCM, with an FFmpeg decode bridge (`audio.decodePcm`) for ALAC, 24/32-bit Hi-Res, and audiophile formats (APE, WavPack, DSF, DFF).
 Expo: `react-native-audio-api`'s `AudioDecoder` for PCM plus a native tag reader.
 
-> ⚠️ `supportedFormats()` differs by platform and OS version. FLAC, ALAC, Opus, and DSD coverage
-> is not uniform. The scanner records what it could not decode instead of silently skipping, so the
-> user can see why a file did not import.
+> ⚠️ `supportedFormats()` differs by platform and OS version. On desktop, FFmpeg integration covers ALAC, APE, WavPack, DSF, DFF, WMA alongside standard formats. The scanner records what it could not decode instead of silently skipping, so the user can see why a file did not import.
 
 ---
 

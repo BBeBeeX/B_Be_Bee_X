@@ -27,13 +27,14 @@ Declared in `packages/protocol/src/services/` and augmented onto `Context`:
 | `ctx.secrets` | Keychain and hardware-backed credential storage | `core-secrets-node`, `core-secrets-expo` |
 | `ctx.http` | Outbound HTTP with cookie jar and isolation | `core-http-node`, `core-http-rn` |
 | `ctx.ws` | WebSocket client with capability host checks | `core-http-node` / native |
-| `ctx.audio` | Web Audio API graph (`AudioContext`, DSP nodes) | `core-audio-webaudio` (shared via `react-native-audio-api`) |
-| `ctx.codec` | Audio metadata, tag reading, PCM decoding | `core-codec-node`, `core-codec-rn` |
+| `ctx.audio` | Web Audio API graph (`AudioContext`, DSP nodes) | `core-audio-webaudio` (shared), `core-audio-wasapi` (desktop WASAPI exclusive + Web Audio DSP) |
+| `ctx.codec` | Audio metadata, tag reading, PCM decoding | `core-codec-node` (desktop FFmpeg bridge + music-metadata), `core-codec-rn` |
 | `ctx.device` | Network status, battery, media keys, platform info | `core-device-electron`, `core-device-expo` |
 | `ctx.mediaSession`| OS lock-screen now playing surface and controls | `core-media-session-electron`, `core-media-session-rn` |
 | `ctx.background` | Background audio tasks, wake locks, suspend hooks | `core-background-electron`, `core-background-expo` |
 | `ctx.js` | Sandboxed QuickJS evaluator for untrusted scripts | `core-js-quickjs-node` (desktop) |
 | `ctx.shell` | Open external URL, directory pickers | Desktop bridge, mobile intent |
+| `ctx.settings` | User app settings (theme, audio engine, shortcuts) | `plugin-settings` (feature service with store persistence) |
 | `ctx.theme` | Theme registry, token injection, dynamic theme management | `plugin-theme` (feature service with DOM/store sync) |
 | `ctx.logger` | Scoped diagnostic logging via Cordis | Core service / Cordis native |
 
