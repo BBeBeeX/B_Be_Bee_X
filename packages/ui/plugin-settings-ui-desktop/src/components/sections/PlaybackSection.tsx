@@ -112,7 +112,7 @@ export function PlaybackSection({
         description:
           currentEngine === 'wasapi'
             ? '当前：WASAPI 硬件独占 Hi-Res（点对点无损输出，绕过系统混音器，保留 Web Audio DSP）'
-            : '当前：系统默认 WebAudio（通过操作系统共享混音器输出，多软件混音兼容）',
+            : '当前：WebAudio（通过操作系统共享混音器输出，多软件混音兼容）',
         action: h(
           'div',
           { style: { display: 'flex', gap: 6 } },
@@ -128,7 +128,7 @@ export function PlaybackSection({
             onPress: () => {
               void update({ audioOutputEngine: 'webaudio' })
             },
-            children: '系统默认 WebAudio',
+            children: 'WebAudio',
           }),
         ),
       }),
