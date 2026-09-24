@@ -70,8 +70,8 @@ export function Select<T extends string>({
           }
         },
         onFocus: (e: { currentTarget: HTMLElement }) => {
-          e.currentTarget.style.borderColor = 'var(--primary, #6366F1)'
-          e.currentTarget.style.boxShadow = 'var(--glow-xs, 0 0 0 2px rgba(99, 102, 241, 0.3))'
+          e.currentTarget.style.borderColor = 'var(--input-focus-border, var(--color-primary, #5F87FF))'
+          e.currentTarget.style.boxShadow = 'var(--glow-blue-xs, 0 0 0 2px rgba(95, 135, 255, 0.3))'
         },
         onBlur: (e: { currentTarget: HTMLElement }) => {
           e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'

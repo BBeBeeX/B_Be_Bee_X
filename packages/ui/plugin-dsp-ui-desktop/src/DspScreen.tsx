@@ -63,8 +63,8 @@ function Switch({
         width: 44,
         height: 24,
         borderRadius: 12,
-        background: checked ? 'var(--primary, #6366F1)' : 'rgba(255, 255, 255, 0.2)',
-        boxShadow: checked ? 'var(--glow-xs, 0 0 10px rgba(99, 102, 241, 0.35))' : 'none',
+        background: checked ? 'var(--color-primary, #5F87FF)' : 'rgba(255, 255, 255, 0.2)',
+        boxShadow: checked ? 'var(--glow-brand-sm, 0 0 10px rgba(95, 135, 255, 0.35))' : 'none',
         border: 'none',
         padding: 2,
         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -419,12 +419,12 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
               {
                 style: {
                   fontSize: 12,
-                  color: isEqEnabled ? 'var(--primary, #6366F1)' : 'var(--text-tertiary, #8E8E93)',
+                  color: isEqEnabled ? 'var(--color-primary, #5F87FF)' : 'var(--text-tertiary, #8E8E93)',
                   fontWeight: 500,
-                  background: isEqEnabled ? 'var(--surface-selected, rgba(99, 102, 241, 0.12))' : 'rgba(255, 255, 255, 0.06)',
+                  background: isEqEnabled ? 'var(--surface-selected, rgba(117, 152, 255, 0.12))' : 'rgba(255, 255, 255, 0.06)',
                   padding: '2px 8px',
                   borderRadius: 10,
-                  border: isEqEnabled ? '1px solid var(--primary, #6366F1)' : '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
+                  border: isEqEnabled ? '1px solid var(--color-primary, #5F87FF)' : '1px solid var(--border-subtle, rgba(145, 176, 255, 0.10))',
                 },
               },
               isEqEnabled ? '已启用' : '未启用（仍可调整参数与保存）',
@@ -552,8 +552,8 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                             width: '100%',
                             textAlign: 'left',
                             padding: '8px 16px',
-                            background: isSelected ? 'var(--surface-selected, rgba(99, 102, 241, 0.15))' : 'transparent',
-                            color: isSelected ? 'var(--primary, #6366F1)' : 'var(--text-primary, #ffffff)',
+                            background: isSelected ? 'var(--surface-selected, rgba(117, 152, 255, 0.12))' : 'transparent',
+                            color: isSelected ? 'var(--color-primary, #5F87FF)' : 'var(--text-primary, #FFFFFF)',
                             border: 'none',
                             cursor: 'pointer',
                             fontSize: 13,
@@ -598,7 +598,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                           'span',
                           {
                             style: {
-                              color: isSelected ? 'var(--primary, #6366F1)' : 'var(--text-primary, #ffffff)',
+                              color: isSelected ? 'var(--color-primary, #5F87FF)' : 'var(--text-primary, #ffffff)',
                               fontSize: 13,
                               fontWeight: isSelected ? 600 : 400,
                             },
@@ -671,8 +671,8 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                         if (e.key === 'Escape') setIsSavingPreset(false)
                       },
                       style: {
-                        background: 'var(--surface-2, #111522)',
-                        border: '1px solid var(--primary, #6366F1)',
+                        background: 'var(--surface-2, #0B1124)',
+                        border: '1px solid var(--color-primary, #5F87FF)',
                         borderRadius: 4,
                         color: 'var(--text-primary, #ffffff)',
                         padding: '4px 8px',
@@ -687,15 +687,15 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                         type: 'button',
                         onClick: handleSaveCustomPreset,
                         style: {
-                          background: 'var(--primary, #6366F1)',
+                          background: 'var(--button-primary-bg, var(--gradient-brand))',
                           border: 'none',
-                          color: 'var(--text-primary, #ffffff)',
+                          color: 'var(--button-primary-text, #ffffff)',
                           fontWeight: 600,
                           fontSize: 12,
                           borderRadius: 4,
                           padding: '4px 10px',
                           cursor: 'pointer',
-                          boxShadow: 'var(--glow-xs, 0 0 8px rgba(99, 102, 241, 0.3))',
+                          boxShadow: 'var(--glow-brand-sm, 0 0 12px rgba(117, 152, 255, 0.18))',
                         },
                       },
                       '保存',
@@ -754,8 +754,8 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                 h(
                   'linearGradient',
                   { id: 'eqGradient', x1: '0', y1: '0', x2: '0', y2: '1' },
-                  h('stop', { offset: '0%', stopColor: 'var(--primary, #6366F1)', stopOpacity: '0.45' }),
-                  h('stop', { offset: '100%', stopColor: 'var(--accent, #A855F7)', stopOpacity: '0.0' }),
+                  h('stop', { offset: '0%', stopColor: 'var(--electric-blue-500, #5F87FF)', stopOpacity: '0.45' }),
+                  h('stop', { offset: '100%', stopColor: 'var(--lavender-500, #A99CFF)', stopOpacity: '0.0' }),
                 ),
               ),
 
@@ -820,7 +820,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
               h('path', {
                 d: curveD,
                 fill: 'none',
-                stroke: 'var(--primary, #6366F1)',
+                stroke: 'var(--color-waveform, #6F9BFF)',
                 opacity: isEqEnabled ? 1 : 0.85,
                 strokeWidth: 3,
                 strokeLinecap: 'round',
@@ -867,7 +867,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                       transition: 'r 0.1s ease',
                       filter:
                         isDragging || isHovered
-                          ? 'drop-shadow(0 0 6px var(--primary, #6366F1))'
+                          ? 'drop-shadow(0 0 8px var(--electric-blue-500, #5F87FF))'
                           : 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))',
                     },
                     onPointerDown: (e) => handlePointerDown(idx, e),
@@ -881,7 +881,7 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                         x: pt.x,
                         y: Math.max(16, pt.y - 12),
                         textAnchor: 'middle',
-                        fill: 'var(--primary, #6366F1)',
+                        fill: 'var(--color-primary, #5F87FF)',
                         fontSize: 12,
                         fontWeight: 700,
                         pointerEvents: 'none',

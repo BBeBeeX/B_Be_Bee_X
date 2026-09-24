@@ -1,12 +1,11 @@
 import { createElement as h, useRef, type ReactNode } from 'react'
 import { tokens } from '@BBeBee/ui-tokens'
 import type { SheetProps } from '@BBeBee/ui-core'
-import { c, common } from '../theme.js'
+import { common } from '../theme.js'
 
 export function Sheet(props: SheetProps) {
   const ref = useRef<HTMLDivElement>(null)
   if (!props.open) return null
-  const p = c()
   return h(
     'div',
     {

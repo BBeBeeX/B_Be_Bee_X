@@ -29,66 +29,192 @@
       :root {
         color-scheme: dark;
 
-        /* Background */
-        --bg-app: #05060B;
-        --bg-primary: #080A12;
-        --bg-secondary: #0B0E18;
-        --bg-tertiary: #0F1322;
+        /* ── Layer 1: Primitives (Bee Character Visual Spectrum) ── */
+        --black-950: #05060A;
+        --black-900: #080A10;
+        --black-850: #0B0E16;
+        --black-800: #0F121C;
 
-        /* Surface */
-        --surface-1: #0D101A;
-        --surface-2: #111522;
-        --surface-3: #151927;
-        --surface-hover: #191E30;
-        --surface-active: #1D2140;
-        --surface-selected: rgba(99,102,241,0.12);
+        --white-100: #FFFFFF;
+        --white-90: rgba(255, 255, 255, 0.90);
+        --white-75: rgba(255, 255, 255, 0.75);
+        --white-55: rgba(255, 255, 255, 0.55);
+        --white-35: rgba(255, 255, 255, 0.35);
 
-        /* Brand */
-        --primary: #6366F1;
-        --primary-active: #5865F2;
-        --primary-hover: #818CF8;
+        --ice-blue-100: #EAF1FF;
+        --ice-blue-200: #D4E2FF;
+        --ice-blue-300: #B7CCFF;
+        --ice-blue-400: #91B0FF;
+        --ice-blue-500: #7598FF;
 
-        --accent: #A855F7;
-        --accent-hover: #C084FC;
+        --electric-blue-400: #6F9BFF;
+        --electric-blue-500: #5F87FF;
+        --electric-blue-600: #4F73FF;
 
-        /* Gradient */
-        --gradient-brand: linear-gradient(135deg, #5865F2 0%, #6D5DF6 45%, #A855F7 100%);
-        --gradient-progress: linear-gradient(90deg, #4F6BFF 0%, #6366F1 50%, #A855F7 100%);
+        --periwinkle-400: #8996FF;
+        --periwinkle-500: #7C86FF;
+        --periwinkle-600: #6E75F5;
 
-        /* Text */
-        --text-primary: #F5F7FF;
-        --text-secondary: #C5CAD8;
-        --text-tertiary: #8B92A6;
-        --text-muted: #626A80;
-        --text-disabled: #41485B;
-        --text-placeholder: #596176;
+        --lavender-300: #D4CCFF;
+        --lavender-400: #BEB4FF;
+        --lavender-500: #A99CFF;
+        --lavender-600: #9687FF;
+
+        --violet-400: #B28CFF;
+        --violet-500: #9B73F5;
+        --violet-600: #875EE8;
+
+        --deep-blue-950: #080D1A;
+        --deep-blue-900: #0B1124;
+        --deep-blue-800: #101831;
+        --deep-blue-700: #162142;
+
+        /* ── Layer 2: Semantic Colors ── */
+        --color-bg-app: var(--black-950);
+        --color-bg-primary: var(--black-900);
+        --color-bg-secondary: var(--deep-blue-950);
+        --color-bg-tertiary: var(--deep-blue-900);
+
+        --color-surface: var(--deep-blue-900);
+        --color-surface-hover: var(--deep-blue-800);
+        --color-surface-active: var(--deep-blue-700);
+        --color-surface-selected: rgba(117, 152, 255, 0.12);
+
+        --color-text-primary: var(--white-100);
+        --color-text-secondary: var(--white-75);
+        --color-text-tertiary: var(--white-55);
+        --color-text-muted: var(--white-35);
+        --color-text-disabled: rgba(255, 255, 255, 0.22);
+
+        --color-primary: var(--electric-blue-500);
+        --color-primary-hover: var(--ice-blue-400);
+        --color-primary-active: var(--periwinkle-500);
+
+        --color-accent: var(--lavender-500);
+        --color-accent-hover: var(--lavender-400);
+
+        --color-playing: var(--lavender-400);
+        --color-lyrics: var(--ice-blue-300);
+        --color-lyrics-active: var(--lavender-300);
+        --color-lyrics-highlight: var(--ice-blue-200);
+        --color-waveform: var(--electric-blue-400);
+        --color-waveform-active: var(--lavender-400);
+
+        /* Base Variables (mapped) */
+        --bg-app: var(--color-bg-app);
+        --bg-primary: var(--color-bg-primary);
+        --bg-secondary: var(--color-bg-secondary);
+        --bg-tertiary: var(--color-bg-tertiary);
+
+        --surface-1: var(--deep-blue-950);
+        --surface-2: var(--deep-blue-900);
+        --surface-3: var(--deep-blue-800);
+        --surface-hover: var(--color-surface-hover);
+        --surface-active: var(--color-surface-active);
+        --surface-selected: var(--color-surface-selected);
+
+        --primary: var(--color-primary);
+        --primary-active: var(--color-primary-active);
+        --primary-hover: var(--color-primary-hover);
+
+        --accent: var(--color-accent);
+        --accent-hover: var(--color-accent-hover);
+
+        /* Gradients (Continuous Spectral Flow) */
+        --gradient-brand: linear-gradient(135deg, #5F87FF 0%, #7C86FF 45%, #A99CFF 75%, #B28CFF 100%);
+        --gradient-blue-violet: linear-gradient(90deg, #5F87FF 0%, #7C86FF 50%, #A99CFF 100%);
+        --gradient-ice: linear-gradient(135deg, #91B0FF 0%, #BEB4FF 50%, #D4CCFF 100%);
+        --gradient-progress: linear-gradient(90deg, #4F73FF 0%, #6F9BFF 35%, #8996FF 65%, #B28CFF 100%);
+        --gradient-spectrum: linear-gradient(90deg, #4F73FF, #6F9BFF, #8996FF, #A99CFF, #B28CFF);
+
+        /* Text Variables */
+        --text-primary: var(--color-text-primary);
+        --text-secondary: var(--color-text-secondary);
+        --text-tertiary: var(--color-text-tertiary);
+        --text-muted: var(--color-text-muted);
+        --text-disabled: var(--color-text-disabled);
+        --text-placeholder: var(--white-35);
 
         /* Border */
-        --border-subtle: rgba(148,163,184,0.08);
-        --border-default: rgba(148,163,184,0.14);
-        --border-hover: rgba(99,102,241,0.30);
-        --border-active: rgba(99,102,241,0.55);
-        --border-focus: rgba(139,92,246,0.65);
+        --border-subtle: rgba(145, 176, 255, 0.08);
+        --border-default: rgba(145, 176, 255, 0.14);
+        --border-hover: rgba(145, 176, 255, 0.25);
+        --border-active: rgba(117, 152, 255, 0.40);
+        --border-focus: rgba(117, 152, 255, 0.50);
 
-        /* Semantic */
+        /* Semantic Status */
         --success: #22C55E;
         --warning: #F59E0B;
         --error: #EF4444;
-        --info: #38BDF8;
+        --info: #7598FF;
 
-        /* Music */
-        --music-playing: #7C6CFF;
-        --music-lyrics: #B7AFFF;
-        --music-waveform: #6575FF;
-        --music-waveform-active: #9B8CFF;
+        /* Music Tokens */
+        --music-playing: var(--color-playing);
+        --music-lyrics: var(--color-lyrics);
+        --music-waveform: var(--color-waveform);
+        --music-waveform-active: var(--color-waveform-active);
 
-        /* Glow */
-        --glow-xs: 0 0 6px rgba(99,102,241,0.10);
-        --glow-sm: 0 0 10px rgba(99,102,241,0.16);
-        --glow-md: 0 0 18px rgba(99,102,241,0.20);
-        --glow-lg: 0 0 28px rgba(99,102,241,0.16);
+        /* Glow System (Wing / Headphone / Note luminescence) */
+        --glow-blue-xs: 0 0 6px rgba(117, 152, 255, 0.25);
+        --glow-blue-sm: 0 0 12px rgba(117, 152, 255, 0.20);
+        --glow-blue-md: 0 0 20px rgba(117, 152, 255, 0.28);
 
+        --glow-purple-xs: 0 0 6px rgba(169, 156, 255, 0.25);
+        --glow-purple-sm: 0 0 12px rgba(169, 156, 255, 0.20);
+        --glow-purple-md: 0 0 20px rgba(169, 156, 255, 0.28);
+
+        --glow-brand-sm: 0 0 12px rgba(117, 152, 255, 0.18), 0 0 24px rgba(169, 156, 255, 0.10);
+        --glow-brand-md: 0 0 18px rgba(117, 152, 255, 0.22), 0 0 36px rgba(169, 156, 255, 0.14);
+
+        --glow-xs: var(--glow-blue-xs);
+        --glow-sm: var(--glow-brand-sm);
+        --glow-md: var(--glow-brand-md);
+        --glow-lg: 0 0 28px rgba(117, 152, 255, 0.25), 0 0 48px rgba(169, 156, 255, 0.16);
+
+        /* ── Layer 3: Component Tokens ── */
+        --button-primary-bg: var(--gradient-brand);
+        --button-primary-hover: var(--gradient-ice);
+        --button-primary-text: #FFFFFF;
+
+        --player-bg: var(--black-900);
+        --player-progress: var(--gradient-progress);
+        --player-playing: var(--lavender-400);
+
+        --slider-track: rgba(255, 255, 255, 0.10);
         --slider-track-bg: var(--gradient-progress);
+        --slider-active: var(--gradient-progress);
+        --slider-thumb: var(--ice-blue-300);
+
+        --waveform-idle: rgba(117, 152, 255, 0.35);
+        --waveform-active: var(--gradient-spectrum);
+
+        --lyrics-normal: rgba(255, 255, 255, 0.45);
+        --lyrics-active: var(--lavender-300);
+        --lyrics-highlight: var(--ice-blue-200);
+
+        --sidebar-bg: var(--black-900);
+        --sidebar-item-hover: rgba(117, 152, 255, 0.07);
+        --sidebar-item-active: rgba(169, 156, 255, 0.12);
+        --sidebar-active-indicator: var(--gradient-brand);
+
+        --card-bg: var(--deep-blue-950);
+        --card-hover: var(--deep-blue-900);
+        --card-border: rgba(145, 176, 255, 0.10);
+        --card-border-hover: rgba(145, 176, 255, 0.25);
+
+        --tab-text: var(--white-55);
+        --tab-text-active: var(--ice-blue-200);
+        --tab-indicator: var(--gradient-brand);
+
+        --input-bg: rgba(255, 255, 255, 0.035);
+        --input-border: rgba(145, 176, 255, 0.10);
+        --input-focus-border: rgba(117, 152, 255, 0.50);
+        --input-focus-glow: var(--glow-blue-sm);
+
+        --playing-item-bg: rgba(117, 152, 255, 0.06);
+        --playing-item-border: rgba(169, 156, 255, 0.18);
+        --playing-item-indicator: var(--gradient-brand);
+        --playing-item-glow: var(--glow-brand-sm);
       }
       body { margin: 0; background: var(--bg-app); color: var(--text-primary); font-family: system-ui, sans-serif; }
       html.is-mini-player-window,
@@ -102,7 +228,7 @@
       /* Global sleek, transparent, ultra-narrow scrollbars */
       * {
         scrollbar-width: thin;
-        scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+        scrollbar-color: rgba(145, 176, 255, 0.2) transparent;
       }
       *::-webkit-scrollbar {
         width: 4px;
@@ -115,15 +241,15 @@
         background: transparent;
       }
       *::-webkit-scrollbar-thumb {
-        background: rgba(148, 163, 184, 0.2);
+        background: rgba(145, 176, 255, 0.2);
         border-radius: 4px;
         transition: background-color 0.15s ease;
       }
       *::-webkit-scrollbar-thumb:hover {
-        background: rgba(99, 102, 241, 0.45);
+        background: rgba(117, 152, 255, 0.45);
       }
       *::-webkit-scrollbar-thumb:active {
-        background: rgba(99, 102, 241, 0.7);
+        background: rgba(117, 152, 255, 0.70);
       }
 
       /* Global progress & slider bars: thin track, thumb only visible on hover */

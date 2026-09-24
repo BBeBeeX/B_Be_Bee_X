@@ -2,14 +2,13 @@ import { createElement as h } from 'react'
 import type React from 'react'
 import { tokens } from '@BBeBee/ui-tokens'
 import type { TrackRowProps } from '@BBeBee/ui-core'
-import { c, common, useHover } from '../theme.js'
+import { common, useHover } from '../theme.js'
 import { Artwork } from './Artwork.js'
 import { Text } from './Text.js'
 import { IconButton } from './Button.js'
 
 export function TrackRow(props: TrackRowProps) {
   const { active = false, showArtwork = true, showAlbum = false } = props
-  const p = c()
   const [hovered, hoverProps] = useHover()
   const artists = props.track.artists?.map((a) => a.name).join(', ')
 
@@ -41,9 +40,15 @@ export function TrackRow(props: TrackRowProps) {
         padding: `0 ${tokens.space[3]}px`,
         borderRadius: tokens.radius.sm,
         cursor: props.onPress ? 'pointer' : 'default',
-        color: active ? 'var(--music-playing, #7C6CFF)' : 'var(--text-primary, #F5F7FF)',
-        background: hovered ? 'var(--surface-hover, #191E30)' : active ? 'var(--surface-selected, rgba(99,102,241,0.12))' : 'transparent',
-        transition: `background-color ${tokens.duration.fast}ms, color ${tokens.duration.fast}ms`,
+        color: active ? 'var(--music-playing, var(--lavender-400, #BEB4FF))' : 'var(--text-primary, #FFFFFF)',
+        background: hovered
+          ? 'var(--surface-hover, #101831)'
+          : active
+            ? 'var(--playing-item-bg, rgba(117,152,255,0.06))'
+            : 'transparent',
+        boxShadow: active ? 'var(--playing-item-glow, var(--glow-brand-sm))' : 'none',
+        border: active ? '1px solid var(--playing-item-border, rgba(169,156,255,0.18))' : '1px solid transparent',
+        transition: `background-color ${tokens.duration.fast}ms, color ${tokens.duration.fast}ms, box-shadow ${tokens.duration.fast}ms`,
       },
     },
     showArtwork

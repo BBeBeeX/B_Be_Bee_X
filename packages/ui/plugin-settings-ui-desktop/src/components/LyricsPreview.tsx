@@ -66,8 +66,8 @@ export function LyricsPreview({ settings }: LyricsPreviewProps): ReactElement {
         {
           style: {
             fontSize: 11,
-            color: 'var(--primary, #6366F1)',
-            background: 'var(--surface-selected, rgba(99, 102, 241, 0.12))',
+            color: 'var(--color-primary, #5F87FF)',
+            background: 'var(--surface-selected, rgba(95, 135, 255, 0.15))',
             padding: '2px 8px',
             borderRadius: 999,
           },

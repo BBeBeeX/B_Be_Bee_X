@@ -269,14 +269,14 @@ describe('the desktop shell', () => {
     expect(main).not.toBeNull()
     expect(footer).not.toBeNull()
 
-    // Left and right panels: #121212 background, 8px border radius
-    expect(nav.style.backgroundColor).toBe('rgb(18, 18, 18)')
+    // Left and right panels: theme primary background, 8px border radius
+    expect(nav.style.background).toContain('--bg-primary')
     expect(nav.style.borderRadius).toBe('8px')
-    expect(main.style.backgroundColor).toBe('rgb(18, 18, 18)')
+    expect(main.style.background).toContain('--bg-primary')
     expect(main.style.borderRadius).toBe('8px')
 
-    // Bottom bar: #000000 background
-    expect(footer.style.backgroundColor).toBe('rgb(0, 0, 0)')
+    // Bottom bar: theme app background
+    expect(footer.style.background).toContain('--bg-app')
 
     // Workspace container: 8px gap and 8px padding
     const workspace = nav.parentElement as HTMLElement

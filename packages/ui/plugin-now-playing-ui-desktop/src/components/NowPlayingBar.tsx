@@ -64,22 +64,23 @@ function QueueButton({
         width: 30,
         height: 30,
         borderRadius: tokens.radius.sm,
-        border: isQueueActive ? '1px solid var(--primary, #6366F1)' : '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
-        background: isQueueActive ? 'var(--surface-selected, rgba(99, 102, 241, 0.2))' : 'transparent',
-        color: isQueueActive ? 'var(--primary, #6366F1)' : 'var(--text-secondary, rgba(255, 255, 255, 0.7))',
+        border: isQueueActive ? '1px solid var(--color-primary, #5F87FF)' : '1px solid var(--border-subtle, rgba(145, 176, 255, 0.14))',
+        background: isQueueActive ? 'var(--surface-selected, rgba(117, 152, 255, 0.12))' : 'transparent',
+        color: isQueueActive ? 'var(--color-primary, #5F87FF)' : 'var(--text-secondary, rgba(255, 255, 255, 0.75))',
+        boxShadow: isQueueActive ? 'var(--glow-brand-sm, 0 0 12px rgba(117, 152, 255, 0.18))' : 'none',
         cursor: 'pointer',
         transition: 'all 0.15s ease',
         outline: 'none',
         flexShrink: 0,
       },
       onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-        e.currentTarget.style.borderColor = isQueueActive ? 'var(--primary-hover, #818CF8)' : 'var(--border-default, rgba(148, 163, 184, 0.4))'
-        e.currentTarget.style.color = isQueueActive ? 'var(--primary-hover, #818CF8)' : 'var(--text-primary, #FFFFFF)'
+        e.currentTarget.style.borderColor = isQueueActive ? 'var(--color-primary-hover, #91B0FF)' : 'var(--border-hover, rgba(145, 176, 255, 0.25))'
+        e.currentTarget.style.color = isQueueActive ? 'var(--color-primary-hover, #91B0FF)' : 'var(--text-primary, #FFFFFF)'
         e.currentTarget.style.transform = 'scale(1.05)'
       },
       onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-        e.currentTarget.style.borderColor = isQueueActive ? 'var(--primary, #6366F1)' : 'var(--border-subtle, rgba(148, 163, 184, 0.16))'
-        e.currentTarget.style.color = isQueueActive ? 'var(--primary, #6366F1)' : 'var(--text-secondary, rgba(255, 255, 255, 0.7))'
+        e.currentTarget.style.borderColor = isQueueActive ? 'var(--color-primary, #5F87FF)' : 'var(--border-subtle, rgba(145, 176, 255, 0.14))'
+        e.currentTarget.style.color = isQueueActive ? 'var(--color-primary, #5F87FF)' : 'var(--text-secondary, rgba(255, 255, 255, 0.75))'
         e.currentTarget.style.transform = 'scale(1)'
       },
     },
@@ -228,7 +229,7 @@ export function VerticalSlider({
         width: 3,
         height: `${value}%`,
         borderRadius: 1.5,
-        backgroundColor: isInteracting ? 'var(--primary, #6366F1)' : '#FFFFFF',
+        backgroundColor: isInteracting ? 'var(--color-primary, #5F87FF)' : '#FFFFFF',
       },
     }),
     // Thumb
@@ -647,7 +648,7 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
                   style: {
                     background: 'none',
                     border: 'none',
-                    color: isInLibrary ? 'var(--primary, #6366F1)' : 'rgba(255, 255, 255, 0.7)',
+                    color: isInLibrary ? 'var(--color-primary, #5F87FF)' : 'rgba(255, 255, 255, 0.75)',
                     cursor: 'pointer',
                     padding: 0,
                     display: 'inline-flex',
@@ -657,11 +658,11 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
                     transition: 'color 0.15s ease, transform 0.15s ease',
                   },
                   onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-                    e.currentTarget.style.color = isInLibrary ? 'var(--primary-hover, #818CF8)' : '#FFFFFF'
+                    e.currentTarget.style.color = isInLibrary ? 'var(--color-primary-hover, #91B0FF)' : '#FFFFFF'
                     e.currentTarget.style.transform = 'scale(1.15)'
                   },
                   onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-                    e.currentTarget.style.color = isInLibrary ? 'var(--primary, #6366F1)' : 'rgba(255, 255, 255, 0.7)'
+                    e.currentTarget.style.color = isInLibrary ? 'var(--color-primary, #5F87FF)' : 'rgba(255, 255, 255, 0.75)'
                     e.currentTarget.style.transform = 'scale(1)'
                   },
                 },

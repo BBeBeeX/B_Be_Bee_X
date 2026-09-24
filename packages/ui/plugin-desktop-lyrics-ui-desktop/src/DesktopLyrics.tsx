@@ -87,7 +87,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
   const effectiveOpacity = lyricsConfig?.opacity ?? opacity
   const effectiveAlign = lyricsConfig?.align ?? 'center'
   const effectiveFontFamily = lyricsConfig?.fontFamily ?? 'system-ui'
-  const effectiveTextColor = lyricsConfig?.textColor ?? 'var(--music-lyrics, #B7AFFF)'
+  const effectiveTextColor = lyricsConfig?.textColor ?? 'var(--lyrics-active, #D4CCFF)'
   const isSingleLine = lyricsConfig?.lineMode === 'single'
   const isEnabled = visible
   const isLocked = lyricsConfig?.locked ?? locked
@@ -399,7 +399,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           title: isPlaying ? 'Pause' : 'Play',
           'aria-label': isPlaying ? 'Pause' : 'Play',
           onClick: () => void ctx.player?.togglePlay?.(),
-          style: { ...buttonStyle, color: 'var(--primary, #6366F1)' },
+          style: { ...buttonStyle, color: 'var(--color-primary, #5F87FF)' },
         },
         tablerIcon(isPlaying ? 'pause-filled' : 'play-filled', { size: 18 }),
       ),
@@ -473,7 +473,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => setShowNextLine(!showNextLine),
           style: {
             ...buttonStyle,
-            color: showNextLine ? 'var(--primary, #6366F1)' : 'rgba(255, 255, 255, 0.5)',
+            color: showNextLine ? 'var(--color-primary, #5F87FF)' : 'rgba(255, 255, 255, 0.5)',
           },
         },
         '≡',

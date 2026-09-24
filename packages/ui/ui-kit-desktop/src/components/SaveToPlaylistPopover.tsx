@@ -293,7 +293,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                 style: {
                   flex: 1,
                   background: 'var(--surface-2, #3e3e3e)',
-                  border: '1px solid var(--primary, #6366F1)',
+                  border: '1px solid var(--input-focus-border, var(--color-primary, #5F87FF))',
                   borderRadius: 4,
                   color: 'var(--text-primary, #ffffff)',
                   fontSize: 13,
@@ -307,7 +307,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                   type: 'button',
                   onClick: () => void handleCreateSubmit(),
                   style: {
-                    background: 'var(--primary, #6366F1)',
+                    background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
                     border: 'none',
                     borderRadius: 4,
                     color: '#ffffff',
@@ -497,7 +497,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                     gap: 3,
                   },
                 },
-                playlist.pinned ? tablerIcon('pin', { size: 16, color: 'var(--primary, #6366F1)' }) : null,
+                playlist.pinned ? tablerIcon('pin', { size: 16, color: 'var(--color-primary, #5F87FF)' }) : null,
                 `${playlist.trackCount ?? 0} 首歌曲`,
               ),
             ),
@@ -665,7 +665,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                   style: {
                     flex: 1,
                     background: 'var(--surface-2, #3e3e3e)',
-                    border: '1px solid var(--primary, #6366F1)',
+                    border: '1px solid var(--input-focus-border, var(--color-primary, #5F87FF))',
                     borderRadius: 4,
                     color: 'var(--text-primary, #ffffff)',
                     fontSize: 13,
@@ -679,7 +679,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
                     type: 'button',
                     onClick: () => void handleCreateSubmit(activeFolder.id),
                     style: {
-                      background: 'var(--primary, #6366F1)',
+                      background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
                       border: 'none',
                       borderRadius: 4,
                       color: '#ffffff',
@@ -844,7 +844,7 @@ function CheckmarkCircle({ checked }: { checked: boolean }): ReactElement {
           width: 18,
           height: 18,
           borderRadius: '50%',
-          background: 'var(--primary, #6366F1)',
+          background: 'var(--color-primary, #5F87FF)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

@@ -13,13 +13,13 @@ export interface ColorPickerProps {
 
 export const COLOR_PRESETS = [
   { color: '#FFFFFF', label: '纯白' },
+  { color: '#5F87FF', label: '电光蓝' },
+  { color: '#7C86FF', label: '长春花蓝' },
+  { color: '#A99CFF', label: '薰衣草紫' },
+  { color: '#9B73F5', label: '柔紫' },
+  { color: '#60EFFF', label: '冰晶蓝' },
   { color: '#1DB954', label: '翡翠绿' },
-  { color: '#60A5FA', label: '天蓝' },
-  { color: '#F59E0B', label: '暖橙' },
   { color: '#EC4899', label: '霓虹粉' },
-  { color: '#A855F7', label: '幻紫' },
-  { color: '#FACC15', label: '极光黄' },
-  { color: '#22D3EE', label: '青蓝' },
 ]
 
 export function ColorPicker({ value, onChange, accessibilityLabel }: ColorPickerProps): ReactElement {

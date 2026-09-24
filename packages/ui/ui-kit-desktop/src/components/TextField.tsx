@@ -1,7 +1,7 @@
 import { createElement as h, type ReactElement } from 'react'
 import { tokens } from '@BBeBee/ui-tokens'
 import type { TextFieldProps } from '@BBeBee/ui-core'
-import { c, common } from '../theme.js'
+import { common } from '../theme.js'
 import { Text } from './Text.js'
 
 export function TextField(props: TextFieldProps): ReactElement {
@@ -11,9 +11,9 @@ export function TextField(props: TextFieldProps): ReactElement {
     boxSizing: 'border-box' as const,
     padding: `${tokens.space[2]}px ${tokens.space[3]}px`,
     borderRadius: tokens.radius.sm,
-    border: `1px solid ${invalid ? 'var(--error, #EF4444)' : 'var(--border-default, rgba(148,163,184,0.14))'}`,
-    background: 'var(--surface-1, #0D101A)',
-    color: 'var(--text-primary, #F5F7FF)',
+    border: `1px solid ${invalid ? 'var(--error, #EF4444)' : 'var(--input-border, var(--border-default, rgba(145,176,255,0.14)))'}`,
+    background: 'var(--input-bg, var(--surface-1, #080D1A))',
+    color: 'var(--text-primary, #FFFFFF)',
     fontFamily: props.multiline ? tokens.font.family.mono : tokens.font.family.ui,
     fontSize: tokens.font.size.md,
     resize: 'vertical' as const,

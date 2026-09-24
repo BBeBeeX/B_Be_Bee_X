@@ -98,8 +98,13 @@ export function VisualizerCanvas({
         case 'monochrome':
           return `rgba(235, 235, 245, ${alpha * 0.85})`
         case 'accent':
-        default:
-          return `rgba(${Math.round(140 + 70 * (1 - pos))}, ${Math.round(60 + 160 * pos)}, 255, ${alpha})`
+        default: {
+          // Cyber Bee character visual: Electric Blue (95, 135, 255) -> Lavender (169, 156, 255)
+          const r = Math.round(95 + (169 - 95) * pos)
+          const g = Math.round(135 + (156 - 135) * pos)
+          const b = 255
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`
+        }
       }
     }
 

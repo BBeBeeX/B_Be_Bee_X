@@ -632,9 +632,9 @@ export function TopBar({
             flex: 1,
             height: 36,
             borderRadius: 9999,
-            background: searchActive ? 'var(--surface-hover, #191E30)' : 'var(--surface-1, #0D101A)',
-            border: searchActive ? '1px solid var(--border-focus, #6366F1)' : '1px solid var(--border-subtle, rgba(148, 163, 184, 0.08))',
-            boxShadow: searchActive ? 'var(--glow-xs, 0 0 12px rgba(99,102,241,0.15))' : 'none',
+            background: searchActive ? 'var(--input-bg, var(--surface-hover, #101831))' : 'var(--input-bg, var(--surface-1, #080D1A))',
+            border: searchActive ? '1px solid var(--input-focus-border, var(--border-focus, #5F87FF))' : '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
+            boxShadow: searchActive ? 'var(--glow-blue-xs, var(--glow-xs, 0 0 12px rgba(95,135,255,0.2)))' : 'none',
             paddingLeft: searchActive ? 14 : 12,
             paddingRight: searchActive ? 6 : 10,
             gap: 8,
@@ -870,15 +870,15 @@ export function TopBar({
                               padding: '2px 10px',
                               borderRadius: 9999,
                               border: `1px solid ${
-                                selected ? 'transparent' : 'var(--border-subtle, rgba(148, 163, 184, 0.15))'
+                                selected ? 'transparent' : 'var(--border-subtle, rgba(255, 255, 255, 0.12))'
                               }`,
-                              background: selected ? 'var(--primary, #6366F1)' : 'var(--surface-1, #0D101A)',
+                              background: selected ? 'var(--button-primary-bg, var(--color-primary, #5F87FF))' : 'var(--surface-1, #080D1A)',
                               color: selected
                                 ? 'var(--text-primary, #F5F7FF)'
                                 : disabled
                                   ? 'var(--text-disabled, #41485B)'
                                   : 'var(--text-secondary, #C5CAD8)',
-                              boxShadow: selected ? 'var(--glow-xs, 0 0 10px rgba(99, 102, 241, 0.25))' : 'none',
+                              boxShadow: selected ? 'var(--glow-brand-sm, 0 0 10px rgba(95, 135, 255, 0.35))' : 'none',
                               fontSize: 11,
                               fontWeight: selected ? 700 : 500,
                               cursor: disabled ? 'not-allowed' : 'pointer',
@@ -888,9 +888,9 @@ export function TopBar({
                             onMouseEnter: (e: { currentTarget: HTMLElement }) => {
                               if (!disabled) {
                                 if (selected) {
-                                  e.currentTarget.style.backgroundColor = 'var(--primary-hover, #818CF8)'
+                                  e.currentTarget.style.backgroundColor = 'var(--color-primary-hover, #7C86FF)'
                                 } else {
-                                  e.currentTarget.style.borderColor = 'var(--border-default, rgba(148, 163, 184, 0.35))'
+                                  e.currentTarget.style.borderColor = 'var(--border-default, rgba(255, 255, 255, 0.25))'
                                   e.currentTarget.style.color = 'var(--text-primary, #F5F7FF)'
                                 }
                               }
@@ -898,9 +898,9 @@ export function TopBar({
                             onMouseLeave: (e: { currentTarget: HTMLElement }) => {
                               if (!disabled) {
                                 if (selected) {
-                                  e.currentTarget.style.backgroundColor = 'var(--primary, #6366F1)'
+                                  e.currentTarget.style.backgroundColor = 'var(--button-primary-bg, var(--color-primary, #5F87FF))'
                                 } else {
-                                  e.currentTarget.style.borderColor = 'var(--border-subtle, rgba(148, 163, 184, 0.15))'
+                                  e.currentTarget.style.borderColor = 'var(--border-subtle, rgba(255, 255, 255, 0.12))'
                                   e.currentTarget.style.color = 'var(--text-secondary, #C5CAD8)'
                                 }
                               }

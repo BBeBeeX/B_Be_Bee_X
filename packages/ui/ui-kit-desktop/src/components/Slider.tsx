@@ -1,7 +1,7 @@
 import { createElement as h, useCallback, useState } from 'react'
 import type React from 'react'
 import type { SliderProps } from '@BBeBee/ui-core'
-import { c, common, useHover } from '../theme.js'
+import { common, useHover } from '../theme.js'
 
 export function Slider(props: SliderProps) {
   const { disabled = false } = props
@@ -20,10 +20,10 @@ export function Slider(props: SliderProps) {
   const max = props.max > 0 ? props.max : 1
   const percent = Math.max(0, Math.min(100, (value / max) * 100))
   const isInteracting = hovered || dragging !== undefined
-  const activeColor = isInteracting ? 'var(--primary, #6366F1)' : 'var(--text-primary, #F5F7FF)'
+  const activeColor = isInteracting ? 'var(--slider-thumb, var(--color-primary, #5F87FF))' : 'var(--text-primary, #FFFFFF)'
   const trackBg = isInteracting
-    ? `linear-gradient(to right, #4F6BFF 0%, var(--primary, #6366F1) ${percent}%, rgba(148, 163, 184, 0.14) ${percent}%, rgba(148, 163, 184, 0.14) 100%)`
-    : `linear-gradient(to right, var(--text-primary, #F5F7FF) 0%, var(--text-primary, #F5F7FF) ${percent}%, rgba(148, 163, 184, 0.14) ${percent}%, rgba(148, 163, 184, 0.14) 100%)`
+    ? `linear-gradient(to right, var(--electric-blue-600, #4F73FF) 0%, var(--color-primary, #5F87FF) ${percent * 0.5}%, var(--periwinkle-500, #7C86FF) ${percent}%, var(--slider-track, rgba(255, 255, 255, 0.10)) ${percent}%, var(--slider-track, rgba(255, 255, 255, 0.10)) 100%)`
+    : `linear-gradient(to right, var(--text-primary, #FFFFFF) 0%, var(--text-primary, #FFFFFF) ${percent}%, var(--slider-track, rgba(255, 255, 255, 0.10)) ${percent}%, var(--slider-track, rgba(255, 255, 255, 0.10)) 100%)`
 
   return h('input', {
     ...common(props),

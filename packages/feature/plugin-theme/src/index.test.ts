@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@BBeBee/kernel'
 import { ThemePlugin } from './index.js'
-import { midnightPurpleTheme, spotifyTheme } from '@BBeBee/ui-tokens'
+import { midnightPurpleTheme } from '@BBeBee/ui-tokens'
 import type { ThemeDefinition } from '@BBeBee/protocol'
 
 describe('ThemePlugin', () => {

@@ -54,9 +54,10 @@ export function DesktopLyricsToggle({ ctx }: { ctx: Context }): ReactElement {
         width: 30,
         height: 30,
         borderRadius: tokens.radius.sm,
-        border: isVisible ? '1px solid var(--accent, #A855F7)' : '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
-        background: isVisible ? 'var(--surface-selected, rgba(99, 102, 241, 0.2))' : 'transparent',
-        color: isVisible ? 'var(--text-primary, #F5F7FF)' : 'var(--text-secondary, #C5CAD8)',
+        border: isVisible ? '1px solid var(--color-accent, #A99CFF)' : '1px solid var(--border-subtle, rgba(145, 176, 255, 0.14))',
+        background: isVisible ? 'var(--surface-selected, rgba(117, 152, 255, 0.12))' : 'transparent',
+        color: isVisible ? 'var(--text-primary, #FFFFFF)' : 'var(--text-secondary, rgba(255, 255, 255, 0.75))',
+        boxShadow: isVisible ? 'var(--glow-purple-sm, 0 0 12px rgba(169, 156, 255, 0.20))' : 'none',
         fontSize: 13,
         fontWeight: 600,
         cursor: 'pointer',
@@ -65,13 +66,13 @@ export function DesktopLyricsToggle({ ctx }: { ctx: Context }): ReactElement {
         flexShrink: 0,
       },
       onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-        e.currentTarget.style.borderColor = isVisible ? 'var(--accent-hover, #C084FC)' : 'var(--border-default, rgba(148, 163, 184, 0.4))'
-        e.currentTarget.style.color = 'var(--text-primary, #F5F7FF)'
+        e.currentTarget.style.borderColor = isVisible ? 'var(--color-accent-hover, #BEB4FF)' : 'var(--border-hover, rgba(145, 176, 255, 0.25))'
+        e.currentTarget.style.color = 'var(--text-primary, #FFFFFF)'
         e.currentTarget.style.transform = 'scale(1.05)'
       },
       onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-        e.currentTarget.style.borderColor = isVisible ? 'var(--accent, #A855F7)' : 'var(--border-subtle, rgba(148, 163, 184, 0.16))'
-        e.currentTarget.style.color = isVisible ? 'var(--text-primary, #F5F7FF)' : 'var(--text-secondary, #C5CAD8)'
+        e.currentTarget.style.borderColor = isVisible ? 'var(--color-accent, #A99CFF)' : 'var(--border-subtle, rgba(145, 176, 255, 0.14))'
+        e.currentTarget.style.color = isVisible ? 'var(--text-primary, #FFFFFF)' : 'var(--text-secondary, rgba(255, 255, 255, 0.75))'
         e.currentTarget.style.transform = 'scale(1)'
       },
     },

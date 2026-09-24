@@ -30,6 +30,9 @@ export interface ColorTokens {
   gradient: {
     brand: string
     progress: string
+    blueViolet?: string
+    ice?: string
+    spectrum?: string
   }
   text: {
     primary: string
@@ -55,6 +58,8 @@ export interface ColorTokens {
   music: {
     playing: string
     lyrics: string
+    lyricsActive?: string
+    lyricsHighlight?: string
     waveform: string
     waveformActive: string
   }
@@ -63,6 +68,14 @@ export interface ColorTokens {
     sm: string
     md: string
     lg: string
+    blueXs?: string
+    blueSm?: string
+    blueMd?: string
+    purpleXs?: string
+    purpleSm?: string
+    purpleMd?: string
+    brandSm?: string
+    brandMd?: string
   }
 }
 

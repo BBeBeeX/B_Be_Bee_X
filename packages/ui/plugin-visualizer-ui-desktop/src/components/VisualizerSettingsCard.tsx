@@ -23,7 +23,7 @@ const STYLES: { id: VisualizerStyle; label: string; icon: string; desc: string }
 ]
 
 const THEMES: { id: VisualizerColorTheme; label: string; color: string }[] = [
-  { id: 'accent', label: '蓝紫霓光', color: 'linear-gradient(135deg, #5865F2, #A855F7)' },
+  { id: 'accent', label: '角色霓光', color: 'linear-gradient(135deg, #5F87FF, #A99CFF)' },
   { id: 'neon', label: '极光青绿', color: 'linear-gradient(135deg, #00FF87, #60EFFF)' },
   { id: 'rainbow', label: '彩虹幻彩', color: 'linear-gradient(135deg, #FF0844, #FFB199, #FEE140, #38F9D7)' },
   { id: 'monochrome', label: '极简银白', color: 'linear-gradient(135deg, #FFFFFF, #8E8E93)' },
@@ -85,8 +85,8 @@ export function VisualizerSettingsCard({ ctx }: VisualizerSettingsCardProps): Re
             height: 24,
             appearance: 'none',
             outline: 'none',
-            backgroundColor: settings.enabled ? 'var(--primary, #6366F1)' : 'rgba(255, 255, 255, 0.2)',
-            boxShadow: settings.enabled ? 'var(--glow-xs, 0 0 10px rgba(99, 102, 241, 0.35))' : 'none',
+            backgroundColor: settings.enabled ? 'var(--color-primary, #5F87FF)' : 'rgba(255, 255, 255, 0.2)',
+            boxShadow: settings.enabled ? 'var(--glow-brand-sm, 0 0 10px rgba(95, 135, 255, 0.35))' : 'none',
             borderRadius: 12,
             position: 'relative',
             cursor: 'pointer',
@@ -169,10 +169,10 @@ export function VisualizerSettingsCard({ ctx }: VisualizerSettingsCardProps): Re
                       padding: '12px 14px',
                       borderRadius: 8,
                       border: isSelected
-                        ? '1px solid var(--primary, #6366F1)'
+                        ? '1px solid var(--color-primary, #5F87FF)'
                         : '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
                       background: isSelected
-                        ? 'var(--surface-selected, rgba(99, 102, 241, 0.12))'
+                        ? 'var(--surface-selected, rgba(95, 135, 255, 0.15))'
                         : 'rgba(255, 255, 255, 0.03)',
                       color: isSelected ? 'var(--text-primary, #FFFFFF)' : 'var(--text-tertiary, #8E8E93)',
                       cursor: 'pointer',
@@ -225,10 +225,10 @@ export function VisualizerSettingsCard({ ctx }: VisualizerSettingsCardProps): Re
                       padding: '8px 12px',
                       borderRadius: 8,
                       border: isSelected
-                        ? '1px solid var(--primary, #6366F1)'
+                        ? '1px solid var(--color-primary, #5F87FF)'
                         : '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
                       background: isSelected
-                        ? 'var(--surface-selected, rgba(99, 102, 241, 0.12))'
+                        ? 'var(--surface-selected, rgba(95, 135, 255, 0.15))'
                         : 'rgba(255, 255, 255, 0.03)',
                       color: isSelected ? 'var(--text-primary, #FFFFFF)' : 'var(--text-tertiary, #8E8E93)',
                       cursor: 'pointer',

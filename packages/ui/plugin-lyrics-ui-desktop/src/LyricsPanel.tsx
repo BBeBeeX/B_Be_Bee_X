@@ -207,7 +207,7 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
                   height: 32,
                   borderRadius: '50%',
                   border: '3px solid rgba(255, 255, 255, 0.1)',
-                  borderTopColor: 'var(--primary, #6366F1)',
+                  borderTopColor: 'var(--color-primary, #5F87FF)',
                   animation: 'spin 1s linear infinite',
                 },
               },
@@ -341,13 +341,13 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
                   lineHeight: 1.5,
                   cursor: line.timeMs !== undefined ? 'pointer' : 'default',
                   color: isActive
-                    ? 'var(--music-lyrics, #B7AFFF)'
+                    ? 'var(--lyrics-active, var(--lavender-300, #D4CCFF))'
                     : isPlayed
-                      ? 'var(--text-disabled, #41485B)'
-                      : 'var(--text-secondary, #C5CAD8)',
+                      ? 'var(--text-disabled, rgba(255, 255, 255, 0.22))'
+                      : 'var(--lyrics-normal, rgba(255, 255, 255, 0.45))',
                   transform: isActive ? 'scale(1.02)' : 'scale(1)',
                   transformOrigin: 'left center',
-                  textShadow: isActive ? 'var(--glow-md, 0 0 20px rgba(99, 102, 241, 0.4))' : 'none',
+                  textShadow: isActive ? 'var(--glow-purple-md, 0 0 20px rgba(169, 156, 255, 0.28))' : 'none',
                   transition:
                     'color 0.3s cubic-bezier(0.16, 1, 0.3, 1), font-size 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
                 },
@@ -392,22 +392,22 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
               gap: 6,
               padding: '8px 18px',
               borderRadius: tokens.radius.pill,
-              background: 'var(--primary, #6366F1)',
-              color: 'var(--text-primary, #FFFFFF)',
+              background: 'var(--button-primary-bg, var(--gradient-brand))',
+              color: 'var(--button-primary-text, #FFFFFF)',
               border: 'none',
               cursor: 'pointer',
               fontSize: 13,
               fontWeight: 600,
-              boxShadow: 'var(--glow-sm, 0 4px 16px rgba(99, 102, 241, 0.4))',
+              boxShadow: 'var(--glow-brand-sm, 0 4px 16px rgba(117, 152, 255, 0.18))',
               zIndex: 10,
-              transition: 'transform 0.2s, background-color 0.2s',
+              transition: 'transform 0.2s, background 0.2s, box-shadow 0.2s',
             },
             onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.backgroundColor = 'var(--primary-hover, #818CF8)'
+              e.currentTarget.style.background = 'var(--button-primary-hover, var(--gradient-ice))'
               e.currentTarget.style.transform = 'translateX(-50%) scale(1.04)'
             },
             onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.backgroundColor = 'var(--primary, #6366F1)'
+              e.currentTarget.style.background = 'var(--button-primary-bg, var(--gradient-brand))'
               e.currentTarget.style.transform = 'translateX(-50%) scale(1)'
             },
           },

@@ -243,9 +243,38 @@ export function themeToCssVariables(theme: ThemeDefinition): Record<string, stri
     '--accent': t.brand.accent,
     '--accent-hover': t.brand.accentHover,
 
+    // Semantic Colors (--color-* family)
+    '--color-bg-app': t.bg.app,
+    '--color-bg-primary': t.bg.primary,
+    '--color-bg-secondary': t.bg.secondary,
+    '--color-bg-tertiary': t.bg.tertiary,
+    '--color-surface': t.surface.s2,
+    '--color-surface-hover': t.surface.hover,
+    '--color-surface-active': t.surface.active,
+    '--color-surface-selected': t.surface.selected,
+    '--color-text-primary': t.text.primary,
+    '--color-text-secondary': t.text.secondary,
+    '--color-text-tertiary': t.text.tertiary,
+    '--color-text-muted': t.text.muted,
+    '--color-text-disabled': t.text.disabled,
+    '--color-primary': t.brand.primary,
+    '--color-primary-hover': t.brand.primaryHover,
+    '--color-primary-active': t.brand.primaryActive,
+    '--color-accent': t.brand.accent,
+    '--color-accent-hover': t.brand.accentHover,
+    '--color-playing': t.music.playing,
+    '--color-lyrics': t.music.lyrics,
+    '--color-lyrics-active': t.music.lyricsActive ?? t.music.playing,
+    '--color-lyrics-highlight': t.music.lyricsHighlight ?? t.text.primary,
+    '--color-waveform': t.music.waveform,
+    '--color-waveform-active': t.music.waveformActive,
+
     // Gradient
     '--gradient-brand': t.gradient.brand,
     '--gradient-progress': t.gradient.progress,
+    '--gradient-blue-violet': t.gradient.blueViolet ?? t.gradient.brand,
+    '--gradient-ice': t.gradient.ice ?? t.gradient.brand,
+    '--gradient-spectrum': t.gradient.spectrum ?? t.gradient.progress,
 
     // Text
     '--text-primary': t.text.primary,
@@ -271,6 +300,8 @@ export function themeToCssVariables(theme: ThemeDefinition): Record<string, stri
     // Music
     '--music-playing': t.music.playing,
     '--music-lyrics': t.music.lyrics,
+    '--music-lyrics-active': t.music.lyricsActive ?? t.music.playing,
+    '--music-lyrics-highlight': t.music.lyricsHighlight ?? t.text.primary,
     '--music-waveform': t.music.waveform,
     '--music-waveform-active': t.music.waveformActive,
 
@@ -279,6 +310,14 @@ export function themeToCssVariables(theme: ThemeDefinition): Record<string, stri
     '--glow-sm': t.glow.sm,
     '--glow-md': t.glow.md,
     '--glow-lg': t.glow.lg,
+    '--glow-blue-xs': t.glow.blueXs ?? t.glow.xs,
+    '--glow-blue-sm': t.glow.blueSm ?? t.glow.sm,
+    '--glow-blue-md': t.glow.blueMd ?? t.glow.md,
+    '--glow-purple-xs': t.glow.purpleXs ?? t.glow.xs,
+    '--glow-purple-sm': t.glow.purpleSm ?? t.glow.sm,
+    '--glow-purple-md': t.glow.purpleMd ?? t.glow.md,
+    '--glow-brand-sm': t.glow.brandSm ?? t.glow.sm,
+    '--glow-brand-md': t.glow.brandMd ?? t.glow.md,
 
     // Slider track default
     '--slider-track-bg': t.gradient.progress,

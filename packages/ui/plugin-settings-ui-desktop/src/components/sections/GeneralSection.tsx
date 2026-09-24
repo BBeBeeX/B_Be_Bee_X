@@ -72,10 +72,10 @@ export function GeneralSection({
             const isMidnight = t.id === 'midnight-purple'
             const isSpotify = t.id === 'spotify'
             const swatchBg = isMidnight
-              ? 'linear-gradient(135deg, #5865F2, #A855F7)'
+              ? 'linear-gradient(135deg, #5F87FF 0%, #7C86FF 50%, #A99CFF 100%)'
               : isSpotify
                 ? '#1DB954'
-                : ('tokens' in t ? t.tokens?.brand?.primary : undefined) ?? 'var(--primary, #6366F1)'
+                : ('tokens' in t ? t.tokens?.brand?.primary : undefined) ?? 'var(--color-primary, #5F87FF)'
 
             return h(
               'button',
@@ -92,16 +92,16 @@ export function GeneralSection({
                   padding: '6px 14px',
                   borderRadius: 20,
                   border: isSelected
-                    ? '1px solid var(--primary, #6366F1)'
+                    ? '1px solid var(--color-primary, #5F87FF)'
                     : '1px solid var(--border-subtle, rgba(255, 255, 255, 0.12))',
                   background: isSelected
-                    ? 'var(--surface-selected, rgba(99, 102, 241, 0.15))'
+                    ? 'var(--surface-selected, rgba(95, 135, 255, 0.15))'
                     : 'rgba(255, 255, 255, 0.04)',
                   color: isSelected ? 'var(--text-primary, #FFFFFF)' : 'var(--text-secondary, #C5CAD8)',
                   cursor: 'pointer',
                   fontSize: 13,
                   fontWeight: isSelected ? 600 : 400,
-                  boxShadow: isSelected ? 'var(--glow-xs, 0 0 10px rgba(99, 102, 241, 0.25))' : 'none',
+                  boxShadow: isSelected ? 'var(--glow-brand-sm, 0 0 10px rgba(95, 135, 255, 0.25))' : 'none',
                   transition: 'all 0.15s ease',
                 },
               },

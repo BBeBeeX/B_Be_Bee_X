@@ -1,7 +1,7 @@
 import { createElement as h, type ReactNode } from 'react'
 import { tokens } from '@BBeBee/ui-tokens'
 import type { ToastProps } from '@BBeBee/ui-core'
-import { c, common } from '../theme.js'
+import { common } from '../theme.js'
 import { IconButton } from './Button.js'
 import { Text } from './Text.js'
 

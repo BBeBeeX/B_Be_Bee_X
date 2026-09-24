@@ -79,7 +79,7 @@ function TrackLibraryActionButton({
       style: {
         background: 'none',
         border: 'none',
-        color: inLibrary ? 'var(--primary, #6366F1)' : '#b3b3b3',
+        color: inLibrary ? 'var(--color-primary, #5F87FF)' : 'var(--text-tertiary, #8B95B0)',
         fontSize: inLibrary ? 16 : 18,
         fontWeight: inLibrary ? 700 : 400,
         cursor: 'pointer',
@@ -702,13 +702,13 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
               width: 56,
               height: 56,
               borderRadius: '50%',
-              backgroundColor: detail.tracks.length === 0 ? 'var(--surface-active, rgba(99, 102, 241, 0.4))' : 'var(--primary, #6366F1)',
+              backgroundColor: detail.tracks.length === 0 ? 'var(--surface-active, rgba(95, 135, 255, 0.3))' : 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
               border: 'none',
               cursor: detail.tracks.length === 0 ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: 'var(--glow-sm, 0 8px 16px rgba(0, 0, 0, 0.3))',
+              boxShadow: 'var(--glow-brand-md, 0 8px 16px rgba(0, 0, 0, 0.3))',
               color: '#ffffff',
               paddingLeft: 2,
             },
@@ -758,7 +758,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             style: {
               background: 'none',
               border: 'none',
-              color: isSaved ? 'var(--primary, #6366F1)' : '#b3b3b3',
+              color: isSaved ? 'var(--color-primary, #5F87FF)' : '#b3b3b3',
               cursor: 'pointer',
               padding: 0,
               display: 'inline-flex',
@@ -767,7 +767,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             },
           },
           isSaved
-            ? tablerIcon('heart-filled', { size: 26, color: 'var(--primary, #6366F1)' })
+            ? tablerIcon('heart-filled', { size: 26, color: 'var(--color-primary, #5F87FF)' })
             : tablerIcon('heart', { size: 26 }),
         ),
         !isLocalAlbum && downloads
