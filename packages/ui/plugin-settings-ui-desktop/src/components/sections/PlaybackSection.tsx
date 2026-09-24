@@ -43,9 +43,26 @@ export function PlaybackSection({
         const list = await ctx.audio?.listOutputDevices?.()
         if (mounted && Array.isArray(list) && list.length > 0) {
           setOutputDevices(list)
+          return
         }
       } catch {
         // fallback
+      }
+
+      const bridge = (
+        window as unknown as {
+          BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> }
+        }
+      ).BBeBeeBridge
+      if (bridge?.call) {
+        try {
+          const list = (await bridge.call('audio', 'getOutputDevices', [])) as OutputDevice[]
+          if (mounted && Array.isArray(list) && list.length > 0) {
+            setOutputDevices(list)
+          }
+        } catch {
+          // ignore
+        }
       }
     }
     void fetchDevices()
@@ -85,10 +102,18 @@ export function PlaybackSection({
   const deviceOptions = (outputDevices.length > 0
     ? outputDevices
     : [{ id: 'default', label: '系统默认音频设备 (System Default)', isDefault: true }]
-  ).map((d) => ({
-    value: d.id,
-    label: d.label || (d.id === 'default' ? '系统默认音频设备 (System Default)' : `音频设备 (${d.id.slice(0, 8)})`),
-  }))
+  ).map((d) => {
+    let label = d.label || '音频输出设备'
+    if (d.id === 'default' || d.isDefault) {
+      if (!label.includes('默认') && !label.includes('Default')) {
+        label = `系统默认: ${label}`
+      }
+    }
+    return {
+      value: d.id,
+      label,
+    }
+  })
 
   // Ensure currentDeviceId is included in options so Select always renders a valid selection
   if (!deviceOptions.some((o) => o.value === currentDeviceId)) {
@@ -97,6 +122,9 @@ export function PlaybackSection({
       label: currentDeviceId === 'default' ? '系统默认音频设备 (System Default)' : `指定设备 (${currentDeviceId})`,
     })
   }
+
+  const selectedDeviceLabel =
+    deviceOptions.find((o) => o.value === currentDeviceId)?.label || currentDeviceId
 
   return h(
     'div',
@@ -134,14 +162,17 @@ export function PlaybackSection({
       }),
       h(SettingsRow, {
         title: '音频输出设备 (Output Device)',
-        description: '选择播放器音频输出的硬件声卡终端、扬声器或外接 DAC',
+        description:
+          currentDeviceId === 'default'
+            ? '当前输出目的地：系统默认音频设备（自动随操作系统切换）'
+            : `当前输出目的地：已锁定到指定声卡终端 (${selectedDeviceLabel})`,
         action: h(Select, {
           value: currentDeviceId,
           options: deviceOptions,
           accessibilityLabel: '音频输出设备',
           onChange: (newDeviceId: string) => {
             void update({ audioOutputDeviceId: newDeviceId })
-            void ctx.audio?.setOutputDevice?.(newDeviceId)
+            void ctx.audio?.setOutputDevice?.(newDeviceId).catch(() => {})
           },
         }),
       }),

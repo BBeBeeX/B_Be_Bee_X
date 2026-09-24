@@ -110,7 +110,9 @@ effects are rebuilt without ever touching a playing source. The two lifetimes ar
   Settings provide output driver and hardware device configuration under the *Audio Output Engine & Devices* section:
   - **WASAPI Exclusive Hi-Res Mode (Default)**: Locks the audio hardware endpoint exclusively (`AUDCLNT_SHAREMODE_EXCLUSIVE`) for bit-perfect output, bypassing Windows OS mixer resampling.
   - **Shared WebAudio Mode**: Output routes through the operating system mixer, allowing concurrent audio playback from browsers, games, and system alerts.
-  - **Selectable Audio Output Devices**: Lists all active system audio endpoints (speakers, headphones, external USB DACs) via `ctx.audio.listOutputDevices()`. Users can directly choose their preferred sound output device (`ctx.audio.setOutputDevice()`).
+  - **Selectable Audio Output Devices**:
+    - **Full System Hardware Probing**: Electron main process unmasks Chromium device labels by handling `'speaker-selection'` and `'media'` permissions, while querying native OS subsystems (Windows Registry & CIM MMDevices, macOS System Profiler, Linux pactl/aplay) to resolve exact hardware friendly names (speakers, headphones, external USB DACs).
+    - **Driver Destination Routing**: Selecting a device persists `settings.audioOutputDeviceId`. On boot and upon change, both Web Audio (`AudioContext.setSinkId`) and WASAPI Exclusive (`wasapi.setOutputDevice`) redirect the audio stream directly to the chosen physical endpoint as the audio driver destination.
 - **Audiophile Lossless Formats & Local Scanner Integration**:
   Desktop integrates `ffmpeg` to decode formats beyond Chromium's built-in capability:
   - **ALAC & `.m4a`**: Previously, ALAC tracks inside `.m4a` containers were rejected during scanning (`unsupported codec: ALAC is not supported on this platform`). With the FFmpeg decode bridge and `alac` added to `supportedFormats()`, ALAC files are fully imported and decoded.

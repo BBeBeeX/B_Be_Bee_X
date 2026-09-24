@@ -1052,6 +1052,21 @@ void app.whenReady().then(async () => {
     },
   )
 
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    if (permission === 'media' || (permission as string) === 'speaker-selection') {
+      return true
+    }
+    return false
+  })
+
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    if (permission === 'media' || (permission as string) === 'speaker-selection') {
+      callback(true)
+      return
+    }
+    callback(false)
+  })
+
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
     try {
       const u = new URL(details.url)

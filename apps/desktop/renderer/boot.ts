@@ -321,8 +321,8 @@ export async function boot(): Promise<App> {
    */
   await app.ready([...BOOTSTRAP_SERVICES], { timeoutMs: 15_000 })
 
-  // Sync closeToTray and proxy preference to Electron main process
-  app.ctx.inject(['settings'], (scoped) => {
+  // Sync closeToTray, proxy, and audio output device preference
+  app.ctx.inject(['settings', 'audio'], (scoped) => {
     void scoped.settings.get().then((s) => {
       if (s) {
         if (s.closeToTray !== undefined) {
@@ -330,6 +330,9 @@ export async function boot(): Promise<App> {
         }
         if (s.proxy) {
           void window.BBeBee?.proxy?.set?.(s.proxy)
+        }
+        if (s.audioOutputDeviceId) {
+          void scoped.audio?.setOutputDevice?.(s.audioOutputDeviceId).catch(() => {})
         }
       }
     })
@@ -340,6 +343,9 @@ export async function boot(): Promise<App> {
         }
         if (s.proxy) {
           void window.BBeBee?.proxy?.set?.(s.proxy)
+        }
+        if (s.audioOutputDeviceId) {
+          void scoped.audio?.setOutputDevice?.(s.audioOutputDeviceId).catch(() => {})
         }
       }
     })

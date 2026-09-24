@@ -307,7 +307,9 @@ export class AudioWasapi extends Service implements AudioService {
       }
     }
 
-    if (devices.length > 0) return devices
+    if (devices.length > 0 && devices.some((d) => d.label && !d.label.startsWith('音频输出设备 ('))) {
+      return devices
+    }
 
     const bridgeCall =
       this.config.bridgeCall ??
@@ -325,7 +327,9 @@ export class AudioWasapi extends Service implements AudioService {
       }
     }
 
-    return [{ id: 'default', label: '默认音频终端 (WASAPI Exclusive)', isDefault: true }]
+    return devices.length > 0
+      ? devices
+      : [{ id: 'default', label: '默认音频终端 (WASAPI Exclusive)', isDefault: true }]
   }
 
   async setOutputDevice(id: string): Promise<void> {
@@ -342,7 +346,8 @@ export class AudioWasapi extends Service implements AudioService {
 
     const sink = (this.context as BaseAudioContext & { setSinkId?: (id: string) => Promise<void> }).setSinkId
     if (typeof sink === 'function') {
-      await sink.call(this.context, id).catch(() => {})
+      const targetId = id === 'default' ? '' : id
+      await sink.call(this.context, targetId).catch(() => {})
     }
   }
 

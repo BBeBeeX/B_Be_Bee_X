@@ -100,7 +100,9 @@ flowchart LR
   用户可在桌面端设置界面的「音频输出引擎与设备」中自由配置驱动与物理设备：
   - **WASAPI 独占 Hi-Res（默认）**：硬件独占锁定声卡，绕过系统混音，点对点输出至硬件 DAC。
   - **WebAudio**：通过操作系统共享混音器输出，多软件混音兼容（与浏览器、游戏、系统提示音共存）。
-  - **可选择的音频输出设备**：通过 `ctx.audio.listOutputDevices()` 列出当前系统所有活动的扬声器、耳机和外接 USB DAC 终端，用户可直接下拉选择目标声卡进行实时切换（`ctx.audio.setOutputDevice()`）。
+  - **可选择的音频输出设备**：
+    - **系统硬件设备全量探测**：Electron 主进程通过授予 `'speaker-selection'` 与 `'media'` 权限解除 Chromium 设备标签屏蔽，并配合底层 OS 查询通道（Windows 注册表与 CIM MMDevices、macOS System Profiler、Linux pactl/aplay），精准获取当前系统中所有物理扬声器、耳机和外接 USB DAC 的真实友好名称（Friendly Name）。
+    - **驱动目的地实时锁定**：用户下拉选中目标设备后，系统将设备 ID 持久化至 `settings.audioOutputDeviceId`，并在应用启动及切换时驱动底层 Web Audio 引擎（通过 `AudioContext.setSinkId`）与 WASAPI 独占引擎（`wasapi.setOutputDevice`）无缝将音频流重新路由至该硬件终端作为输出目的地。
 - **发烧级无损音频格式与本地扫描器支持**：
   桌面端集成 FFmpeg 旁路解码器，打通了全链路无损音频体系：
   - **ALAC 与 `.m4a`**：此前扫描器在遇到包含 ALAC 编码的 `.m4a` 文件时，因 Chromium 原生不支持而判定为非法编码并报错丢弃（`unsupported codec: ALAC is not supported on this platform`）。现已通过在 `supportedFormats()` 注册 ALAC 并配合 FFmpeg 解码，实现完整解析与导入。

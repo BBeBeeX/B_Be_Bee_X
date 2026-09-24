@@ -371,6 +371,7 @@ export class AudioWebAudio extends Service implements AudioService {
   readonly chainInput: GainNode
   private readonly master: GainNode
   private mutedAt?: number
+  private selectedDeviceId = 'default'
   private readonly interruptionListeners = new Set<(e: InterruptionEvent) => void>()
   private readonly routeListeners = new Set<(e: RouteChangeEvent) => void>()
 
@@ -526,8 +527,13 @@ export class AudioWebAudio extends Service implements AudioService {
     }
 
     const element = createElement()
-  
     element.crossOrigin = 'anonymous'
+
+    const elWithSink = element as unknown as { setSinkId?: (id: string) => Promise<void> }
+    if (this.selectedDeviceId && typeof elWithSink.setSinkId === 'function') {
+      const targetId = this.selectedDeviceId === 'default' ? '' : this.selectedDeviceId
+      void elWithSink.setSinkId(targetId).catch(() => {})
+    }
     const targetSrc =
       typeof src === 'string' && src.startsWith('file://') && typeof window !== 'undefined'
         ? src.replace(/^file:\/\//, 'bbebee-file://')
@@ -581,29 +587,66 @@ export class AudioWebAudio extends Service implements AudioService {
    * the picker when there is only one entry (docs/05 §1).
    */
   async listOutputDevices(): Promise<OutputDevice[]> {
+    const devices: OutputDevice[] = []
     const media = (globalThis as { navigator?: { mediaDevices?: MediaDevicesLike } }).navigator
       ?.mediaDevices
-    if (!media?.enumerateDevices) {
-      return [{ id: 'default', label: 'System default', isDefault: true }]
+
+    if (media?.enumerateDevices) {
+      try {
+        const raw = await media.enumerateDevices()
+        const outputs = raw.filter((d) => d.kind === 'audiooutput')
+        for (const d of outputs) {
+          devices.push({
+            id: d.deviceId,
+            label:
+              d.label ||
+              (d.deviceId === 'default'
+                ? '系统默认音频设备 (System Default)'
+                : `音频输出设备 (${d.deviceId.slice(0, 8)})`),
+            isDefault: d.deviceId === 'default',
+          })
+        }
+      } catch {
+        // ignore
+      }
     }
-    const devices = await media.enumerateDevices()
-    const outputs = devices.filter((d) => d.kind === 'audiooutput')
-    if (outputs.length === 0) return [{ id: 'default', label: 'System default', isDefault: true }]
-    return outputs.map((d) => ({
-      id: d.deviceId,
-      label: d.label || 'Output',
-      isDefault: d.deviceId === 'default',
-    }))
+
+    if (devices.length > 0 && devices.some((d) => d.label && !d.label.startsWith('音频输出设备 ('))) {
+      return devices
+    }
+
+    if (typeof window !== 'undefined') {
+      const bridge = (
+        window as unknown as {
+          BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> }
+        }
+      ).BBeBeeBridge
+      if (bridge?.call) {
+        try {
+          const mainDevices = (await bridge.call('audio', 'getOutputDevices', [])) as OutputDevice[]
+          if (Array.isArray(mainDevices) && mainDevices.length > 0) {
+            return mainDevices
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    return devices.length > 0
+      ? devices
+      : [{ id: 'default', label: '系统默认音频设备 (System Default)', isDefault: true }]
   }
 
   async setOutputDevice(id: string): Promise<void> {
     this.gate()
+    this.selectedDeviceId = id
     const sink = (this.context as BaseAudioContext & { setSinkId?: (id: string) => Promise<void> })
       .setSinkId
-    if (!sink) {
-      throw new Error('audio: this platform does not support choosing an output device')
+    if (sink) {
+      const targetId = id === 'default' ? '' : id
+      await sink.call(this.context, targetId).catch(() => {})
     }
-    await sink.call(this.context, id)
   }
 
   onInterruption(cb: (e: InterruptionEvent) => void): Disposable {
