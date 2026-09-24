@@ -82,6 +82,8 @@ export interface VisualizerSettings {
   sensitivity: number
 }
 
+export type AudioOutputEngine = 'webaudio' | 'wasapi'
+
 export interface AppSettings {
   /** Visual appearance theme mode. */
   theme: 'dark' | 'light' | 'system'
@@ -105,6 +107,8 @@ export interface AppSettings {
   downloadDir?: string
   /** Custom media cache directory path. */
   cacheDir?: string
+  /** Audio output engine: 'webaudio' (system default) or 'wasapi' (WASAPI exclusive Hi-Res). */
+  audioOutputEngine?: AudioOutputEngine
   /** Desktop floating lyrics display settings. */
   desktopLyrics: DesktopLyricsSettings
   /** Global desktop keyboard shortcuts configuration. */
@@ -173,6 +177,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   closeToTray: true,
   downloadDir: '',
   cacheDir: '',
+  audioOutputEngine: 'webaudio',
   desktopLyrics: { ...DEFAULT_DESKTOP_LYRICS_SETTINGS },
   shortcuts: {
     enabled: DEFAULT_SHORTCUTS_SETTINGS.enabled,

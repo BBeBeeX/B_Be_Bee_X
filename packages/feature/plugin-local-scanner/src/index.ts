@@ -59,6 +59,11 @@ const DEFAULT_EXTENSIONS = [
   'aif',
   'wma',
   'alac',
+  'ape',
+  'wv',
+  'dsf',
+  'dff',
+  'm4b',
 ]
 
 /** One file, read but not yet written. */

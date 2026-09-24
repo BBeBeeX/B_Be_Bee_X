@@ -33,6 +33,7 @@ export function PlaybackSection({
   const [normExpanded, setNormExpanded] = useState(true)
   const [compExpanded, setCompExpanded] = useState(true)
   const [reverbExpanded, setReverbExpanded] = useState(true)
+  const [showWasapiNotice, setShowWasapiNotice] = useState(settings.audioOutputEngine === 'wasapi')
 
   const eqEntry = chain.find((c) => c.effectId === 'eq10')
   const normEntry = chain.find((c) => c.effectId === 'normalize')
@@ -50,6 +51,67 @@ export function PlaybackSection({
   return h(
     'div',
     { id: 'section-playback' },
+    h(
+      SettingsSection,
+      {
+        title: '音频输出引擎与设备',
+        description: '选择音频驱动与输出方式：操作系统共享混音或硬件独占直出',
+      },
+      h(SettingsRow, {
+        title: '音频输出驱动 (Audio Backend)',
+        description:
+          (settings.audioOutputEngine ?? 'webaudio') === 'wasapi'
+            ? '当前：WASAPI 硬件独占 Hi-Res（点对点无损输出，绕过系统混音器，保留 Web Audio DSP）'
+            : '当前：系统默认 WebAudio（通过操作系统共享混音器输出，多软件混音兼容）',
+        action: h(
+          'div',
+          { style: { display: 'flex', gap: 6 } },
+          h(Button, {
+            variant: (settings.audioOutputEngine ?? 'webaudio') === 'webaudio' ? 'primary' : 'secondary',
+            onPress: () => {
+              setShowWasapiNotice(false)
+              void update({ audioOutputEngine: 'webaudio' })
+            },
+            children: '系统默认 WebAudio',
+          }),
+          h(Button, {
+            variant: settings.audioOutputEngine === 'wasapi' ? 'primary' : 'secondary',
+            onPress: () => {
+              setShowWasapiNotice(true)
+              void update({ audioOutputEngine: 'wasapi' })
+            },
+            children: 'WASAPI 独占 Hi-Res',
+          }),
+        ),
+      }),
+      showWasapiNotice || settings.audioOutputEngine === 'wasapi'
+        ? h(
+            'div',
+            {
+              style: {
+                margin: '8px 16px 16px 16px',
+                padding: '12px 14px',
+                borderRadius: 8,
+                backgroundColor: 'rgba(255, 149, 0, 0.12)',
+                border: '1px solid rgba(255, 149, 0, 0.35)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+              },
+            },
+            h(
+              'div',
+              { style: { fontSize: 13, fontWeight: 'bold', color: '#FF9500' } },
+              '⚠️ 硬件排他性独占提示',
+            ),
+            h(
+              'div',
+              { style: { fontSize: 12, color: '#E0E0E0', lineHeight: 1.5 } },
+              '启用 WASAPI 独占模式后，播放器将独占锁定声卡硬件。在音频播放期间，计算机上的其他软件（如浏览器网页、视频播放器、游戏及系统提示音）可能会被暂时静音或无法发声。若需同时使用其他音频软件，请随时切回“系统默认 WebAudio”。设置在切换歌曲或重新开始播放时生效。',
+            ),
+          )
+        : null,
+    ),
     h(
       SettingsSection,
       {

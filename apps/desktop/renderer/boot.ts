@@ -154,7 +154,9 @@ function decodableFormats(): string[] {
     ['opus', 'audio/ogg; codecs="opus"'],
   ]
   const supported = candidates.filter(([, mime]) => probe.canPlayType(mime) !== '').map(([name]) => name)
-  if (!supported.includes('alac')) supported.push('alac')
+  for (const extra of ['alac', 'wma', 'ape', 'wv', 'dsf', 'dff', 'm4b']) {
+    if (!supported.includes(extra)) supported.push(extra)
+  }
   return supported
 }
 

@@ -35,7 +35,23 @@ export interface CodecNodeConfig {
   supportedFormats?: string[]
 }
 
-const DEFAULT_FORMATS = ['mp3', 'flac', 'm4a', 'aac', 'wav', 'ogg', 'opus', 'aiff', 'alac']
+const DEFAULT_FORMATS = [
+  'mp3',
+  'flac',
+  'm4a',
+  'm4b',
+  'aac',
+  'wav',
+  'ogg',
+  'opus',
+  'aiff',
+  'alac',
+  'wma',
+  'ape',
+  'wv',
+  'dsf',
+  'dff',
+]
 
 /** How much of the head to read before falling back to the whole file. */
 const TAG_WINDOW_BYTES = 256 * 1024
@@ -224,6 +240,8 @@ function mimeFor(uri: string): string | undefined {
     case 'flac':
       return 'audio/flac'
     case 'm4a':
+    case 'm4b':
+    case 'alac':
     case 'aac':
       return 'audio/mp4'
     case 'ogg':
@@ -236,6 +254,16 @@ function mimeFor(uri: string): string | undefined {
     case 'aiff':
     case 'aif':
       return 'audio/aiff'
+    case 'wma':
+      return 'audio/x-ms-wma'
+    case 'ape':
+      return 'audio/ape'
+    case 'wv':
+      return 'audio/wavpack'
+    case 'dsf':
+      return 'audio/dsf'
+    case 'dff':
+      return 'audio/dff'
     default:
       return undefined
   }
