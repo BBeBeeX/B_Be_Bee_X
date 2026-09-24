@@ -35,7 +35,7 @@ export interface CodecNodeConfig {
   supportedFormats?: string[]
 }
 
-const DEFAULT_FORMATS = ['mp3', 'flac', 'm4a', 'aac', 'wav', 'ogg', 'opus', 'aiff']
+const DEFAULT_FORMATS = ['mp3', 'flac', 'm4a', 'aac', 'wav', 'ogg', 'opus', 'aiff', 'alac']
 
 /** How much of the head to read before falling back to the whole file. */
 const TAG_WINDOW_BYTES = 256 * 1024

@@ -1,0 +1,23 @@
+{
+  "id": "@BBeBee/core-audio-wasapi",
+  "version": "0.0.0",
+  "displayName": "Audio (WASAPI Exclusive)",
+  "description": "ctx.audio \u2014 Web Audio DSP with WASAPI exclusive output and FFmpeg decoding.",
+  "platforms": [
+    "desktop"
+  ],
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [
+    "audio"
+  ],
+  "contributes": {
+    "services": [
+      "audio"
+    ]
+  }
+}

@@ -38,6 +38,7 @@ import { dirname, join, extname } from 'node:path'
 import { existsSync, mkdirSync, statSync, createReadStream } from 'node:fs'
 import { Readable } from 'node:stream'
 import { MiniPlayerWindowManager } from './mini-player-manager.js'
+import { createAudioHost } from './audio/index.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -1086,6 +1087,7 @@ void app.whenReady().then(async () => {
           : await dialog.showOpenDialog({ properties: ['openDirectory'] })
         return result.canceled ? undefined : result.filePaths[0]
       },
+      audio: createAudioHost(),
     },
   )
 

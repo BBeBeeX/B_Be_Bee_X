@@ -473,8 +473,41 @@ export class AudioWebAudio extends Service implements AudioService {
     const bytes = await fetchBytes(targetSrc, { headers: opts.headers, signal: opts.signal })
     opts.signal?.throwIfAborted()
 
-    const decode = (this.context as BaseAudioContext & { decodeAudioData: DecodeFn }).decodeAudioData
-    const buffer = await decode.call(this.context, bytes)
+    let buffer: AudioBuffer
+    try {
+      buffer = await decode.call(this.context, bytes)
+    } catch (decodeErr) {
+      if (typeof window !== 'undefined') {
+        const bridge = (
+          window as unknown as {
+            BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> }
+          }
+        ).BBeBeeBridge
+        if (bridge?.call) {
+          try {
+            const res = (await bridge.call('audio', 'decodePcm', [src])) as {
+              sampleRate: number
+              channels: number
+              durationMs: number
+              pcm: Float32Array[]
+            }
+            if (res && res.pcm && res.pcm.length > 0 && res.pcm[0]?.length) {
+              const ctx = this.context as AudioContext
+              const buf = ctx.createBuffer(res.channels, res.pcm[0].length, res.sampleRate)
+              for (let c = 0; c < res.channels; c++) {
+                buf.getChannelData(c).set(res.pcm[c]!)
+              }
+              opts.signal?.throwIfAborted()
+              opts.onBuffered?.(buf.duration)
+              return new BufferedHandle(this.context, buf)
+            }
+          } catch {
+            // Fall through to throw original decode error
+          }
+        }
+      }
+      throw decodeErr
+    }
     opts.signal?.throwIfAborted()
 
     // A decoded buffer is fully available, so the whole track is buffered.

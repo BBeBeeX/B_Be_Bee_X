@@ -1,0 +1,29 @@
+import { FfmpegDecoder } from './ffmpeg-decoder.js'
+import { WasapiEngine } from './wasapi-engine.js'
+import type { AudioDecodedPcm, AudioProbeResult, WasapiInitConfig, WasapiInitResult } from './types.js'
+
+export * from './types.js'
+export { FfmpegDecoder, WasapiEngine }
+
+export interface AudioHostApi {
+  probe(uri: string): Promise<AudioProbeResult>
+  decodePcm(uri: string): Promise<AudioDecodedPcm>
+  initWasapi(config: WasapiInitConfig): Promise<WasapiInitResult>
+  writeWasapi(pcmChunk: Float32Array): Promise<number>
+  stopWasapi(): Promise<void>
+  getOutputDevices(): Promise<{ id: string; label: string; isDefault: boolean }[]>
+}
+
+export function createAudioHost(): AudioHostApi {
+  const decoder = new FfmpegDecoder()
+  const wasapi = new WasapiEngine()
+
+  return {
+    probe: (uri) => decoder.probe(uri),
+    decodePcm: (uri) => decoder.decodePcm(uri),
+    initWasapi: (config) => wasapi.init(config),
+    writeWasapi: (pcm) => wasapi.write(pcm),
+    stopWasapi: () => wasapi.stop(),
+    getOutputDevices: () => wasapi.getOutputDevices(),
+  }
+}

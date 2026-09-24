@@ -153,7 +153,9 @@ function decodableFormats(): string[] {
     ['ogg', 'audio/ogg; codecs="vorbis"'],
     ['opus', 'audio/ogg; codecs="opus"'],
   ]
-  return candidates.filter(([, mime]) => probe.canPlayType(mime) !== '').map(([name]) => name)
+  const supported = candidates.filter(([, mime]) => probe.canPlayType(mime) !== '').map(([name]) => name)
+  if (!supported.includes('alac')) supported.push('alac')
+  return supported
 }
 
 export async function boot(): Promise<App> {

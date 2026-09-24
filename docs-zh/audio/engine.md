@@ -87,6 +87,16 @@ flowchart LR
 
 `chainInput` 存在的意义在于：音源可以随时来去而完全不触碰效果链，效果链可以随时重建而完全不触碰正在播放的音源。两者的生命周期被解耦了。
 
+### 加载策略与容错回退 (Resilient Fallback)
+
+`ctx.audio.load(src, { strategy })` 实现了双通道加载路径：
+- **`strategy: 'buffer'`**：拉取二进制流到 `ArrayBuffer` 并解码为 `AudioBuffer`，挂载至 `chainInput`。为本地音频与 Gapless 无缝换曲提供样本级精确调度。
+- **`strategy: 'stream'`**：通过 `context.createMediaElementSource()` 挂载至媒体元素，保持内存占用恒定。
+- **高位深与 ALAC 解码回退 (FFmpeg Bridge)**：Chromium 原生 `decodeAudioData()` 无法解码 Apple Lossless (ALAC) 格式或某些 24-bit/32-bit Hi-Res 音频。桌面端 `core-audio-webaudio` 与 `core-audio-wasapi` 自动调用主进程的 FFmpeg 解码器 (`audio.decodePcm`)，将音频精确解算为 Float32 PCM 声道并直接灌入 `AudioBuffer`，实现无损兼容。
+- **WASAPI 硬件独占输出与 Web Audio DSP (`@BBeBee/core-audio-wasapi`)**：
+  实现了**范式一（Web Audio 作为纯 DSP 处理核心，旁路导出至 WASAPI 独占输出）**：
+  Web Audio 负责执行完整的 `ctx.dsp` 效果器链（10 段 EQ、前级放大、动态压缩）与频谱可视化 (`AnalyserNode`)。通过 `WasapiSinkProcessor` (AudioWorklet) 拦截最终的 Float32 PCM，借由无锁环形队列 (`SharedRingBuffer`) 回传主进程，绕过 Chromium 默认的系统共享混音器（规避 Windows Shared Mode 的强制重采样与精度损耗），通过 WASAPI Exclusive 模式直接以硬件原生采样率与位深直推声卡 DAC。
+
 ### 逃生通道
 
 如果 `react-native-audio-api` 在某个平台上被证明不可用，`core-audio-rntp` 可以基于 `react-native-track-player` 实现 `AudioService`，此时 `chainInput` 退化为 no-op，效果降级为平台自带的原生 EQ。`ctx.player` 与每一个效果插件都不受影响。抽象就是那份保险，而正因为契约是标准契约，这份保险才足够便宜。

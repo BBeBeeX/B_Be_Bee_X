@@ -4,6 +4,11 @@
 import type { PluginRegistry } from '@BBeBee/kernel'
 
 export const bundled: PluginRegistry = {
+  "@BBeBee/core-audio-wasapi": {
+    load: () => import('@BBeBee/core-audio-wasapi'),
+    manifest: {"id":"@BBeBee/core-audio-wasapi","version":"0.0.0","displayName":"Audio (WASAPI Exclusive)","description":"ctx.audio — Web Audio DSP with WASAPI exclusive output and FFmpeg decoding.","platforms":["desktop"],"engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["audio"]}},
+    builtin: true,
+  },
   "@BBeBee/core-audio-webaudio": {
     load: () => import('@BBeBee/core-audio-webaudio'),
     manifest: {"id":"@BBeBee/core-audio-webaudio","version":"0.0.0","displayName":"Audio","description":"ctx.audio — the Web Audio graph, shared by every target.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["audio"]}},
