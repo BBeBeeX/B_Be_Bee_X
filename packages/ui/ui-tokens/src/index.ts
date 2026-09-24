@@ -202,14 +202,20 @@ export function cssVariables(scheme: Scheme): Record<string, string> {
 
 export * from './themes/midnight-purple.js'
 export * from './themes/spotify.js'
+export * from './themes/crimson-night.js'
+export * from './themes/ocean-abyss.js'
 
 import type { ThemeDefinition } from '@BBeBee/protocol'
 import { midnightPurpleTheme } from './themes/midnight-purple.js'
 import { spotifyTheme } from './themes/spotify.js'
+import { crimsonNightTheme } from './themes/crimson-night.js'
+import { oceanAbyssTheme } from './themes/ocean-abyss.js'
 
 export const builtInThemes: Record<string, ThemeDefinition> = {
   'midnight-purple': midnightPurpleTheme,
   spotify: spotifyTheme,
+  'crimson-night': crimsonNightTheme,
+  'ocean-abyss': oceanAbyssTheme,
 }
 
 export const defaultTheme: ThemeDefinition = midnightPurpleTheme
@@ -224,6 +230,7 @@ export function themeToCssVariables(theme: ThemeDefinition): Record<string, stri
   const out: Record<string, string> = {
     // Background
     '--bg-app': t.bg.app,
+    '--player-bg': t.bg.app,
     '--bg-primary': t.bg.primary,
     '--bg-secondary': t.bg.secondary,
     '--bg-tertiary': t.bg.tertiary,

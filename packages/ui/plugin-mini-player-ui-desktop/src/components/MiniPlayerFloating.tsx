@@ -2,6 +2,7 @@ import { createElement as h, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { MiniPlayerData, MiniPlayerAction } from '@BBeBee/protocol'
 import { IslandArtwork } from './IslandArtwork.js'
+import { IslandWaveBars } from './IslandWaveBars.js'
 import { TransportButtons, ProgressBar } from './MiniPlayerControls.js'
 
 export interface MiniPlayerFloatingProps {
@@ -141,12 +142,23 @@ export function MiniPlayerFloating({
           onSeek: (pos) => onAction({ type: 'seek', positionMs: pos }),
         }),
       ),
-      // Right: Controls
-      h(TransportButtons, {
-        data,
-        onAction,
-        size: 'sm',
-      }),
+      // Right: Controls & Wave Bars
+      h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          },
+        },
+        h(IslandWaveBars, { isPlaying, height: 16 }),
+        h(TransportButtons, {
+          data,
+          onAction,
+          size: 'sm',
+        }),
+      ),
       // Top Right Action Buttons (shown on hover or subtle)
       h(
         'div',

@@ -38,14 +38,10 @@ export function VisualizerSettingsCard({ ctx }: VisualizerSettingsCardProps): Re
       style: {
         display: 'flex',
         flexDirection: 'column',
-        gap: 20,
-        padding: '20px 24px',
-        borderRadius: 12,
-        background: 'var(--surface-1, rgba(255, 255, 255, 0.04))',
-        border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
+        gap: 16,
       },
     },
-    // Header & Master Switch
+    // Header & Master Switch Row
     h(
       'div',
       {
@@ -53,16 +49,18 @@ export function VisualizerSettingsCard({ ctx }: VisualizerSettingsCardProps): Re
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          padding: '8px 0 16px',
+          borderBottom: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
         },
       },
       h(
         'div',
-        { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-        h(Text, { variant: 'md', children: '音频可视化 (Audio Visualizer)' }),
+        { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+        h(Text, { variant: 'sm', children: '音频可视化 (Audio Visualizer)' }),
         h(Text, {
-          variant: 'sm',
+          variant: 'xs',
           tone: 'muted',
-          children: '在播放界面呈现音乐频率跳动与声波流动效果',
+          children: '启用后在全屏播放界面实时展示跳动频谱或波形',
         }),
       ),
       h(

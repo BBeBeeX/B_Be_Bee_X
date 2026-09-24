@@ -128,7 +128,7 @@ export const spotifyCssVariables: Record<string, string> = {
   '--button-primary-hover': '#1ED760',
   '--button-primary-text': '#000000',
 
-  '--player-bg': '#181818',
+  '--player-bg': 'var(--bg-app)',
   '--player-progress': 'linear-gradient(90deg, #1DB954 0%, #1ED760 100%)',
   '--player-playing': '#1DB954',
 

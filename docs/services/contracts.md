@@ -668,7 +668,62 @@ Rules the contract is built around, each of which a naive embedding gets wrong:
 
 ---
 
-## 20. Where to go next
+## 20. `ctx.theme` — color management & theme service
+
+**Purpose.** Manage application visual themes, runtime theme registration, token-to-CSS variable injection, and custom theme persistence.
+
+```ts
+export interface ColorTokens {
+  bg: { app: string; primary: string; secondary: string; tertiary: string }
+  surface: { s1: string; s2: string; s3: string; hover: string; active: string; selected: string }
+  brand: { primary: string; primaryActive: string; primaryHover: string; accent: string; accentHover: string }
+  gradient: { brand: string; progress: string; blueViolet?: string; ice?: string; spectrum?: string }
+  text: { primary: string; secondary: string; tertiary: string; muted: string; disabled: string; placeholder: string }
+  border: { subtle: string; default: string; hover: string; active: string; focus: string }
+  semantic: { success: string; warning: string; error: string; info: string }
+  music: { playing: string; lyrics: string; lyricsActive?: string; lyricsHighlight?: string; waveform: string; waveformActive: string }
+  glow: { xs: string; sm: string; md: string; lg: string; [k: string]: string | undefined }
+}
+
+export interface ThemeDefinition {
+  id: string
+  name: string
+  description?: string
+  isDark: boolean
+  tokens: ColorTokens
+  cssVariables?: Record<string, string>
+}
+
+export interface ThemeService {
+  /** Returns all available themes (built-in and runtime registered). */
+  getThemes(): readonly ThemeDefinition[]
+  /** Returns the active theme snapshot. */
+  getCurrentTheme(): ThemeDefinition
+  /** Switches the active theme by id and persists the preference. */
+  setTheme(themeId: string): Promise<void>
+  /** Registers a new theme at runtime. Returns a disposer. */
+  registerTheme(theme: ThemeDefinition): Disposable
+  /** Removes a custom theme. Built-in themes cannot be removed. */
+  removeTheme(themeId: string): boolean
+  /** Subscribes to theme changes. */
+  onThemeChange(listener: (theme: ThemeDefinition) => void): Disposable
+}
+```
+
+| | Electron (Desktop DOM) | Expo (Mobile / Native) |
+|---|---|---|
+| Backing | `@BBeBee/plugin-theme` with `applyThemeToDom` injecting CSS custom properties on `document.documentElement` | `@BBeBee/plugin-theme` emitting reactive theme snapshot for `StyleSheet` consumption |
+| Persistence | `ctx.store` key `theme_active_id` + custom themes under `theme_custom_themes` | `ctx.store` |
+| Built-in Themes | `midnight-purple` (`Bee Music · Cyber Neon`), `spotify` (`Spotify Classic`) | Same |
+| Custom Themes | Dynamic JSON import (file / text) with fallback token hydration; deletable with fallback protection | Same |
+
+- **DOM Synchronization**: `plugin-theme` evaluates `themeToCssVariables(theme)` and injects them onto the root document element, alongside `data-theme="{id}"`.
+- **Protection of Built-In Themes**: `removeTheme(themeId)` rejects removal of built-in themes. If an active custom theme is deleted, it immediately falls back to the default theme (`midnight-purple`).
+- **Event Bus Integration**: Emits `theme/changed` when active theme changes, and `theme/registry-changed` whenever themes are added or removed.
+
+---
+
+## 21. Where to go next
 
 [05 — Audio & Playback](../audio/playback.md) builds the playback engine and DSP chain on top of
 these services.

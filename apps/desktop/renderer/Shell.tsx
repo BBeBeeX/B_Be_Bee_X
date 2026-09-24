@@ -280,8 +280,8 @@ export function Shell({ ctx }: { ctx: Context }) {
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          height: '100vh',
-          width: '100vw',
+          height: '100%',
+          width: '100%',
         },
       },
       // Fullscreen top bar for dragging and window controls
@@ -344,6 +344,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                 left: 0,
                 right: 0,
                 zIndex: 200,
+                overflow: 'hidden',
               },
               onMouseEnter: () => setIsBottomBarHovered(true),
               onMouseLeave: () => setIsBottomBarHovered(false),
@@ -367,6 +368,10 @@ export function Shell({ ctx }: { ctx: Context }) {
                   transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease',
                   boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.6)',
                   pointerEvents: isBottomBarHovered ? 'auto' : 'none',
+                  border: 'none',
+                  borderTop: 'none',
+                  borderBottom: 'none',
+                  outline: 'none',
                 },
               },
               h(BottomBar, {
@@ -386,7 +391,8 @@ export function Shell({ ctx }: { ctx: Context }) {
       style: {
         display: 'flex',
         flexDirection: 'column',
-        height: '100vh',
+        height: '100%',
+        width: '100%',
         overflow: 'hidden',
         background: 'var(--bg-app, #05060B)',
       },
@@ -650,7 +656,7 @@ export function Shell({ ctx }: { ctx: Context }) {
     BottomBar
       ? h(
           'footer',
-          { style: { background: 'var(--player-bg, #000000)' } },
+          { style: { background: 'var(--player-bg, var(--bg-app, #05060B))' } },
           h(BottomBar, {
             ctx,
             currentRoute: isQueueOpen ? 'queue.view' : currentId,

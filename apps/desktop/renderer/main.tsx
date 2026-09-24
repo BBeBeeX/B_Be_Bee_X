@@ -26,6 +26,30 @@ const isLyricsWindow =
     window.location.search.includes('desktop-lyrics') ||
     window.location.hash.includes('desktop-lyrics'))
 
+// Auto-hide scrollbars when not scrolling for a while; show on scroll
+if (typeof window !== 'undefined') {
+  const activeTimers = new WeakMap<Element, ReturnType<typeof setTimeout>>()
+  window.addEventListener(
+    'scroll',
+    (e) => {
+      const target = e.target
+      const el = target && target instanceof Element ? target : document.documentElement
+      el.classList.add('is-scrolling')
+      document.documentElement.classList.add('is-scrolling')
+      const prev = activeTimers.get(el)
+      if (prev) clearTimeout(prev)
+      activeTimers.set(
+        el,
+        setTimeout(() => {
+          el.classList.remove('is-scrolling')
+          document.documentElement.classList.remove('is-scrolling')
+        }, 1200),
+      )
+    },
+    { capture: true, passive: true },
+  )
+}
+
 if (isMiniPlayerWindow) {
   document.documentElement.classList.add('is-mini-player-window')
   document.body.classList.add('is-mini-player-window')

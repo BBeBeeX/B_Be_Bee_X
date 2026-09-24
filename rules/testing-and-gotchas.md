@@ -45,6 +45,9 @@ Test conventions, common gotchas, and milestone status for BBeBee.
 | `refusing to fetch bbebee-file://` or `Fetch API cannot load file://` | Electron Chromium web security restricts renderer `fetch()` on `file://` URLs. Desktop main registers privileged `bbebee-file://` scheme to stream and buffer local files. |
 | `Unable to decode audio data` (24-bit FLAC / ID3v2 tags) | Chromium's Web Audio `decodeAudioData` rejects 24-bit Hi-Res FLAC or ID3v2 chunks. `core-audio-webaudio` intercepts this and falls back to `loadStreamed` via Chromium's internal FFmpeg `<audio>` element. |
 | Clicking a track in Shuffle mode plays the wrong song | Shuffled order is a seeded permutation (`permute(ids, seed)`). Tapping a specific track must call `model.rotateShuffle(firstId)` to circularly rotate the permutation with the clicked track at index 0, rather than indexing into `order()[index]`. |
+| Play button or surface has transparent background with CSS variable | `backgroundColor: 'var(--button-primary-bg)'` is invalid in CSS engines when the variable resolves to a `linear-gradient(...)`. CSS silently discards gradients on `backgroundColor`. Always use `background: var(...)` shorthand whenever tokens can be gradients. |
+| Custom theme import crashes UI with undefined property errors | User-imported theme JSON may supply partial token trees. Always deep-merge imported tokens over `midnightPurpleTheme.tokens` before registration so all token branches (`bg`, `surface`, `brand`, `gradient`, `text`, `border`, `semantic`, `music`, `glow`) are guaranteed defined. |
+| Cannot remove theme or active theme orphaned | `removeTheme(id)` must strictly protect built-in themes (`midnight-purple`, `spotify`). If the deleted theme was active, immediately fallback to default (`midnight-purple`) and emit `theme/registry-changed`. |
 
 ---
 

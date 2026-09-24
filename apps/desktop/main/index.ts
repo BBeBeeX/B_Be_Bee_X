@@ -242,7 +242,7 @@ function createWindow(): BrowserWindow {
     height: 760,
     minWidth: 720,
     minHeight: 480,
-    backgroundColor: '#0B0B0F',
+    backgroundColor: '#05060A',
     frame: false,
     titleBarStyle: 'hidden',
     autoHideMenuBar: true,

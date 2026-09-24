@@ -26,6 +26,8 @@ export function GeneralSection({
     return themeService?.getThemes?.() ?? [
       { id: 'midnight-purple', name: 'Bee Music · Cyber Neon (蓝紫电光)' },
       { id: 'spotify', name: 'Spotify 经典绿 (Spotify Classic)' },
+      { id: 'crimson-night', name: '绯红暗夜 · Crimson Night' },
+      { id: 'ocean-abyss', name: '深海秘境 · Ocean Abyss' },
     ]
   })
 
@@ -153,12 +155,18 @@ export function GeneralSection({
             const isSelected = currentThemeId === t.id
             const isMidnight = t.id === 'midnight-purple'
             const isSpotify = t.id === 'spotify'
-            const isCustom = !isMidnight && !isSpotify
+            const isCrimson = t.id === 'crimson-night'
+            const isOcean = t.id === 'ocean-abyss'
+            const isCustom = !isMidnight && !isSpotify && !isCrimson && !isOcean
             const swatchBg = isMidnight
               ? 'linear-gradient(135deg, #5F87FF 0%, #7C86FF 50%, #A99CFF 100%)'
               : isSpotify
                 ? '#1DB954'
-                : ('tokens' in t ? t.tokens?.brand?.primary : undefined) ?? 'var(--color-primary, #5F87FF)'
+                : isCrimson
+                  ? '#FF2D55'
+                  : isOcean
+                    ? '#06B6D4'
+                    : ('tokens' in t ? t.tokens?.brand?.primary : undefined) ?? 'var(--color-primary, #5F87FF)'
 
             return h(
               'button',

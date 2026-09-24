@@ -232,7 +232,7 @@ export const cyberBeeCssVariables: Record<string, string> = {
   '--button-primary-text': '#FFFFFF',
 
   // Player
-  '--player-bg': 'var(--black-900)',
+  '--player-bg': 'var(--bg-app)',
   '--player-progress': 'var(--gradient-progress)',
   '--player-playing': 'var(--lavender-400)',
 

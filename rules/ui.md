@@ -78,22 +78,35 @@ Each shell resolves the `viewId` against its target registry via `ctx.ui.registe
 
 ---
 
-## 4. Visual Design Language & Style Guide
+## 4. Visual Design Language & Color System
 
-The visual presentation is an **immersive, dark-first streaming media aesthetic**:
+The visual presentation is an **immersive, character-inspired dark music player aesthetic** rooted in the brand visual identity:
 
-### Surface Hierarchy (Luminance stepping, not borders)
-- `bg.sunken` (`#000000`): Outer chassis, desktop sidebar rail, persistent bottom player bar.
-- `bg.base` (`#121212`): Main content canvas and scrollable lists.
-- `bg.raised` (`#181818`): Media cards (album/playlist tiles) and elevated panels.
-- `bg.overlay` (`#282828`): Modal dialogs, context menus, tooltips, hover states.
-- `border.subtle` (`#282828`): Dividers.
-- `border.strong` (`#7A7A7A`): Accessible focus outlines.
+### 4.1 Primary Visual Identity: Bee Music · Cyber Neon
+The default visual identity is extracted directly from the character visual reference:
+- **Core Palette**: Black + White high contrast tech body + Ice Blue & Electric Blue glowing wing roots + Periwinkle & Lavender wing feathers + Soft Violet tips & glow + Deep Blue/Navy shadows.
+- **Continuous Spectrum**: Gradients (`--gradient-brand`, `--gradient-progress`, `--gradient-blue-violet`, `--gradient-ice`) flow through the continuous blue-violet light spectrum instead of relying on a single static brand color.
+- **Subtle Neon Glow & Soft Glass**: Tiered neon glows (`--glow-xs` through `--glow-lg`, `--glow-blue-*`, `--glow-purple-*`) and translucent elevated surfaces create depth without heavy borders.
+- **Alternate Themes**: Built-in `Spotify Classic` (`#1DB954` green) and runtime user-imported custom themes via `ctx.theme`.
+
+### Surface Hierarchy & Receding Chassis
+- `bg.sunken` (`#000000` / `var(--player-bg)`): Outer chassis, desktop sidebar rail, and persistent bottom player bar (solid `#000000`, border-free). Recedes completely so artwork and active content stand out.
+- `bg.base` (`#080A10` / `var(--bg-primary)`): Main scrollable canvas.
+- `bg.raised` (`var(--surface-1)` / `var(--surface-2)`): Media cards (album/playlist tiles) and elevated panels.
+- `bg.overlay` (`var(--surface-hover)` / `var(--surface-selected)`): Modal dialogs, context menus, tooltips, hover states.
+- `border.subtle` (`var(--border-subtle)`): Hairline dividers.
+- `border.strong` (`var(--border-focus)`): Accessible focus outlines.
+- **Dynamic Background Gradients**: Detail views (Album, Favorites, Local Music, Playlist, Settings) use reactive background gradients mapped to `--surface-hover` / `--surface-selected` / `--surface-1` / `--bg-primary`, smoothly adapting whenever the active theme changes.
+
+### CSS Shorthand & Styling Rule
+> ⚠️ **Always use `background:` instead of `backgroundColor:` for theme tokens:**
+> CSS variables like `--button-primary-bg`, `--playing-item-indicator`, or `--gradient-brand` evaluate to `linear-gradient(...)`.
+> In CSS engines, `backgroundColor` discards `linear-gradient` as invalid CSS, rendering elements transparent. Use the shorthand `background:` everywhere theme tokens or gradients can be assigned.
 
 ### Signature Accent & Contrast
-- `accent.base` (`#1DB954`): High-vitality green for play buttons, active row titles, track scrubber fill.
-- `accent.on` is **black (`#000000`)**: Text or icons rendered on top of green fills MUST be black (WCAG AA >8:1 contrast). **Never place white text on green.**
-- Text hierarchy: `#FFFFFF` (`text.primary`) for titles and active items; `#B3B3B3` (`text.secondary`) for secondary text; `#6A6A6A` (`text.disabled`).
+- **Bee Music Neon Accent**: Electric Blue (`#4D8BFF`), Lavender/Periwinkle (`#9087FF`), Soft Violet (`#B47BFF`), and continuous gradient fills for primary play buttons, active row titles, and progress scrubber fill.
+- **High-Contrast Text**: `#FFFFFF` (`text.primary`) for titles and active items; `#C5CAD8` (`text.secondary`) for secondary text; `#8B95B0` (`text.tertiary`); `#4B5368` (`text.disabled`).
+- Text on saturated button gradients maintains WCAG AA compliant contrast.
 
 ### Typography (Geometric Grotesque)
 - Stack: `"Circular Std", Circular, Montserrat, Figtree, system-ui, -apple-system, Roboto, sans-serif`.
@@ -101,9 +114,14 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 
 ### Controls & Micro-interactions
 - Controls are **pill-shaped (`radius.pill: 999`)**; buttons grow slightly on hover (`scale(1.04)` over 120ms).
-- Track rows: 56px height, show play toggle on hover, active playing track glows green (`#1DB954`) with an equalizer icon.
-- Sliders: slim 3px track height, subtle dark track, filled with green (`#1DB954`). Circular thumb handle is hidden on idle (`opacity: 0`) and smoothly reveals on hover or active dragging (`opacity: 1`).
+- Primary play buttons: circular with high-contrast icon over vibrant gradient fill (`background: var(--gradient-brand)`).
+- Track rows: 56px height, show play toggle on hover, active playing track glows with brand accent and an equalizer icon.
+- Sliders: slim 3px track height, subtle dark track, filled with brand gradient (`var(--gradient-progress)`). Circular thumb handle is hidden on idle (`opacity: 0`) and smoothly reveals on hover or active dragging (`opacity: 1`).
 - Scrollbars: 4px width/height, transparent track background, high-transparency thumb (`rgba(255, 255, 255, 0.2)` default, `0.4` on hover).
+- Dynamic Theme Management in Settings:
+  - Supports switching between built-in themes and importing custom themes via `.json` file upload or raw JSON paste.
+  - Automatically merges imported tokens over `midnightPurpleTheme.tokens` to guarantee complete token sets.
+  - Allows deleting custom themes with instant fallback to default if currently active; built-in themes are protected from deletion.
 - TopBar Search & 2×2 Matrix:
   - Centered input in TopBar with dynamic icon transition (idle: left `12px`; active/focused: slides to far right `12px` as a clickable submit button; resets on outside-click or Escape).
   - 2×2 Matrix floating dropdown reveals below input:
@@ -113,7 +131,7 @@ The visual presentation is an **immersive, dark-first streaming media aesthetic*
 - Sidebar & Navigation Exclusions:
   - Left navigation rail strictly hosts content and library browsing (`library.view`, `history.view`, playlists).
   - `settings.view` and `sources.search` are explicitly excluded from sidebar rendering. Settings is opened via the TopBar user avatar; Search is driven by the TopBar search bar.
-- Bottom player bar: Center cluster order is `[PlayMode] [Previous] [Play/Pause] [Next] [Volume]`. Play mode cycles sequence/single-loop/list-loop/shuffle. Volume icon indicates sound state (muted `volume-off` or loudness wave tiers `volume-3` / `volume-2` / `volume`) and clicks to pop up a vertical volume bar with a bottom mute toggle.
+- Bottom player bar: Solid black (`#000000`), border-free (`borderTop: none`). Center cluster order is `[PlayMode] [Previous] [Play/Pause] [Next] [Volume]`. Play mode cycles sequence/single-loop/list-loop/shuffle. Volume icon indicates sound state (muted `volume-off` or loudness wave tiers `volume-3` / `volume-2` / `volume`) and clicks to pop up a vertical volume bar with a bottom mute toggle.
 
 ### 4.1 Tabler Icons & Stroke Standard (`stroke = 1.25`)
 All visual icons across desktop UI components are standardized on **Tabler Icons SVG paths**:

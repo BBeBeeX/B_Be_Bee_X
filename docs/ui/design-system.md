@@ -2,42 +2,107 @@
 
 > **Legacy Reference:** Formerly `docs/08-ui-architecture.md §6`.
 
-## 6. Visual design language & design tokens
+## 6. Multi-Theme Color System & Visual Identity
 
-The visual design is an **immersive, dark-first streaming media aesthetic** designed to place cover
-art, dense catalog lists, and high-vitality playback states at the center of the user experience.
-The light theme exists as an accessible inversion, but dark is the primary mode that shapes the
-entire product's surfaces and interaction model.
+The visual design is an **immersive, character-inspired dark music player aesthetic** rooted in the brand visual identity. The system is architected as an extensible **Multi-Theme Color System** with runtime theme switching, token injection, and user-customizable color schemes.
 
-Tokens are **data, not components** — the only way to keep two view layers looking like one
-product without sharing component code.
+Tokens are **plain data, not components** — maintaining 100% parity between desktop (CSS Custom Properties) and mobile (React Native `StyleSheet`) without duplicated styling code.
+
+### 6.0 Theme System Architecture & Tokens Model
+
+The color architecture is divided into three layers:
+1. **Layer 1: Color Primitives** — Pure hex/rgba color constants extracted from brand references.
+2. **Layer 2: Semantic Color Tokens (`ColorTokens`)** — Purpose-driven design tokens structured by category: `bg`, `surface`, `brand`, `gradient`, `text`, `border`, `semantic`, `music`, and `glow`.
+3. **Layer 3: Component Mappings & CSS Custom Properties** — Flat CSS variables injected into the DOM by `themeToCssVariables()` and `applyThemeToDom()`.
 
 ```ts
-// @BBeBee/ui-tokens — plain values, no framework
-export interface Palette {
-  bg: { sunken: string; base: string; raised: string; overlay: string }
-  text: { primary: string; secondary: string; disabled: string }
-  accent: { base: string; hover: string; muted: string; on: string }
-  state: { error: string; warn: string; ok: string }
-  border: { subtle: string; strong: string }
+// @BBeBee/protocol — ColorTokens and ThemeDefinition
+export interface ColorTokens {
+  bg: {
+    app: string
+    primary: string
+    secondary: string
+    tertiary: string
+  }
+  surface: {
+    s1: string
+    s2: string
+    s3: string
+    hover: string
+    active: string
+    selected: string
+  }
+  brand: {
+    primary: string
+    primaryActive: string
+    primaryHover: string
+    accent: string
+    accentHover: string
+  }
+  gradient: {
+    brand: string
+    progress: string
+    blueViolet?: string
+    ice?: string
+    spectrum?: string
+  }
+  text: {
+    primary: string
+    secondary: string
+    tertiary: string
+    muted: string
+    disabled: string
+    placeholder: string
+  }
+  border: {
+    subtle: string
+    default: string
+    hover: string
+    active: string
+    focus: string
+  }
+  semantic: {
+    success: string
+    warning: string
+    error: string
+    info: string
+  }
+  music: {
+    playing: string
+    lyrics: string
+    lyricsActive?: string
+    lyricsHighlight?: string
+    waveform: string
+    waveformActive: string
+  }
+  glow: {
+    xs: string
+    sm: string
+    md: string
+    lg: string
+    blueXs?: string
+    blueSm?: string
+    blueMd?: string
+    purpleXs?: string
+    purpleSm?: string
+    purpleMd?: string
+    brandSm?: string
+    brandMd?: string
+  }
 }
 
-export const dark: Palette = {
-  bg: { sunken: '#000000', base: '#121212', raised: '#181818', overlay: '#282828' },
-  text: { primary: '#FFFFFF', secondary: '#B3B3B3', disabled: '#6A6A6A' },
-  accent: { base: '#1DB954', hover: '#1ED760', muted: '#1B3D2B', on: '#000000' },
-  state: { error: '#F15E6C', warn: '#FFA42B', ok: '#1ED760' },
-  border: { subtle: '#282828', strong: '#7A7A7A' },
+export interface ThemeDefinition {
+  id: string
+  name: string
+  description?: string
+  isDark: boolean
+  tokens: ColorTokens
+  cssVariables?: Record<string, string>
 }
+```
 
-export const light: Palette = {
-  bg: { sunken: '#F1F1F1', base: '#FFFFFF', raised: '#F6F6F6', overlay: '#EDEDED' },
-  text: { primary: '#000000', secondary: '#5E5E5E', disabled: '#8C8C8C' },
-  accent: { base: '#12833C', hover: '#0D6E36', muted: '#D7F2E2', on: '#FFFFFF' },
-  state: { error: '#C1291F', warn: '#8A5A00', ok: '#0E7A3D' },
-  border: { subtle: '#E5E5E5', strong: '#767676' },
-}
-
+```ts
+// @BBeBee/ui-tokens — Layout and typography tokens
 export const tokens = {
   space: [0, 4, 8, 12, 16, 24, 32, 48, 64] as const,
   radius: { sm: 4, md: 8, lg: 16, pill: 999 } as const,
@@ -55,39 +120,60 @@ export const tokens = {
 } as const
 ```
 
-`ui-kit-mobile` consumes them as `StyleSheet` values; `ui-kit-desktop` emits them as CSS custom
-properties (`cssVariables(scheme)`).
+### 6.1 Primary Visual Identity: Bee Music · Cyber Neon (`midnight-purple`)
 
-### 6.1 Surface hierarchy & borderless elevation
+The primary visual identity is derived directly from the **Bee anime character visual reference**:
+- **Character Color Spectrum**:
+  - High-contrast tech chassis: Deep Black (`#05060A`, `#080A10`) and crisp White (`#FFFFFF`).
+  - Glowing wing roots & technological accents: Ice Blue (`#D4E2FF`, `#91B0FF`) and Electric Blue (`#4D8BFF`, `#3875F6`).
+  - Translucent wing feathers & floating music notes: Periwinkle (`#7C86FF`) and Lavender (`#9087FF`, `#A99CFF`).
+  - Wingtip glow, headphones highlight, and sparkle accents: Soft Violet (`#B47BFF`, `#C96BFF`).
+  - Shadow and base depth: Deep Navy Blue (`#0B0E16`, `#0F1322`).
+- **Continuous Spectrum Flow**: Rather than pinning a single monolithic hex color as the "brand", the UI utilizes continuous spectral gradients connecting Electric Blue, Periwinkle, Lavender, and Soft Violet.
+- **Subtle Neon Glows & Soft Glass**: Tiered neon glows (`--glow-brand-sm`, `--glow-blue-md`, `--glow-purple-md`) and frosted semi-transparent surfaces provide high-tech tactile hierarchy without hard clunky borders.
 
-Depth is communicated through **subtle luminance stepping of near-black surfaces**, rather than
-heavy borders or drop shadows. Hard outlines create visual clutter in dense catalog views; subtle
-contrast steps keep surfaces distinct while making cover art pop.
+```css
+/* Core Cyber Neon Gradients */
+--gradient-brand: linear-gradient(135deg, #4D8BFF 0%, #7C86FF 38%, #9087FF 65%, #B47BFF 100%);
+--gradient-progress: linear-gradient(90deg, #3875F6 0%, #4D8BFF 30%, #7C86FF 70%, #A99CFF 100%);
+--gradient-blue-violet: linear-gradient(135deg, #4D8BFF 0%, #A99CFF 100%);
+--gradient-ice: linear-gradient(135deg, #EAF1FF 0%, #91B0FF 50%, #4D8BFF 100%);
+--gradient-spectrum: linear-gradient(90deg, #4D8BFF 0%, #7C86FF 25%, #9087FF 50%, #B47BFF 75%, #C96BFF 100%);
+```
 
-| Layer | Value (Dark) | Role & Usage |
+### 6.2 Alternate Themes & Runtime Extensibility
+
+The application supports multiple built-in and dynamic user themes:
+- **`midnight-purple` (`Bee Music · Cyber Neon`)**: Default primary theme.
+- **`spotify` (`Spotify Classic`)**: High-contrast classic streaming player theme featuring the signature `#1DB954` green accent.
+- **Dynamic User Themes**: Users can import any custom `.json` theme file via Settings. The theme engine dynamically validates and deep-merges missing tokens with `midnightPurpleTheme.tokens`, registers the theme at runtime, and persists it to `ctx.store`.
+- **Protected Built-Ins & Safe Deletion**: Built-in themes cannot be removed (`removeTheme()` returns `false`). Custom themes can be deleted via Settings; if an active custom theme is removed, the engine immediately falls back to `midnight-purple` and emits `theme/registry-changed`.
+
+### 6.3 Surface Hierarchy & Receding Solid Black Chassis
+
+Depth is communicated through **subtle luminance stepping and translucent layers**, anchored by an absolute black chassis:
+
+| Layer | Value / Variable | Role & Usage |
 |---|---|---|
-| `bg.sunken` | `#000000` | The outer chassis and persistent rails: desktop window chrome, sidebars/rails, and the bottom transport player bar. Recedes so content stands out. |
-| `bg.base` | `#121212` | Main scrollable canvas: playlists, album views, search results, library grids. |
-| `bg.raised` | `#181818` | Elevated media cards (album/playlist tiles) and section panels. |
-| `bg.overlay` | `#282828` | Hovered rows/cards, dropdowns, context menus, tooltips, and modal sheets. |
-| `border.subtle` | `#282828` | Hairline dividers between major panels (e.g. sidebar border, bottom bar border). |
-| `border.strong` | `#7A7A7A` | Focused interactive boundaries and accessible outlines (clears WCAG 1.4.11 3:1). |
+| `chassis` | `#000000` / `var(--player-bg)` | The outer frame, desktop rail, and persistent bottom player bar. Solid black without top borders (`borderTop: none`) to eliminate visual noise and anchor the viewport. |
+| `bg.base` | `#080A10` / `var(--bg-primary)` | Main scrollable canvas for playlists, album views, search results, and library grids. |
+| `surface.s1` | `var(--surface-1)` | Elevated media cards (album/playlist tiles) and section panels. |
+| `surface.s2` | `var(--surface-2)` | Cards on hover, dialogs, and flyout sheets. |
+| `surface.hover` | `var(--surface-hover)` | Active hover illumination on track rows and interactive items. |
+| `surface.selected`| `var(--surface-selected)` | Selected rows, active navigation tabs, and focus chips. |
+| `border.subtle` | `var(--border-subtle)` | Hairline dividers between major structural panels. |
+| `border.focus` | `var(--border-focus)` | Accessible focus rings clearing WCAG 1.4.11 3:1 contrast. |
 
-### 6.2 Signature accent & high-contrast rules
+- **Dynamic Reactive Canvas Gradients**: Detail views (Album Detail, Favorites, Local Music, Playlist Detail, Settings) render smooth vertical ambient gradients responding to `--surface-hover` / `--surface-selected` / `--surface-1` / `--bg-primary`, adapting instantly to any theme switch.
 
-- **The signature accent is vibrant green (`#1DB954`, hover `#1ED760`).** It communicates action,
-  vitality, and active playback: play buttons, active row titles, track progress scrubber fill,
-  and active switches.
-- **`accent.on` is `#000000` (black).** Light text on saturated `#1DB954` fails WCAG AA (only ~2.6:1).
-  Black text and icons on green provide over 8:1 contrast. Primary circular play buttons and
-  filled action pills always place black glyphs over the green fill.
-- **Light mode adapts the hue to `#12833C`.** Saturated `#1DB954` on white fails contrast tests; a
-  deeper forest green preserves brand recognition while remaining legible.
-- **Text hierarchy**: Pure white (`#FFFFFF`, `text.primary`) carries titles and primary interactive
-  labels. Muted silver-grey (`#B3B3B3`, `text.secondary`) carries artists, album titles, track
-  durations, column headers, and secondary counts. Inactive controls use subdued `#6A6A6A`.
+### 6.4 CSS Shorthand & Styling Conventions
 
-### 6.3 Typography & type scale
+> ⚠️ **CRITICAL CSS RULE: Use `background:` shorthand, never `backgroundColor:` for theme tokens:**
+> Many theme variables (such as `--button-primary-bg`, `--playing-item-indicator`, and `--gradient-brand`) resolve to CSS linear gradients (`linear-gradient(...)`).
+> In CSS specifications, `backgroundColor` does not accept gradients; browser rendering engines discard `backgroundColor: linear-gradient(...)` as invalid, leaving elements completely transparent!
+> **Always write `background: var(--button-primary-bg, ...)`** across all buttons, cards, and indicator components.
+
+### 6.5 Typography & type scale
 
 The typography stack prioritises geometric grotesque letterforms:
 `"Circular Std", Circular, Montserrat, Figtree, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.
@@ -106,7 +192,7 @@ The scale relies on **"weight follows size"**:
 - **XS (`11px`, weight `500` medium / `700` bold, uppercase)**: Column labels (`TITLE`, `ALBUM`,
   `DATE ADDED`), category tags, and duration badges.
 
-### 6.4 Component affordances & micro-interactions
+### 6.6 Component affordances & micro-interactions
 
 - **Pill buttons (`radius.pill: 999`)**: Interactive controls (primary action buttons, category
   filter chips, tag toggles) are pill-shaped. In a borderless dark UI where panels are rectangles,
@@ -160,7 +246,7 @@ The scale relies on **"weight follows size"**:
       - Left column (Sources): Interactive third-party music source toggle buttons connected to `useSearchSourceSelection(ctx)`. Renders individual source interface chips (active in signature green `#1DB954` fill with black text; inactive in `#282828` with grey text) alongside "全部" (All) and "重置" (None) batch toggles.
       - Right column (History): Interactive search history tags stored in `localStorage` (`bbebee_search_history`, max 10 entries). Clicking any tag executes that search immediately. An empty state label ("暂无搜索历史") is displayed when history is empty.
 
-### 6.5 Dynamic hero gradients & artwork presentation
+### 6.7 Dynamic hero gradients & artwork presentation
 
 - **Square artwork (`radius.sm: 4px`)**: Tracks, albums, and playlists use square aspect ratios.
   Artists use circular avatars (`radius.pill`).
@@ -173,7 +259,7 @@ The scale relies on **"weight follows size"**:
   `artworks.dominant_color` from cover artwork, generating a rich vertical gradient that radiates
   from the top banner and smoothly bleeds down into the `#121212` base canvas.
 
-### 6.6 Shell structure & layout paradigms
+### 6.8 Shell structure & layout paradigms
 
 - **Desktop Shell**:
   - **Left navigation rail / sidebar (sunken `#000000`)**: Dedicated to browsing user content and
@@ -203,7 +289,7 @@ The scale relies on **"weight follows size"**:
     large square cover art, bold geometric typography, scrub bar, circular transport controls, and
     swipe-up lyrics pane.
 
-### 6.7 Iconography & stroke standard (Tabler Icons, stroke = 1.25)
+### 6.9 Iconography & stroke standard (Tabler Icons, stroke = 1.25)
 
 All iconography across the desktop UI is standardized on **Tabler Icons SVG paths** with a unified line weight:
 - **Global Stroke Width**: Standardized to `stroke="1.25"` (`DEFAULT_STROKE_WIDTH = 1.25` in `packages/ui/ui-kit-desktop/src/icons/tabler.ts`).

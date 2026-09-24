@@ -530,7 +530,7 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
         gap: tokens.space[4],
         padding: `${tokens.space[2]}px ${tokens.space[4]}px`,
         borderTop: 'none',
-        background: 'var(--player-bg, #000000)',
+        background: 'var(--player-bg, var(--bg-app, #05060B))',
       },
     },
     h(

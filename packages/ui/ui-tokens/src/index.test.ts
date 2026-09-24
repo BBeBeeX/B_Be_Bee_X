@@ -149,9 +149,11 @@ describe('cssVariables', () => {
 })
 
 describe('Color Token System & Theme Management', () => {
-  it('provides built-in midnight-purple and spotify themes', () => {
+  it('provides built-in themes', () => {
     expect(builtInThemes['midnight-purple']).toBeDefined()
     expect(builtInThemes['spotify']).toBeDefined()
+    expect(builtInThemes['crimson-night']).toBeDefined()
+    expect(builtInThemes['ocean-abyss']).toBeDefined()
     expect(defaultTheme.id).toBe('midnight-purple')
   })
 

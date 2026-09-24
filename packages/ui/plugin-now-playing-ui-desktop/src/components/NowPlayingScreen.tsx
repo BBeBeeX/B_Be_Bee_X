@@ -61,6 +61,8 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
         padding: `${tokens.space[6]}px ${tokens.space[4]}px`,
         gap: tokens.space[5],
         background: 'var(--bg-app, #05060B)',
+        overflowX: 'hidden',
+        borderBottom: 'none',
       },
     },
     h(

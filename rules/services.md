@@ -34,6 +34,7 @@ Declared in `packages/protocol/src/services/` and augmented onto `Context`:
 | `ctx.background` | Background audio tasks, wake locks, suspend hooks | `core-background-electron`, `core-background-expo` |
 | `ctx.js` | Sandboxed QuickJS evaluator for untrusted scripts | `core-js-quickjs-node` (desktop) |
 | `ctx.shell` | Open external URL, directory pickers | Desktop bridge, mobile intent |
+| `ctx.theme` | Theme registry, token injection, dynamic theme management | `plugin-theme` (feature service with DOM/store sync) |
 | `ctx.logger` | Scoped diagnostic logging via Cordis | Core service / Cordis native |
 
 ---
