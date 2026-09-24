@@ -289,6 +289,29 @@ export class AudioWasapi extends Service implements AudioService {
   }
 
   async listOutputDevices(): Promise<OutputDevice[]> {
+    const devices: OutputDevice[] = []
+    const media = (globalThis as {
+      navigator?: { mediaDevices?: { enumerateDevices: () => Promise<Array<{ deviceId: string; kind: string; label: string }>> } }
+    }).navigator?.mediaDevices
+
+    if (media?.enumerateDevices) {
+      try {
+        const raw = await media.enumerateDevices()
+        const outs = raw.filter((d) => d.kind === 'audiooutput')
+        for (const out of outs) {
+          devices.push({
+            id: out.deviceId,
+            label: out.label || (out.deviceId === 'default' ? '系统默认音频设备 (System Default)' : `音频输出设备 (${out.deviceId.slice(0, 8)})`),
+            isDefault: out.deviceId === 'default',
+          })
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (devices.length > 0) return devices
+
     const bridgeCall =
       this.config.bridgeCall ??
       (typeof window !== 'undefined'
@@ -298,18 +321,32 @@ export class AudioWasapi extends Service implements AudioService {
 
     if (bridgeCall) {
       try {
-        const devices = (await bridgeCall('audio', 'getOutputDevices', [])) as OutputDevice[]
-        if (Array.isArray(devices) && devices.length > 0) return devices
+        const bridgeDevices = (await bridgeCall('audio', 'getOutputDevices', [])) as OutputDevice[]
+        if (Array.isArray(bridgeDevices) && bridgeDevices.length > 0) return bridgeDevices
       } catch {
         // fallback
       }
     }
 
-    return [{ id: 'wasapi-exclusive', label: 'Windows Audio Endpoint (WASAPI Exclusive)', isDefault: true }]
+    return [{ id: 'default', label: '默认音频终端 (WASAPI Exclusive)', isDefault: true }]
   }
 
-  async setOutputDevice(_id: string): Promise<void> {
-    // Handled by WASAPI exclusive device selection on main process
+  async setOutputDevice(id: string): Promise<void> {
+    const bridgeCall =
+      this.config.bridgeCall ??
+      (typeof window !== 'undefined'
+        ? (window as unknown as { BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> } })
+            .BBeBeeBridge?.call
+        : undefined)
+
+    if (bridgeCall) {
+      await bridgeCall('audio', 'setOutputDevice', [id]).catch(() => {})
+    }
+
+    const sink = (this.context as BaseAudioContext & { setSinkId?: (id: string) => Promise<void> }).setSinkId
+    if (typeof sink === 'function') {
+      await sink.call(this.context, id).catch(() => {})
+    }
   }
 
   onInterruption(cb: (e: InterruptionEvent) => void): Disposable {

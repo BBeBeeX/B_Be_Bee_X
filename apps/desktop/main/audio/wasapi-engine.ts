@@ -40,6 +40,8 @@ export class WasapiEngine {
     this.activeConfig = undefined
   }
 
+  private selectedDeviceId: string = 'default'
+
   async getOutputDevices(): Promise<{ id: string; label: string; isDefault: boolean }[]> {
     if (process.platform === 'win32') {
       return [
@@ -49,5 +51,9 @@ export class WasapiEngine {
     return [
       { id: 'system-default', label: 'Default Audio Output Device', isDefault: true }
     ]
+  }
+
+  async setOutputDevice(id: string): Promise<void> {
+    this.selectedDeviceId = id
   }
 }

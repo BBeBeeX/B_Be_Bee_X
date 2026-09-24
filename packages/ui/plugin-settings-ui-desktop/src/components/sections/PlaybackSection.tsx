@@ -1,8 +1,9 @@
-import { createElement as h, useState, type ReactElement } from 'react'
+import { createElement as h, useEffect, useState, type ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { AppSettings, EffectParamValue, UiService } from '@BBeBee/protocol'
+import type { AppSettings, EffectParamValue, OutputDevice, UiService } from '@BBeBee/protocol'
 import { serviceOf, useServiceState } from '@BBeBee/ui-core'
 import { Button, Slider } from '@BBeBee/ui-kit-desktop'
+import { Select } from '../Select.js'
 import { SettingsRow } from '../SettingsRow.js'
 import { SettingsSection } from '../SettingsSection.js'
 import { Switch } from '../Switch.js'
@@ -33,7 +34,37 @@ export function PlaybackSection({
   const [normExpanded, setNormExpanded] = useState(true)
   const [compExpanded, setCompExpanded] = useState(true)
   const [reverbExpanded, setReverbExpanded] = useState(true)
-  const [showWasapiNotice, setShowWasapiNotice] = useState(settings.audioOutputEngine === 'wasapi')
+  const [outputDevices, setOutputDevices] = useState<OutputDevice[]>([])
+
+  useEffect(() => {
+    let mounted = true
+    const fetchDevices = async () => {
+      try {
+        const list = await ctx.audio?.listOutputDevices?.()
+        if (mounted && Array.isArray(list) && list.length > 0) {
+          setOutputDevices(list)
+        }
+      } catch {
+        // fallback
+      }
+    }
+    void fetchDevices()
+
+    const media = (globalThis as {
+      navigator?: { mediaDevices?: { addEventListener?: (t: string, cb: () => void) => void; removeEventListener?: (t: string, cb: () => void) => void } }
+    }).navigator?.mediaDevices
+
+    if (media?.addEventListener && media?.removeEventListener) {
+      media.addEventListener('devicechange', fetchDevices)
+      return () => {
+        mounted = false
+        media.removeEventListener?.('devicechange', fetchDevices)
+      }
+    }
+    return () => {
+      mounted = false
+    }
+  }, [ctx])
 
   const eqEntry = chain.find((c) => c.effectId === 'eq10')
   const normEntry = chain.find((c) => c.effectId === 'normalize')
@@ -48,6 +79,25 @@ export function PlaybackSection({
     return (ctx.ui?.viewFor?.('visualizer.settings') as React.ComponentType<{ ctx: Context }> | undefined) ?? null
   })
 
+  const currentEngine = settings.audioOutputEngine ?? 'wasapi'
+  const currentDeviceId = settings.audioOutputDeviceId ?? 'default'
+
+  const deviceOptions = (outputDevices.length > 0
+    ? outputDevices
+    : [{ id: 'default', label: '系统默认音频设备 (System Default)', isDefault: true }]
+  ).map((d) => ({
+    value: d.id,
+    label: d.label || (d.id === 'default' ? '系统默认音频设备 (System Default)' : `音频设备 (${d.id.slice(0, 8)})`),
+  }))
+
+  // Ensure currentDeviceId is included in options so Select always renders a valid selection
+  if (!deviceOptions.some((o) => o.value === currentDeviceId)) {
+    deviceOptions.unshift({
+      value: currentDeviceId,
+      label: currentDeviceId === 'default' ? '系统默认音频设备 (System Default)' : `指定设备 (${currentDeviceId})`,
+    })
+  }
+
   return h(
     'div',
     { id: 'section-playback' },
@@ -60,57 +110,41 @@ export function PlaybackSection({
       h(SettingsRow, {
         title: '音频输出驱动 (Audio Backend)',
         description:
-          (settings.audioOutputEngine ?? 'webaudio') === 'wasapi'
+          currentEngine === 'wasapi'
             ? '当前：WASAPI 硬件独占 Hi-Res（点对点无损输出，绕过系统混音器，保留 Web Audio DSP）'
             : '当前：系统默认 WebAudio（通过操作系统共享混音器输出，多软件混音兼容）',
         action: h(
           'div',
           { style: { display: 'flex', gap: 6 } },
           h(Button, {
-            variant: (settings.audioOutputEngine ?? 'webaudio') === 'webaudio' ? 'primary' : 'secondary',
+            variant: currentEngine === 'wasapi' ? 'primary' : 'secondary',
             onPress: () => {
-              setShowWasapiNotice(false)
-              void update({ audioOutputEngine: 'webaudio' })
-            },
-            children: '系统默认 WebAudio',
-          }),
-          h(Button, {
-            variant: settings.audioOutputEngine === 'wasapi' ? 'primary' : 'secondary',
-            onPress: () => {
-              setShowWasapiNotice(true)
               void update({ audioOutputEngine: 'wasapi' })
             },
             children: 'WASAPI 独占 Hi-Res',
           }),
+          h(Button, {
+            variant: currentEngine === 'webaudio' ? 'primary' : 'secondary',
+            onPress: () => {
+              void update({ audioOutputEngine: 'webaudio' })
+            },
+            children: '系统默认 WebAudio',
+          }),
         ),
       }),
-      showWasapiNotice || settings.audioOutputEngine === 'wasapi'
-        ? h(
-            'div',
-            {
-              style: {
-                margin: '8px 16px 16px 16px',
-                padding: '12px 14px',
-                borderRadius: 8,
-                backgroundColor: 'rgba(255, 149, 0, 0.12)',
-                border: '1px solid rgba(255, 149, 0, 0.35)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 4,
-              },
-            },
-            h(
-              'div',
-              { style: { fontSize: 13, fontWeight: 'bold', color: '#FF9500' } },
-              '⚠️ 硬件排他性独占提示',
-            ),
-            h(
-              'div',
-              { style: { fontSize: 12, color: '#E0E0E0', lineHeight: 1.5 } },
-              '启用 WASAPI 独占模式后，播放器将独占锁定声卡硬件。在音频播放期间，计算机上的其他软件（如浏览器网页、视频播放器、游戏及系统提示音）可能会被暂时静音或无法发声。若需同时使用其他音频软件，请随时切回“系统默认 WebAudio”。设置在切换歌曲或重新开始播放时生效。',
-            ),
-          )
-        : null,
+      h(SettingsRow, {
+        title: '音频输出设备 (Output Device)',
+        description: '选择播放器音频输出的硬件声卡终端、扬声器或外接 DAC',
+        action: h(Select, {
+          value: currentDeviceId,
+          options: deviceOptions,
+          accessibilityLabel: '音频输出设备',
+          onChange: (newDeviceId: string) => {
+            void update({ audioOutputDeviceId: newDeviceId })
+            void ctx.audio?.setOutputDevice?.(newDeviceId)
+          },
+        }),
+      }),
     ),
     h(
       SettingsSection,

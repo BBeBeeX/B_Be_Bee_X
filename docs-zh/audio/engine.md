@@ -96,12 +96,11 @@ flowchart LR
 - **WASAPI 硬件独占输出与 Web Audio DSP (`@BBeBee/core-audio-wasapi`)**：
   实现了**范式一（Web Audio 作为纯 DSP 处理核心，旁路导出至 WASAPI 独占输出）**：
   Web Audio 负责执行完整的 `ctx.dsp` 效果器链（10 段 EQ、前级放大、动态压缩）与频谱可视化 (`AnalyserNode`)。通过 `WasapiSinkProcessor` (AudioWorklet) 拦截最终的 Float32 PCM，借由无锁环形队列 (`SharedRingBuffer`) 回传主进程，绕过 Chromium 默认的系统共享混音器（规避 Windows Shared Mode 的强制重采样与精度损耗），通过 WASAPI Exclusive 模式直接以硬件原生采样率与位深直推声卡 DAC。
-- **设置中的音频输出引擎切换 (`audioOutputEngine`)**：
-  用户可在桌面端设置界面的「音频输出引擎与设备」中自由切换：
+- **设置中的音频输出引擎与设备选择 (`audioOutputEngine`, `audioOutputDeviceId`)**：
+  用户可在桌面端设置界面的「音频输出引擎与设备」中自由配置驱动与物理设备：
+  - **WASAPI 独占 Hi-Res（默认）**：硬件独占锁定声卡，绕过系统混音，点对点输出至硬件 DAC。
   - **系统默认 WebAudio**：通过操作系统共享混音器输出，多软件混音兼容（与浏览器、游戏、系统提示音共存）。
-  - **WASAPI 独占 Hi-Res**：硬件独占锁定声卡，绕过系统混音，点对点输出至硬件 DAC。
-  - **硬件排他性独占提示（安全告警）**：
-    > ⚠️ **硬件排他性独占提示**：启用 WASAPI 独占模式后，播放器将独占锁定声卡硬件。在音频播放期间，计算机上的其他软件（如浏览器网页、视频播放器、游戏及系统提示音）可能会被暂时静音或无法发声。若需同时使用其他音频软件，请随时切回“系统默认 WebAudio”。设置在切换歌曲或重新开始播放时生效。
+  - **可选择的音频输出设备**：通过 `ctx.audio.listOutputDevices()` 列出当前系统所有活动的扬声器、耳机和外接 USB DAC 终端，用户可直接下拉选择目标声卡进行实时切换（`ctx.audio.setOutputDevice()`）。
 - **发烧级无损音频格式与本地扫描器支持**：
   桌面端集成 FFmpeg 旁路解码器，打通了全链路无损音频体系：
   - **ALAC 与 `.m4a`**：此前扫描器在遇到包含 ALAC 编码的 `.m4a` 文件时，因 Chromium 原生不支持而判定为非法编码并报错丢弃（`unsupported codec: ALAC is not supported on this platform`）。现已通过在 `supportedFormats()` 注册 ALAC 并配合 FFmpeg 解码，实现完整解析与导入。

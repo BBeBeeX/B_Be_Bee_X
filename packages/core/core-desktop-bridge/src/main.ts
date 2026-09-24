@@ -126,6 +126,7 @@ export interface AudioHost {
   writeWasapi?(pcmData: unknown): Promise<unknown>
   stopWasapi?(): Promise<unknown>
   getOutputDevices?(): Promise<unknown>
+  setOutputDevice?(id: string): Promise<unknown>
 }
 
 /** The referrer policies Electron's `ClientRequest` accepts. */
@@ -209,7 +210,7 @@ const ALLOWED: Record<BridgedService, ReadonlySet<string>> = {
     'publishNowPlaying', 'publishPlaybackState', 'setSupportedCommands', 'clearNowPlaying',
   ]),
   audio: new Set([
-    'probe', 'decodePcm', 'initWasapi', 'writeWasapi', 'stopWasapi', 'getOutputDevices',
+    'probe', 'decodePcm', 'initWasapi', 'writeWasapi', 'stopWasapi', 'getOutputDevices', 'setOutputDevice',
   ]),
 }
 
@@ -271,6 +272,7 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     writeWasapi: options.audio?.writeWasapi ?? (async () => 0),
     stopWasapi: options.audio?.stopWasapi ?? (async () => {}),
     getOutputDevices: options.audio?.getOutputDevices ?? (async () => []),
+    setOutputDevice: options.audio?.setOutputDevice ?? (async () => {}),
   }
 
   const services: Record<

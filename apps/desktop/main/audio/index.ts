@@ -12,6 +12,7 @@ export interface AudioHostApi {
   writeWasapi(pcmChunk: Float32Array): Promise<number>
   stopWasapi(): Promise<void>
   getOutputDevices(): Promise<{ id: string; label: string; isDefault: boolean }[]>
+  setOutputDevice(id: string): Promise<void>
 }
 
 export function createAudioHost(): AudioHostApi {
@@ -25,5 +26,6 @@ export function createAudioHost(): AudioHostApi {
     writeWasapi: (pcm) => wasapi.write(pcm),
     stopWasapi: () => wasapi.stop(),
     getOutputDevices: () => wasapi.getOutputDevices(),
+    setOutputDevice: (id) => wasapi.setOutputDevice(id),
   }
 }

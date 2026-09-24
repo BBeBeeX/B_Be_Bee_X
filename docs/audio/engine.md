@@ -106,11 +106,11 @@ effects are rebuilt without ever touching a playing source. The two lifetimes ar
 - **WASAPI Exclusive Output & Web Audio DSP (`@BBeBee/core-audio-wasapi`)**:
   Implements Paradigm 1 for high-fidelity bit-perfect output on Windows desktop:
   Web Audio continues to run the full `ctx.dsp` effect chain (10-band EQ, preamp, dynamic compressor) and UI visualizer (`AnalyserNode`). An `AudioWorklet` processor (`WasapiSinkProcessor`) taps into the master output and transfers 32-bit Float PCM to a lock-free `SharedRingBuffer`, bypassing Chromium's default `context.destination` and OS shared mixer. The Electron main process WASAPI client then drives the audio endpoint in exclusive mode (`AUDCLNT_SHAREMODE_EXCLUSIVE`) at the hardware's native sample rate and bit depth.
-- **Audio Output Engine Selection in Settings (`audioOutputEngine`)**:
-  Users can toggle between `'webaudio'` (System Default WebAudio) and `'wasapi'` (WASAPI Exclusive Hi-Res) in Settings under the *Audio Output Engine & Devices* section.
+- **Audio Output Engine & Device Selection in Settings (`audioOutputEngine`, `audioOutputDeviceId`)**:
+  Settings provide output driver and hardware device configuration under the *Audio Output Engine & Devices* section:
+  - **WASAPI Exclusive Hi-Res Mode (Default)**: Locks the audio hardware endpoint exclusively (`AUDCLNT_SHAREMODE_EXCLUSIVE`) for bit-perfect output, bypassing Windows OS mixer resampling.
   - **Shared WebAudio Mode**: Output routes through the operating system mixer, allowing concurrent audio playback from browsers, games, and system alerts.
-  - **WASAPI Exclusive Hi-Res Mode**: Locks the audio hardware endpoint exclusively. A prominent warning banner alerts the user:
-    > ⚠️ **Hardware Exclusivity Notice**: When WASAPI Exclusive mode is enabled, the player takes exclusive control over the sound card hardware. During playback, other applications (browsers, video players, system sounds) may be temporarily muted or fail to produce audio. Users may switch back to default WebAudio at any time.
+  - **Selectable Audio Output Devices**: Lists all active system audio endpoints (speakers, headphones, external USB DACs) via `ctx.audio.listOutputDevices()`. Users can directly choose their preferred sound output device (`ctx.audio.setOutputDevice()`).
 - **Audiophile Lossless Formats & Local Scanner Integration**:
   Desktop integrates `ffmpeg` to decode formats beyond Chromium's built-in capability:
   - **ALAC & `.m4a`**: Previously, ALAC tracks inside `.m4a` containers were rejected during scanning (`unsupported codec: ALAC is not supported on this platform`). With the FFmpeg decode bridge and `alac` added to `supportedFormats()`, ALAC files are fully imported and decoded.
