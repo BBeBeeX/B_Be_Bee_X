@@ -252,3 +252,38 @@ All visual icons across desktop UI components are standardized on **Tabler Icons
 - **Header Count & Empty State Alignment**:
   - Header record counts (`最近播放记录 (${uniqueRecords.length} 首)`) and empty state guards evaluate against deduplicated records.
 
+---
+
+## 8. Mini Player & Dynamic Island Desktop Specifications
+
+Rules for desktop floating mini player, Dynamic Island secondary windows, and gestures:
+
+### Multi-State Window Model
+- **Floating Mini Player (`normal`)**: 380×96px floating pill. Provides album artwork, track title, artist, seek scrubber, and transport controls. Body is draggable (`-webkit-app-region: drag`), controls are interactive (`-webkit-app-region: no-drag`). Includes restore main window (`⤢`) and close (`✕`).
+- **Dynamic Island Capsule (`attached`)**: 280×50px pill docked flush at the center top of the active display. Shows track title, artist, and live equalizer wave bars (`IslandWaveBars`). Single click or downward drag expands; double click collapses.
+- **Expanded Dynamic Island (`expanded`)**: 420×184px card docked at the top. Shows large artwork, marquee text, animated wave bars, timeline scrubber, and transport controls. Double-clicking background collapses back to capsule; dragging downward past threshold (>60px) detaches into floating mode.
+
+### Gesture-First Interaction & Clutter Elimination
+- **Zero Redundant Action Buttons**: Do **not** render explicit buttons for "折叠灵动岛", "脱离吸附", or "吸附到顶部". All mode transitions are driven by natural gestures:
+  - Dragging floating player near top edge (≤40px) automatically snaps to Dynamic Island.
+  - Dragging Dynamic Island downwards (>60px) automatically detaches into floating player.
+  - Single click on Dynamic Island capsule expands to card.
+  - Double clicking Dynamic Island background collapses to capsule.
+
+### Shadow & Border Luminance Standards
+- **Transparent Window Glow Prevention**: Never use wide blur radii (>30px) or `0 0 0 1px` white outer rings on transparent secondary windows, which create exaggerated fuzzy halos.
+- **Crisp Multi-Tier Black Shadows**:
+  - Floating player: `0 6px 16px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.25)` (hover: `0 10px 24px rgba(0, 0, 0, 0.55)`).
+  - Island capsule: `0 4px 12px rgba(0, 0, 0, 0.45)`.
+  - Expanded island: `0 12px 28px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4)`.
+- **Subtle Glass Border**: Border must use low-opacity white stroke (`1px solid rgba(255, 255, 255, 0.08)`), blending seamlessly with `rgba(18, 18, 18, 0.85)` dark glass and `backdrop-filter: blur(24px)`.
+
+### Secondary Window Artwork Safety
+- **Chromium Local Resource Boundary**: Secondary window renderers block raw `file://` URLs.
+- All local cover image paths must be translated from `file://` to `bbebee-file://` via `resolveArtworkUri()`.
+- Artwork elements (`IslandArtwork`) must specify `crossOrigin="anonymous"` and `referrerPolicy="no-referrer"`, with graceful SVG fallback on image load errors.
+
+### Cordis Injection Invariant in Secondary Window Actions
+- When dispatching playback actions from a secondary window service, the service class must declare `static inject = ['player']` and the plugin module must export `inject = ['player']`.
+- Accessing `this.ctx.player` without explicit injection throws Cordis proxy violations at runtime (`cannot get property "player" without inject`).
+

@@ -190,6 +190,9 @@ B_Be_Bee/
 │   │   │                                       collections (07 §4.6)
 │   │   ├── plugin-lyrics/          ✅        ctx.lyrics — lyric cache, source resolution and sync
 │   │   ├── plugin-desktop-lyrics/  ✅        ctx.desktopLyrics — floating/secondary window lyrics
+│   │   ├── plugin-desktop-taskbar/ ✅        Windows taskbar thumbnail toolbar (play/pause/prev/next)
+│   │   ├── plugin-visualizer/      ✅        ctx.visualizer — real-time audio FFT/waveform analysis service
+│   │   ├── plugin-mini-player/     ✅        ctx.miniPlayer — floating mini player and Dynamic Island
 │   │   ├── plugin-cache/           ✅        ctx.cache — covers and remote streams served from
 │   │   │                                       ctx.paths.cache, fetched only on a miss, LRU per
 │   │   │                                       class (05 §2, 07 §4.11)
@@ -227,6 +230,8 @@ B_Be_Bee/
 │   │   ├── plugin-inspector-ui-desktop/ ✅   the fiber tree, rendered
 │   │   ├── plugin-lyrics-ui-desktop/ ✅      now-playing lyrics panel, smooth auto-scrolling
 │   │   ├── plugin-desktop-lyrics-ui-desktop/ ✅ desktop lyrics button + secondary window adapter
+│   │   ├── plugin-visualizer-ui-desktop/ ✅  audio visualizer canvas and settings configuration panel
+│   │   ├── plugin-mini-player-ui-desktop/ ✅ desktop floating mini player & Dynamic Island secondary window
 │   │   ├── plugin-dsp-ui-desktop/  ✅        ┐ 10-band EQ sliders, chain ordering, effect bypass,
 │   │   ├── plugin-dsp-ui-mobile/   ✅        ┘ and settings integration (08 §4)
 │   │   ├── plugin-settings-ui-desktop/ ✅    ┐ settings center: modular sections & diagnostics,

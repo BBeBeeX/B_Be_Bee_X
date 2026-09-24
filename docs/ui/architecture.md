@@ -467,17 +467,45 @@ The desktop shell organizes primary navigation between the left sidebar and the 
    - Cordis Context instances are strictly scoped (`ctx.inject`). Accessing an un-injected property throws an error at runtime (`cannot get property "<name>" without inject`).
    - Hooks in UI view layers inspecting optional services (e.g., `useSources`, `useLiveSourceIds`, and `useSearchSourceOptions`) must always access service instances safely using `serviceOf<T>(ctx, key)` instead of raw member access `(ctx as any)[key]`.
 
-### Secondary windows and single-kernel preservation
+### 7.2 Secondary Windows and Single-Kernel Preservation
 
-When desktop features require OS-level window detachment — such as **Desktop Lyrics** which must float on top of other desktop applications, remain visible when the main window is minimized, support arbitrary multi-monitor dragging, and provide click-through mouse event forwarding when locked:
+When desktop features require OS-level window detachment — such as **Desktop Lyrics** and the **Mini Player / Dynamic Island** which must float on top of other desktop applications, remain visible when the main window is minimized, support arbitrary multi-monitor dragging, and provide click-through mouse event forwarding when locked:
 
 1. **Single Cordis Kernel Invariant (ADR-3)**: The secondary `BrowserWindow` must **never** call `boot()` or initialize a secondary Cordis Context. Starting a second kernel would split plugin states, duplicate playback hooks, and violate singletons.
-2. **Passive View Architecture**: The secondary window runs as a passive React view loaded via query/hash routing (`?window=desktop-lyrics` or `#desktop-lyrics`). It mounts a standalone, lightweight view component directly without activating Cordis plugins.
-3. **IPC Forwarding Hub**: The main renderer's UI adapter (`plugin-desktop-lyrics-ui-desktop`) syncs state down to the secondary window through `window.BBeBee.desktopLyrics.updateData(...)`, and receives user actions back from the secondary window through `sendAction(...)` dispatched to `ctx.player` and `ctx.desktopLyrics`.
+2. **Passive View Architecture**: The secondary window runs as a passive React view loaded via query/hash routing (`?window=desktop-lyrics`, `?window=mini-player` or `#mini-player`). It mounts a standalone, lightweight view component directly without activating Cordis plugins.
+3. **IPC Forwarding Hub**: The main renderer's UI adapter (`plugin-desktop-lyrics-ui-desktop`, `plugin-mini-player-ui-desktop`) syncs state down to the secondary window through IPC (`window.BBeBee.desktopLyrics.updateData(...)`, `window.BBeBee.miniPlayer.updateData(...)`), and receives user actions back from the secondary window through `sendAction(...)` dispatched to `ctx.player` and the respective feature service.
 4. **OS Integration**:
    - Frameless transparent window (`frame: false`, `transparent: true`, `backgroundColor: '#00000000'`, `alwaysOnTop: true`, `skipTaskbar: true`).
    - Free dragging via CSS `-webkit-app-region: drag` and interactive buttons via `-webkit-app-region: no-drag`.
-   - Mouse click-through: `setIgnoreMouseEvents(locked, { forward: true })` toggled dynamically upon lock state.
+   - Mouse click-through: `setIgnoreMouseEvents(locked, { forward: true })` toggled dynamically upon lock state where applicable.
+
+### 7.3 Mini Player & Dynamic Island Window Architecture
+
+The **Mini Player / Dynamic Island** (`plugin-mini-player` and `plugin-mini-player-ui-desktop`) provides a dedicated secondary floating window with dynamic morphing between a standard floating media pill and an Apple-inspired "Dynamic Island" docked at the screen top:
+
+1. **Three Window States & Seamless Transitions**:
+   - **Floating Mini Player (`normal`)**: Compact 380×96px rounded pill with cover artwork, track title, artist, progress scrubber, and media controls. The entire card body is draggable (`-webkit-app-region: drag`), while buttons and interactive sliders opt out (`-webkit-app-region: no-drag`). Includes restore-to-main (`⤢`) and close (`✕`) buttons.
+   - **Dynamic Island Capsule (`attached`)**: Ultra-compact 280×50px pill docked flush against the top edge of the active screen. Displays track title, artist, and live audio wave bars (`IslandWaveBars`). Clicking expands into full island view; double-clicking collapses.
+   - **Expanded Dynamic Island (`expanded`)**: Expanded 420×184px card docked at the screen top. Features large cover art, track info with marquee scrolling, animated frequency wave bars, timeline scrubber, and transport controls. Double-clicking collapses back to capsule; dragging downward past the detach threshold (>60px) detaches it back into a floating mini player.
+
+2. **Multi-Display Edge Snapping & Detachment**:
+   - Handled natively in `MiniPlayerWindowManager` (`apps/desktop/main/mini-player-manager.ts`).
+   - When the user drags the floating window within `TOP_SNAP_THRESHOLD` (≤40px) of the top edge of *any* connected display (`screen.getDisplayMatching(bounds)`), the window automatically snaps to horizontal center (`(bounds.width - attachedWidth) / 2`) and transitions to `attached` Dynamic Island mode.
+   - Dragging the Dynamic Island downwards past `60px` automatically triggers detachment, resizing and restoring the window back to its previous floating coordinates (`lastFloatingPos`).
+
+3. **Gesture-First Interaction**:
+   - Redundant explicit toggle buttons ("折叠灵动岛", "脱离吸附", "吸附到顶部") are omitted to prevent visual clutter.
+   - Dragging near the top snaps to island; dragging down detaches; clicking the capsule expands; double-clicking the background collapses back to capsule.
+
+4. **Security & Artwork Path Resolution**:
+   - Chromium blocks `file://` resources inside renderer documents with `ERR_UNKNOWN_URL_SCHEME` / security violations.
+   - `resolveArtworkUri()` in `plugin-mini-player` automatically translates local paths from `file://` to Electron's privileged custom scheme `bbebee-file://`.
+   - `IslandArtwork` implements anonymous cross-origin loading (`crossOrigin="anonymous"`, `referrerPolicy="no-referrer"`) and provides error boundary fallback to a crisp vector note icon if an image is corrupted or missing.
+
+5. **Crisp Dark Glass Design Standards**:
+   - Translucent dark glass styling (`rgba(18, 18, 18, 0.85)` with `backdrop-filter: blur(24px)`).
+   - High-contrast border line (`1px solid rgba(255, 255, 255, 0.08)`).
+   - Multi-tier black ambient drop shadows (`0 6px 16px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.25)`), eliminating excessive fuzzy glow halos or wide white spread rings on transparent windows.
 
 ---
 
