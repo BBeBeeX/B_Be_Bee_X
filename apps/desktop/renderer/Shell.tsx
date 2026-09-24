@@ -123,11 +123,11 @@ class ViewBoundary extends Component<
 
     return h(
       'div',
-      { style: { padding: 24, color: '#FF5C5C', fontFamily: 'ui-monospace, monospace' } },
+      { style: { padding: 24, color: 'var(--error, #EF4444)', fontFamily: 'ui-monospace, monospace' } },
       h('h2', { style: { fontSize: 16, margin: '0 0 8px' } }, `"${this.props.title}" failed to render`),
       h(
         'pre',
-        { style: { margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, color: '#FFB020' } },
+        { style: { margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, color: 'var(--warning, #F59E0B)' } },
         error.stack ?? error.message,
       ),
     )
@@ -276,7 +276,7 @@ export function Shell({ ctx }: { ctx: Context }) {
           position: 'fixed',
           inset: 0,
           zIndex: 100,
-          background: '#000000',
+          background: 'var(--bg-app, #05060B)',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
@@ -329,7 +329,7 @@ export function Shell({ ctx }: { ctx: Context }) {
             )
           : h(
               'div',
-              { style: { padding: 24, color: '#A0A0AE' } },
+              { style: { padding: 24, color: 'var(--text-tertiary, #8B92A6)' } },
               '"Now playing" has no desktop view.',
             ),
       ),
@@ -388,7 +388,7 @@ export function Shell({ ctx }: { ctx: Context }) {
         flexDirection: 'column',
         height: '100vh',
         overflow: 'hidden',
-        background: '#000000',
+        background: 'var(--bg-app, #05060B)',
       },
     },
     h(TopBar, {
@@ -439,7 +439,8 @@ export function Shell({ ctx }: { ctx: Context }) {
           style: {
             borderRadius: 8,
             padding: LibraryView ? 0 : 12,
-            background: '#121212',
+            background: 'var(--bg-primary, #080A12)',
+            border: '1px solid var(--border-subtle, rgba(148,163,184,0.08))',
             minHeight: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
@@ -462,7 +463,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                   whiteSpace: 'nowrap',
                   border: 0,
                 }
-              : { fontSize: 12, color: '#5A5A68', padding: '8px 10px', letterSpacing: 1 },
+              : { fontSize: 12, color: 'var(--text-muted, #626A80)', padding: '8px 10px', letterSpacing: 1 },
           },
           'BBeBee',
         ),
@@ -494,8 +495,8 @@ export function Shell({ ctx }: { ctx: Context }) {
                         borderRadius: 6,
                         border: 'none',
                         cursor: 'pointer',
-                        background: currentId === entry.id ? '#2A2340' : 'transparent',
-                        color: currentId === entry.id ? '#F5F5F7' : '#A0A0AE',
+                        background: currentId === entry.id ? 'var(--surface-selected, rgba(99,102,241,0.12))' : 'transparent',
+                        color: currentId === entry.id ? 'var(--text-primary, #F5F7FF)' : 'var(--text-tertiary, #8B92A6)',
                         font: 'inherit',
                       },
                     },
@@ -519,7 +520,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                       {
                         style: {
                           fontSize: 11,
-                          color: '#5A5A68',
+                          color: 'var(--text-muted, #626A80)',
                           padding: '14px 10px 4px',
                           letterSpacing: 1,
                           textTransform: 'uppercase',
@@ -547,8 +548,8 @@ export function Shell({ ctx }: { ctx: Context }) {
                       borderRadius: 6,
                       border: 'none',
                       cursor: 'pointer',
-                      background: isActive ? '#2A2340' : 'transparent',
-                      color: isActive ? '#F5F5F7' : '#A0A0AE',
+                      background: isActive ? 'var(--surface-selected, rgba(99,102,241,0.12))' : 'transparent',
+                      color: isActive ? 'var(--text-primary, #F5F7FF)' : 'var(--text-tertiary, #8B92A6)',
                       font: 'inherit',
                     },
                   },
@@ -564,7 +565,8 @@ export function Shell({ ctx }: { ctx: Context }) {
             {
               style: {
                 borderRadius: 8,
-                background: '#121212',
+                background: 'var(--bg-primary, #080A12)',
+                border: '1px solid var(--border-subtle, rgba(148,163,184,0.08))',
                 overflow: 'auto',
                 minHeight: 0,
               },
@@ -580,7 +582,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                         alignItems: 'center',
                         justifyContent: 'center',
                         height: '100%',
-                        color: '#A0A0AE',
+                        color: 'var(--text-tertiary, #8B92A6)',
                         gap: 12,
                       },
                     },
@@ -607,7 +609,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                   )
               : h(
                   'div',
-                  { style: { padding: 24, color: '#A0A0AE' } },
+                  { style: { padding: 24, color: 'var(--text-tertiary, #8B92A6)' } },
                   active
                     ? // A contribution with no view on this target is a normal
                       // state, not an error — the direct cost of ADR-2 (docs/08 §3).
@@ -622,7 +624,8 @@ export function Shell({ ctx }: { ctx: Context }) {
               'data-testid': 'queue-sidebar-panel',
               style: {
                 borderRadius: 8,
-                background: '#121212',
+                background: 'var(--bg-primary, #080A12)',
+                border: '1px solid var(--border-subtle, rgba(148,163,184,0.08))',
                 overflow: 'hidden',
                 minHeight: 0,
                 display: 'flex',
@@ -647,7 +650,7 @@ export function Shell({ ctx }: { ctx: Context }) {
     BottomBar
       ? h(
           'footer',
-          { style: { background: '#000000' } },
+          { style: { background: 'var(--bg-app, #05060B)' } },
           h(BottomBar, {
             ctx,
             currentRoute: isQueueOpen ? 'queue.view' : currentId,

@@ -197,3 +197,138 @@ export function cssVariables(scheme: Scheme): Record<string, string> {
   tokens.space.forEach((value, i) => void (out[`--bb-space-${i}`] = `${value}px`))
   return out
 }
+
+/* ── Color Token System & Themes ────────────────────────────────────────── */
+
+export * from './themes/midnight-purple.js'
+export * from './themes/spotify.js'
+
+import type { ThemeDefinition } from '@BBeBee/protocol'
+import { midnightPurpleTheme } from './themes/midnight-purple.js'
+import { spotifyTheme } from './themes/spotify.js'
+
+export const builtInThemes: Record<string, ThemeDefinition> = {
+  'midnight-purple': midnightPurpleTheme,
+  spotify: spotifyTheme,
+}
+
+export const defaultTheme: ThemeDefinition = midnightPurpleTheme
+
+/**
+ * Generates all CSS custom properties for a given ThemeDefinition,
+ * including primary color tokens, brand gradients, glow tokens,
+ * and mapped legacy `--bb-*` variables.
+ */
+export function themeToCssVariables(theme: ThemeDefinition): Record<string, string> {
+  const { tokens: t } = theme
+  const out: Record<string, string> = {
+    // Background
+    '--bg-app': t.bg.app,
+    '--bg-primary': t.bg.primary,
+    '--bg-secondary': t.bg.secondary,
+    '--bg-tertiary': t.bg.tertiary,
+
+    // Surface
+    '--surface-1': t.surface.s1,
+    '--surface-2': t.surface.s2,
+    '--surface-3': t.surface.s3,
+    '--surface-hover': t.surface.hover,
+    '--surface-active': t.surface.active,
+    '--surface-selected': t.surface.selected,
+
+    // Brand
+    '--primary': t.brand.primary,
+    '--primary-active': t.brand.primaryActive,
+    '--primary-hover': t.brand.primaryHover,
+    '--accent': t.brand.accent,
+    '--accent-hover': t.brand.accentHover,
+
+    // Gradient
+    '--gradient-brand': t.gradient.brand,
+    '--gradient-progress': t.gradient.progress,
+
+    // Text
+    '--text-primary': t.text.primary,
+    '--text-secondary': t.text.secondary,
+    '--text-tertiary': t.text.tertiary,
+    '--text-muted': t.text.muted,
+    '--text-disabled': t.text.disabled,
+    '--text-placeholder': t.text.placeholder,
+
+    // Border
+    '--border-subtle': t.border.subtle,
+    '--border-default': t.border.default,
+    '--border-hover': t.border.hover,
+    '--border-active': t.border.active,
+    '--border-focus': t.border.focus,
+
+    // Semantic
+    '--success': t.semantic.success,
+    '--warning': t.semantic.warning,
+    '--error': t.semantic.error,
+    '--info': t.semantic.info,
+
+    // Music
+    '--music-playing': t.music.playing,
+    '--music-lyrics': t.music.lyrics,
+    '--music-waveform': t.music.waveform,
+    '--music-waveform-active': t.music.waveformActive,
+
+    // Glow
+    '--glow-xs': t.glow.xs,
+    '--glow-sm': t.glow.sm,
+    '--glow-md': t.glow.md,
+    '--glow-lg': t.glow.lg,
+
+    // Slider track default
+    '--slider-track-bg': t.gradient.progress,
+
+    // Legacy --bb-* backward compatibility mappings
+    '--bb-bg-sunken': t.bg.app,
+    '--bb-bg-base': t.bg.primary,
+    '--bb-bg-raised': t.surface.s1,
+    '--bb-bg-overlay': t.surface.s2,
+    '--bb-text-primary': t.text.primary,
+    '--bb-text-secondary': t.text.secondary,
+    '--bb-text-disabled': t.text.disabled,
+    '--bb-accent-base': t.brand.primary,
+    '--bb-accent-hover': t.brand.primaryHover,
+    '--bb-accent-muted': t.surface.selected,
+    '--bb-accent-on': t.text.primary,
+    '--bb-state-error': t.semantic.error,
+    '--bb-state-warn': t.semantic.warning,
+    '--bb-state-ok': t.semantic.success,
+    '--bb-border-subtle': t.border.subtle,
+    '--bb-border-strong': t.border.default,
+  }
+
+  // Dimension and scale variables
+  for (const [name, value] of Object.entries(tokens.radius)) {
+    out[`--bb-radius-${name}`] = `${value}px`
+  }
+  for (const [name, value] of Object.entries(tokens.duration)) {
+    out[`--bb-duration-${name}`] = `${value}ms`
+  }
+  tokens.space.forEach((value, i) => void (out[`--bb-space-${i}`] = `${value}px`))
+
+  // Extra overrides from theme
+  if (theme.cssVariables) {
+    Object.assign(out, theme.cssVariables)
+  }
+
+  return out
+}
+
+/**
+ * Injects theme CSS variables into the DOM element (defaults to document.documentElement).
+ */
+export function applyThemeToDom(theme: ThemeDefinition, root?: HTMLElement | null): void {
+  if (typeof document === 'undefined') return
+  const target = root ?? document.documentElement
+  if (!target) return
+  const vars = themeToCssVariables(theme)
+  for (const [name, value] of Object.entries(vars)) {
+    target.style.setProperty(name, value)
+  }
+  target.setAttribute('data-theme', theme.id)
+}

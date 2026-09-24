@@ -5,20 +5,21 @@ import { c, common } from '../theme.js'
 import { Text } from './Text.js'
 
 export function TextField(props: TextFieldProps): ReactElement {
-  const scheme = c()
   const invalid = props.error !== undefined
   const style = {
     width: '100%',
     boxSizing: 'border-box' as const,
     padding: `${tokens.space[2]}px ${tokens.space[3]}px`,
     borderRadius: tokens.radius.sm,
-    border: `1px solid ${invalid ? scheme.state.error : 'transparent'}`,
-    background: scheme.bg.overlay,
-    color: scheme.text.primary,
+    border: `1px solid ${invalid ? 'var(--error, #EF4444)' : 'var(--border-default, rgba(148,163,184,0.14))'}`,
+    background: 'var(--surface-1, #0D101A)',
+    color: 'var(--text-primary, #F5F7FF)',
     fontFamily: props.multiline ? tokens.font.family.mono : tokens.font.family.ui,
     fontSize: tokens.font.size.md,
     resize: 'vertical' as const,
     minHeight: props.multiline ? undefined : tokens.size.touchTarget,
+    outline: 'none',
+    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
   }
 
   const onChange = (e: { target: { value: string } }) => props.onChange(e.target.value)

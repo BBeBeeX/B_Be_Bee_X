@@ -70,8 +70,8 @@ export function Select<T extends string>({
           }
         },
         onFocus: (e: { currentTarget: HTMLElement }) => {
-          e.currentTarget.style.borderColor = '#1DB954'
-          e.currentTarget.style.boxShadow = '0 0 0 1px #1DB954'
+          e.currentTarget.style.borderColor = 'var(--primary, #6366F1)'
+          e.currentTarget.style.boxShadow = 'var(--glow-xs, 0 0 0 2px rgba(99, 102, 241, 0.3))'
         },
         onBlur: (e: { currentTarget: HTMLElement }) => {
           e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'
@@ -85,8 +85,8 @@ export function Select<T extends string>({
             key: opt.value,
             value: opt.value,
             style: {
-              background: '#1A1A22',
-              color: '#FFFFFF',
+              background: 'var(--surface-2, #111522)',
+              color: 'var(--text-primary, #F5F7FF)',
             },
           },
           opt.label,

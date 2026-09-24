@@ -502,6 +502,7 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
       },
       // 1. General & Language
       h(GeneralSection, {
+        ctx,
         settings,
         update,
         onCloseToTrayChange: handleCloseToTrayChange,

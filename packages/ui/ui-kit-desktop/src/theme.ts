@@ -19,25 +19,23 @@ export function common(props: { testID?: string; accessibilityLabel?: string }) 
 }
 
 export const toneColor = (tone: Tone | undefined): string => {
-  const p = c()
   switch (tone) {
     case 'muted':
-      return p.text.secondary
+      return 'var(--text-secondary, #C5CAD8)'
     case 'accent':
-      return p.accent.base
+      return 'var(--accent, #A855F7)'
     case 'error':
-      return p.state.error
+      return 'var(--error, #EF4444)'
     case 'warn':
-      return p.state.warn
+      return 'var(--warning, #F59E0B)'
     case 'ok':
-      return p.state.ok
+      return 'var(--success, #22C55E)'
     default:
-      return p.text.primary
+      return 'var(--text-primary, #F5F7FF)'
   }
 }
 
 export function buttonStyle(variant: ButtonVariant, disabled: boolean, hovered: boolean): CSSProperties {
-  const p = c()
   const base: CSSProperties = {
     minHeight: tokens.size.touchTarget,
     padding: `0 ${tokens.space[5]}px`,
@@ -47,9 +45,9 @@ export function buttonStyle(variant: ButtonVariant, disabled: boolean, hovered: 
     fontWeight: tokens.font.weight.bold,
     letterSpacing: 0.2,
     cursor: disabled ? 'not-allowed' : 'pointer',
-    outlineColor: p.border.strong,
+    outlineColor: 'var(--border-focus, rgba(139,92,246,0.65))',
     opacity: disabled ? 0.5 : 1,
-    transition: `transform ${tokens.duration.fast}ms, background-color ${tokens.duration.fast}ms, color ${tokens.duration.fast}ms, border-color ${tokens.duration.fast}ms`,
+    transition: `transform ${tokens.duration.fast}ms, background-color ${tokens.duration.fast}ms, color ${tokens.duration.fast}ms, border-color ${tokens.duration.fast}ms, box-shadow ${tokens.duration.fast}ms`,
     transform: hovered && !disabled ? 'scale(1.04)' : 'scale(1)',
     border: `1px solid transparent`,
   }
@@ -57,24 +55,25 @@ export function buttonStyle(variant: ButtonVariant, disabled: boolean, hovered: 
     case 'secondary':
       return {
         ...base,
-        background: 'transparent',
-        color: p.text.primary,
-        borderColor: hovered && !disabled ? p.text.primary : p.border.strong,
+        background: hovered && !disabled ? 'var(--surface-hover, #191E30)' : 'transparent',
+        color: 'var(--text-primary, #F5F7FF)',
+        borderColor: hovered && !disabled ? 'var(--border-hover, rgba(99,102,241,0.30))' : 'var(--border-default, rgba(148,163,184,0.14))',
       }
     case 'ghost':
       return {
         ...base,
-        background: 'transparent',
-        color: hovered && !disabled ? p.text.primary : p.text.secondary,
+        background: hovered && !disabled ? 'var(--surface-hover, #191E30)' : 'transparent',
+        color: hovered && !disabled ? 'var(--text-primary, #F5F7FF)' : 'var(--text-secondary, #C5CAD8)',
         transform: 'scale(1)',
       }
     case 'danger':
-      return { ...base, background: p.state.error, color: p.bg.sunken }
+      return { ...base, background: 'var(--error, #EF4444)', color: '#FFFFFF' }
     default:
       return {
         ...base,
-        background: hovered && !disabled ? p.accent.hover : p.accent.base,
-        color: p.accent.on,
+        background: hovered && !disabled ? 'var(--primary-hover, #818CF8)' : 'var(--primary, #6366F1)',
+        color: 'var(--text-primary, #F5F7FF)',
+        boxShadow: hovered && !disabled ? 'var(--glow-sm, 0 0 10px rgba(99,102,241,0.16))' : 'none',
       }
   }
 }

@@ -23,7 +23,7 @@ const STYLES: { id: VisualizerStyle; label: string; icon: string; desc: string }
 ]
 
 const THEMES: { id: VisualizerColorTheme; label: string; color: string }[] = [
-  { id: 'accent', label: '紫霓流光', color: 'linear-gradient(135deg, #8A2BE2, #00E5FF)' },
+  { id: 'accent', label: '蓝紫霓光', color: 'linear-gradient(135deg, #5865F2, #A855F7)' },
   { id: 'neon', label: '极光青绿', color: 'linear-gradient(135deg, #00FF87, #60EFFF)' },
   { id: 'rainbow', label: '彩虹幻彩', color: 'linear-gradient(135deg, #FF0844, #FFB199, #FEE140, #38F9D7)' },
   { id: 'monochrome', label: '极简银白', color: 'linear-gradient(135deg, #FFFFFF, #8E8E93)' },
@@ -41,8 +41,8 @@ export function VisualizerSettingsCard({ ctx }: VisualizerSettingsCardProps): Re
         gap: 20,
         padding: '20px 24px',
         borderRadius: 12,
-        background: 'rgba(255, 255, 255, 0.04)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
+        background: 'var(--surface-1, rgba(255, 255, 255, 0.04))',
+        border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
       },
     },
     // Header & Master Switch
@@ -85,11 +85,12 @@ export function VisualizerSettingsCard({ ctx }: VisualizerSettingsCardProps): Re
             height: 24,
             appearance: 'none',
             outline: 'none',
-            backgroundColor: settings.enabled ? '#007AFF' : 'rgba(255, 255, 255, 0.2)',
+            backgroundColor: settings.enabled ? 'var(--primary, #6366F1)' : 'rgba(255, 255, 255, 0.2)',
+            boxShadow: settings.enabled ? 'var(--glow-xs, 0 0 10px rgba(99, 102, 241, 0.35))' : 'none',
             borderRadius: 12,
             position: 'relative',
             cursor: 'pointer',
-            transition: 'background-color 0.2s',
+            transition: 'background-color 0.2s, box-shadow 0.2s',
           },
         }),
       ),
@@ -168,12 +169,12 @@ export function VisualizerSettingsCard({ ctx }: VisualizerSettingsCardProps): Re
                       padding: '12px 14px',
                       borderRadius: 8,
                       border: isSelected
-                        ? '1px solid #007AFF'
-                        : '1px solid rgba(255, 255, 255, 0.08)',
+                        ? '1px solid var(--primary, #6366F1)'
+                        : '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
                       background: isSelected
-                        ? 'rgba(0, 122, 255, 0.12)'
+                        ? 'var(--surface-selected, rgba(99, 102, 241, 0.12))'
                         : 'rgba(255, 255, 255, 0.03)',
-                      color: isSelected ? '#FFFFFF' : '#8E8E93',
+                      color: isSelected ? 'var(--text-primary, #FFFFFF)' : 'var(--text-tertiary, #8E8E93)',
                       cursor: 'pointer',
                       textAlign: 'left',
                       transition: 'all 0.15s ease',
@@ -224,12 +225,12 @@ export function VisualizerSettingsCard({ ctx }: VisualizerSettingsCardProps): Re
                       padding: '8px 12px',
                       borderRadius: 8,
                       border: isSelected
-                        ? '1px solid #007AFF'
-                        : '1px solid rgba(255, 255, 255, 0.08)',
+                        ? '1px solid var(--primary, #6366F1)'
+                        : '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
                       background: isSelected
-                        ? 'rgba(0, 122, 255, 0.12)'
+                        ? 'var(--surface-selected, rgba(99, 102, 241, 0.12))'
                         : 'rgba(255, 255, 255, 0.03)',
-                      color: isSelected ? '#FFFFFF' : '#8E8E93',
+                      color: isSelected ? 'var(--text-primary, #FFFFFF)' : 'var(--text-tertiary, #8E8E93)',
                       cursor: 'pointer',
                     },
                   },

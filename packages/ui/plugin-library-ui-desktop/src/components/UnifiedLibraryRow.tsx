@@ -157,7 +157,7 @@ export function UnifiedLibraryRow({
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
         item.pinned
-          ? tablerIcon('pin', { size: 18, color: '#1DB954', style: { marginRight: 2 } })
+          ? tablerIcon('pin', { size: 18, color: 'var(--primary, #6366F1)', style: { marginRight: 2 } })
           : null,
         h(Text, { variant: 'sm', tone: 'muted', numberOfLines: 1 }, item.subtitle),
       ),

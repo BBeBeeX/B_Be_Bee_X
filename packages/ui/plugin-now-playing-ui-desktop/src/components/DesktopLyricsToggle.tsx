@@ -54,9 +54,9 @@ export function DesktopLyricsToggle({ ctx }: { ctx: Context }): ReactElement {
         width: 30,
         height: 30,
         borderRadius: tokens.radius.sm,
-        border: isVisible ? '1px solid #A78BFA' : '1px solid rgba(255, 255, 255, 0.16)',
-        background: isVisible ? 'rgba(124, 58, 237, 0.3)' : 'transparent',
-        color: isVisible ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)',
+        border: isVisible ? '1px solid var(--accent, #A855F7)' : '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
+        background: isVisible ? 'var(--surface-selected, rgba(99, 102, 241, 0.2))' : 'transparent',
+        color: isVisible ? 'var(--text-primary, #F5F7FF)' : 'var(--text-secondary, #C5CAD8)',
         fontSize: 13,
         fontWeight: 600,
         cursor: 'pointer',
@@ -65,13 +65,13 @@ export function DesktopLyricsToggle({ ctx }: { ctx: Context }): ReactElement {
         flexShrink: 0,
       },
       onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-        e.currentTarget.style.borderColor = isVisible ? '#A78BFA' : 'rgba(255, 255, 255, 0.4)'
-        e.currentTarget.style.color = '#FFFFFF'
+        e.currentTarget.style.borderColor = isVisible ? 'var(--accent-hover, #C084FC)' : 'var(--border-default, rgba(148, 163, 184, 0.4))'
+        e.currentTarget.style.color = 'var(--text-primary, #F5F7FF)'
         e.currentTarget.style.transform = 'scale(1.05)'
       },
       onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-        e.currentTarget.style.borderColor = isVisible ? '#A78BFA' : 'rgba(255, 255, 255, 0.16)'
-        e.currentTarget.style.color = isVisible ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)'
+        e.currentTarget.style.borderColor = isVisible ? 'var(--accent, #A855F7)' : 'var(--border-subtle, rgba(148, 163, 184, 0.16))'
+        e.currentTarget.style.color = isVisible ? 'var(--text-primary, #F5F7FF)' : 'var(--text-secondary, #C5CAD8)'
         e.currentTarget.style.transform = 'scale(1)'
       },
     },

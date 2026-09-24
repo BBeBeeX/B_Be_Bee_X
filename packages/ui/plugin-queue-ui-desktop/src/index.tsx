@@ -125,7 +125,7 @@ function QueueTrackRow({
           style: {
             fontSize: 14,
             fontWeight: 600,
-            color: active ? '#1DB954' : '#FFFFFF',
+            color: active ? 'var(--primary, #6366F1)' : '#FFFFFF',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -263,7 +263,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
                 style: {
                   height: 3,
                   width: '100%',
-                  backgroundColor: '#1DB954',
+                  backgroundColor: 'var(--primary, #6366F1)',
                   borderRadius: 2,
                   marginTop: 4,
                 },
@@ -304,7 +304,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
                 style: {
                   height: 3,
                   width: '100%',
-                  backgroundColor: '#1DB954',
+                  backgroundColor: 'var(--primary, #6366F1)',
                   borderRadius: 2,
                   marginTop: 4,
                 },

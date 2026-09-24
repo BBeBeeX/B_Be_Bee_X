@@ -6,15 +6,22 @@ import { IconButton } from './Button.js'
 import { Text } from './Text.js'
 
 export function Toast(props: ToastProps) {
-  const p = c()
   const background =
     props.tone === 'error'
-      ? p.state.error
+      ? 'var(--error, #EF4444)'
       : props.tone === 'warn'
-        ? p.state.warn
+        ? 'var(--warning, #F59E0B)'
         : props.tone === 'ok'
-          ? p.state.ok
-          : p.bg.overlay
+          ? 'var(--success, #22C55E)'
+          : 'var(--surface-3, #151927)'
+  const border =
+    props.tone === 'error'
+      ? '1px solid var(--error, #EF4444)'
+      : props.tone === 'warn'
+        ? '1px solid var(--warning, #F59E0B)'
+        : props.tone === 'ok'
+          ? '1px solid var(--success, #22C55E)'
+          : '1px solid var(--border-default, rgba(148,163,184,0.14))'
   return h(
     'div',
     {
@@ -28,7 +35,9 @@ export function Toast(props: ToastProps) {
         padding: `${tokens.space[2]}px ${tokens.space[4]}px`,
         borderRadius: tokens.radius.pill,
         background,
-        color: props.tone && props.tone !== 'info' ? p.bg.base : p.text.primary,
+        border,
+        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5), var(--glow-sm)',
+        color: props.tone && props.tone !== 'info' ? '#FFFFFF' : 'var(--text-primary, #F5F7FF)',
         zIndex: tokens.z.toast,
       },
     },

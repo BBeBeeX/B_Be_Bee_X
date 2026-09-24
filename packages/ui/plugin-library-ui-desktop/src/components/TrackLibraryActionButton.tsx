@@ -41,7 +41,7 @@ export function TrackLibraryActionButton({
       style: {
         background: 'none',
         border: 'none',
-        color: inLibrary ? '#1ed760' : '#b3b3b3',
+        color: inLibrary ? 'var(--primary, #6366F1)' : '#b3b3b3',
         fontSize: inLibrary ? 16 : 18,
         fontWeight: 700,
         cursor: 'pointer',

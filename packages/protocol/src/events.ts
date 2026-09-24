@@ -46,11 +46,15 @@ import type { AppSettings } from './services/settings.js'
 import type { SleepTimerState } from './services/sleep-timer.js'
 import type { DesktopLyricsState, LyricsState } from './services/lyrics.js'
 import type { MiniPlayerServiceState } from './services/mini-player.js'
+import type { ThemeDefinition } from './services/theme.js'
 import type { UrnKind } from './urn.js'
 
 declare module 'cordis' {
   interface Events {
     'settings/changed'(settings: AppSettings): void
+    /* ── theme ───────────────────────────────────────── emit ── */
+    'theme/changed'(theme: ThemeDefinition): void
+    'theme/registry-changed'(themes: readonly ThemeDefinition[]): void
     /* ── lyrics ──────────────────────────────────────── emit ── */
     'lyrics/changed'(state: LyricsState): void
     'lyrics/active-changed'(activeIndex: number): void
@@ -223,6 +227,8 @@ export const DISPATCH_MODES = {
   'sleep-timer/changed': 'emit',
   'sleep-timer/fired': 'emit',
   'settings/changed': 'emit',
+  'theme/changed': 'emit',
+  'theme/registry-changed': 'emit',
   'mini-player/changed': 'emit',
 } as const satisfies Record<string, DispatchMode>
 

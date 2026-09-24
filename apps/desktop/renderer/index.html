@@ -26,8 +26,71 @@
     <title>BBeBee</title>
     <link rel="icon" type="image/png" href="./assets/logo-badge.png" />
     <style>
-      :root { color-scheme: dark; }
-      body { margin: 0; background: #0B0B0F; color: #F5F5F7; font-family: system-ui, sans-serif; }
+      :root {
+        color-scheme: dark;
+
+        /* Background */
+        --bg-app: #05060B;
+        --bg-primary: #080A12;
+        --bg-secondary: #0B0E18;
+        --bg-tertiary: #0F1322;
+
+        /* Surface */
+        --surface-1: #0D101A;
+        --surface-2: #111522;
+        --surface-3: #151927;
+        --surface-hover: #191E30;
+        --surface-active: #1D2140;
+        --surface-selected: rgba(99,102,241,0.12);
+
+        /* Brand */
+        --primary: #6366F1;
+        --primary-active: #5865F2;
+        --primary-hover: #818CF8;
+
+        --accent: #A855F7;
+        --accent-hover: #C084FC;
+
+        /* Gradient */
+        --gradient-brand: linear-gradient(135deg, #5865F2 0%, #6D5DF6 45%, #A855F7 100%);
+        --gradient-progress: linear-gradient(90deg, #4F6BFF 0%, #6366F1 50%, #A855F7 100%);
+
+        /* Text */
+        --text-primary: #F5F7FF;
+        --text-secondary: #C5CAD8;
+        --text-tertiary: #8B92A6;
+        --text-muted: #626A80;
+        --text-disabled: #41485B;
+        --text-placeholder: #596176;
+
+        /* Border */
+        --border-subtle: rgba(148,163,184,0.08);
+        --border-default: rgba(148,163,184,0.14);
+        --border-hover: rgba(99,102,241,0.30);
+        --border-active: rgba(99,102,241,0.55);
+        --border-focus: rgba(139,92,246,0.65);
+
+        /* Semantic */
+        --success: #22C55E;
+        --warning: #F59E0B;
+        --error: #EF4444;
+        --info: #38BDF8;
+
+        /* Music */
+        --music-playing: #7C6CFF;
+        --music-lyrics: #B7AFFF;
+        --music-waveform: #6575FF;
+        --music-waveform-active: #9B8CFF;
+
+        /* Glow */
+        --glow-xs: 0 0 6px rgba(99,102,241,0.10);
+        --glow-sm: 0 0 10px rgba(99,102,241,0.16);
+        --glow-md: 0 0 18px rgba(99,102,241,0.20);
+        --glow-lg: 0 0 28px rgba(99,102,241,0.16);
+
+        --slider-track-bg: var(--gradient-progress);
+      }
+      body { margin: 0; background: var(--bg-app); color: var(--text-primary); font-family: system-ui, sans-serif; }
       html.is-mini-player-window,
       body.is-mini-player-window,
       html.is-lyrics-window,
@@ -39,7 +102,7 @@
       /* Global sleek, transparent, ultra-narrow scrollbars */
       * {
         scrollbar-width: thin;
-        scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+        scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
       }
       *::-webkit-scrollbar {
         width: 4px;
@@ -52,15 +115,15 @@
         background: transparent;
       }
       *::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.16);
+        background: rgba(148, 163, 184, 0.2);
         border-radius: 4px;
         transition: background-color 0.15s ease;
       }
       *::-webkit-scrollbar-thumb:hover {
-        background: rgba(255, 255, 255, 0.35);
+        background: rgba(99, 102, 241, 0.45);
       }
       *::-webkit-scrollbar-thumb:active {
-        background: rgba(255, 255, 255, 0.5);
+        background: rgba(99, 102, 241, 0.7);
       }
 
       /* Global progress & slider bars: thin track, thumb only visible on hover */

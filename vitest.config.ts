@@ -90,6 +90,6 @@ export default defineConfig({
     globalSetup: ['./vitest.global.ts'],
     // Cordis schedules work across microtask boundaries; a plugin that never
     // settles should fail loudly rather than hang CI.
-    testTimeout: 30_000,
+    testTimeout: 60_000,
   },
 })

@@ -183,6 +183,9 @@ importers:
       '@BBeBee/plugin-sources-ui-desktop':
         specifier: workspace:*
         version: link:../../packages/ui/plugin-sources-ui-desktop
+      '@BBeBee/plugin-theme':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-theme
       '@BBeBee/plugin-ui':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-ui
@@ -364,6 +367,9 @@ importers:
       '@BBeBee/plugin-sources-ui-mobile':
         specifier: workspace:*
         version: link:../../packages/ui/plugin-sources-ui-mobile
+      '@BBeBee/plugin-theme':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-theme
       '@BBeBee/plugin-ui':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-ui
@@ -1352,6 +1358,31 @@ importers:
       '@types/react':
         specifier: ^19.2.0
         version: 19.2.18
+
+  packages/feature/plugin-theme:
+    dependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@BBeBee/ui-tokens':
+        specifier: workspace:*
+        version: link:../../ui/ui-tokens
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.1)(jsdom@30.0.1)(vite@7.3.6(@types/node@22.20.1)(lightningcss@1.33.0)(terser@5.51.2)(yaml@2.9.0))
 
   packages/feature/plugin-ui:
     dependencies:
@@ -2949,6 +2980,10 @@ importers:
         version: 4.1.11(@types/node@22.20.1)(jsdom@30.0.1)(vite@7.3.6(@types/node@22.20.1)(lightningcss@1.33.0)(terser@5.51.2)(yaml@2.9.0))
 
   packages/ui/ui-tokens:
+    dependencies:
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
     devDependencies:
       vitest:
         specifier: ^4.1.11

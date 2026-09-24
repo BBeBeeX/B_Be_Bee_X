@@ -10,7 +10,7 @@ export interface IslandWaveBarsProps {
 
 export function IslandWaveBars({
   isPlaying,
-  color = '#1DB954',
+  color = 'var(--primary, #6366F1)',
   barCount = 4,
   height = 16,
 }: IslandWaveBarsProps): ReactElement {

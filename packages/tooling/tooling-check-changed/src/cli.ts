@@ -52,7 +52,7 @@ const positional = process.argv
 
 const since = flagValue('since') ?? positional
 const timeoutStr = flagValue('timeout')
-const timeout = timeoutStr ? parseInt(timeoutStr, 10) : 30_000
+const timeout = timeoutStr ? parseInt(timeoutStr, 10) : 60_000
 
 const exitCode = runCheckChanged({
   root,

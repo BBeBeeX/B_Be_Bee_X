@@ -41,9 +41,9 @@ export function TrackRow(props: TrackRowProps) {
         padding: `0 ${tokens.space[3]}px`,
         borderRadius: tokens.radius.sm,
         cursor: props.onPress ? 'pointer' : 'default',
-        color: active ? p.accent.base : p.text.primary,
-        background: hovered ? p.bg.overlay : 'transparent',
-        transition: `background-color ${tokens.duration.fast}ms`,
+        color: active ? 'var(--music-playing, #7C6CFF)' : 'var(--text-primary, #F5F7FF)',
+        background: hovered ? 'var(--surface-hover, #191E30)' : active ? 'var(--surface-selected, rgba(99,102,241,0.12))' : 'transparent',
+        transition: `background-color ${tokens.duration.fast}ms, color ${tokens.duration.fast}ms`,
       },
     },
     showArtwork

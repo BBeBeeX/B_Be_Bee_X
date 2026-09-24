@@ -1,0 +1,18 @@
+{
+  "id": "@BBeBee/plugin-theme",
+  "version": "0.0.0",
+  "displayName": "Theme",
+  "description": "Theme manager for dark music player and dynamic runtime themes.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": [],
+  "contributes": {
+    "services": [
+      "theme"
+    ]
+  }
+}

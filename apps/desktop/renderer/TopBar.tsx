@@ -79,17 +79,17 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
           height: 48,
           border: 'none',
           background: 'transparent',
-          color: '#A0A0AE',
+          color: 'var(--text-tertiary, #8B92A6)',
           cursor: 'pointer',
           transition: 'background-color 0.1s ease, color 0.1s ease',
         },
         onMouseEnter: (e: { currentTarget: HTMLElement }) => {
           e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-          e.currentTarget.style.color = '#F5F5F7'
+          e.currentTarget.style.color = 'var(--text-primary, #F5F7FF)'
         },
         onMouseLeave: (e: { currentTarget: HTMLElement }) => {
           e.currentTarget.style.backgroundColor = 'transparent'
-          e.currentTarget.style.color = '#A0A0AE'
+          e.currentTarget.style.color = 'var(--text-tertiary, #8B92A6)'
         },
       },
       h(
@@ -124,17 +124,17 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
           height: 48,
           border: 'none',
           background: 'transparent',
-          color: '#A0A0AE',
+          color: 'var(--text-tertiary, #8B92A6)',
           cursor: 'pointer',
           transition: 'background-color 0.1s ease, color 0.1s ease',
         },
         onMouseEnter: (e: { currentTarget: HTMLElement }) => {
           e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-          e.currentTarget.style.color = '#F5F5F7'
+          e.currentTarget.style.color = 'var(--text-primary, #F5F7FF)'
         },
         onMouseLeave: (e: { currentTarget: HTMLElement }) => {
           e.currentTarget.style.backgroundColor = 'transparent'
-          e.currentTarget.style.color = '#A0A0AE'
+          e.currentTarget.style.color = 'var(--text-tertiary, #8B92A6)'
         },
       },
       tablerIcon('minus', { size: 18 }),
@@ -155,17 +155,17 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
           height: 48,
           border: 'none',
           background: 'transparent',
-          color: '#A0A0AE',
+          color: 'var(--text-tertiary, #8B92A6)',
           cursor: 'pointer',
           transition: 'background-color 0.1s ease, color 0.1s ease',
         },
         onMouseEnter: (e: { currentTarget: HTMLElement }) => {
           e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-          e.currentTarget.style.color = '#F5F5F7'
+          e.currentTarget.style.color = 'var(--text-primary, #F5F7FF)'
         },
         onMouseLeave: (e: { currentTarget: HTMLElement }) => {
           e.currentTarget.style.backgroundColor = 'transparent'
-          e.currentTarget.style.color = '#A0A0AE'
+          e.currentTarget.style.color = 'var(--text-tertiary, #8B92A6)'
         },
       },
       isMaximized
@@ -188,7 +188,7 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
           height: 48,
           border: 'none',
           background: 'transparent',
-          color: '#A0A0AE',
+          color: 'var(--text-tertiary, #8B92A6)',
           cursor: 'pointer',
           transition: 'background-color 0.1s ease, color 0.1s ease',
         },
@@ -198,7 +198,7 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
         },
         onMouseLeave: (e: { currentTarget: HTMLElement }) => {
           e.currentTarget.style.backgroundColor = 'transparent'
-          e.currentTarget.style.color = '#A0A0AE'
+          e.currentTarget.style.color = 'var(--text-tertiary, #8B92A6)'
         },
       },
       tablerIcon('x', { size: 18 }),
@@ -328,7 +328,7 @@ export function TopBar({
         maxHeight: 48,
         paddingLeft: 12,
         paddingRight: 0,
-        background: '#000000',
+        background: 'var(--bg-app, #05060B)',
         borderBottom: 'none',
         userSelect: 'none',
         WebkitAppRegion: 'drag',
@@ -405,7 +405,7 @@ export function TopBar({
               borderRadius: '50%',
               border: 'none',
               background: menuOpen ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
-              color: '#F5F5F7',
+              color: 'var(--text-primary, #F5F7FF)',
               cursor: 'pointer',
               fontSize: 16,
               transition: 'background-color 0.15s ease',
@@ -429,10 +429,10 @@ export function TopBar({
                   top: 38,
                   left: 0,
                   minWidth: 160,
-                  background: '#1A1A24',
-                  border: '1px solid #2D2D3A',
+                  background: 'var(--surface-2, #111522)',
+                  border: '1px solid var(--border-subtle, rgba(148,163,184,0.08))',
                   borderRadius: 8,
-                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
+                  boxShadow: 'var(--shadow-dropdown, 0 10px 25px rgba(0, 0, 0, 0.5))',
                   padding: 4,
                   zIndex: 100,
                 },
@@ -449,7 +449,7 @@ export function TopBar({
                     borderRadius: 4,
                     border: 'none',
                     background: 'transparent',
-                    color: '#F5F5F7',
+                    color: 'var(--text-primary, #F5F7FF)',
                     fontSize: 13,
                     cursor: 'pointer',
                   },
@@ -458,7 +458,7 @@ export function TopBar({
                     onHome?.()
                   },
                   onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-                    e.currentTarget.style.backgroundColor = '#2A2340'
+                    e.currentTarget.style.backgroundColor = 'var(--surface-hover, #191E30)'
                   },
                   onMouseLeave: (e: { currentTarget: HTMLElement }) => {
                     e.currentTarget.style.backgroundColor = 'transparent'
@@ -478,7 +478,7 @@ export function TopBar({
                     borderRadius: 4,
                     border: 'none',
                     background: 'transparent',
-                    color: '#F5F5F7',
+                    color: 'var(--text-primary, #F5F7FF)',
                     fontSize: 13,
                     cursor: 'pointer',
                   },
@@ -487,7 +487,7 @@ export function TopBar({
                     onOpenSettings?.()
                   },
                   onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-                    e.currentTarget.style.backgroundColor = '#2A2340'
+                    e.currentTarget.style.backgroundColor = 'var(--surface-hover, #191E30)'
                   },
                   onMouseLeave: (e: { currentTarget: HTMLElement }) => {
                     e.currentTarget.style.backgroundColor = 'transparent'
@@ -516,20 +516,20 @@ export function TopBar({
             borderRadius: '50%',
             border: 'none',
             background: 'transparent',
-            color: canGoBack ? '#A0A0AE' : '#454550',
+            color: canGoBack ? 'var(--text-tertiary, #8B92A6)' : 'var(--text-disabled, #41485B)',
             cursor: canGoBack ? 'pointer' : 'default',
             transition: 'background-color 0.15s ease, color 0.15s ease',
           },
           onMouseEnter: (e: { currentTarget: HTMLElement }) => {
             if (canGoBack) {
               e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'
-              e.currentTarget.style.color = '#F5F5F7'
+              e.currentTarget.style.color = 'var(--text-primary, #F5F7FF)'
             }
           },
           onMouseLeave: (e: { currentTarget: HTMLElement }) => {
             if (canGoBack) {
               e.currentTarget.style.backgroundColor = 'transparent'
-              e.currentTarget.style.color = '#A0A0AE'
+              e.currentTarget.style.color = 'var(--text-tertiary, #8B92A6)'
             }
           },
         },
@@ -553,20 +553,20 @@ export function TopBar({
             borderRadius: '50%',
             border: 'none',
             background: 'transparent',
-            color: canGoForward ? '#A0A0AE' : '#454550',
+            color: canGoForward ? 'var(--text-tertiary, #8B92A6)' : 'var(--text-disabled, #41485B)',
             cursor: canGoForward ? 'pointer' : 'default',
             transition: 'background-color 0.15s ease, color 0.15s ease',
           },
           onMouseEnter: (e: { currentTarget: HTMLElement }) => {
             if (canGoForward) {
               e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'
-              e.currentTarget.style.color = '#F5F5F7'
+              e.currentTarget.style.color = 'var(--text-primary, #F5F7FF)'
             }
           },
           onMouseLeave: (e: { currentTarget: HTMLElement }) => {
             if (canGoForward) {
               e.currentTarget.style.backgroundColor = 'transparent'
-              e.currentTarget.style.color = '#A0A0AE'
+              e.currentTarget.style.color = 'var(--text-tertiary, #8B92A6)'
             }
           },
         },
@@ -604,7 +604,7 @@ export function TopBar({
             borderRadius: '50%',
             border: 'none',
             background: 'rgba(255, 255, 255, 0.08)',
-            color: '#F5F5F7',
+            color: 'var(--text-primary, #F5F7FF)',
             cursor: 'pointer',
             flexShrink: 0,
             transition: 'background-color 0.15s ease, transform 0.15s ease',
@@ -632,19 +632,20 @@ export function TopBar({
             flex: 1,
             height: 36,
             borderRadius: 9999,
-            background: searchActive ? '#282834' : '#1F1F28',
-            border: searchActive ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid transparent',
+            background: searchActive ? 'var(--surface-hover, #191E30)' : 'var(--surface-1, #0D101A)',
+            border: searchActive ? '1px solid var(--border-focus, #6366F1)' : '1px solid var(--border-subtle, rgba(148, 163, 184, 0.08))',
+            boxShadow: searchActive ? 'var(--glow-xs, 0 0 12px rgba(99,102,241,0.15))' : 'none',
             paddingLeft: searchActive ? 14 : 12,
             paddingRight: searchActive ? 6 : 10,
             gap: 8,
-            transition: 'background-color 0.15s ease, border-color 0.15s ease',
+            transition: 'background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease',
           },
         },
         // When not active: Search icon at far left
         !searchActive
           ? tablerIcon('search', {
               size: 20,
-              color: '#A0A0AE',
+              color: 'var(--text-tertiary, #8B92A6)',
               style: { pointerEvents: 'none' },
             })
           : null,
@@ -671,7 +672,7 @@ export function TopBar({
             background: 'transparent',
             border: 'none',
             outline: 'none',
-            color: '#F5F5F7',
+            color: 'var(--text-primary, #F5F7FF)',
             fontSize: 13,
           },
         }),
@@ -689,7 +690,7 @@ export function TopBar({
                 style: {
                   background: 'transparent',
                   border: 'none',
-                  color: '#A0A0AE',
+                  color: 'var(--text-tertiary, #8B92A6)',
                   cursor: 'pointer',
                   padding: 2,
                   display: 'flex',
@@ -723,7 +724,7 @@ export function TopBar({
                   borderRadius: '50%',
                   border: 'none',
                   background: 'rgba(255, 255, 255, 0.12)',
-                  color: '#F5F5F7',
+                  color: 'var(--text-primary, #F5F7FF)',
                   cursor: 'pointer',
                   flexShrink: 0,
                   transition: 'background-color 0.15s ease, transform 0.15s ease',
@@ -752,10 +753,10 @@ export function TopBar({
                   left: 0,
                   right: 0,
                   minWidth: 420,
-                  background: '#181822',
+                  background: 'var(--surface-2, #111522)',
                   borderRadius: 12,
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)',
+                  border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.08))',
+                  boxShadow: 'var(--shadow-modal, 0 16px 36px rgba(0, 0, 0, 0.65))',
                   backdropFilter: 'blur(16px)',
                   padding: 16,
                   zIndex: 200,
@@ -774,7 +775,7 @@ export function TopBar({
                     alignItems: 'center',
                     fontSize: 12,
                     fontWeight: 600,
-                    color: '#A0A0AE',
+                    color: 'var(--text-secondary, #C5CAD8)',
                     letterSpacing: 0.5,
                   },
                 },
@@ -790,7 +791,7 @@ export function TopBar({
                     justifyContent: 'space-between',
                     fontSize: 12,
                     fontWeight: 600,
-                    color: '#A0A0AE',
+                    color: 'var(--text-secondary, #C5CAD8)',
                     letterSpacing: 0.5,
                   },
                 },
@@ -810,16 +811,16 @@ export function TopBar({
                           border: 'none',
                           padding: '2px 6px',
                           fontSize: 11,
-                          color: 'rgba(255, 255, 255, 0.4)',
+                          color: 'var(--text-muted, #626A80)',
                           cursor: 'pointer',
                           borderRadius: 4,
                           transition: 'color 0.15s ease',
                         },
                         onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-                          e.currentTarget.style.color = 'rgba(255, 255, 255, 0.85)'
+                          e.currentTarget.style.color = 'var(--text-primary, #F5F7FF)'
                         },
                         onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-                          e.currentTarget.style.color = 'rgba(255, 255, 255, 0.4)'
+                          e.currentTarget.style.color = 'var(--text-muted, #626A80)'
                         },
                       },
                       '清空',
@@ -844,7 +845,7 @@ export function TopBar({
                 selection.interfaces.length === 0
                   ? h(
                       'span',
-                      { style: { fontSize: 12, color: 'rgba(255, 255, 255, 0.35)', padding: '4px 0' } },
+                      { style: { fontSize: 12, color: 'var(--text-muted, #626A80)', padding: '4px 0' } },
                       '暂无第三方搜索源',
                     )
                   : [
@@ -869,14 +870,15 @@ export function TopBar({
                               padding: '2px 10px',
                               borderRadius: 9999,
                               border: `1px solid ${
-                                selected ? 'transparent' : 'rgba(255, 255, 255, 0.15)'
+                                selected ? 'transparent' : 'var(--border-subtle, rgba(148, 163, 184, 0.15))'
                               }`,
-                              background: selected ? '#1DB954' : 'rgba(255, 255, 255, 0.05)',
+                              background: selected ? 'var(--primary, #6366F1)' : 'var(--surface-1, #0D101A)',
                               color: selected
-                                ? '#000000'
+                                ? 'var(--text-primary, #F5F7FF)'
                                 : disabled
-                                  ? 'rgba(255, 255, 255, 0.3)'
-                                  : 'rgba(255, 255, 255, 0.75)',
+                                  ? 'var(--text-disabled, #41485B)'
+                                  : 'var(--text-secondary, #C5CAD8)',
+                              boxShadow: selected ? 'var(--glow-xs, 0 0 10px rgba(99, 102, 241, 0.25))' : 'none',
                               fontSize: 11,
                               fontWeight: selected ? 700 : 500,
                               cursor: disabled ? 'not-allowed' : 'pointer',
@@ -886,20 +888,20 @@ export function TopBar({
                             onMouseEnter: (e: { currentTarget: HTMLElement }) => {
                               if (!disabled) {
                                 if (selected) {
-                                  e.currentTarget.style.backgroundColor = '#1ED760'
+                                  e.currentTarget.style.backgroundColor = 'var(--primary-hover, #818CF8)'
                                 } else {
-                                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)'
-                                  e.currentTarget.style.color = '#FFFFFF'
+                                  e.currentTarget.style.borderColor = 'var(--border-default, rgba(148, 163, 184, 0.35))'
+                                  e.currentTarget.style.color = 'var(--text-primary, #F5F7FF)'
                                 }
                               }
                             },
                             onMouseLeave: (e: { currentTarget: HTMLElement }) => {
                               if (!disabled) {
                                 if (selected) {
-                                  e.currentTarget.style.backgroundColor = '#1DB954'
+                                  e.currentTarget.style.backgroundColor = 'var(--primary, #6366F1)'
                                 } else {
-                                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)'
-                                  e.currentTarget.style.color = 'rgba(255, 255, 255, 0.75)'
+                                  e.currentTarget.style.borderColor = 'var(--border-subtle, rgba(148, 163, 184, 0.15))'
+                                  e.currentTarget.style.color = 'var(--text-secondary, #C5CAD8)'
                                 }
                               }
                             },
@@ -1037,16 +1039,16 @@ export function TopBar({
             width: 32,
             height: 32,
             borderRadius: '50%',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
-            background: '#2A2340',
-            color: '#F5F5F7',
+            border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.15))',
+            background: 'var(--surface-selected, rgba(99, 102, 241, 0.12))',
+            color: 'var(--text-primary, #F5F7FF)',
             cursor: 'pointer',
             padding: 0,
             transition: 'transform 0.15s ease, box-shadow 0.15s ease',
           },
           onMouseEnter: (e: { currentTarget: HTMLElement }) => {
             e.currentTarget.style.transform = 'scale(1.06)'
-            e.currentTarget.style.boxShadow = '0 0 8px rgba(255, 255, 255, 0.2)'
+            e.currentTarget.style.boxShadow = 'var(--glow-xs, 0 0 8px rgba(99, 102, 241, 0.3))'
           },
           onMouseLeave: (e: { currentTarget: HTMLElement }) => {
             e.currentTarget.style.transform = 'scale(1)'

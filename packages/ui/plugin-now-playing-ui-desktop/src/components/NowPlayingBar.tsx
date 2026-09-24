@@ -64,22 +64,22 @@ function QueueButton({
         width: 30,
         height: 30,
         borderRadius: tokens.radius.sm,
-        border: isQueueActive ? '1px solid #1DB954' : '1px solid rgba(255, 255, 255, 0.16)',
-        background: isQueueActive ? 'rgba(29, 185, 84, 0.2)' : 'transparent',
-        color: isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.7)',
+        border: isQueueActive ? '1px solid var(--primary, #6366F1)' : '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
+        background: isQueueActive ? 'var(--surface-selected, rgba(99, 102, 241, 0.2))' : 'transparent',
+        color: isQueueActive ? 'var(--primary, #6366F1)' : 'var(--text-secondary, rgba(255, 255, 255, 0.7))',
         cursor: 'pointer',
         transition: 'all 0.15s ease',
         outline: 'none',
         flexShrink: 0,
       },
       onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-        e.currentTarget.style.borderColor = isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.4)'
-        e.currentTarget.style.color = isQueueActive ? '#1DB954' : '#FFFFFF'
+        e.currentTarget.style.borderColor = isQueueActive ? 'var(--primary-hover, #818CF8)' : 'var(--border-default, rgba(148, 163, 184, 0.4))'
+        e.currentTarget.style.color = isQueueActive ? 'var(--primary-hover, #818CF8)' : 'var(--text-primary, #FFFFFF)'
         e.currentTarget.style.transform = 'scale(1.05)'
       },
       onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-        e.currentTarget.style.borderColor = isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.16)'
-        e.currentTarget.style.color = isQueueActive ? '#1DB954' : 'rgba(255, 255, 255, 0.7)'
+        e.currentTarget.style.borderColor = isQueueActive ? 'var(--primary, #6366F1)' : 'var(--border-subtle, rgba(148, 163, 184, 0.16))'
+        e.currentTarget.style.color = isQueueActive ? 'var(--primary, #6366F1)' : 'var(--text-secondary, rgba(255, 255, 255, 0.7))'
         e.currentTarget.style.transform = 'scale(1)'
       },
     },
@@ -228,7 +228,7 @@ export function VerticalSlider({
         width: 3,
         height: `${value}%`,
         borderRadius: 1.5,
-        backgroundColor: isInteracting ? '#1DB954' : '#FFFFFF',
+        backgroundColor: isInteracting ? 'var(--primary, #6366F1)' : '#FFFFFF',
       },
     }),
     // Thumb
@@ -374,9 +374,9 @@ export function VolumeControl({
               width: 44,
               padding: '10px 4px 8px',
               borderRadius: 10,
-              backgroundColor: '#1A1A22',
-              border: '1px solid rgba(255, 255, 255, 0.14)',
-              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.65)',
+              backgroundColor: 'var(--surface-2, #111522)',
+              border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.14))',
+              boxShadow: 'var(--shadow-dropdown, 0 8px 24px rgba(0, 0, 0, 0.65))',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -528,8 +528,8 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
         alignItems: 'center',
         gap: tokens.space[4],
         padding: `${tokens.space[2]}px ${tokens.space[4]}px`,
-        borderTop: 'none',
-        background: '#000000',
+        borderTop: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.08))',
+        background: 'var(--bg-primary, #080A12)',
       },
     },
     h(
@@ -647,7 +647,7 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
                   style: {
                     background: 'none',
                     border: 'none',
-                    color: isInLibrary ? '#1ed760' : 'rgba(255, 255, 255, 0.7)',
+                    color: isInLibrary ? 'var(--primary, #6366F1)' : 'rgba(255, 255, 255, 0.7)',
                     cursor: 'pointer',
                     padding: 0,
                     display: 'inline-flex',
@@ -657,11 +657,11 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
                     transition: 'color 0.15s ease, transform 0.15s ease',
                   },
                   onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-                    e.currentTarget.style.color = isInLibrary ? '#1ed760' : '#FFFFFF'
+                    e.currentTarget.style.color = isInLibrary ? 'var(--primary-hover, #818CF8)' : '#FFFFFF'
                     e.currentTarget.style.transform = 'scale(1.15)'
                   },
                   onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-                    e.currentTarget.style.color = isInLibrary ? '#1ed760' : 'rgba(255, 255, 255, 0.7)'
+                    e.currentTarget.style.color = isInLibrary ? 'var(--primary, #6366F1)' : 'rgba(255, 255, 255, 0.7)'
                     e.currentTarget.style.transform = 'scale(1)'
                   },
                 },

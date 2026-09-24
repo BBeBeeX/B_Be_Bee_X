@@ -1,11 +1,12 @@
 {
-  "name": "@BBeBee/ui-tokens",
+  "name": "@BBeBee/plugin-theme",
   "version": "0.0.0",
-  "description": "Design tokens as plain data, shared by both view layers.",
+  "description": "ctx.theme — application color and theme management service.",
   "type": "module",
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
+    "./hooks": "./src/hooks.ts",
     "./package.json": "./package.json"
   },
   "main": "./src/index.ts",
@@ -15,6 +16,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./hooks": {
+        "types": "./dist/hooks.d.ts",
+        "default": "./dist/hooks.js"
       }
     },
     "main": "./dist/index.js",
@@ -28,9 +33,17 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@BBeBee/protocol": "workspace:*"
+    "@BBeBee/protocol": "workspace:*",
+    "@BBeBee/kernel": "workspace:*",
+    "@BBeBee/ui-tokens": "workspace:*",
+    "cordis": "4.0.0-rc.9",
+    "react": "19.2.3"
   },
   "devDependencies": {
+    "@types/react": "^19.2.0",
     "vitest": "^4.1.11"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
   }
 }

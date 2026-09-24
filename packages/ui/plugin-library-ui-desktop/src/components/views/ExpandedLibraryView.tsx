@@ -384,7 +384,7 @@ export function ExpandedLibraryView({
                   'div',
                   { style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
                   item.pinned
-                    ? h('span', { title: '已置顶', style: { display: 'inline-flex', alignItems: 'center', color: '#1DB954', marginRight: 2 } }, tablerIcon('pin', { size: 16, color: '#1DB954' }))
+                    ? h('span', { title: '已置顶', style: { display: 'inline-flex', alignItems: 'center', color: 'var(--primary, #6366F1)', marginRight: 2 } }, tablerIcon('pin', { size: 16, color: 'var(--primary, #6366F1)' }))
                     : null,
                   h(
                     'span',
@@ -664,7 +664,7 @@ export function ExpandedLibraryView({
                 'div',
                 { style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
                 item.pinned
-                  ? tablerIcon('pin', { size: 16, color: '#1DB954', style: { marginRight: 2 } })
+                  ? tablerIcon('pin', { size: 16, color: 'var(--primary, #6366F1)', style: { marginRight: 2 } })
                   : null,
                 h('span', { style: { color: '#A0A0AE', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, item.subtitle),
               ),

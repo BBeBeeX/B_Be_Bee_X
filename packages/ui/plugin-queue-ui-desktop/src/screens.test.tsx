@@ -180,7 +180,7 @@ describe('QueueScreen', () => {
     expect(container.textContent).toContain('下一首播放')
     const activeSpan = container.querySelector('span[data-active="true"]')
     expect(activeSpan?.textContent).toBe('Now Track')
-    expect(activeSpan?.getAttribute('style')).toContain('29, 185, 84')
+    expect(activeSpan?.getAttribute('style')).toContain('--primary')
   })
 
   it('displays context label in next-up header when available', async () => {

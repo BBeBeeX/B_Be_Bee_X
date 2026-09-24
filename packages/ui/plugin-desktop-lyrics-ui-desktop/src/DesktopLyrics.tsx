@@ -87,7 +87,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
   const effectiveOpacity = lyricsConfig?.opacity ?? opacity
   const effectiveAlign = lyricsConfig?.align ?? 'center'
   const effectiveFontFamily = lyricsConfig?.fontFamily ?? 'system-ui'
-  const effectiveTextColor = lyricsConfig?.textColor ?? '#FFFFFF'
+  const effectiveTextColor = lyricsConfig?.textColor ?? 'var(--music-lyrics, #B7AFFF)'
   const isSingleLine = lyricsConfig?.lineMode === 'single'
   const isEnabled = visible
   const isLocked = lyricsConfig?.locked ?? locked
@@ -399,7 +399,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           title: isPlaying ? 'Pause' : 'Play',
           'aria-label': isPlaying ? 'Pause' : 'Play',
           onClick: () => void ctx.player?.togglePlay?.(),
-          style: { ...buttonStyle, color: '#A78BFA' },
+          style: { ...buttonStyle, color: 'var(--primary, #6366F1)' },
         },
         tablerIcon(isPlaying ? 'pause-filled' : 'play-filled', { size: 18 }),
       ),
@@ -473,7 +473,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           onClick: () => setShowNextLine(!showNextLine),
           style: {
             ...buttonStyle,
-            color: showNextLine ? '#A78BFA' : 'rgba(255, 255, 255, 0.5)',
+            color: showNextLine ? 'var(--primary, #6366F1)' : 'rgba(255, 255, 255, 0.5)',
           },
         },
         '≡',
@@ -498,7 +498,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
           title: 'Hide desktop lyrics',
           'aria-label': 'Hide desktop lyrics',
           onClick: () => setVisible(false),
-          style: { ...buttonStyle, color: '#F87171' },
+          style: { ...buttonStyle, color: 'var(--error, #EF4444)' },
         },
         tablerIcon('x', { size: 18 }),
       ),
@@ -559,7 +559,7 @@ const buttonStyle: React.CSSProperties = {
   background: 'rgba(255, 255, 255, 0.1)',
   border: 'none',
   borderRadius: 6,
-  color: '#FFFFFF',
+  color: 'var(--text-primary, #FFFFFF)',
   cursor: 'pointer',
   fontSize: 12,
   padding: '3px 7px',

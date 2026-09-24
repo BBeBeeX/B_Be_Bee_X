@@ -42,6 +42,7 @@ export const BOOTSTRAP_SERVICES = [
 ] as const
 
 export const ENABLED: NonNullable<AppConfig['plugins']> = {
+  '@BBeBee/plugin-theme': {},
   '@BBeBee/plugin-ui': {},
   /*
    * No `plugin-log-*` here, deliberately. The logs layer loads from the

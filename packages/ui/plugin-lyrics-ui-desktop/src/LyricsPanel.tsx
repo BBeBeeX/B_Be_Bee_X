@@ -207,7 +207,7 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
                   height: 32,
                   borderRadius: '50%',
                   border: '3px solid rgba(255, 255, 255, 0.1)',
-                  borderTopColor: '#A78BFA',
+                  borderTopColor: 'var(--primary, #6366F1)',
                   animation: 'spin 1s linear infinite',
                 },
               },
@@ -231,8 +231,8 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
                 textAlign: 'center',
               },
             },
-            tablerIcon('alert', { size: 36, color: '#F87171' }),
-            h('span', { style: { fontSize: 15, color: '#F87171' } }, error || 'Failed to load lyrics'),
+            tablerIcon('alert', { size: 36, color: 'var(--error, #EF4444)' }),
+            h('span', { style: { fontSize: 15, color: 'var(--error, #EF4444)' } }, error || 'Failed to load lyrics'),
             h(
               'button',
               {
@@ -241,9 +241,9 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
                   marginTop: 8,
                   padding: '6px 18px',
                   borderRadius: 16,
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.2))',
                   background: 'rgba(255, 255, 255, 0.08)',
-                  color: '#FFFFFF',
+                  color: 'var(--text-primary, #F5F7FF)',
                   cursor: 'pointer',
                   fontSize: 13,
                   transition: 'background-color 0.2s',
@@ -341,13 +341,13 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
                   lineHeight: 1.5,
                   cursor: line.timeMs !== undefined ? 'pointer' : 'default',
                   color: isActive
-                    ? '#FFFFFF'
+                    ? 'var(--music-lyrics, #B7AFFF)'
                     : isPlayed
-                      ? 'rgba(255, 255, 255, 0.35)'
-                      : 'rgba(255, 255, 255, 0.55)',
+                      ? 'var(--text-disabled, #41485B)'
+                      : 'var(--text-secondary, #C5CAD8)',
                   transform: isActive ? 'scale(1.02)' : 'scale(1)',
                   transformOrigin: 'left center',
-                  textShadow: isActive ? '0 0 20px rgba(167, 139, 250, 0.5)' : 'none',
+                  textShadow: isActive ? 'var(--glow-md, 0 0 20px rgba(99, 102, 241, 0.4))' : 'none',
                   transition:
                     'color 0.3s cubic-bezier(0.16, 1, 0.3, 1), font-size 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
                 },
@@ -360,7 +360,7 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
                       style: {
                         fontSize: isActive ? 15 : 13,
                         fontWeight: 400,
-                        color: isActive ? 'rgba(255, 255, 255, 0.85)' : 'rgba(255, 255, 255, 0.35)',
+                        color: isActive ? 'var(--text-primary, #F5F7FF)' : 'var(--text-disabled, #41485B)',
                         marginTop: 4,
                       },
                     },
@@ -392,22 +392,22 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
               gap: 6,
               padding: '8px 18px',
               borderRadius: tokens.radius.pill,
-              background: '#8B5CF6',
-              color: '#FFFFFF',
+              background: 'var(--primary, #6366F1)',
+              color: 'var(--text-primary, #FFFFFF)',
               border: 'none',
               cursor: 'pointer',
               fontSize: 13,
               fontWeight: 600,
-              boxShadow: '0 4px 16px rgba(139, 92, 246, 0.4)',
+              boxShadow: 'var(--glow-sm, 0 4px 16px rgba(99, 102, 241, 0.4))',
               zIndex: 10,
               transition: 'transform 0.2s, background-color 0.2s',
             },
             onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.backgroundColor = '#7C3AED'
+              e.currentTarget.style.backgroundColor = 'var(--primary-hover, #818CF8)'
               e.currentTarget.style.transform = 'translateX(-50%) scale(1.04)'
             },
             onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.backgroundColor = '#8B5CF6'
+              e.currentTarget.style.backgroundColor = 'var(--primary, #6366F1)'
               e.currentTarget.style.transform = 'translateX(-50%) scale(1)'
             },
           },

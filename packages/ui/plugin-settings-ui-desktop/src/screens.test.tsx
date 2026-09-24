@@ -449,6 +449,23 @@ describe('SettingsScreen', () => {
     expect(openButtons.length).toBe(2)
   })
 
+  it('renders theme settings and allows selecting themes', async () => {
+    const { ctx, calls } = await harness()
+    const { getByText, getByTestId } = render(h(SettingsScreen, { ctx }))
+
+    expect(getByText('主题与色彩管理')).toBeTruthy()
+    expect(getByText('蓝紫暗夜 (Midnight Purple)')).toBeTruthy()
+    expect(getByText('Spotify 经典绿 (Spotify Classic)')).toBeTruthy()
+
+    const spotifyBtn = getByTestId('theme-option-spotify')
+    expect(spotifyBtn).toBeTruthy()
+    fireEvent.click(spotifyBtn)
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.includes('"themeId":"spotify"'))).toBe(true)
+    })
+  })
+
   it('renders desktop lyrics settings and live preview box', async () => {
     const { ctx, calls } = await harness()
     const { container, getByText } = render(h(SettingsScreen, { ctx }))

@@ -124,9 +124,9 @@ export function NetworkSection({
                       borderRadius: 6,
                       fontSize: 12,
                       background: proxyTestResult.ok
-                        ? 'rgba(29, 185, 84, 0.12)'
-                        : 'rgba(241, 94, 108, 0.12)',
-                      color: proxyTestResult.ok ? '#1ED760' : '#F15E6C',
+                        ? 'rgba(34, 197, 94, 0.12)'
+                        : 'rgba(239, 68, 68, 0.12)',
+                      color: proxyTestResult.ok ? 'var(--state-success, #22C55E)' : 'var(--state-error, #EF4444)',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6,

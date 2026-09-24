@@ -214,6 +214,11 @@ export const bundled: PluginRegistry = {
     manifest: {"id":"@BBeBee/plugin-sources-ui-desktop","version":"0.0.0","displayName":"Sources (desktop views)","description":"ctx.sources — imported source documents, the registry, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["sources"]}},
     builtin: true,
   },
+  "@BBeBee/plugin-theme": {
+    load: () => import('@BBeBee/plugin-theme'),
+    manifest: {"id":"@BBeBee/plugin-theme","version":"0.0.0","displayName":"Theme","description":"Theme manager for dark music player and dynamic runtime themes.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["theme"]}},
+    builtin: true,
+  },
   "@BBeBee/plugin-ui": {
     load: () => import('@BBeBee/plugin-ui'),
     manifest: {"id":"@BBeBee/plugin-ui","version":"0.0.0","displayName":"UI Registry","description":"The ctx.ui contribution registry.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["ui"]}},

@@ -16,4 +16,5 @@ export * from './settings.js'
 export * from './lyrics.js'
 export * from './visualizer.js'
 export * from './mini-player.js'
+export * from './theme.js'
 

@@ -60,6 +60,7 @@
     "@BBeBee/plugin-source-runtime": "workspace:*",
     "@BBeBee/plugin-sources": "workspace:*",
     "@BBeBee/plugin-sources-ui-desktop": "workspace:*",
+    "@BBeBee/plugin-theme": "workspace:*",
     "@BBeBee/plugin-ui": "workspace:*",
     "@BBeBee/plugin-visualizer": "workspace:*",
     "@BBeBee/plugin-visualizer-ui-desktop": "workspace:*",
