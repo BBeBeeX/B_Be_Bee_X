@@ -18,7 +18,7 @@ import {
 import type { Context } from 'cordis'
 import type { RouteContribution, SettingsContribution } from '@BBeBee/protocol'
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
-import { TopBar, WindowControls, type ElectronCSSProperties, type TopBarProps } from './TopBar.js'
+import { SleepTimerIndicator, TopBar, WindowControls, type ElectronCSSProperties, type TopBarProps } from './TopBar.js'
 
 /** What the sidebar can navigate to: a route, or a settings page. */
 interface Entry {
@@ -282,6 +282,10 @@ export function Shell({ ctx }: { ctx: Context }) {
           flexDirection: 'column',
           height: '100%',
           width: '100%',
+          border: 'none',
+          outline: 'none',
+          margin: 0,
+          padding: 0,
         },
       },
       // Fullscreen top bar for dragging and window controls
@@ -293,6 +297,7 @@ export function Shell({ ctx }: { ctx: Context }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
+            gap: 12,
             height: 48,
             minHeight: 48,
             paddingRight: 0,
@@ -306,6 +311,7 @@ export function Shell({ ctx }: { ctx: Context }) {
             userSelect: 'none',
           } as ElectronCSSProperties,
         },
+        h(SleepTimerIndicator, { ctx }),
         h(WindowControls, null),
       ),
       h(
@@ -656,7 +662,17 @@ export function Shell({ ctx }: { ctx: Context }) {
     BottomBar
       ? h(
           'footer',
-          { style: { background: 'var(--player-bg, var(--bg-app, #05060B))' } },
+          {
+            style: {
+              background: 'var(--player-bg, var(--bg-app, #05060B))',
+              border: 'none',
+              borderTop: 'none',
+              borderBottom: 'none',
+              margin: 0,
+              padding: 0,
+              outline: 'none',
+            },
+          },
           h(BottomBar, {
             ctx,
             currentRoute: isQueueOpen ? 'queue.view' : currentId,

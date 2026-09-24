@@ -134,6 +134,8 @@ export const ICON_ALIASES: Record<string, string> = {
   duration: 'clock',
   '⏱': 'clock',
   '🕒': 'clock',
+  alarm: 'alarm',
+  'alarm-clock': 'alarm',
   history: 'history',
 
   // Playlist & Queue

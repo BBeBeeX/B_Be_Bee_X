@@ -537,7 +537,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
         padding: '16px 16px',
         boxSizing: 'border-box',
         overflowY: 'auto',
-        background: '#121212',
+        background: 'var(--bg-primary, var(--color-bg-primary, #080A10))',
       },
     },
     renderHeader(),

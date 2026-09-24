@@ -12,8 +12,10 @@
 
 import { createElement as h, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import type { Context } from 'cordis'
+import type { SleepTimerMode } from '@BBeBee/protocol'
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useSearchSourceSelection, type SearchInterfaceKind } from '@BBeBee/plugin-sources/hooks'
+import { useSleepTimer } from '@BBeBee/plugin-sleep-timer/hooks'
 import logoWhiteUrl from './assets/logo-white.png'
 
 export interface ElectronCSSProperties extends CSSProperties {
@@ -22,6 +24,193 @@ export interface ElectronCSSProperties extends CSSProperties {
 
 export interface WindowControlsProps {
   style?: CSSProperties
+}
+
+function formatSleepTimerRemaining(targetEpochMs?: number, mode?: SleepTimerMode): string {
+  if (mode === 'end-of-track') {
+    return '播完本曲'
+  }
+  if (!targetEpochMs) return '运行中'
+  const diffMs = Math.max(0, targetEpochMs - Date.now())
+  const totalSeconds = Math.ceil(diffMs / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60)
+    const remMin = minutes % 60
+    return `${hours}小时${remMin}分钟`
+  }
+  if (minutes > 0) {
+    return `${minutes}分${seconds.toString().padStart(2, '0')}秒`
+  }
+  return `${seconds}秒`
+}
+
+export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | null {
+  const timerState = useSleepTimer(ctx)
+  const [hovered, setHovered] = useState(false)
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    if (!timerState.active) return
+    const timer = setInterval(() => {
+      setTick((t) => t + 1)
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [timerState.active])
+
+  if (!timerState.active) return null
+
+  const remainingText = formatSleepTimerRemaining(timerState.targetEpochMs, timerState.mode)
+
+  const handleCancel = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation()
+    ctx.sleepTimer?.cancel?.()
+  }
+
+  return h(
+    'div',
+    {
+      'data-testid': 'topbar-sleep-timer-container',
+      style: {
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        WebkitAppRegion: 'no-drag' as unknown as undefined,
+      },
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      onMouseOver: () => setHovered(true),
+    },
+    h(
+      'button',
+      {
+        type: 'button',
+        'aria-label': `睡眠定时器：${remainingText}，点击取消`,
+        title: `睡眠定时器：${remainingText}`,
+        'data-testid': 'topbar-sleep-timer-indicator',
+        onClick: handleCancel,
+        style: {
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '4px 10px',
+          borderRadius: 16,
+          border: '1px solid var(--color-primary, #5F87FF)',
+          background: 'var(--surface-selected, rgba(95, 135, 255, 0.15))',
+          color: 'var(--color-primary, #5F87FF)',
+          cursor: 'pointer',
+          fontSize: 12,
+          fontWeight: 600,
+          transition: 'all 0.15s ease',
+          outline: 'none',
+          boxShadow: 'var(--glow-brand-sm, 0 0 10px rgba(95, 135, 255, 0.25))',
+        },
+      },
+      tablerIcon('alarm', { size: 16 }),
+      h('span', { style: { fontSize: 11, fontVariantNumeric: 'tabular-nums' } }, remainingText),
+    ),
+    hovered
+      ? h(
+          'div',
+          {
+            'data-testid': 'sleep-timer-popover',
+            style: {
+              position: 'absolute',
+              top: 'calc(100% + 8px)',
+              right: 0,
+              minWidth: 200,
+              padding: '12px 14px',
+              borderRadius: 10,
+              background: 'var(--surface-2, #141824)',
+              border: '1px solid var(--border-default, rgba(145, 176, 255, 0.18))',
+              boxShadow: 'var(--shadow-dropdown, 0 12px 30px rgba(0, 0, 0, 0.6))',
+              zIndex: 1000,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              backdropFilter: 'blur(16px)',
+              pointerEvents: 'auto',
+            },
+          },
+          h(
+            'div',
+            {
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                color: '#FFFFFF',
+                fontWeight: 600,
+                fontSize: 13,
+              },
+            },
+            tablerIcon('alarm', { size: 16, color: 'var(--color-primary, #5F87FF)' }),
+            '睡眠定时器运行中',
+          ),
+          h(
+            'div',
+            {
+              style: {
+                fontSize: 12,
+                color: 'var(--text-secondary, #C5CAD8)',
+                lineHeight: 1.4,
+              },
+            },
+            timerState.mode === 'end-of-track'
+              ? '将在本曲播放完毕后自动停止播放。'
+              : '距离自动停止播放还剩：',
+            timerState.mode !== 'end-of-track'
+              ? h(
+                  'div',
+                  {
+                    style: {
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: 'var(--color-primary, #5F87FF)',
+                      marginTop: 2,
+                      fontVariantNumeric: 'tabular-nums',
+                    },
+                  },
+                  remainingText,
+                )
+              : null,
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-testid': 'cancel-sleep-timer-button',
+              onClick: handleCancel,
+              style: {
+                marginTop: 4,
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                background: 'rgba(239, 68, 68, 0.15)',
+                color: '#FF6B6B',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+              },
+              onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.25)'
+              },
+              onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)'
+              },
+            },
+            tablerIcon('x', { size: 14 }),
+            '取消定时器',
+          ),
+        )
+      : null,
+  )
 }
 
 export function WindowControls({ style }: WindowControlsProps = {}): ReactElement {
@@ -977,6 +1166,8 @@ export function TopBar({
           ...noDragStyle,
         },
       },
+      // Sleep Timer Indicator
+      h(SleepTimerIndicator, { ctx }),
       // Avatar
       h(
         'button',

@@ -144,13 +144,85 @@ export function GeneralSection({
         title: '主题与色彩管理',
         description: '切换播放器主题风格，支持深色蓝紫与经典绿色，或动态导入/管理更多色彩方案',
       },
-      h(SettingsRow, {
-        title: '界面主题',
-        description: '选择全应用色彩方案，或导入自定义主题',
-        borderBottom: false,
-        action: h(
+      h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '14px 4px',
+            gap: 16,
+          },
+        },
+        h(
           'div',
-          { style: { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' } },
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              flexWrap: 'wrap',
+            },
+          },
+          h(
+            'div',
+            { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+            h('div', { style: { fontSize: 13, fontWeight: 500, color: '#F5F5F7' } }, '界面主题'),
+            h(
+              'div',
+              { style: { fontSize: 12, color: '#8E8E93', lineHeight: 1.45 } },
+              '选择全应用色彩方案，或导入自定义主题',
+            ),
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-testid': 'import-theme-button',
+              onClick: () => {
+                setImportJson('')
+                setImportError(null)
+                setShowImportModal(true)
+              },
+              style: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 14px',
+                borderRadius: 20,
+                border: '1px dashed var(--border-default, rgba(255, 255, 255, 0.25))',
+                background: 'rgba(255, 255, 255, 0.04)',
+                color: 'var(--text-secondary, #C5CAD8)',
+                cursor: 'pointer',
+                fontSize: 13,
+                transition: 'all 0.15s ease',
+                flexShrink: 0,
+              },
+              onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.borderColor = 'var(--color-primary, #5F87FF)'
+                e.currentTarget.style.color = '#FFFFFF'
+              },
+              onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.borderColor = 'var(--border-default, rgba(255, 255, 255, 0.25))'
+                e.currentTarget.style.color = 'var(--text-secondary, #C5CAD8)'
+              },
+            },
+            tablerIcon('plus', { size: 14 }),
+            '导入色彩模式',
+          ),
+        ),
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              gap: 10,
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              width: '100%',
+            },
+          },
           themes.map((t) => {
             const isSelected = currentThemeId === t.id
             const isMidnight = t.id === 'midnight-purple'
@@ -243,35 +315,8 @@ export function GeneralSection({
                 : null,
             )
           }),
-          h(
-            'button',
-            {
-              type: 'button',
-              'data-testid': 'import-theme-button',
-              onClick: () => {
-                setImportJson('')
-                setImportError(null)
-                setShowImportModal(true)
-              },
-              style: {
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 14px',
-                borderRadius: 20,
-                border: '1px dashed var(--border-default, rgba(255, 255, 255, 0.25))',
-                background: 'rgba(255, 255, 255, 0.04)',
-                color: 'var(--text-secondary, #C5CAD8)',
-                cursor: 'pointer',
-                fontSize: 13,
-                transition: 'all 0.15s ease',
-              },
-            },
-            tablerIcon('plus', { size: 14 }),
-            '导入色彩模式',
-          ),
         ),
-      }),
+      ),
     ),
     h(
       SettingsSection,

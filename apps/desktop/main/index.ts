@@ -244,7 +244,7 @@ function createWindow(): BrowserWindow {
     minHeight: 480,
     backgroundColor: '#05060A',
     frame: false,
-    titleBarStyle: 'hidden',
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hidden' as const } : {}),
     autoHideMenuBar: true,
     icon: iconCandidate,
     webPreferences: {

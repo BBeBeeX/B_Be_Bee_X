@@ -317,6 +317,14 @@ export const TABLER_DEFINITIONS: Record<string, IconSvgDefinition> = {
       { tag: 'path', attrs: { d: 'M12 7v5l3 3' } },
     ],
   },
+  alarm: {
+    elements: [
+      { tag: 'path', attrs: { d: 'M12 13m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0' } },
+      { tag: 'path', attrs: { d: 'M12 10l0 3l2 0' } },
+      { tag: 'path', attrs: { d: 'M7 4l-2.75 2' } },
+      { tag: 'path', attrs: { d: 'M17 4l2.75 2' } },
+    ],
+  },
   history: {
     elements: [
       { tag: 'path', attrs: { d: 'M12 8l0 4l2 2' } },

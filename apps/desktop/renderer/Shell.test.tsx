@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { act, createElement as h } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Context, Service } from 'cordis'
+import type { SleepTimerState } from '@BBeBee/protocol'
 import { resetSearchSourceSelection } from '@BBeBee/plugin-sources/hooks'
 import { Shell } from './Shell.js'
 
@@ -56,6 +57,17 @@ class SourcesStub extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'sources')
+  }
+}
+
+class SleepTimerStub extends Service {
+  state: SleepTimerState = { active: false }
+  cancel = vi.fn(() => {
+    this.state = { active: false }
+    this.ctx.emit('sleep-timer/changed')
+  })
+  constructor(ctx: Context) {
+    super(ctx, 'sleepTimer')
   }
 }
 
@@ -644,6 +656,58 @@ describe('the desktop shell', () => {
     })
     expect(container.querySelector('[data-testid="search-history-item-Chopin"]')).toBeNull()
     expect(container.textContent).toContain('暂无搜索历史')
+  })
+
+  it('renders sleep timer alarm icon in topbar when active, shows countdown on hover, and allows cancellation', async () => {
+    let sleepTimerRef!: SleepTimerStub
+    const { container, ctx } = await mount(
+      (ui) => {
+        ui.routes = [route('good', 'Good')]
+        ui.views.set('good', () => h('p', null, 'content'))
+      },
+      async (baseCtx) => {
+        sleepTimerRef = new SleepTimerStub(baseCtx)
+      },
+    )
+
+    // Initially no sleep timer indicator
+    expect(container.querySelector('[data-testid="topbar-sleep-timer-indicator"]')).toBeNull()
+
+    // Activate sleep timer (15 minutes = 900,000 ms)
+    await act(async () => {
+      sleepTimerRef.state = {
+        active: true,
+        mode: 'duration',
+        durationMs: 15 * 60 * 1000,
+        targetEpochMs: Date.now() + 15 * 60 * 1000,
+      }
+      ctx.emit('sleep-timer/changed')
+    })
+
+    const indicator = container.querySelector('[data-testid="topbar-sleep-timer-indicator"]') as HTMLButtonElement
+    expect(indicator).not.toBeNull()
+    expect(indicator.textContent).toContain('15分00秒')
+
+    // Hover to reveal popover
+    const parentContainer = indicator.parentElement as HTMLElement
+    await act(async () => {
+      parentContainer.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    })
+
+    const popover = container.querySelector('[data-testid="sleep-timer-popover"]')
+    expect(popover).not.toBeNull()
+    expect(popover?.textContent).toContain('睡眠定时器运行中')
+
+    const cancelBtn = container.querySelector('[data-testid="cancel-sleep-timer-button"]') as HTMLButtonElement
+    expect(cancelBtn).not.toBeNull()
+
+    // Click cancel in popover
+    await act(async () => {
+      cancelBtn.click()
+    })
+
+    expect(sleepTimerRef.cancel).toHaveBeenCalled()
+    expect(container.querySelector('[data-testid="topbar-sleep-timer-indicator"]')).toBeNull()
   })
 })
 

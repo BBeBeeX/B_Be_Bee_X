@@ -29,6 +29,58 @@ const THEMES: { id: VisualizerColorTheme; label: string; color: string }[] = [
   { id: 'monochrome', label: '极简银白', color: 'linear-gradient(135deg, #FFFFFF, #8E8E93)' },
 ]
 
+function Switch({
+  checked,
+  onChange,
+  disabled = false,
+  accessibilityLabel,
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+  accessibilityLabel?: string
+}): ReactElement {
+  return h(
+    'button',
+    {
+      type: 'button',
+      role: 'switch',
+      'aria-checked': checked,
+      'aria-label': accessibilityLabel,
+      disabled,
+      onClick: () => {
+        if (!disabled) onChange(!checked)
+      },
+      style: {
+        width: 44,
+        height: 24,
+        borderRadius: 12,
+        background: checked ? 'var(--color-primary, #5F87FF)' : 'rgba(255, 255, 255, 0.15)',
+        boxShadow: checked ? 'var(--glow-brand-sm, 0 0 10px rgba(95, 135, 255, 0.35))' : 'none',
+        border: 'none',
+        padding: 2,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        position: 'relative',
+        transition: 'background-color 0.2s, box-shadow 0.2s',
+        opacity: disabled ? 0.5 : 1,
+      },
+    },
+    h('div', {
+      style: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        background: '#ffffff',
+        transform: checked ? 'translateX(20px)' : 'translateX(0px)',
+        transition: 'transform 0.2s',
+        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+      },
+    }),
+  )
+}
+
 export function VisualizerSettingsCard({ ctx }: VisualizerSettingsCardProps): ReactElement {
   const { settings, updateSettings } = useVisualizer(ctx)
 
@@ -63,35 +115,13 @@ export function VisualizerSettingsCard({ ctx }: VisualizerSettingsCardProps): Re
           children: '启用后在全屏播放界面实时展示跳动频谱或波形',
         }),
       ),
-      h(
-        'label',
-        {
-          style: {
-            display: 'inline-flex',
-            alignItems: 'center',
-            cursor: 'pointer',
-          },
+      h(Switch, {
+        checked: settings.enabled,
+        accessibilityLabel: '音频可视化',
+        onChange: (checked) => {
+          void updateSettings({ enabled: checked })
         },
-        h('input', {
-          type: 'checkbox',
-          checked: settings.enabled,
-          onChange: (e: { target: { checked: boolean } }) => {
-            void updateSettings({ enabled: e.target.checked })
-          },
-          style: {
-            width: 44,
-            height: 24,
-            appearance: 'none',
-            outline: 'none',
-            backgroundColor: settings.enabled ? 'var(--color-primary, #5F87FF)' : 'rgba(255, 255, 255, 0.2)',
-            boxShadow: settings.enabled ? 'var(--glow-brand-sm, 0 0 10px rgba(95, 135, 255, 0.35))' : 'none',
-            borderRadius: 12,
-            position: 'relative',
-            cursor: 'pointer',
-            transition: 'background-color 0.2s, box-shadow 0.2s',
-          },
-        }),
-      ),
+      }),
     ),
 
     settings.enabled

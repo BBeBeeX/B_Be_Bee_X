@@ -20,6 +20,35 @@ const GLOBAL_STYLES = `
   100% { transform: scaleY(1); }
 }
 
+@keyframes miniPlayerWave0 {
+  0% { transform: scaleY(0.3); }
+  30% { transform: scaleY(0.75); }
+  60% { transform: scaleY(0.4); }
+  85% { transform: scaleY(0.7); }
+  100% { transform: scaleY(0.3); }
+}
+@keyframes miniPlayerWave1 {
+  0% { transform: scaleY(0.25); }
+  25% { transform: scaleY(0.95); }
+  55% { transform: scaleY(0.5); }
+  80% { transform: scaleY(1.0); }
+  100% { transform: scaleY(0.25); }
+}
+@keyframes miniPlayerWave2 {
+  0% { transform: scaleY(0.35); }
+  20% { transform: scaleY(0.55); }
+  50% { transform: scaleY(0.25); }
+  75% { transform: scaleY(0.6); }
+  100% { transform: scaleY(0.35); }
+}
+@keyframes miniPlayerWave3 {
+  0% { transform: scaleY(0.2); }
+  35% { transform: scaleY(0.85); }
+  60% { transform: scaleY(0.4); }
+  85% { transform: scaleY(0.8); }
+  100% { transform: scaleY(0.2); }
+}
+
 @keyframes miniPlayerExpand {
   0% {
     opacity: 0.8;
