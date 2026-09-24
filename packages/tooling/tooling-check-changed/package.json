@@ -1,0 +1,17 @@
+{
+  "name": "@BBeBee/tooling-check-changed",
+  "version": "0.0.0",
+  "description": "Fast diff-only checks for changed packages (typecheck + lint + test).",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "echo 'run directly via node --experimental-strip-types'",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

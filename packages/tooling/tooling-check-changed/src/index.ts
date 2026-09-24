@@ -18,6 +18,8 @@ export interface DiffResult {
 export interface AnalysisResult {
   changedPackages: WorkspacePackage[]
   typecheckPackages: WorkspacePackage[]
+  testPackages: WorkspacePackage[]
+  testFiles: string[]
   lintFiles: string[]
   codeFiles: string[]
   hasCodeChanges: boolean
@@ -30,16 +32,18 @@ export interface CheckChangedOptions {
   root: string
   since?: string
   fix?: boolean
+  all?: boolean
   typecheckOnly?: boolean
   lintOnly?: boolean
   testOnly?: boolean
+  timeout?: number
+  related?: boolean
 }
 
 const ROOT_TYPECHECK_CONFIGS = new Set([
   'tsconfig.json',
   'tsconfig.base.json',
   'pnpm-workspace.yaml',
-  'pnpm-lock.yaml',
 ])
 
 const ROOT_LINT_CONFIGS = new Set(['eslint.config.js'])
@@ -51,6 +55,38 @@ const TYPECHECK_EXTENSIONS = /\.(tsx?|jsx?|mts|cts|mjs|cjs|json)$/
 const LINTABLE_EXTENSIONS = /\.(tsx?|jsx?|mjs|cjs)$/
 
 const IGNORED_PATH_SEGMENTS = ['/dist/', '/out/', '/generated/', '/node_modules/']
+
+function packageHasTests(root: string, relDir: string): boolean {
+  const dir = join(root, relDir)
+  if (!existsSync(dir)) return false
+  const queue = [dir]
+  while (queue.length > 0) {
+    const current = queue.pop()!
+    try {
+      const entries = readdirSync(current, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          if (
+            entry.name !== 'node_modules' &&
+            entry.name !== 'dist' &&
+            entry.name !== 'out' &&
+            entry.name !== '.git'
+          ) {
+            queue.push(join(current, entry.name))
+          }
+        } else if (
+          entry.isFile() &&
+          (entry.name.endsWith('.test.ts') || entry.name.endsWith('.test.tsx'))
+        ) {
+          return true
+        }
+      }
+    } catch {
+      // Ignore directory read errors
+    }
+  }
+  return false
+}
 
 /**
  * Scan the workspace root to discover all packages and apps with package.json.
@@ -69,7 +105,7 @@ export function findWorkspacePackages(root: string): WorkspacePackage[] {
         name: json.name,
         dir: relDir.replace(/\\/g, '/'),
         hasTypecheck: Boolean(json.scripts?.typecheck),
-        hasTest: Boolean(json.scripts?.test),
+        hasTest: Boolean(json.scripts?.test) || packageHasTests(root, relDir),
       })
     } catch {
       // Ignore unparseable package.json
@@ -105,9 +141,6 @@ export function findWorkspacePackages(root: string): WorkspacePackage[] {
   return packages.sort((a, b) => b.dir.length - a.dir.length)
 }
 
-/**
- * Run a git command safely and return trimmed stdout.
- */
 function execGit(cmd: string, cwd: string): string {
   try {
     return execSync(`git ${cmd}`, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
@@ -196,8 +229,12 @@ export function analyzeChanges(
 
   const changedPkgSet = new Set<WorkspacePackage>()
   const typecheckPkgSet = new Set<WorkspacePackage>()
+  const testPkgSet = new Set<WorkspacePackage>()
+  const testFiles: string[] = []
   const lintFiles: string[] = []
   const codeFiles: string[] = []
+
+  let shellsChanged = false
 
   for (const file of files) {
     const fullPath = join(root, file)
@@ -205,6 +242,14 @@ export function analyzeChanges(
 
     if (exists && CODE_EXTENSIONS.test(file)) {
       codeFiles.push(file)
+    }
+
+    if (file.endsWith('.test.ts') || file.endsWith('.test.tsx')) {
+      testFiles.push(file)
+    }
+
+    if (file.includes('plugins.ts') || file.endsWith('BBeBee.plugin.json')) {
+      shellsChanged = true
     }
 
     // Check lintability
@@ -225,7 +270,17 @@ export function analyzeChanges(
       ) {
         typecheckPkgSet.add(pkg)
       }
+      if (
+        pkg.hasTest &&
+        (CODE_EXTENSIONS.test(file) || file.endsWith('/package.json'))
+      ) {
+        testPkgSet.add(pkg)
+      }
     }
+  }
+
+  if (shellsChanged && existsSync(join(root, 'packages/kernel/src/bootstrap/shells.test.ts'))) {
+    testFiles.push('packages/kernel/src/bootstrap/shells.test.ts')
   }
 
   const hasCodeChanges = codeFiles.length > 0
@@ -233,6 +288,8 @@ export function analyzeChanges(
   return {
     changedPackages: Array.from(changedPkgSet),
     typecheckPackages: Array.from(typecheckPkgSet),
+    testPackages: Array.from(testPkgSet),
+    testFiles: Array.from(new Set(testFiles)),
     lintFiles,
     codeFiles,
     hasCodeChanges,
@@ -282,8 +339,8 @@ export function runCheckChanged(options: CheckChangedOptions): number {
   // Step 1: Typecheck
   if (doTypecheck) {
     console.log('\n[check:changed] Step 1/3: Typecheck')
-    if (analysis.rootTypecheck) {
-      console.log('  Root build/config files changed; running full typecheck across workspace...')
+    if (analysis.rootTypecheck && (options.all || analysis.typecheckPackages.length === 0)) {
+      console.log('  Root compiler/workspace configs changed; running full typecheck across workspace...')
       const res = spawnSync('pnpm', ['typecheck'], { cwd: root, stdio: 'inherit' })
       if (res.status !== 0) return res.status ?? 1
     } else if (analysis.typecheckPackages.length > 0) {
@@ -301,7 +358,7 @@ export function runCheckChanged(options: CheckChangedOptions): number {
   // Step 2: Lint
   if (doLint) {
     console.log('\n[check:changed] Step 2/3: Lint')
-    if (analysis.rootLint) {
+    if (analysis.rootLint && options.all) {
       console.log('  eslint.config.js changed; running full repository lint...')
       const args = options.fix ? ['eslint', '.', '--fix'] : ['eslint', '.']
       const res = spawnSync('pnpm', ['exec', ...args], { cwd: root, stdio: 'inherit' })
@@ -324,21 +381,44 @@ export function runCheckChanged(options: CheckChangedOptions): number {
 
   // Step 3: Test
   if (doTest) {
-    console.log('\n[check:changed] Step 3/3: Test')
-    if (analysis.rootTest) {
-      console.log('  Test configuration changed; running full test suite...')
-      const res = spawnSync('pnpm', ['exec', 'vitest', 'run'], { cwd: root, stdio: 'inherit' })
-      if (res.status !== 0) return res.status ?? 1
-    } else if (analysis.codeFiles.length > 0) {
-      console.log(`  Running tests related to ${analysis.codeFiles.length} changed code file(s)...`)
+    const testTimeout = options.timeout ?? 30_000
+    console.log(`\n[check:changed] Step 3/3: Test (timeout: ${testTimeout}ms)`)
+    const targets = Array.from(
+      new Set([
+        ...analysis.testPackages.map((p) => p.dir),
+        ...analysis.testFiles,
+      ]),
+    )
+
+    if (analysis.rootTest && options.all) {
+      console.log('  Test configuration changed and --all specified; running full test suite...')
       const res = spawnSync(
         'pnpm',
-        ['exec', 'vitest', 'related', '--run', ...analysis.codeFiles, '--passWithNoTests'],
+        ['exec', 'vitest', 'run', `--testTimeout=${testTimeout}`],
         { cwd: root, stdio: 'inherit' },
       )
       if (res.status !== 0) return res.status ?? 1
+    } else if (options.related) {
+      console.log(`  Running tests related to ${analysis.codeFiles.length} changed code file(s)...`)
+      const res = spawnSync(
+        'pnpm',
+        ['exec', 'vitest', 'related', '--run', ...analysis.codeFiles, '--passWithNoTests', `--testTimeout=${testTimeout}`],
+        { cwd: root, stdio: 'inherit' },
+      )
+      if (res.status !== 0) return res.status ?? 1
+    } else if (targets.length > 0) {
+      console.log(`  Testing ${targets.length} affected package target(s): ${targets.join(', ')}`)
+      const res = spawnSync(
+        'pnpm',
+        ['exec', 'vitest', 'run', ...targets, '--passWithNoTests', `--testTimeout=${testTimeout}`],
+        { cwd: root, stdio: 'inherit' },
+      )
+      if (res.status !== 0) return res.status ?? 1
+    } else if (analysis.rootTest) {
+      console.log('  Root test configuration changed without package code changes.')
+      console.log('  Skipped full test suite to keep diff check fast. (Pass --all or run "pnpm test" for full suite)')
     } else {
-      console.log('  Skipped: no code changes affecting tests.')
+      console.log('  Skipped: no tests affected in modified packages.')
     }
   }
 

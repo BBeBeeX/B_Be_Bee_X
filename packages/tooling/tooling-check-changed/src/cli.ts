@@ -26,6 +26,9 @@ Checks only packages and files affected by the current diff (typecheck + lint + 
 Options:
   --since <ref>       Git ref/commit to compare against (default: auto-detected base/HEAD)
   --fix               Pass --fix to ESLint for automatic fixes
+  --all               Run full workspace checks if root configs change (default: scope to affected packages)
+  --timeout <ms>      Test timeout in milliseconds (default: 30000)
+  --related           Use Vitest full dependency graph tracing instead of package-scoped tests
   --typecheck-only    Only run typecheck on affected packages
   --lint-only         Only run ESLint on changed files
   --test-only         Only run Vitest on affected tests
@@ -36,6 +39,7 @@ Examples:
   pnpm check:changed origin/main
   pnpm check:changed --since HEAD~1
   pnpm check:changed --fix
+  pnpm check:changed --timeout 60000
   pnpm check:changed --lint-only
 `)
   process.exit(0)
@@ -47,11 +51,16 @@ const positional = process.argv
   .find((arg) => !arg.startsWith('-'))
 
 const since = flagValue('since') ?? positional
+const timeoutStr = flagValue('timeout')
+const timeout = timeoutStr ? parseInt(timeoutStr, 10) : 30_000
 
 const exitCode = runCheckChanged({
   root,
   since,
   fix: flag('fix'),
+  all: flag('all'),
+  timeout,
+  related: flag('related'),
   typecheckOnly: flag('typecheck-only'),
   lintOnly: flag('lint-only'),
   testOnly: flag('test-only'),
