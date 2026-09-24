@@ -39,6 +39,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@BBeBee/core-audio-wasapi':
+        specifier: workspace:*
+        version: link:../../packages/core/core-audio-wasapi
       '@BBeBee/core-audio-webaudio':
         specifier: workspace:*
         version: link:../../packages/core/core-audio-webaudio

@@ -48,7 +48,8 @@ function formatSleepTimerRemaining(targetEpochMs?: number, mode?: SleepTimerMode
 
 export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | null {
   const timerState = useSleepTimer(ctx)
-  const [hovered, setHovered] = useState(false)
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const [, setTick] = useState(0)
 
   useEffect(() => {
@@ -57,6 +58,30 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
       setTick((t) => t + 1)
     }, 1000)
     return () => clearInterval(timer)
+  }, [timerState.active])
+
+  // Click-toggled panel: dismiss on a press outside or on Escape.
+  useEffect(() => {
+    if (!open) return
+    const handleMouseDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
+  // A fired or cancelled timer must not leave the panel primed open.
+  useEffect(() => {
+    if (!timerState.active) setOpen(false)
   }, [timerState.active])
 
   if (!timerState.active) return null
@@ -68,9 +93,16 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
     ctx.sleepTimer?.cancel?.()
   }
 
+  const remainingMs = timerState.targetEpochMs ? Math.max(0, timerState.targetEpochMs - Date.now()) : 0
+  const progress =
+    timerState.mode !== 'end-of-track' && timerState.durationMs && timerState.durationMs > 0
+      ? Math.min(1, Math.max(0, 1 - remainingMs / timerState.durationMs))
+      : null
+
   return h(
     'div',
     {
+      ref: containerRef,
       'data-testid': 'topbar-sleep-timer-container',
       style: {
         position: 'relative',
@@ -78,18 +110,17 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
         alignItems: 'center',
         WebkitAppRegion: 'no-drag' as unknown as undefined,
       },
-      onMouseEnter: () => setHovered(true),
-      onMouseLeave: () => setHovered(false),
-      onMouseOver: () => setHovered(true),
     },
     h(
       'button',
       {
         type: 'button',
-        'aria-label': `睡眠定时器：${remainingText}，点击取消`,
+        'aria-label': `睡眠定时器：${remainingText}，点击管理`,
+        'aria-expanded': open,
+        'aria-haspopup': 'dialog',
         title: `睡眠定时器：${remainingText}`,
         'data-testid': 'topbar-sleep-timer-indicator',
-        onClick: handleCancel,
+        onClick: () => setOpen((prev) => !prev),
         style: {
           display: 'inline-flex',
           alignItems: 'center',
@@ -110,27 +141,28 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
       tablerIcon('alarm', { size: 16 }),
       h('span', { style: { fontSize: 11, fontVariantNumeric: 'tabular-nums' } }, remainingText),
     ),
-    hovered
+    open
       ? h(
           'div',
           {
             'data-testid': 'sleep-timer-popover',
+            role: 'dialog',
+            'aria-label': '睡眠定时器',
             style: {
               position: 'absolute',
               top: 'calc(100% + 8px)',
               right: 0,
-              minWidth: 200,
-              padding: '12px 14px',
-              borderRadius: 10,
-              background: 'var(--surface-2, #141824)',
-              border: '1px solid var(--border-default, rgba(145, 176, 255, 0.18))',
-              boxShadow: 'var(--shadow-dropdown, 0 12px 30px rgba(0, 0, 0, 0.6))',
+              width: 232,
+              padding: '14px 16px 16px',
+              borderRadius: 12,
+              background: 'var(--surface-2, #16202E)',
+              border: '1px solid var(--border-default, rgba(145, 176, 255, 0.14))',
+              boxShadow: 'var(--shadow-dropdown, 0 16px 40px rgba(0, 0, 0, 0.55))',
               zIndex: 1000,
               display: 'flex',
               flexDirection: 'column',
-              gap: 8,
+              gap: 10,
               backdropFilter: 'blur(16px)',
-              pointerEvents: 'auto',
             },
           },
           h(
@@ -139,8 +171,8 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
               style: {
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
-                color: '#FFFFFF',
+                gap: 8,
+                color: 'var(--text-primary, #FFFFFF)',
                 fontWeight: 600,
                 fontSize: 13,
               },
@@ -148,33 +180,59 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
             tablerIcon('alarm', { size: 16, color: 'var(--color-primary, #5F87FF)' }),
             '睡眠定时器运行中',
           ),
+          timerState.mode !== 'end-of-track'
+            ? h(
+                'div',
+                {
+                  style: {
+                    fontSize: 22,
+                    fontWeight: 700,
+                    letterSpacing: 0.3,
+                    lineHeight: 1.2,
+                    fontVariantNumeric: 'tabular-nums',
+                    background: 'var(--gradient-brand, var(--color-primary, #5F87FF))',
+                    WebkitBackgroundClip: 'text',
+                    backgroundClip: 'text',
+                    color: 'transparent',
+                  },
+                },
+                remainingText,
+              )
+            : null,
+          progress !== null
+            ? h(
+                'div',
+                {
+                  style: {
+                    height: 4,
+                    borderRadius: 999,
+                    background: 'var(--surface-hover, rgba(255, 255, 255, 0.08))',
+                    overflow: 'hidden',
+                  },
+                },
+                h('div', {
+                  style: {
+                    height: '100%',
+                    width: `${Math.round(progress * 100)}%`,
+                    borderRadius: 999,
+                    background: 'var(--gradient-progress, var(--color-primary, #5F87FF))',
+                    transition: 'width 1s linear',
+                  },
+                }),
+              )
+            : null,
           h(
             'div',
             {
               style: {
                 fontSize: 12,
                 color: 'var(--text-secondary, #C5CAD8)',
-                lineHeight: 1.4,
+                lineHeight: 1.5,
               },
             },
             timerState.mode === 'end-of-track'
               ? '将在本曲播放完毕后自动停止播放。'
-              : '距离自动停止播放还剩：',
-            timerState.mode !== 'end-of-track'
-              ? h(
-                  'div',
-                  {
-                    style: {
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: 'var(--color-primary, #5F87FF)',
-                      marginTop: 2,
-                      fontVariantNumeric: 'tabular-nums',
-                    },
-                  },
-                  remainingText,
-                )
-              : null,
+              : '倒计时结束后将自动停止播放。',
           ),
           h(
             'button',
@@ -183,26 +241,29 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
               'data-testid': 'cancel-sleep-timer-button',
               onClick: handleCancel,
               style: {
-                marginTop: 4,
-                padding: '6px 12px',
-                borderRadius: 6,
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                background: 'rgba(239, 68, 68, 0.15)',
-                color: '#FF6B6B',
+                marginTop: 2,
+                padding: '7px 12px',
+                borderRadius: 8,
+                border: 'none',
+                background: 'var(--error, #EF4444)',
+                color: '#FFFFFF',
                 fontSize: 12,
-                fontWeight: 600,
+                fontWeight: 700,
+                letterSpacing: 0.2,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 4,
+                gap: 6,
               },
               onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.25)'
+                e.currentTarget.style.filter = 'brightness(1.1)'
+                e.currentTarget.style.boxShadow = '0 0 12px rgba(239, 68, 68, 0.35)'
               },
               onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)'
+                e.currentTarget.style.filter = 'none'
+                e.currentTarget.style.boxShadow = 'none'
               },
             },
             tablerIcon('x', { size: 14 }),
