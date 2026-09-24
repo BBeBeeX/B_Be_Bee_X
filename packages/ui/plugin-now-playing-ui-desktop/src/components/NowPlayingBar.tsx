@@ -1,18 +1,20 @@
-import { createElement as h, useEffect, useRef, useState } from 'react'
+import { createElement as h, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { PlayMode } from '@BBeBee/protocol'
+import type { LibraryService, PlayMode, SourcesService, Track } from '@BBeBee/protocol'
 import { formatDuration } from '@BBeBee/toolkit'
 import { NOW_PLAYING_VIEWS } from '@BBeBee/plugin-now-playing/views'
 import {
   useDuration,
   usePosition,
+  useTracksByUrn,
   useTransport,
   useTransportAvailability,
 } from '@BBeBee/plugin-player/hooks'
-import { Artwork, IconButton, Slider, Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
+import { Artwork, ContextMenu, IconButton, SaveToPlaylistPopover, Slider, Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
+import { useSaveToPlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
-import type { ArtworkProps } from '@BBeBee/ui-core'
+import { serviceOf, type ArtworkProps } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
 import { DesktopLyricsToggle } from './DesktopLyricsToggle.js'
 
@@ -438,6 +440,79 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
   const can = useTransportAvailability(ctx)
   const displayPosition = seekingPosition ?? position
 
+  const menu = useTrackMenu(ctx)
+  const saveToPlaylistMenu = useSaveToPlaylistMenu(ctx)
+  const [isInLibrary, setIsInLibrary] = useState(false)
+
+  const tracksMap = useTracksByUrn(ctx, state.trackUrn ? [state.trackUrn] : [])
+  const catalogTrack = state.trackUrn ? tracksMap.get(state.trackUrn) : undefined
+
+  const currentTrack: Track | undefined = useMemo(() => {
+    if (catalogTrack) return catalogTrack
+    if (!state.trackUrn || !state.nowPlaying) return undefined
+    return {
+      urn: state.trackUrn,
+      title: state.nowPlaying.title,
+      artists: state.nowPlaying.artist
+        ? [{ urn: `${state.trackUrn}#artist`, name: state.nowPlaying.artist, role: 'main', ordinal: 0 }]
+        : [],
+      albumTitle: state.nowPlaying.album,
+      artwork: state.nowPlaying.artwork,
+      loved: false,
+    }
+  }, [catalogTrack, state.trackUrn, state.nowPlaying])
+
+  useEffect(() => {
+    if (!state.trackUrn) {
+      setIsInLibrary(false)
+      return
+    }
+    const library = serviceOf<LibraryService>(ctx, 'library')
+    let cancelled = false
+    const check = () => {
+      if (library && typeof library.isSaved === 'function') {
+        library
+          .isSaved(state.trackUrn!)
+          .then((saved) => {
+            if (!cancelled) {
+              setIsInLibrary(saved || Boolean(currentTrack?.loved))
+            }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              setIsInLibrary(Boolean(currentTrack?.loved))
+            }
+          })
+      } else {
+        setIsInLibrary(Boolean(currentTrack?.loved))
+      }
+    }
+
+    check()
+    const off = ctx.on('library/changed', () => {
+      check()
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [ctx, state.trackUrn, currentTrack?.loved])
+
+  const handleAddToFavorites = useCallback(
+    async (track: Track) => {
+      setIsInLibrary(true)
+      const library = serviceOf<LibraryService>(ctx, 'library')
+      const sources = serviceOf<SourcesService>(ctx, 'sources')
+      if (library) {
+        await library.setSaved(track.urn, true).catch(() => {})
+      }
+      if (sources?.setLoved) {
+        await sources.setLoved(track.urn, true).catch(() => {})
+      }
+    },
+    [ctx],
+  )
+
   const handleOpenNowPlaying = () => {
     onOpenNowPlaying?.()
     ctx.ui?.navigate?.(NOW_PLAYING_VIEWS.nowPlaying)
@@ -476,6 +551,12 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
           tabIndex: 0,
           'aria-label': 'Open now playing',
           onClick: handleOpenNowPlaying,
+          onContextMenu: (e: React.MouseEvent) => {
+            e.preventDefault()
+            if (currentTrack) {
+              menu.open({ track: currentTrack }, { x: e.clientX, y: e.clientY })
+            }
+          },
           onKeyDown: (e: { key: string; preventDefault: () => void }) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault()
@@ -529,11 +610,67 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
             overflow: 'hidden',
           },
         },
-        h(Text, {
-          variant: 'sm',
-          numberOfLines: 1,
-          children: state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'Nothing playing'),
-        }),
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 0,
+            },
+          },
+          h(Text, {
+            variant: 'sm',
+            numberOfLines: 1,
+            children: state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'Nothing playing'),
+          }),
+          currentTrack
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  'data-testid': 'track-library-action-btn',
+                  'aria-label': isInLibrary
+                    ? `Add ${currentTrack.title} to playlist`
+                    : `Add ${currentTrack.title} to favourites`,
+                  title: isInLibrary ? '加入歌单' : '加入最喜欢的音乐',
+                  onClick: (e: React.MouseEvent) => {
+                    e.stopPropagation()
+                    if (isInLibrary) {
+                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                      saveToPlaylistMenu.open(currentTrack, { x: rect.left, y: rect.bottom + 4 })
+                    } else {
+                      void handleAddToFavorites(currentTrack)
+                    }
+                  },
+                  style: {
+                    background: 'none',
+                    border: 'none',
+                    color: isInLibrary ? '#1ed760' : 'rgba(255, 255, 255, 0.7)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    transition: 'color 0.15s ease, transform 0.15s ease',
+                  },
+                  onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                    e.currentTarget.style.color = isInLibrary ? '#1ed760' : '#FFFFFF'
+                    e.currentTarget.style.transform = 'scale(1.15)'
+                  },
+                  onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                    e.currentTarget.style.color = isInLibrary ? '#1ed760' : 'rgba(255, 255, 255, 0.7)'
+                    e.currentTarget.style.transform = 'scale(1)'
+                  },
+                },
+                isInLibrary
+                  ? tablerIcon('heart-filled', { size: 16 })
+                  : tablerIcon('plus', { size: 16 }),
+              )
+            : null,
+        ),
         state.nowPlaying?.artist
           ? h(Text, {
               variant: 'xs',
@@ -646,5 +783,7 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
       h(DesktopLyricsToggle, { ctx }),
       h(QueueButton, { ctx, currentRoute }),
     ),
+    h(ContextMenu, menu.menuProps),
+    h(SaveToPlaylistPopover, saveToPlaylistMenu.menuProps),
   )
 }

@@ -79,6 +79,23 @@ async function harness(
       urns.map((urn) => catalogue[urn]).filter((t): t is Track => t !== undefined)
   }
 
+  class LibraryStub extends Service {
+    saved = new Set<string>()
+    constructor(ctx: Context) {
+      super(ctx, 'library')
+    }
+    isSaved = async (urn: string) => this.saved.has(urn)
+    setSaved = async (urn: string, s: boolean) => {
+      if (s) this.saved.add(urn)
+      else this.saved.delete(urn)
+      calls.push(`setSaved:${urn}:${s}`)
+      this.ctx.emit('library/changed', 'track', [urn])
+    }
+    listPlaylists = async () => ({ items: [] })
+    listCollections = async () => []
+    listSaved = async () => ({ items: [] })
+  }
+
   class UiStub extends Service {
     views = new Map<string, unknown>()
     slots = new Map<string, { id: string; slot: string }[]>()
@@ -115,6 +132,7 @@ async function harness(
 
   const ctx = new Context()
   await ctx.plugin(PlayerStub)
+  await ctx.plugin(LibraryStub)
   await ctx.plugin(UiStub)
   if (Object.keys(catalogue).length > 0) await ctx.plugin(SourcesStub)
   return { ctx, calls }
@@ -337,6 +355,52 @@ describe('NowPlayingBar', () => {
     expect(muteBtn).not.toBeNull()
     fireEvent.click(muteBtn)
     expect(calls).toContain('muted:true')
+  })
+
+  it('opens context menu when right-clicking on cover', async () => {
+    const { ctx } = await harness({
+      status: 'playing',
+      trackUrn: 'BBeBee:local:track:1',
+      nowPlaying: {
+        title: 'Bohemian Rhapsody',
+        artist: 'Queen',
+      },
+    })
+    const { getByLabelText, findByText } = render(h(NowPlayingBar, { ctx }))
+    const coverBtn = getByLabelText('Open now playing')
+    fireEvent.contextMenu(coverBtn)
+    expect(await findByText('加入播放列表')).toBeTruthy()
+  })
+
+  it('renders favorite/playlist action button next to track name and toggles state', async () => {
+    const { ctx, calls } = await harness({
+      status: 'playing',
+      trackUrn: 'BBeBee:local:track:1',
+      nowPlaying: {
+        title: 'Bohemian Rhapsody',
+        artist: 'Queen',
+      },
+    })
+    const { getByTestId, findByText } = render(h(NowPlayingBar, { ctx }))
+    const btn = getByTestId('track-library-action-btn')
+    expect(btn.getAttribute('title')).toBe('加入最喜欢的音乐')
+    expect(btn.getAttribute('aria-label')).toBe('Add Bohemian Rhapsody to favourites')
+
+    // Click to add to favourites
+    fireEvent.click(btn)
+    expect(calls).toContain('setSaved:BBeBee:local:track:1:true')
+    expect(btn.getAttribute('title')).toBe('加入歌单')
+    expect(btn.getAttribute('aria-label')).toBe('Add Bohemian Rhapsody to playlist')
+
+    // Click again to open playlist menu
+    fireEvent.click(btn)
+    expect(await findByText('添加到歌单')).toBeTruthy()
+  })
+
+  it('does not render library action button when nothing is playing', async () => {
+    const { ctx } = await harness({ status: 'idle' })
+    const { queryByTestId } = render(h(NowPlayingBar, { ctx }))
+    expect(queryByTestId('track-library-action-btn')).toBeNull()
   })
 })
 

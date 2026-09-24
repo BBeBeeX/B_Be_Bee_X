@@ -25,6 +25,7 @@
     "@BBeBee/toolkit": "workspace:*",
     "@BBeBee/ui-core": "workspace:*",
     "@BBeBee/ui-kit-desktop": "workspace:*",
+    "@BBeBee/ui-menus": "workspace:*",
     "@BBeBee/ui-tokens": "workspace:*",
     "cordis": "4.0.0-rc.9",
     "react": "19.2.3"

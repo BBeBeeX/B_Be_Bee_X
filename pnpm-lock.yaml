@@ -2211,6 +2211,9 @@ importers:
       '@BBeBee/ui-kit-desktop':
         specifier: workspace:*
         version: link:../ui-kit-desktop
+      '@BBeBee/ui-menus':
+        specifier: workspace:*
+        version: link:../ui-menus
       '@BBeBee/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
