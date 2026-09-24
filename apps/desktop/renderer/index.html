@@ -17,6 +17,10 @@
           document.documentElement.classList.add('is-lyrics-window')
           document.documentElement.style.background = 'transparent'
         }
+        if (location.search.includes('mini-player') || location.hash.includes('mini-player')) {
+          document.documentElement.classList.add('is-mini-player-window')
+          document.documentElement.style.background = 'transparent'
+        }
       })()
     </script>
     <title>BBeBee</title>
@@ -24,6 +28,8 @@
     <style>
       :root { color-scheme: dark; }
       body { margin: 0; background: #0B0B0F; color: #F5F5F7; font-family: system-ui, sans-serif; }
+      html.is-mini-player-window,
+      body.is-mini-player-window,
       html.is-lyrics-window,
       body.is-lyrics-window {
         background: transparent !important;

@@ -124,6 +124,11 @@ export const bundled: PluginRegistry = {
     manifest: {"id":"@BBeBee/plugin-lyrics","version":"0.0.0","displayName":"Lyrics","description":"ctx.lyrics — lyric retrieval, caching, synchronization and unified state.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["lyrics"]}},
     builtin: true,
   },
+  "@BBeBee/plugin-mini-player": {
+    load: () => import('@BBeBee/plugin-mini-player'),
+    manifest: {"id":"@BBeBee/plugin-mini-player","version":"0.0.0","displayName":"Mini Player","description":"Floating mini window and Dynamic Island player controls.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["miniPlayer"]}},
+    builtin: true,
+  },
   "@BBeBee/plugin-now-playing": {
     load: () => import('@BBeBee/plugin-now-playing'),
     manifest: {"id":"@BBeBee/plugin-now-playing","version":"0.0.0","displayName":"Now playing","description":"The full-screen player and the persistent bar that opens it.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[]},

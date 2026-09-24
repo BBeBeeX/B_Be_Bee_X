@@ -10,8 +10,15 @@ import { createRoot } from 'react-dom/client'
 import { boot } from './boot.js'
 import { Shell } from './Shell.js'
 import { DesktopLyricsWindow } from './DesktopLyricsWindow.js'
+import { MiniPlayerWindow } from '@BBeBee/plugin-mini-player-ui-desktop'
 
 const root = createRoot(document.getElementById('root')!)
+
+const isMiniPlayerWindow =
+  typeof window !== 'undefined' &&
+  (new URLSearchParams(window.location.search).get('window') === 'mini-player' ||
+    window.location.search.includes('mini-player') ||
+    window.location.hash.includes('mini-player'))
 
 const isLyricsWindow =
   typeof window !== 'undefined' &&
@@ -19,7 +26,11 @@ const isLyricsWindow =
     window.location.search.includes('desktop-lyrics') ||
     window.location.hash.includes('desktop-lyrics'))
 
-if (isLyricsWindow) {
+if (isMiniPlayerWindow) {
+  document.documentElement.classList.add('is-mini-player-window')
+  document.body.classList.add('is-mini-player-window')
+  root.render(h(StrictMode, null, h(MiniPlayerWindow)))
+} else if (isLyricsWindow) {
   document.documentElement.classList.add('is-lyrics-window')
   document.body.classList.add('is-lyrics-window')
   root.render(h(StrictMode, null, h(DesktopLyricsWindow)))

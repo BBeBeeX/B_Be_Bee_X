@@ -141,6 +141,12 @@ importers:
       '@BBeBee/plugin-lyrics-ui-desktop':
         specifier: workspace:*
         version: link:../../packages/ui/plugin-lyrics-ui-desktop
+      '@BBeBee/plugin-mini-player':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-mini-player
+      '@BBeBee/plugin-mini-player-ui-desktop':
+        specifier: workspace:*
+        version: link:../../packages/ui/plugin-mini-player-ui-desktop
       '@BBeBee/plugin-now-playing':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-now-playing
@@ -319,6 +325,9 @@ importers:
       '@BBeBee/plugin-lyrics':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-lyrics
+      '@BBeBee/plugin-mini-player':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-mini-player
       '@BBeBee/plugin-now-playing':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-now-playing
@@ -1099,6 +1108,28 @@ importers:
       '@BBeBee/toolkit':
         specifier: workspace:*
         version: link:../toolkit
+      '@BBeBee/ui-core':
+        specifier: workspace:*
+        version: link:../../ui/ui-core
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+
+  packages/feature/plugin-mini-player:
+    dependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
       '@BBeBee/ui-core':
         specifier: workspace:*
         version: link:../../ui/ui-core
@@ -2196,6 +2227,52 @@ importers:
       '@BBeBee/plugin-player':
         specifier: workspace:*
         version: link:../../feature/plugin-player
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@BBeBee/toolkit':
+        specifier: workspace:*
+        version: link:../../feature/toolkit
+      '@BBeBee/ui-core':
+        specifier: workspace:*
+        version: link:../ui-core
+      '@BBeBee/ui-kit-desktop':
+        specifier: workspace:*
+        version: link:../ui-kit-desktop
+      '@BBeBee/ui-tokens':
+        specifier: workspace:*
+        version: link:../ui-tokens
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    devDependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.2.7(@types/react@19.2.18)
+      react-dom:
+        specifier: 19.2.3
+        version: 19.2.3(react@19.2.3)
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@22.20.1)(jsdom@30.0.1)(vite@7.3.6(@types/node@22.20.1)(lightningcss@1.33.0)(terser@5.51.2)(yaml@2.9.0))
+
+  packages/ui/plugin-mini-player-ui-desktop:
+    dependencies:
+      '@BBeBee/plugin-mini-player':
+        specifier: workspace:*
+        version: link:../../feature/plugin-mini-player
       '@BBeBee/protocol':
         specifier: workspace:*
         version: link:../../protocol

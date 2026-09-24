@@ -95,6 +95,7 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-now-playing-ui-mobile': {},
   '@BBeBee/plugin-lyrics': {},
   '@BBeBee/plugin-desktop-lyrics': {},
+  '@BBeBee/plugin-mini-player': {},
   '@BBeBee/plugin-queue': {},
   '@BBeBee/plugin-queue-ui-mobile': {},
   '@BBeBee/plugin-history': {},

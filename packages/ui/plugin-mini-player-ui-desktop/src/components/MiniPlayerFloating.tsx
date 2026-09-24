@@ -1,0 +1,244 @@
+import { createElement as h, useState } from 'react'
+import type { ReactElement } from 'react'
+import type { MiniPlayerData, MiniPlayerAction } from '@BBeBee/protocol'
+import { IslandArtwork } from './IslandArtwork.js'
+import { TransportButtons, ProgressBar } from './MiniPlayerControls.js'
+
+export interface MiniPlayerFloatingProps {
+  data: MiniPlayerData
+  onAction: (action: MiniPlayerAction) => void
+  onSnapToTop: () => void
+  onRestoreMain: () => void
+  onClose: () => void
+}
+
+export function MiniPlayerFloating({
+  data,
+  onAction,
+  onSnapToTop,
+  onRestoreMain,
+  onClose,
+}: MiniPlayerFloatingProps): ReactElement {
+  const [hovered, setHovered] = useState(false)
+  const isPlaying = data.status === 'playing'
+
+  return h(
+    'div',
+    {
+      style: {
+        width: '100vw',
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxSizing: 'border-box',
+        background: 'transparent',
+        WebkitAppRegion: 'drag',
+        userSelect: 'none',
+      },
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+    },
+    // The Floating Card Container (360 x 76)
+    h(
+      'div',
+      {
+        style: {
+          width: 360,
+          height: 76,
+          boxSizing: 'border-box',
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '8px 12px',
+          borderRadius: 16,
+          backgroundColor: 'rgba(18, 18, 26, 0.88)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          boxShadow: hovered
+            ? '0 20px 48px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.15)'
+            : '0 12px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08)',
+          transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+          overflow: 'hidden',
+        },
+      },
+      // Left: Artwork
+      h(
+        'div',
+        {
+          style: {
+            WebkitAppRegion: 'no-drag',
+            cursor: 'pointer',
+          },
+          onClick: onRestoreMain,
+          title: '点击恢复主窗口',
+        },
+        h(IslandArtwork, {
+          artworkUri: data.artworkUri,
+          title: data.title,
+          isPlaying,
+          size: 52,
+          isVinyl: true,
+        }),
+      ),
+      // Center: Track info & progress
+      h(
+        'div',
+        {
+          style: {
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            gap: 4,
+          },
+        },
+        // Title & Artist
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1,
+            },
+          },
+          h(
+            'div',
+            {
+              style: {
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#FFFFFF',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              },
+            },
+            data.title || '暂无播放歌曲',
+          ),
+          h(
+            'div',
+            {
+              style: {
+                fontSize: 11,
+                color: 'rgba(255, 255, 255, 0.6)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              },
+            },
+            data.artist || 'BBeBee',
+          ),
+        ),
+        // Mini Progress Rail
+        h(ProgressBar, {
+          positionMs: data.positionMs,
+          durationMs: data.durationMs,
+          onSeek: (pos) => onAction({ type: 'seek', positionMs: pos }),
+        }),
+      ),
+      // Right: Controls
+      h(TransportButtons, {
+        data,
+        onAction,
+        size: 'sm',
+      }),
+      // Top Right Action Buttons (shown on hover or subtle)
+      h(
+        'div',
+        {
+          style: {
+            position: 'absolute',
+            top: 4,
+            right: 6,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 0.15s ease',
+            WebkitAppRegion: 'no-drag',
+          },
+        },
+        // Pin to Top (Dynamic Island mode)
+        h(
+          'button',
+          {
+            type: 'button',
+            'aria-label': '吸附到顶部 (灵动岛)',
+            title: '吸附到顶部 (灵动岛)',
+            onClick: onSnapToTop,
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              border: 'none',
+              background: 'rgba(255, 255, 255, 0.1)',
+              color: 'rgba(255, 255, 255, 0.7)',
+              cursor: 'pointer',
+              fontSize: 10,
+              padding: 0,
+            },
+          },
+          '▲',
+        ),
+        // Restore Main Window
+        h(
+          'button',
+          {
+            type: 'button',
+            'aria-label': '还原主播放器',
+            title: '还原主播放器',
+            onClick: onRestoreMain,
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              border: 'none',
+              background: 'rgba(255, 255, 255, 0.1)',
+              color: 'rgba(255, 255, 255, 0.7)',
+              cursor: 'pointer',
+              fontSize: 10,
+              padding: 0,
+            },
+          },
+          '⤢',
+        ),
+        // Close Window
+        h(
+          'button',
+          {
+            type: 'button',
+            'aria-label': '关闭小窗',
+            title: '关闭小窗',
+            onClick: onClose,
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              border: 'none',
+              background: 'rgba(255, 255, 255, 0.1)',
+              color: 'rgba(255, 255, 255, 0.7)',
+              cursor: 'pointer',
+              fontSize: 10,
+              padding: 0,
+            },
+          },
+          '✕',
+        ),
+      ),
+    ),
+  )
+}

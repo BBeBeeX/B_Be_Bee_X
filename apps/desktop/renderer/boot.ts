@@ -90,6 +90,19 @@ declare global {
         }): Promise<void>
         onAction(callback: (action: 'togglePlay' | 'previous' | 'next') => void): () => void
       }
+      miniPlayer?: {
+        open(options?: { mode?: 'normal' | 'attached' | 'expanded' }): Promise<void>
+        close(): Promise<void>
+        restoreMain(): Promise<void>
+        setMode(mode: 'normal' | 'attached' | 'expanded'): Promise<void>
+        getState(): Promise<{ visible: boolean; mode: string; windowState: string }>
+        getData(): Promise<unknown>
+        updateData(data: unknown): Promise<void>
+        sendAction(action: unknown): Promise<void>
+        onData(callback: (data: unknown) => void): () => void
+        onState(callback: (state: unknown) => void): () => void
+        onAction(callback: (action: unknown) => void): () => void
+      }
     }
   }
 }

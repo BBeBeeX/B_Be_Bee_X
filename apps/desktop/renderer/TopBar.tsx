@@ -61,6 +61,53 @@ export function WindowControls({ style }: WindowControlsProps = {}): ReactElemen
         ...style,
       } as ElectronCSSProperties,
     },
+    // Mini Player Button (小窗模式 / 灵动岛)
+    h(
+      'button',
+      {
+        type: 'button',
+        'aria-label': '小窗模式 / 灵动岛',
+        title: '小窗模式 / 灵动岛',
+        onClick: () => {
+          void window.BBeBee?.miniPlayer?.open?.()
+        },
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 46,
+          height: 48,
+          border: 'none',
+          background: 'transparent',
+          color: '#A0A0AE',
+          cursor: 'pointer',
+          transition: 'background-color 0.1s ease, color 0.1s ease',
+        },
+        onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+          e.currentTarget.style.color = '#F5F5F7'
+        },
+        onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = 'transparent'
+          e.currentTarget.style.color = '#A0A0AE'
+        },
+      },
+      h(
+        'svg',
+        {
+          width: 16,
+          height: 16,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        },
+        h('rect', { x: 2, y: 3, width: 20, height: 14, rx: 2 }),
+        h('rect', { x: 12, y: 9, width: 8, height: 6, rx: 1, fill: 'currentColor' }),
+      ),
+    ),
     // Minimize Button (−)
     h(
       'button',

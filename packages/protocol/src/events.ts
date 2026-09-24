@@ -45,6 +45,7 @@ import type { ScanSpecifiedDir, ScanSummary } from './services/scanner.js'
 import type { AppSettings } from './services/settings.js'
 import type { SleepTimerState } from './services/sleep-timer.js'
 import type { DesktopLyricsState, LyricsState } from './services/lyrics.js'
+import type { MiniPlayerServiceState } from './services/mini-player.js'
 import type { UrnKind } from './urn.js'
 
 declare module 'cordis' {
@@ -170,6 +171,9 @@ declare module 'cordis' {
     /* ── sleep timer ─────────────────────────────────── emit ── */
     'sleep-timer/changed'(state: SleepTimerState): void
     'sleep-timer/fired'(): void
+
+    /* ── mini player ─────────────────────────────────── emit ── */
+    'mini-player/changed'(state: MiniPlayerServiceState): void
   }
 }
 
@@ -219,6 +223,7 @@ export const DISPATCH_MODES = {
   'sleep-timer/changed': 'emit',
   'sleep-timer/fired': 'emit',
   'settings/changed': 'emit',
+  'mini-player/changed': 'emit',
 } as const satisfies Record<string, DispatchMode>
 
 export type BBeBeeEventName = keyof typeof DISPATCH_MODES

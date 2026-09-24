@@ -37,6 +37,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join, extname } from 'node:path'
 import { existsSync, mkdirSync, statSync, createReadStream } from 'node:fs'
 import { Readable } from 'node:stream'
+import { MiniPlayerWindowManager } from './mini-player-manager.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -70,6 +71,7 @@ let closeToTray = true
 
 let tray: Tray | undefined
 let mainWindow: BrowserWindow | undefined
+const miniPlayerManager = new MiniPlayerWindowManager(() => mainWindow, here)
 
 interface TaskbarState {
   isPlaying: boolean
@@ -748,6 +750,8 @@ function registerHandlers(): void {
       updateTaskbar(state)
     }
   })
+
+  miniPlayerManager.registerIpc()
 }
 
 /** Media keys, as the protocol names them. */

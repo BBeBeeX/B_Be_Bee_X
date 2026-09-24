@@ -98,6 +98,37 @@ const api = {
       }
     },
   },
+  miniPlayer: {
+    open: (options?: unknown): Promise<void> => ipcRenderer.invoke('mini-player:open', options),
+    close: (): Promise<void> => ipcRenderer.invoke('mini-player:close'),
+    restoreMain: (): Promise<void> => ipcRenderer.invoke('mini-player:restore-main'),
+    setMode: (mode: unknown): Promise<void> => ipcRenderer.invoke('mini-player:set-mode', mode),
+    getState: (): Promise<unknown> => ipcRenderer.invoke('mini-player:get-state'),
+    getData: (): Promise<unknown> => ipcRenderer.invoke('mini-player:get-data'),
+    updateData: (data: unknown): Promise<void> => ipcRenderer.invoke('mini-player:update-data', data),
+    sendAction: (action: unknown): Promise<void> => ipcRenderer.invoke('mini-player:send-action', action),
+    onData: (callback: (data: unknown) => void): (() => void) => {
+      const listener = (_event: unknown, data: unknown) => callback(data)
+      ipcRenderer.on('mini-player:data', listener)
+      return () => {
+        ipcRenderer.removeListener('mini-player:data', listener)
+      }
+    },
+    onState: (callback: (state: unknown) => void): (() => void) => {
+      const listener = (_event: unknown, state: unknown) => callback(state)
+      ipcRenderer.on('mini-player:state', listener)
+      return () => {
+        ipcRenderer.removeListener('mini-player:state', listener)
+      }
+    },
+    onAction: (callback: (action: unknown) => void): (() => void) => {
+      const listener = (_event: unknown, action: unknown) => callback(action)
+      ipcRenderer.on('mini-player:action', listener)
+      return () => {
+        ipcRenderer.removeListener('mini-player:action', listener)
+      }
+    },
+  },
   platform: process.platform,
   versions: { electron: process.versions.electron, node: process.versions.node },
   isDebug: Boolean(

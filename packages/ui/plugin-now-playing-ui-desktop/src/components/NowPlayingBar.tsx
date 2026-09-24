@@ -780,6 +780,12 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
           minWidth: 180,
         },
       },
+      (() => {
+        const MiniPlayerBtn = ctx.ui?.viewFor?.('mini-player.button') as
+          | React.ComponentType<{ ctx: Context }>
+          | undefined
+        return MiniPlayerBtn ? h(MiniPlayerBtn, { ctx }) : null
+      })(),
       h(DesktopLyricsToggle, { ctx }),
       h(QueueButton, { ctx, currentRoute }),
     ),
