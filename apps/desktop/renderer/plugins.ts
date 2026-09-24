@@ -101,4 +101,6 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-desktop-taskbar': {},
   '@BBeBee/plugin-dsp': {},
   '@BBeBee/plugin-dsp-ui-desktop': {},
+  '@BBeBee/plugin-visualizer': {},
+  '@BBeBee/plugin-visualizer-ui-desktop': {},
 }

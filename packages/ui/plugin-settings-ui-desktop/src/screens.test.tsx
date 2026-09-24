@@ -367,6 +367,16 @@ describe('SettingsScreen', () => {
     expect(container.textContent).not.toContain('默认音量')
   })
 
+  it('renders visualizer settings when visualizer.settings view is registered', async () => {
+    const { ctx } = await harness()
+    ctx.ui.registerView('visualizer.settings', () =>
+      h('div', { 'data-testid': 'mock-visualizer-settings' }, 'Mock Visualizer Settings'),
+    )
+    const { container } = render(h(SettingsScreen, { ctx }))
+    expect(container.querySelector('[data-testid="mock-visualizer-settings"]')).toBeTruthy()
+    expect(container.textContent).toContain('音频可视化')
+  })
+
   it('updates language via Select dropdown', async () => {
     const { ctx, calls } = await harness({ language: 'zh' })
     const { container } = render(h(SettingsScreen, { ctx }))

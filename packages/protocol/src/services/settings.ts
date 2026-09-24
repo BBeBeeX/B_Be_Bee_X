@@ -66,6 +66,22 @@ export interface ProxySettings {
   sourceRules: Record<string, boolean>
 }
 
+export type VisualizerStyle = 'bars' | 'wave' | 'circle' | 'particles'
+export type VisualizerColorTheme = 'accent' | 'neon' | 'rainbow' | 'monochrome'
+
+export interface VisualizerSettings {
+  /** Whether the visualizer is enabled on the now playing screen. */
+  enabled: boolean
+  /** Visualizer display style: 'bars', 'wave', 'circle', or 'particles'. */
+  style: VisualizerStyle
+  /** Visualizer color theme: 'accent', 'neon', 'rainbow', or 'monochrome'. */
+  colorTheme: VisualizerColorTheme
+  /** FFT size for frequency analysis (must be power of 2: 64, 128, 256). */
+  fftSize: number
+  /** Sensitivity multiplier for amplitude (0.5 to 2.0). */
+  sensitivity: number
+}
+
 export interface AppSettings {
   /** Visual appearance theme. */
   theme: 'dark' | 'light' | 'system'
@@ -93,6 +109,16 @@ export interface AppSettings {
   shortcuts: GlobalShortcutsSettings
   /** Network proxy routing configuration. */
   proxy: ProxySettings
+  /** Audio visualizer configuration. */
+  visualizer: VisualizerSettings
+}
+
+export const DEFAULT_VISUALIZER_SETTINGS: VisualizerSettings = {
+  enabled: true,
+  style: 'bars',
+  colorTheme: 'accent',
+  fftSize: 128,
+  sensitivity: 1.0,
 }
 
 export const DEFAULT_DESKTOP_LYRICS_SETTINGS: DesktopLyricsSettings = {
@@ -153,6 +179,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     ...DEFAULT_PROXY_SETTINGS,
     sourceRules: { ...DEFAULT_PROXY_SETTINGS.sourceRules },
   },
+  visualizer: { ...DEFAULT_VISUALIZER_SETTINGS },
 }
 
 export interface SettingsService {

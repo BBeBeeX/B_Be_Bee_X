@@ -37,6 +37,14 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
     return (ctx.ui?.viewFor?.('lyrics.panel') as React.ComponentType<{ ctx: Context }> | undefined) ?? null
   })
 
+  const VisualizerComponent = useServiceState(ctx, ['ui/changed'], () => {
+    const visualizerSlots = ctx.ui?.slotsFor?.('now-playing.visualizer') ?? []
+    if (visualizerSlots[0]) {
+      return (ctx.ui?.viewFor?.(visualizerSlots[0].id) as React.ComponentType<{ ctx: Context }> | undefined) ?? null
+    }
+    return (ctx.ui?.viewFor?.('visualizer.canvas') as React.ComponentType<{ ctx: Context }> | undefined) ?? null
+  })
+
   return h(
     'div',
     {
@@ -145,6 +153,7 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
               })
             : null,
         ),
+        VisualizerComponent ? h(VisualizerComponent, { ctx }) : null,
         state.status === 'stalled'
           ? h(Text, { variant: 'sm', tone: 'muted', children: 'Buffering…' })
           : null,

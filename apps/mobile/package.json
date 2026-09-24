@@ -58,6 +58,7 @@
     "@BBeBee/plugin-sources": "workspace:*",
     "@BBeBee/plugin-sources-ui-mobile": "workspace:*",
     "@BBeBee/plugin-ui": "workspace:*",
+    "@BBeBee/plugin-visualizer": "workspace:*",
     "@BBeBee/protocol": "workspace:*",
     "@BBeBee/ui-kit-mobile": "workspace:*",
     "@BBeBee/ui-tokens": "workspace:*",

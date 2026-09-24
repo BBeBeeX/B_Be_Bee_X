@@ -441,4 +441,14 @@ describe('NowPlayingScreen', () => {
     expect(out).toContain('data-testid="mock-lyrics-panel"')
     expect(out).toContain('Mock Lyrics')
   })
+
+  it('renders visualizer slot when available', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    ctx.ui.registerView('visualizer.canvas', () =>
+      h('div', { 'data-testid': 'mock-visualizer' }, 'Mock Visualizer'),
+    )
+    const out = html(h(NowPlayingScreen, { ctx }))
+    expect(out).toContain('data-testid="mock-visualizer"')
+    expect(out).toContain('Mock Visualizer')
+  })
 })

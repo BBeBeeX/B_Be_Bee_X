@@ -1,7 +1,7 @@
 import { createElement as h, useState, type ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { AppSettings, EffectParamValue, UiService } from '@BBeBee/protocol'
-import { serviceOf } from '@BBeBee/ui-core'
+import { serviceOf, useServiceState } from '@BBeBee/ui-core'
 import { Button, Slider } from '@BBeBee/ui-kit-desktop'
 import { SettingsRow } from '../SettingsRow.js'
 import { SettingsSection } from '../SettingsSection.js'
@@ -42,6 +42,10 @@ export function PlaybackSection({
   const normParams = getParams('normalize')
   const compParams = getParams('compressor')
   const reverbParams = getParams('reverb')
+
+  const VisualizerSettingsView = useServiceState(ctx, ['ui/changed'], () => {
+    return (ctx.ui?.viewFor?.('visualizer.settings') as React.ComponentType<{ ctx: Context }> | undefined) ?? null
+  })
 
   return h(
     'div',
@@ -374,6 +378,16 @@ export function PlaybackSection({
         }),
       }),
     ),
+    VisualizerSettingsView
+      ? h(
+          SettingsSection,
+          {
+            title: '音频可视化',
+            description: '在播放界面呈现音乐频率跳动与声波流动效果，自定义显示样式与色彩',
+          },
+          h(VisualizerSettingsView, { ctx }),
+        )
+      : null,
     h(
       SettingsSection,
       {

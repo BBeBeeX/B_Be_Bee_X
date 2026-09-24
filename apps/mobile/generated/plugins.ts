@@ -189,6 +189,11 @@ export const bundled: PluginRegistry = {
     manifest: {"id":"@BBeBee/plugin-ui","version":"0.0.0","displayName":"UI Registry","description":"The ctx.ui contribution registry.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["ui"]}},
     builtin: true,
   },
+  "@BBeBee/plugin-visualizer": {
+    load: () => import('@BBeBee/plugin-visualizer'),
+    manifest: {"id":"@BBeBee/plugin-visualizer","version":"0.0.0","displayName":"Audio Visualizer","description":"ctx.visualizer — audio spectrum and waveform analysis service.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":["audio"],"contributes":{"services":["visualizer"]}},
+    builtin: true,
+  },
   "@BBeBee/plugin-log-buffer": {
     load: () => import('@BBeBee/plugin-log-buffer'),
     manifest: {"id":"@BBeBee/plugin-log-buffer","version":"0.0.0","displayName":"Log Buffer","description":"In-app log ring buffer.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["logBuffer"]}},

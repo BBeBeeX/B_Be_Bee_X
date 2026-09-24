@@ -17,6 +17,7 @@ import type { ParamSchema } from './audio.js'
 export type SlotId =
   | 'now-playing.actions'
   | 'now-playing.panel'
+  | 'now-playing.visualizer'
   | 'track.context-menu'
   | 'album.context-menu'
   | 'library.sidebar'

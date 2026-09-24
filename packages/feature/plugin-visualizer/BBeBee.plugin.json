@@ -1,0 +1,23 @@
+{
+  "id": "@BBeBee/plugin-visualizer",
+  "version": "0.0.0",
+  "displayName": "Audio Visualizer",
+  "description": "ctx.visualizer — audio spectrum and waveform analysis service.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js",
+    "ui": {
+      "desktop": "./dist/index.js"
+    }
+  },
+  "capabilities": [
+    "audio"
+  ],
+  "contributes": {
+    "services": [
+      "visualizer"
+    ]
+  }
+}

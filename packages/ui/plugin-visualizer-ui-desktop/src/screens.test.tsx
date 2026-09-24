@@ -1,0 +1,75 @@
+// @vitest-environment jsdom
+import { describe, expect, it, vi } from 'vitest'
+import { createElement as h } from 'react'
+import { render } from '@testing-library/react'
+import type { Context } from 'cordis'
+import { Context as CordisContext } from 'cordis'
+import { apply, name, inject, VisualizerCanvas, VisualizerSettingsCard } from './index.js'
+import { DEFAULT_VISUALIZER_SETTINGS } from '@BBeBee/protocol'
+
+describe('plugin-visualizer-ui-desktop', () => {
+  it('declares correct name and dependencies', () => {
+    expect(name).toBe('plugin-visualizer-ui-desktop')
+    expect(inject).toEqual(['ui', 'visualizer', 'player', 'settings'])
+  })
+
+  it('registers views and slot on apply', async () => {
+    const mockCtx = new CordisContext() as unknown as Context
+    const untyped = mockCtx as unknown as Record<string, unknown>
+    const views = new Map<string, unknown>()
+    const contributions: unknown[] = []
+
+    untyped['ui'] = {
+      registerView: vi.fn((id: string, comp: unknown) => {
+        views.set(id, comp)
+        return () => views.delete(id)
+      }),
+      contribute: vi.fn((c: unknown) => {
+        contributions.push(c)
+        return () => {}
+      }),
+    }
+
+    const dispose = await apply(mockCtx)
+    expect(views.has('visualizer.canvas')).toBe(true)
+    expect(views.has('visualizer.settings')).toBe(true)
+    expect(contributions).toContainEqual(
+      expect.objectContaining({
+        kind: 'slot',
+        id: 'visualizer.canvas',
+        slot: 'now-playing.visualizer',
+      }),
+    )
+
+    dispose()
+  })
+
+  it('renders VisualizerCanvas and VisualizerSettingsCard without throwing', () => {
+    const mockCtx = new CordisContext() as unknown as Context
+    const untyped = mockCtx as unknown as Record<string, unknown>
+    const mockSettings = { ...DEFAULT_VISUALIZER_SETTINGS }
+
+    untyped['settings'] = {
+      getSync: () => ({ visualizer: mockSettings }),
+      get: async () => ({ visualizer: mockSettings }),
+      update: vi.fn(),
+    }
+    untyped['player'] = {
+      state: { status: 'playing' },
+    }
+    untyped['visualizer'] = {
+      settings: mockSettings,
+      getFrequencyData: vi.fn(),
+      getTimeDomainData: vi.fn(),
+      updateSettings: vi.fn(),
+    }
+
+    const canvasResult = render(h(VisualizerCanvas, { ctx: mockCtx }))
+    expect(canvasResult.container.querySelector('canvas')).toBeDefined()
+
+    const settingsResult = render(h(VisualizerSettingsCard, { ctx: mockCtx }))
+    expect(settingsResult.getByText('音频可视化 (Audio Visualizer)')).toBeDefined()
+    expect(settingsResult.getByText('显示样式')).toBeDefined()
+    expect(settingsResult.getByText('色彩主题')).toBeDefined()
+  })
+})

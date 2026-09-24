@@ -41,6 +41,10 @@ function mergeSettings(base: AppSettings, patch?: Partial<AppSettings>): AppSett
         ...(patch.proxy?.sourceRules ?? {}),
       },
     },
+    visualizer: {
+      ...base.visualizer,
+      ...(patch.visualizer ?? {}),
+    },
   }
 }
 
