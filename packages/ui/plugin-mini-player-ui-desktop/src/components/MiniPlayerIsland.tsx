@@ -22,7 +22,7 @@ export function MiniPlayerIsland({
   onAction,
   onExpand,
   onCollapse,
-  onDetach,
+  onDetach: _onDetach,
   onRestoreMain,
   onClose,
 }: MiniPlayerIslandProps): ReactElement {
@@ -60,11 +60,13 @@ export function MiniPlayerIsland({
             padding: '12px 16px',
             borderRadius: 24,
             backgroundColor: '#0A0A0F',
-            border: '1px solid rgba(255, 255, 255, 0.16)',
-            boxShadow: '0 24px 56px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            boxShadow: '0 12px 28px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4)',
             animation: 'miniPlayerExpand 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
             WebkitAppRegion: 'drag',
           },
+          onDoubleClick: onCollapse,
+          title: '双击折叠灵动岛',
         },
         // Top Row: Artwork + Metadata + WaveBars & Actions
         h(
@@ -158,54 +160,6 @@ export function MiniPlayerIsland({
               },
             },
             h(IslandWaveBars, { isPlaying, height: 16 }),
-            // Collapse to capsule
-            h(
-              'button',
-              {
-                type: 'button',
-                'aria-label': '折叠灵动岛',
-                title: '折叠灵动岛',
-                onClick: onCollapse,
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 22,
-                  height: 22,
-                  borderRadius: '50%',
-                  border: 'none',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'rgba(255, 255, 255, 0.75)',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                },
-              },
-              '▲',
-            ),
-            // Detach to floating
-            h(
-              'button',
-              {
-                type: 'button',
-                'aria-label': '脱离吸附 (浮窗模式)',
-                title: '脱离吸附 (浮窗模式)',
-                onClick: onDetach,
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 22,
-                  height: 22,
-                  borderRadius: '50%',
-                  border: 'none',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'rgba(255, 255, 255, 0.75)',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                },
-              },
-              '▼',
-            ),
             // Restore Main
             h(
               'button',
@@ -317,15 +271,15 @@ export function MiniPlayerIsland({
           padding: '0 10px',
           borderRadius: 19,
           backgroundColor: '#000000',
-          border: '1px solid rgba(255, 255, 255, 0.16)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
           boxShadow: hovered
-            ? '0 10px 28px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.2)'
-            : '0 6px 20px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+            ? '0 6px 16px rgba(0, 0, 0, 0.55)'
+            : '0 4px 12px rgba(0, 0, 0, 0.45)',
           cursor: 'pointer',
           transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
           WebkitAppRegion: 'drag',
         },
-        title: '点击展开灵动岛，或向下拖拽脱离吸附',
+        title: '点击展开灵动岛',
       },
       // Left: Mini Artwork Disc (22px)
       h(

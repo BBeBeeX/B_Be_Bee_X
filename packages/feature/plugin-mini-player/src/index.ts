@@ -39,8 +39,19 @@ function getBridge(): MiniPlayerBridge | undefined {
   return (window as unknown as { BBeBee?: { miniPlayer?: MiniPlayerBridge } }).BBeBee?.miniPlayer
 }
 
+function resolveArtworkUri(transport: { nowPlaying?: { artworkUri?: string; artwork?: { sourceUrl?: string } } } | undefined): string | undefined {
+  const raw =
+    transport?.nowPlaying?.artworkUri ||
+    transport?.nowPlaying?.artwork?.sourceUrl
+  if (!raw) return undefined
+  if (raw.startsWith('file://')) {
+    return raw.replace(/^file:\/\//, 'bbebee-file://')
+  }
+  return raw
+}
+
 export class MiniPlayerService extends Service implements IMiniPlayerService {
-  static inject = []
+  static inject = ['player']
 
   private readonly ownCtx: Context
   private currentState: MiniPlayerServiceState = {
@@ -95,7 +106,7 @@ export class MiniPlayerService extends Service implements IMiniPlayerService {
           title: transport?.nowPlaying?.title ?? (hasCurrent ? 'Unknown Title' : 'No track playing'),
           artist: transport?.nowPlaying?.artist ?? 'BBeBee',
           album: transport?.nowPlaying?.album,
-          artworkUri: transport?.nowPlaying?.artworkUri,
+          artworkUri: resolveArtworkUri(transport),
           status: transport?.status ?? 'idle',
           positionMs: transport?.positionMs ?? 0,
           durationMs: transport?.durationMs ?? 0,
@@ -123,7 +134,7 @@ export class MiniPlayerService extends Service implements IMiniPlayerService {
           title: transport?.nowPlaying?.title ?? (hasCurrent ? 'Unknown Title' : 'No track playing'),
           artist: transport?.nowPlaying?.artist ?? 'BBeBee',
           album: transport?.nowPlaying?.album,
-          artworkUri: transport?.nowPlaying?.artworkUri,
+          artworkUri: resolveArtworkUri(transport),
           status: transport?.status ?? 'idle',
           positionMs: pos,
           durationMs: dur,
@@ -193,7 +204,7 @@ export class MiniPlayerService extends Service implements IMiniPlayerService {
   }
 
   private handleAction(action: MiniPlayerAction): void {
-    const player = (this.ownCtx as unknown as { player?: PlayerService }).player
+    const player = (this.ctx as unknown as { player?: PlayerService }).player
     switch (action.type) {
       case 'togglePlay':
         player?.togglePlay?.()
@@ -276,6 +287,7 @@ export class MiniPlayerService extends Service implements IMiniPlayerService {
 }
 
 export const name = 'plugin-mini-player'
+export const inject = ['player']
 
 export async function apply(ctx: Context) {
   ctx.logger.info('plugin-mini-player: loaded')
@@ -285,4 +297,4 @@ export async function apply(ctx: Context) {
   }
 }
 
-export default { name, apply }
+export default { name, inject, apply }

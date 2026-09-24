@@ -118,7 +118,8 @@ describe('plugin-mini-player-ui-desktop', () => {
     )
 
     expect(html).toContain('Test Island Song')
-    expect(html).toContain('折叠灵动岛')
+    expect(html).toContain('恢复主窗口')
+    expect(html).toContain('关闭小窗')
     expect(html).toContain('0:45')
     expect(html).toContain('3:00')
   })

@@ -15,7 +15,7 @@ export interface MiniPlayerFloatingProps {
 export function MiniPlayerFloating({
   data,
   onAction,
-  onSnapToTop,
+  onSnapToTop: _onSnapToTop,
   onRestoreMain,
   onClose,
 }: MiniPlayerFloatingProps): ReactElement {
@@ -53,13 +53,13 @@ export function MiniPlayerFloating({
           gap: 12,
           padding: '8px 12px',
           borderRadius: 16,
-          backgroundColor: 'rgba(18, 18, 26, 0.88)',
-          backdropFilter: 'blur(24px)',
-          WebkitBackdropFilter: 'blur(24px)',
-          border: '1px solid rgba(255, 255, 255, 0.12)',
+          backgroundColor: 'rgba(18, 18, 26, 0.92)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
           boxShadow: hovered
-            ? '0 20px 48px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.15)'
-            : '0 12px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08)',
+            ? '0 10px 24px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35)'
+            : '0 6px 16px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.25)',
           transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
           overflow: 'hidden',
         },
@@ -163,31 +163,6 @@ export function MiniPlayerFloating({
             WebkitAppRegion: 'no-drag',
           },
         },
-        // Pin to Top (Dynamic Island mode)
-        h(
-          'button',
-          {
-            type: 'button',
-            'aria-label': '吸附到顶部 (灵动岛)',
-            title: '吸附到顶部 (灵动岛)',
-            onClick: onSnapToTop,
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 18,
-              height: 18,
-              borderRadius: '50%',
-              border: 'none',
-              background: 'rgba(255, 255, 255, 0.1)',
-              color: 'rgba(255, 255, 255, 0.7)',
-              cursor: 'pointer',
-              fontSize: 10,
-              padding: 0,
-            },
-          },
-          '▲',
-        ),
         // Restore Main Window
         h(
           'button',

@@ -1,4 +1,4 @@
-import { createElement as h } from 'react'
+import { createElement as h, useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 
 export interface IslandArtworkProps {
@@ -17,6 +17,17 @@ export function IslandArtwork({
   isVinyl = true,
 }: IslandArtworkProps): ReactElement {
   const borderRadius = isVinyl ? '50%' : 8
+  const [loadError, setLoadError] = useState(false)
+
+  useEffect(() => {
+    setLoadError(false)
+  }, [artworkUri])
+
+  const resolvedUri = artworkUri?.startsWith('file://')
+    ? artworkUri.replace(/^file:\/\//, 'bbebee-file://')
+    : artworkUri
+
+  const showImage = Boolean(resolvedUri && !loadError)
 
   return h(
     'div',
@@ -40,15 +51,20 @@ export function IslandArtwork({
       },
     },
     // Cover Image or Default Music Icon
-    artworkUri
+    showImage
       ? h('img', {
-          src: artworkUri,
+          src: resolvedUri,
           alt: title ?? 'Album Art',
+          referrerPolicy: 'no-referrer',
+          crossOrigin: 'anonymous',
+          onError: () => setLoadError(true),
+          draggable: false,
           style: {
             width: '100%',
             height: '100%',
             objectFit: 'cover',
             borderRadius,
+            display: 'block',
           },
         })
       : h(
