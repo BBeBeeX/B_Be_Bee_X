@@ -12,10 +12,15 @@ export class WasapiAudioHandle implements AudioSourceHandle {
   private readonly endedListeners = new Set<() => void>()
   private readonly stallListeners = new Set<(stalled: boolean) => void>()
 
+  private readonly context: BaseAudioContext
+  private readonly buffer: AudioBuffer
+
   constructor(
-    private readonly context: BaseAudioContext,
-    private readonly buffer: AudioBuffer,
+    context: BaseAudioContext,
+    buffer: AudioBuffer,
   ) {
+    this.context = context
+    this.buffer = buffer
     this.node = context.createGain()
     this.durationMs = Math.round(buffer.duration * 1000)
   }

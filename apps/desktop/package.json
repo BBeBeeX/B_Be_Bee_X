@@ -12,6 +12,7 @@
     "start": "electron-vite preview"
   },
   "dependencies": {
+    "@BBeBee/core-audio-wasapi": "workspace:*",
     "@BBeBee/core-audio-webaudio": "workspace:*",
     "@BBeBee/core-background-electron": "workspace:*",
     "@BBeBee/core-codec-node": "workspace:*",

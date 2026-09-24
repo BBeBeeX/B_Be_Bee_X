@@ -73,12 +73,14 @@ export class AudioWasapi extends Service implements AudioService {
   private readonly interruptionListeners = new Set<(e: InterruptionEvent) => void>()
   private readonly routeListeners = new Set<(e: RouteChangeEvent) => void>()
   private workletInitialized = false
+  private readonly config: AudioWasapiConfig
 
   constructor(
     ctx: Context,
-    private readonly config: AudioWasapiConfig = {},
+    config: AudioWasapiConfig = {},
   ) {
     super(ctx, 'audio')
+    this.config = config
 
     const create = config.createContext ?? defaultContextFactory()
     this.context = create()
