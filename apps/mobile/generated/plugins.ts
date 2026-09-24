@@ -59,6 +59,11 @@ export const bundled: PluginRegistry = {
     manifest: {"id":"@BBeBee/plugin-desktop-lyrics","version":"0.0.0","displayName":"Desktop Lyrics","description":"Floating desktop lyrics state and command contributions.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["desktopLyrics"]}},
     builtin: true,
   },
+  "@BBeBee/plugin-desktop-taskbar": {
+    load: () => import('@BBeBee/plugin-desktop-taskbar'),
+    manifest: {"id":"@BBeBee/plugin-desktop-taskbar","version":"0.0.0","displayName":"Desktop Taskbar","description":"Desktop taskbar and tray playback controls for Play/Pause, Previous, and Next.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
+    builtin: true,
+  },
   "@BBeBee/plugin-download": {
     load: () => import('@BBeBee/plugin-download'),
     manifest: {"id":"@BBeBee/plugin-download","version":"0.0.0","displayName":"Downloads","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","fs:read:downloads","fs:write:downloads","db:read:core","db:write:core"],"contributes":{"services":["downloads"]}},

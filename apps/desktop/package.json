@@ -25,6 +25,7 @@
     "@BBeBee/kernel": "workspace:*",
     "@BBeBee/plugin-desktop-lyrics": "workspace:*",
     "@BBeBee/plugin-desktop-lyrics-ui-desktop": "workspace:*",
+    "@BBeBee/plugin-desktop-taskbar": "workspace:*",
     "@BBeBee/plugin-download": "workspace:*",
     "@BBeBee/plugin-download-ui-desktop": "workspace:*",
     "@BBeBee/plugin-dsp": "workspace:*",

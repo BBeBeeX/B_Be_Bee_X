@@ -71,6 +71,157 @@ let closeToTray = true
 let tray: Tray | undefined
 let mainWindow: BrowserWindow | undefined
 
+interface TaskbarState {
+  isPlaying: boolean
+  canPlayOrPause?: boolean
+  canPrevious?: boolean
+  canNext?: boolean
+  title?: string
+  artist?: string
+}
+
+let currentTaskbarState: TaskbarState = {
+  isPlaying: false,
+  canPlayOrPause: false,
+  canPrevious: false,
+  canNext: false,
+}
+
+let taskbarIcons: {
+  play: Electron.NativeImage
+  pause: Electron.NativeImage
+  prev: Electron.NativeImage
+  next: Electron.NativeImage
+} | undefined
+
+function getTaskbarIcons() {
+  if (!taskbarIcons) {
+    taskbarIcons = {
+      play: nativeImage.createFromDataURL(
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAP0lEQVR4nGNgGHTg/////yk2AAYoNoAsQ9ANINkQbAaQZBA+A4gyhKYGkO0FojTiMoAkzegGkKyZgRpJme4AABQX3yHuYW/PAAAAAElFTkSuQmCC',
+      ),
+      pause: nativeImage.createFromDataURL(
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGklEQVR4nGNgGH7gPxLAJzZqwKgBtDVg6AEAuPvvESqTjFcAAAAASUVORK5CYII=',
+      ),
+      prev: nativeImage.createFromDataURL(
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAQklEQVR4nGNgGHLg//////FK4lNASB6vgv9IgCQD/mMBRBuATTPRBuDSTD8DKPYCPkNIMgCbQWQZQIw8UYBiA6gOAD3sDwAezjxJAAAAAElFTkSuQmCC',
+      ),
+      next: nativeImage.createFromDataURL(
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAP0lEQVR4nGNgGFTg/////yk2AJ8hhOThCnApIskAbIrJMgBZA9kGwDQNnAEUeQGbPFEG4JMnaAC58pQn5QEBALmoDwA7dTgXAAAAAElFTkSuQmCC',
+      ),
+    }
+  }
+  return taskbarIcons
+}
+
+function updateTaskbar(state: TaskbarState): void {
+  currentTaskbarState = state
+  const icons = getTaskbarIcons()
+
+  // 1. Windows thumbnail toolbar (setThumbarButtons)
+  if (mainWindow && !mainWindow.isDestroyed() && process.platform === 'win32') {
+    try {
+      const prevFlags: Array<'disabled' | 'dismissonclick' | 'nobackground' | 'hidden' | 'noninteractive'> = []
+      if (!state.canPrevious) prevFlags.push('disabled')
+
+      const playFlags: Array<'disabled' | 'dismissonclick' | 'nobackground' | 'hidden' | 'noninteractive'> = []
+      if (!state.canPlayOrPause) playFlags.push('disabled')
+
+      const nextFlags: Array<'disabled' | 'dismissonclick' | 'nobackground' | 'hidden' | 'noninteractive'> = []
+      if (!state.canNext) nextFlags.push('disabled')
+
+      mainWindow.setThumbarButtons([
+        {
+          tooltip: '上一曲',
+          icon: icons.prev,
+          flags: prevFlags,
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('taskbar:action', 'previous')
+            }
+          },
+        },
+        {
+          tooltip: state.isPlaying ? '暂停' : '播放',
+          icon: state.isPlaying ? icons.pause : icons.play,
+          flags: playFlags,
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('taskbar:action', 'togglePlay')
+            }
+          },
+        },
+        {
+          tooltip: '下一曲',
+          icon: icons.next,
+          flags: nextFlags,
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('taskbar:action', 'next')
+            }
+          },
+        },
+      ])
+    } catch {
+      // Ignored if window not ready or platform does not support
+    }
+  }
+
+  // 2. Tray context menu update (Windows / macOS / Linux)
+  if (tray) {
+    try {
+      const tooltip = state.title
+        ? `BBeBee — ${state.title}${state.artist ? ` - ${state.artist}` : ''}`
+        : 'BBeBee'
+      tray.setToolTip(tooltip)
+
+      const menuTemplate: Electron.MenuItemConstructorOptions[] = [
+        {
+          label: state.isPlaying ? '暂停' : '播放',
+          enabled: Boolean(state.canPlayOrPause),
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('taskbar:action', 'togglePlay')
+            }
+          },
+        },
+        {
+          label: '上一曲',
+          enabled: Boolean(state.canPrevious),
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('taskbar:action', 'previous')
+            }
+          },
+        },
+        {
+          label: '下一曲',
+          enabled: Boolean(state.canNext),
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('taskbar:action', 'next')
+            }
+          },
+        },
+        { type: 'separator' },
+        { label: '显示主界面', click: () => showWindow() },
+        { type: 'separator' },
+        {
+          label: '退出',
+          click: () => {
+            quitting = true
+            app.quit()
+          },
+        },
+      ]
+      tray.setContextMenu(Menu.buildFromTemplate(menuTemplate))
+    } catch {
+      // Tray might not support context menu
+    }
+  }
+}
+
+
 function isDebug(): boolean {
   const val = process.env['DEBUG'] || process.env['BBEBEE_DEBUG']
   if (val && val !== '0' && val !== 'false') return true
@@ -142,6 +293,14 @@ function createWindow(): BrowserWindow {
       quitting = true
       app.quit()
     }
+  })
+
+  window.once('ready-to-show', () => {
+    updateTaskbar(currentTaskbarState)
+  })
+
+  window.on('show', () => {
+    updateTaskbar(currentTaskbarState)
   })
 
   window.on('closed', () => {
@@ -576,6 +735,12 @@ function registerHandlers(): void {
       mainWindow.webContents.send('desktop-lyrics:action', action)
     }
   })
+
+  ipcMain.handle('taskbar:update', (_event, state: TaskbarState) => {
+    if (state && typeof state === 'object') {
+      updateTaskbar(state)
+    }
+  })
 }
 
 /** Media keys, as the protocol names them. */
@@ -922,6 +1087,7 @@ void app.whenReady().then(async () => {
 
   tray = createTray()
   mainWindow = createWindow()
+  updateTaskbar(currentTaskbarState)
 
   app.on('activate', () => {
     showWindow()

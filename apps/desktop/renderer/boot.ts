@@ -79,6 +79,17 @@ declare global {
         onData(callback: (data: unknown) => void): () => void
         onAction(callback: (action: unknown) => void): () => void
       }
+      taskbar?: {
+        update(state: {
+          isPlaying: boolean
+          canPlayOrPause?: boolean
+          canPrevious?: boolean
+          canNext?: boolean
+          title?: string
+          artist?: string
+        }): Promise<void>
+        onAction(callback: (action: 'togglePlay' | 'previous' | 'next') => void): () => void
+      }
     }
   }
 }

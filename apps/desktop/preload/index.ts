@@ -88,6 +88,16 @@ const api = {
       }
     },
   },
+  taskbar: {
+    update: (state: unknown): Promise<void> => ipcRenderer.invoke('taskbar:update', state),
+    onAction: (callback: (action: 'togglePlay' | 'previous' | 'next') => void): (() => void) => {
+      const listener = (_event: unknown, action: 'togglePlay' | 'previous' | 'next') => callback(action)
+      ipcRenderer.on('taskbar:action', listener)
+      return () => {
+        ipcRenderer.removeListener('taskbar:action', listener)
+      }
+    },
+  },
   platform: process.platform,
   versions: { electron: process.versions.electron, node: process.versions.node },
   isDebug: Boolean(

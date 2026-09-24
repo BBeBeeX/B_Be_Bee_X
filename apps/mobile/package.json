@@ -26,6 +26,7 @@
     "@BBeBee/core-store-fs": "workspace:*",
     "@BBeBee/kernel": "workspace:*",
     "@BBeBee/plugin-desktop-lyrics": "workspace:*",
+    "@BBeBee/plugin-desktop-taskbar": "workspace:*",
     "@BBeBee/plugin-download": "workspace:*",
     "@BBeBee/plugin-download-ui-mobile": "workspace:*",
     "@BBeBee/plugin-dsp": "workspace:*",

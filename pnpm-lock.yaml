@@ -87,6 +87,9 @@ importers:
       '@BBeBee/plugin-desktop-lyrics-ui-desktop':
         specifier: workspace:*
         version: link:../../packages/ui/plugin-desktop-lyrics-ui-desktop
+      '@BBeBee/plugin-desktop-taskbar':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-desktop-taskbar
       '@BBeBee/plugin-download':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-download
@@ -262,6 +265,9 @@ importers:
       '@BBeBee/plugin-desktop-lyrics':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-desktop-lyrics
+      '@BBeBee/plugin-desktop-taskbar':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-desktop-taskbar
       '@BBeBee/plugin-download':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-download
@@ -903,6 +909,18 @@ importers:
       '@types/react':
         specifier: ^19.2.0
         version: 19.2.18
+
+  packages/feature/plugin-desktop-taskbar:
+    dependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
 
   packages/feature/plugin-download:
     dependencies:

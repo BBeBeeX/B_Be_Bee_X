@@ -1,0 +1,13 @@
+{
+  "id": "@BBeBee/plugin-desktop-taskbar",
+  "version": "0.0.0",
+  "displayName": "Desktop Taskbar",
+  "description": "Desktop taskbar and tray playback controls for Play/Pause, Previous, and Next.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js"
+  },
+  "capabilities": []
+}
