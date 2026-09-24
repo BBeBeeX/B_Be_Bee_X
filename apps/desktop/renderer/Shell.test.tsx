@@ -658,7 +658,7 @@ describe('the desktop shell', () => {
     expect(container.textContent).toContain('暂无搜索历史')
   })
 
-  it('renders sleep timer alarm icon in topbar when active, opens countdown panel on click, and allows cancellation', async () => {
+  it('renders sleep timer alarm icon in topbar when active, shows countdown on hover, and allows cancellation', async () => {
     let sleepTimerRef!: SleepTimerStub
     const { container, ctx } = await mount(
       (ui) => {
@@ -688,12 +688,10 @@ describe('the desktop shell', () => {
     expect(indicator).not.toBeNull()
     expect(indicator.textContent).toContain('15分00秒')
 
-    // No panel before interacting
-    expect(container.querySelector('[data-testid="sleep-timer-popover"]')).toBeNull()
-
-    // Click the indicator to open the countdown panel
+    // Hover to reveal popover
+    const parentContainer = indicator.parentElement as HTMLElement
     await act(async () => {
-      indicator.click()
+      parentContainer.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
     })
 
     const popover = container.querySelector('[data-testid="sleep-timer-popover"]')

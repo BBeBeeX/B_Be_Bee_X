@@ -1,5 +1,6 @@
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
+import { existsSync, readFileSync } from 'node:fs'
 import type { WasapiInitConfig, WasapiInitResult } from './types.js'
 
 const execAsync = promisify(exec)
@@ -8,6 +9,42 @@ export interface SystemAudioDevice {
   id: string
   label: string
   isDefault: boolean
+  isVirtual?: boolean
+}
+
+export function cleanAndTagDeviceLabel(
+  rawLabel: string,
+  id?: string,
+  isVirtualHint?: boolean,
+): { label: string; isVirtual: boolean } {
+  let label = (rawLabel || '')
+    .replace(/^(默认\s*[-–:：]\s*|Default\s*[-–:：]\s*|系统默认\s*[-–:：]\s*)/i, '')
+    .replace(/\s*\((System Default|默认)\)$/i, '')
+    .trim()
+
+  if (
+    label === '系统默认音频设备 (System Default)' ||
+    label === '系统默认音频设备' ||
+    label === '系统默认音频终端 (WASAPI Exclusive)' ||
+    label === '默认音频终端 (WASAPI Exclusive)' ||
+    label === '系统默认音频输出 (System Default)'
+  ) {
+    label = ''
+  }
+
+  const isVirtual = Boolean(
+    isVirtualHint ||
+      /voicemeeter|vb-audio|vbaudio|virtual|虚拟|todesk|steam streaming|sonar|null sink|null-sink|null_sink|loopback|blackhole|soundflower|obs|easyeffects|pulseeffects|scream|discord/i.test(
+        `${label} ${id || ''}`,
+      ),
+  )
+
+  label = label.replace(/\s*(\(虚拟\)|\[虚拟\])\s*$/g, '').trim()
+  if (isVirtual && label && !label.endsWith('(虚拟)')) {
+    label = `${label} (虚拟)`
+  }
+
+  return { label, isVirtual }
 }
 
 export class WasapiEngine {
@@ -52,15 +89,6 @@ export class WasapiEngine {
   }
 
   async getOutputDevices(): Promise<SystemAudioDevice[]> {
-    const defaultLabel =
-      process.platform === 'win32'
-        ? '系统默认音频终端 (WASAPI Exclusive)'
-        : '系统默认音频输出 (System Default)'
-
-    const results: SystemAudioDevice[] = [
-      { id: 'default', label: defaultLabel, isDefault: true },
-    ]
-
     let systemDevices: SystemAudioDevice[] = []
     if (process.platform === 'win32') {
       systemDevices = await this.queryWindowsDevices()
@@ -70,10 +98,21 @@ export class WasapiEngine {
       systemDevices = await this.queryLinuxDevices()
     }
 
+    const results: SystemAudioDevice[] = []
     for (const dev of systemDevices) {
-      if (!results.some((r) => r.id === dev.id || r.label === dev.label)) {
-        results.push(dev)
+      const { label, isVirtual } = cleanAndTagDeviceLabel(dev.label, dev.id, dev.isVirtual)
+      if (!results.some((r) => r.id === dev.id || r.label === label)) {
+        results.push({
+          id: dev.id,
+          label,
+          isDefault: dev.isDefault,
+          isVirtual,
+        })
       }
+    }
+
+    if (results.length === 0) {
+      results.push({ id: 'default', label: '音频输出设备', isDefault: true, isVirtual: false })
     }
 
     return results
@@ -87,43 +126,73 @@ export class WasapiEngine {
     const devices: SystemAudioDevice[] = []
     try {
       const script = `
-        $reg = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render';
-        if (Test-Path $reg) {
-          Get-ChildItem $reg | ForEach-Object {
-            $val = Get-ItemProperty $_.PsPath;
-            if ($val.DeviceState -eq 1) {
-              $name = (Get-ItemProperty "$($_.PsPath)\\Properties").'{a45c254e-df1c-4efd-8020-67d146a850e0},2';
-              if ($name) {
-                [PSCustomObject]@{ id = $_.PSChildName; label = $name }
-              }
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
+        [Console]::InputEncoding = [System.Text.Encoding]::UTF8;
+        $pnp = Get-PnpDevice -Class AudioEndpoint -Status OK -ErrorAction SilentlyContinue | Select-Object -Property InstanceId, FriendlyName;
+        if ($pnp) {
+          $pnp | ConvertTo-Json -Compress
+        } else {
+          $wmi = Get-CimInstance Win32_PnPEntity -Filter "PNPClass = 'AudioEndpoint'" -ErrorAction SilentlyContinue | Select-Object -Property DeviceID, Name;
+          if ($wmi) {
+            $wmi | ConvertTo-Json -Compress
+          } else {
+            $reg = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render';
+            if (Test-Path $reg) {
+              Get-ChildItem $reg | ForEach-Object {
+                $val = Get-ItemProperty $_.PsPath;
+                if ($val.DeviceState -eq 1) {
+                  $name = (Get-ItemProperty "$($_.PsPath)\\Properties").'{a45c254e-df1c-4efd-8020-67d146a850e0},2';
+                  if ($name) {
+                    [PSCustomObject]@{ InstanceId = $_.PSChildName; FriendlyName = $name }
+                  }
+                }
+              } | ConvertTo-Json -Compress
             }
-          } | ConvertTo-Json -Compress
+          }
         }
       `.replace(/\s+/g, ' ').trim()
 
-      const { stdout } = await execAsync(`powershell -NoProfile -NonInteractive -Command "${script}"`, {
-        timeout: 3000,
-        windowsHide: true,
-      })
+      const { stdout } = await execAsync(
+        `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${script}"`,
+        {
+          timeout: 4000,
+          windowsHide: true,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PYTHONIOENCODING: 'utf-8',
+            LC_ALL: 'C.UTF-8',
+          },
+          maxBuffer: 1024 * 1024 * 4,
+        },
+      )
 
       if (stdout && stdout.trim()) {
         const parsed = JSON.parse(stdout.trim())
         const items = Array.isArray(parsed) ? parsed : [parsed]
         for (const item of items) {
-          if (item?.id && item?.label) {
+          const label = item?.FriendlyName || item?.Name
+          const id = item?.InstanceId || item?.DeviceID || label
+          if (label && id) {
             devices.push({
-              id: String(item.id),
-              label: String(item.label),
+              id: String(id),
+              label: String(label),
               isDefault: false,
             })
           }
         }
       }
     } catch {
+      // fallback to Win32_SoundDevice if PnP failed
       try {
         const { stdout } = await execAsync(
-          'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_SoundDevice | Select-Object -Property DeviceID, Name | ConvertTo-Json -Compress"',
-          { timeout: 3000, windowsHide: true },
+          'powershell -NoProfile -NonInteractive -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_SoundDevice | Select-Object -Property DeviceID, Name | ConvertTo-Json -Compress"',
+          {
+            timeout: 3000,
+            windowsHide: true,
+            encoding: 'utf8',
+            env: { ...process.env, LC_ALL: 'C.UTF-8' },
+          },
         )
         if (stdout && stdout.trim()) {
           const parsed = JSON.parse(stdout.trim())
@@ -147,37 +216,137 @@ export class WasapiEngine {
 
   private async queryLinuxDevices(): Promise<SystemAudioDevice[]> {
     const devices: SystemAudioDevice[] = []
+    let defaultSink = ''
     try {
-      const { stdout } = await execAsync('pactl -f json list sinks', { timeout: 2000 })
+      const { stdout: defOut } = await execAsync('pactl get-default-sink', {
+        timeout: 1000,
+        env: { ...process.env, LC_ALL: 'C.UTF-8' },
+      })
+      defaultSink = defOut.trim()
+    } catch {
+      // ignore
+    }
+
+    try {
+      const { stdout } = await execAsync('pactl -f json list sinks', {
+        timeout: 2500,
+        env: { ...process.env, LC_ALL: 'C.UTF-8' },
+      })
       if (stdout && stdout.trim()) {
         const parsed = JSON.parse(stdout.trim())
         const items = Array.isArray(parsed) ? parsed : [parsed]
         for (const item of items) {
-          const label = item?.description || item?.name
+          const props = item?.properties || {}
+          const label =
+            item?.description ||
+            props['device.description'] ||
+            props['device.nick'] ||
+            props['node.description'] ||
+            item?.name
+          const id = String(item.name || item.index)
           if (label) {
             devices.push({
-              id: String(item.name || item.index),
+              id,
               label: String(label),
-              isDefault: false,
+              isDefault: id === defaultSink,
             })
           }
         }
+        if (devices.length > 0) return devices
       }
     } catch {
-      try {
-        const { stdout } = await execAsync('aplay -l', { timeout: 2000 })
-        const matches = stdout.matchAll(/card\s+(\d+):\s*([^,]+),\s*device\s+(\d+):\s*([^\n]+)/gi)
-        for (const m of matches) {
-          devices.push({
-            id: `hw:${m[1]},${m[3]}`,
-            label: `${m[2]?.trim()} (${m[4]?.trim()})`,
-            isDefault: false,
-          })
-        }
-      } catch {
-        // ignore
+      // ignore pactl failure and try aplay fallback
+    }
+
+    try {
+      const { stdout } = await execAsync('aplay -l', {
+        timeout: 2000,
+        env: { ...process.env, LC_ALL: 'C.UTF-8' },
+      })
+      const matches = stdout.matchAll(/card\s+(\d+):\s*([^,]+),\s*device\s+(\d+):\s*([^\n]+)/gi)
+      for (const m of matches) {
+        devices.push({
+          id: `hw:${m[1]},${m[3]}`,
+          label: `${m[2]?.trim()} (${m[4]?.trim()})`,
+          isDefault: false,
+        })
+      }
+    } catch {
+      // ignore
+    }
+
+    if (devices.length === 0) {
+      const procDevices = this.queryLinuxAlsaProc()
+      if (procDevices.length > 0) {
+        return procDevices
       }
     }
+
+    return devices
+  }
+
+  private queryLinuxAlsaProc(): SystemAudioDevice[] {
+    const devices: SystemAudioDevice[] = []
+    if (!existsSync('/proc/asound/cards')) return devices
+
+    try {
+      const cardsContent = readFileSync('/proc/asound/cards', 'utf8')
+      const cardRegex = /^\s*(\d+)\s+\[([^\]]+)\]:\s*([^\n]+)(?:\n\s+([^\n]+))?/gm
+      const cards = new Map<string, { shortName: string; friendly: string; line2: string }>()
+      let m: RegExpExecArray | null
+      while ((m = cardRegex.exec(cardsContent)) !== null) {
+        const cardId = String(parseInt(m[1]!, 10))
+        const shortName = m[2]!.trim()
+        const line1 = m[3]!.trim()
+        const line2 = m[4] ? m[4].trim() : ''
+        let friendly = line1
+        if (line1.includes(' - ')) {
+          friendly = line1.split(' - ').slice(1).join(' - ').trim()
+        }
+        cards.set(cardId, { shortName, friendly, line2 })
+      }
+
+      if (existsSync('/proc/asound/pcm')) {
+        const pcmContent = readFileSync('/proc/asound/pcm', 'utf8')
+        const pcmLines = pcmContent.split('\n')
+        for (const line of pcmLines) {
+          const match = /^(\d+)-(\d+):\s*([^:]+)\s*:\s*([^:]+)\s*:(.*)$/.exec(line.trim())
+          if (match) {
+            const cardNum = String(parseInt(match[1]!, 10))
+            const devNum = String(parseInt(match[2]!, 10))
+            const subName = match[4]!.trim()
+            const modes = match[5]
+            if (modes && modes.includes('playback')) {
+              const cardInfo = cards.get(cardNum)
+              const baseName = cardInfo?.friendly || `声卡 ${cardNum}`
+              const isVirtual = /loopback|dummy|virtual|null/i.test(`${baseName} ${subName} ${cardInfo?.shortName || ''}`)
+              const label = subName && subName !== baseName ? `${baseName} (${subName})` : baseName
+              devices.push({
+                id: `hw:${cardNum},${devNum}`,
+                label: isVirtual ? `${label} (虚拟)` : label,
+                isDefault: cardNum === '0' && devNum === '0',
+                isVirtual,
+              })
+            }
+          }
+        }
+      }
+
+      if (devices.length === 0) {
+        for (const [cardNum, cardInfo] of cards.entries()) {
+          const isVirtual = /loopback|dummy|virtual|null/i.test(`${cardInfo.friendly} ${cardInfo.shortName}`)
+          devices.push({
+            id: `hw:${cardNum},0`,
+            label: isVirtual ? `${cardInfo.friendly} (虚拟)` : cardInfo.friendly,
+            isDefault: cardNum === '0',
+            isVirtual,
+          })
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     return devices
   }
 

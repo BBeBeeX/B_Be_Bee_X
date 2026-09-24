@@ -99,27 +99,79 @@ export function PlaybackSection({
   const currentEngine = settings.audioOutputEngine ?? 'wasapi'
   const currentDeviceId = settings.audioOutputDeviceId ?? 'default'
 
-  const deviceOptions = (outputDevices.length > 0
-    ? outputDevices
-    : [{ id: 'default', label: '系统默认音频设备 (System Default)', isDefault: true }]
-  ).map((d) => {
-    let label = d.label || '音频输出设备'
-    if (d.id === 'default' || d.isDefault) {
-      if (!label.includes('默认') && !label.includes('Default')) {
-        label = `系统默认: ${label}`
+  const isGenericPlaceholder = (text: string): boolean => {
+    if (!text) return true
+    const t = text.trim()
+    return (
+      t === '' ||
+      t === '音频输出设备' ||
+      t.startsWith('音频输出设备 (') ||
+      t === '系统默认音频设备 (System Default)' ||
+      t === '系统默认音频设备' ||
+      t === '系统默认音频终端 (WASAPI Exclusive)' ||
+      t === '默认音频终端 (WASAPI Exclusive)' ||
+      t === '系统默认音频输出 (System Default)' ||
+      t === '默认音频设备' ||
+      t === 'Default Audio Device' ||
+      t === 'Audio Output Device'
+    )
+  }
+
+  const formatDeviceLabel = (label: string, id?: string, isVirtual?: boolean): string => {
+    let clean = (label || '')
+      .replace(/^(默认\s*[-–:：]\s*|Default\s*[-–:：]\s*|系统默认\s*[-–:：]\s*)/i, '')
+      .replace(/\s*\((System Default|默认)\)$/i, '')
+      .trim()
+
+    if (isGenericPlaceholder(clean)) {
+      const realDevice = outputDevices.find((o) => !isGenericPlaceholder(o.label))
+      if (realDevice?.label) {
+        clean = realDevice.label
+          .replace(/^(默认\s*[-–:：]\s*|Default\s*[-–:：]\s*|系统默认\s*[-–:：]\s*)/i, '')
+          .replace(/\s*\((System Default|默认)\)$/i, '')
+          .trim()
       }
     }
-    return {
-      value: d.id,
-      label,
+
+    if (isGenericPlaceholder(clean)) {
+      clean = '音频输出设备'
     }
-  })
+
+    const virtualDetected =
+      isVirtual ||
+      /voicemeeter|vb-audio|vbaudio|virtual|虚拟|todesk|steam streaming|sonar|null sink|null-sink|null_sink|loopback|blackhole|soundflower|obs|easyeffects|pulseeffects|scream|discord/i.test(
+        `${clean} ${id || ''}`,
+      )
+
+    clean = clean.replace(/\s*(\(虚拟\)|\[虚拟\])\s*$/g, '').trim()
+    if (virtualDetected && clean !== '音频输出设备') {
+      clean = `${clean} (虚拟)`
+    }
+    return clean
+  }
+
+  const rawList = outputDevices.length > 0 ? outputDevices : [{ id: 'default', label: '音频输出设备', isDefault: true }]
+
+  const deviceOptions: Array<{ value: string; label: string }> = []
+  const seenLabels = new Set<string>()
+
+  for (const d of rawList) {
+    const formatted = formatDeviceLabel(d.label, d.id, (d as { isVirtual?: boolean }).isVirtual)
+    if (!seenLabels.has(formatted) || d.id === currentDeviceId) {
+      seenLabels.add(formatted)
+      deviceOptions.push({
+        value: d.id,
+        label: formatted,
+      })
+    }
+  }
 
   // Ensure currentDeviceId is included in options so Select always renders a valid selection
   if (!deviceOptions.some((o) => o.value === currentDeviceId)) {
+    const fallbackLabel = deviceOptions[0]?.label || '音频输出设备'
     deviceOptions.unshift({
       value: currentDeviceId,
-      label: currentDeviceId === 'default' ? '系统默认音频设备 (System Default)' : `指定设备 (${currentDeviceId})`,
+      label: currentDeviceId === 'default' ? fallbackLabel : `指定设备 (${currentDeviceId})`,
     })
   }
 
@@ -162,10 +214,7 @@ export function PlaybackSection({
       }),
       h(SettingsRow, {
         title: '音频输出设备 (Output Device)',
-        description:
-          currentDeviceId === 'default'
-            ? '当前输出目的地：系统默认音频设备（自动随操作系统切换）'
-            : `当前输出目的地：已锁定到指定声卡终端 (${selectedDeviceLabel})`,
+        description: `当前输出目的地：${selectedDeviceLabel}`,
         action: h(Select, {
           value: currentDeviceId,
           options: deviceOptions,

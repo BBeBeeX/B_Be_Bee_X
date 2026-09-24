@@ -61,6 +61,7 @@ export interface OutputDevice {
   id: string
   label: string
   isDefault: boolean
+  isVirtual?: boolean
 }
 
 export interface InterruptionEvent {

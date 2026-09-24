@@ -286,29 +286,21 @@ export class AudioWasapi extends Service implements AudioService {
   }
 
   async listOutputDevices(): Promise<OutputDevice[]> {
+    await unlockMediaDeviceLabels()
+
     const devices: OutputDevice[] = []
     const media = (globalThis as {
       navigator?: { mediaDevices?: { enumerateDevices: () => Promise<Array<{ deviceId: string; kind: string; label: string }>> } }
     }).navigator?.mediaDevices
 
+    let rawOutputs: Array<{ deviceId: string; kind: string; label: string }> = []
     if (media?.enumerateDevices) {
       try {
         const raw = await media.enumerateDevices()
-        const outs = raw.filter((d) => d.kind === 'audiooutput')
-        for (const out of outs) {
-          devices.push({
-            id: out.deviceId,
-            label: out.label || (out.deviceId === 'default' ? '系统默认音频设备 (System Default)' : `音频输出设备 (${out.deviceId.slice(0, 8)})`),
-            isDefault: out.deviceId === 'default',
-          })
-        }
+        rawOutputs = raw.filter((d) => d.kind === 'audiooutput')
       } catch {
         // ignore
       }
-    }
-
-    if (devices.length > 0 && devices.some((d) => d.label && !d.label.startsWith('音频输出设备 ('))) {
-      return devices
     }
 
     const bridgeCall =
@@ -318,18 +310,71 @@ export class AudioWasapi extends Service implements AudioService {
             .BBeBeeBridge?.call
         : undefined)
 
+    let bridgeDevices: OutputDevice[] = []
     if (bridgeCall) {
       try {
-        const bridgeDevices = (await bridgeCall('audio', 'getOutputDevices', [])) as OutputDevice[]
-        if (Array.isArray(bridgeDevices) && bridgeDevices.length > 0) return bridgeDevices
+        const fetched = (await bridgeCall('audio', 'getOutputDevices', [])) as OutputDevice[]
+        if (Array.isArray(fetched) && fetched.length > 0) {
+          bridgeDevices = fetched
+        }
       } catch {
         // fallback
       }
     }
 
+    if (rawOutputs.length > 0) {
+      for (let i = 0; i < rawOutputs.length; i++) {
+        const out = rawOutputs[i]!
+        let label = out.label
+        if (isGenericPlaceholder(label)) {
+          const matched =
+            bridgeDevices.find((b) => b.id === out.deviceId) ??
+            (out.deviceId === 'default' ? (bridgeDevices.find((b) => b.isDefault) ?? bridgeDevices[0]) : undefined) ??
+            bridgeDevices[i]
+
+          if (matched?.label && !isGenericPlaceholder(matched.label)) {
+            label = matched.label
+          }
+        }
+
+        const { label: cleanLabel, isVirtual } = cleanAndTagDeviceLabel(label, out.deviceId)
+        const finalLabel = !isGenericPlaceholder(cleanLabel)
+          ? cleanLabel
+          : (!isGenericPlaceholder(bridgeDevices[0]?.label || '') ? bridgeDevices[0]!.label : '音频输出设备')
+
+        devices.push({
+          id: out.deviceId,
+          label: finalLabel,
+          isDefault: out.deviceId === 'default',
+          isVirtual,
+        })
+      }
+    }
+
+    if (bridgeDevices.length > 0) {
+      for (const bd of bridgeDevices) {
+        if (!isGenericPlaceholder(bd.label)) {
+          const { label: cleanLabel, isVirtual } = cleanAndTagDeviceLabel(bd.label, bd.id, bd.isVirtual)
+          if (!devices.some((d) => d.id === bd.id || d.label === cleanLabel)) {
+            devices.push({
+              ...bd,
+              label: cleanLabel || bd.label,
+              isVirtual,
+            })
+          }
+        }
+      }
+    }
+
+    if (devices.length > 0 && isGenericPlaceholder(devices[0]!.label) && bridgeDevices.length > 0 && !isGenericPlaceholder(bridgeDevices[0]!.label)) {
+      devices[0]!.label = bridgeDevices[0]!.label
+    }
+
     return devices.length > 0
       ? devices
-      : [{ id: 'default', label: '默认音频终端 (WASAPI Exclusive)', isDefault: true }]
+      : (bridgeDevices.length > 0
+          ? bridgeDevices
+          : [{ id: 'default', label: '音频输出设备', isDefault: true, isVirtual: false }])
   }
 
   async setOutputDevice(id: string): Promise<void> {
@@ -363,6 +408,92 @@ export class AudioWasapi extends Service implements AudioService {
     return () => {
       this.routeListeners.delete(cb)
     }
+  }
+}
+
+function isGenericPlaceholder(label: string): boolean {
+  if (!label) return true
+  const trimmed = label.trim()
+  return (
+    trimmed === '' ||
+    trimmed === '音频输出设备' ||
+    trimmed.startsWith('音频输出设备 (') ||
+    trimmed === '系统默认音频设备 (System Default)' ||
+    trimmed === '系统默认音频设备' ||
+    trimmed === '系统默认音频终端 (WASAPI Exclusive)' ||
+    trimmed === '默认音频终端 (WASAPI Exclusive)' ||
+    trimmed === '系统默认音频输出 (System Default)' ||
+    trimmed === '默认音频设备' ||
+    trimmed === 'Default Audio Device' ||
+    trimmed === 'Audio Output Device'
+  )
+}
+
+function cleanAndTagDeviceLabel(
+  rawLabel: string,
+  id?: string,
+  isVirtualHint?: boolean,
+): { label: string; isVirtual: boolean } {
+  let label = (rawLabel || '')
+    .replace(/^(默认\s*[-–:：]\s*|Default\s*[-–:：]\s*|系统默认\s*[-–:：]\s*)/i, '')
+    .replace(/\s*\((System Default|默认)\)$/i, '')
+    .trim()
+
+  if (isGenericPlaceholder(label)) {
+    label = ''
+  }
+
+  const isVirtual = Boolean(
+    isVirtualHint ||
+      /voicemeeter|vb-audio|vbaudio|virtual|虚拟|todesk|steam streaming|sonar|null sink|null-sink|null_sink|loopback|blackhole|soundflower|obs|easyeffects|pulseeffects|scream|discord/i.test(
+        `${label} ${id || ''}`,
+      ),
+  )
+
+  label = label.replace(/\s*(\(虚拟\)|\[虚拟\])\s*$/g, '').trim()
+  if (isVirtual && label && !label.endsWith('(虚拟)')) {
+    label = `${label} (虚拟)`
+  }
+
+  return { label, isVirtual }
+}
+
+let mediaDeviceLabelsUnlocked = false
+
+async function unlockMediaDeviceLabels(): Promise<void> {
+  if (mediaDeviceLabelsUnlocked) return
+  const nav = (globalThis as unknown as {
+    navigator?: {
+      permissions?: { query?: (q: { name: string }) => Promise<{ state: string }> }
+      mediaDevices?: {
+        getUserMedia?: (c: { audio: boolean }) => Promise<{ getTracks: () => Array<{ stop: () => void }> }>
+      }
+    }
+  }).navigator
+  if (!nav?.mediaDevices) return
+
+  try {
+    if (typeof nav.permissions?.query === 'function') {
+      const status = await nav.permissions.query({ name: 'speaker-selection' }).catch(() => null)
+      if (status?.state === 'granted') {
+        mediaDeviceLabelsUnlocked = true
+        return
+      }
+    }
+
+    if (typeof nav.mediaDevices.getUserMedia === 'function') {
+      const stream = await nav.mediaDevices.getUserMedia({ audio: true })
+      for (const track of stream.getTracks()) {
+        try {
+          track.stop()
+        } catch {
+          // ignore
+        }
+      }
+      mediaDeviceLabelsUnlocked = true
+    }
+  } catch {
+    // ignore
   }
 }
 

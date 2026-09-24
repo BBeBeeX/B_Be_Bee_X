@@ -7,6 +7,7 @@ out/
 .env
 .env.local
 coverage/
+.cache/
 
 # Generated native projects. `app.json` and its config plugins are the source
 # of truth; `npx expo prebuild` rebuilds these from it, so committing them
