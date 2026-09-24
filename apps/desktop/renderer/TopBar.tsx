@@ -1011,9 +1011,9 @@ export function TopBar({
                               minHeight: 24,
                               padding: '2px 10px',
                               borderRadius: 9999,
-                              border: `1px solid ${
-                                selected ? 'transparent' : 'var(--border-subtle, rgba(255, 255, 255, 0.12))'
-                              }`,
+                              borderWidth: 1,
+                              borderStyle: 'solid',
+                              borderColor: selected ? 'transparent' : 'var(--border-subtle, rgba(255, 255, 255, 0.12))',
                               background: selected ? 'var(--button-primary-bg, var(--color-primary, #5F87FF))' : 'var(--surface-1, #080D1A)',
                               color: selected
                                 ? 'var(--text-primary, #F5F7FF)'
@@ -1066,7 +1066,9 @@ export function TopBar({
                                 minHeight: 24,
                                 padding: '2px 10px',
                                 borderRadius: 9999,
-                                border: '1px solid rgba(255, 255, 255, 0.15)',
+                                borderWidth: 1,
+                                borderStyle: 'solid',
+                                borderColor: 'rgba(255, 255, 255, 0.15)',
                                 background: 'transparent',
                                 color: 'rgba(255, 255, 255, 0.6)',
                                 fontSize: 11,
@@ -1125,7 +1127,9 @@ export function TopBar({
                             minHeight: 24,
                             padding: '2px 10px',
                             borderRadius: 9999,
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderWidth: 1,
+                            borderStyle: 'solid',
+                            borderColor: 'rgba(255, 255, 255, 0.1)',
                             background: 'rgba(255, 255, 255, 0.06)',
                             color: 'rgba(255, 255, 255, 0.8)',
                             fontSize: 11,

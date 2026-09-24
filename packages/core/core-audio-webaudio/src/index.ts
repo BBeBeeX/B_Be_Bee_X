@@ -87,6 +87,13 @@ export interface AudioWebAudioConfig {
  * makes gapless possible: the next buffer is queued behind the same output
  * node while the current one is still sounding.
  */
+export interface AudioLogger {
+  debug?(message: string, ...args: unknown[]): void
+  info?(message: string, ...args: unknown[]): void
+  warn?(message: string, ...args: unknown[]): void
+  error?(message: string, ...args: unknown[]): void
+}
+
 class BufferedHandle implements AudioSourceHandle {
   readonly node: GainNode
   readonly durationMs: number
@@ -101,9 +108,11 @@ class BufferedHandle implements AudioSourceHandle {
   constructor(
     private readonly context: BaseAudioContext,
     private readonly buffer: AudioBuffer,
+    private readonly logger?: AudioLogger,
   ) {
     this.node = context.createGain()
     this.durationMs = Math.round(buffer.duration * 1000)
+    this.logger?.debug?.('webaudio: [buffered] handle created (duration: %dms)', this.durationMs)
   }
 
   get positionMs(): number {
@@ -115,6 +124,7 @@ class BufferedHandle implements AudioSourceHandle {
   play(atMs?: number): void {
     if (this.disposed) return
     if (atMs !== undefined) this.offsetSeconds = Math.max(0, atMs / 1000)
+    this.logger?.debug?.('webaudio: [buffered] play (offsetSeconds: %s)', this.offsetSeconds)
     this.stopSource()
 
     const source = this.context.createBufferSource()
@@ -124,6 +134,7 @@ class BufferedHandle implements AudioSourceHandle {
       // A source stopped by seek or pause also fires `onended`; only a source
       // that reached the end of the buffer is a track ending.
       if (source !== this.source || !this.playing) return
+      this.logger?.debug?.('webaudio: [buffered] playback ended')
       this.playing = false
       this.offsetSeconds = this.buffer.duration
       for (const listener of this.endedListeners) listener()
@@ -142,11 +153,13 @@ class BufferedHandle implements AudioSourceHandle {
       this.buffer.duration,
     )
     this.playing = false
+    this.logger?.debug?.('webaudio: [buffered] pause (position: %dms)', Math.round(this.offsetSeconds * 1000))
     this.stopSource()
   }
 
   seek(atMs: number): void {
     if (this.disposed) return
+    this.logger?.debug?.('webaudio: [buffered] seek to %dms', atMs)
     this.offsetSeconds = Math.max(0, Math.min(atMs / 1000, this.buffer.duration))
     if (this.playing) {
       this.play(atMs)
@@ -154,6 +167,7 @@ class BufferedHandle implements AudioSourceHandle {
   }
 
   stop(): void {
+    this.logger?.debug?.('webaudio: [buffered] stop')
     this.playing = false
     this.offsetSeconds = 0
     this.stopSource()
@@ -175,6 +189,8 @@ class BufferedHandle implements AudioSourceHandle {
   }
 
   dispose(): void {
+    if (this.disposed) return
+    this.logger?.debug?.('webaudio: [buffered] handle disposed')
     this.disposed = true
     // Freeze the position first. Stopping the source without clearing
     // `playing` left `positionMs` computing from a clock that keeps running,
@@ -217,6 +233,7 @@ class StreamedHandle implements AudioSourceHandle {
 
   private readonly endedListeners = new Set<() => void>()
   private readonly onEndedNative = () => {
+    this.logger?.debug?.('webaudio: [streamed] playback ended')
     this.pendingSeekSeconds = undefined
     for (const listener of this.endedListeners) listener()
   }
@@ -247,6 +264,7 @@ class StreamedHandle implements AudioSourceHandle {
     this.pendingSeekSeconds = undefined
   }
   private readonly onErrorNative = () => {
+    this.logger?.error?.('webaudio: [streamed] playback error', this.element.error)
     this.setStalled(false)
     this.onEndedNative()
   }
@@ -256,8 +274,10 @@ class StreamedHandle implements AudioSourceHandle {
   constructor(
     private readonly element: MediaElementLike,
     node: AudioNode,
+    private readonly logger?: AudioLogger,
   ) {
     this.node = node
+    this.logger?.debug?.('webaudio: [streamed] handle created (src: %s)', element.src)
     element.addEventListener('ended', this.onEndedNative)
     element.addEventListener('seeked', this.onSeekedNative)
     element.addEventListener('error', this.onErrorNative)
@@ -276,6 +296,11 @@ class StreamedHandle implements AudioSourceHandle {
   private setStalled(stalled: boolean): void {
     if (this.stalled === stalled) return
     this.stalled = stalled
+    if (stalled) {
+      this.logger?.warn?.('webaudio: [streamed] playback stalled')
+    } else {
+      this.logger?.info?.('webaudio: [streamed] playback recovered from stall')
+    }
     for (const listener of [...this.stallListeners]) listener(stalled)
   }
 
@@ -293,6 +318,7 @@ class StreamedHandle implements AudioSourceHandle {
 
   seek(atMs: number): void {
     const seconds = Math.max(0, atMs / 1000)
+    this.logger?.debug?.('webaudio: [streamed] seek to %dms', atMs)
     /*
      * Only a seek that moves the element can be pending.
      *
@@ -312,9 +338,11 @@ class StreamedHandle implements AudioSourceHandle {
     if (atMs !== undefined) {
       this.seek(atMs)
     }
+    this.logger?.debug?.('webaudio: [streamed] play (atMs: %s)', atMs)
     const res = this.element.play()
     if (res && typeof (res as Promise<void>).catch === 'function') {
       ;(res as Promise<void>).catch((err: Error) => {
+        this.logger?.warn?.('webaudio: [streamed] play() rejected: %s', err.message)
         this.setStalled(false)
         if (err.name === 'NotSupportedError' || (this.element as { error?: unknown }).error) {
           this.onEndedNative()
@@ -324,10 +352,12 @@ class StreamedHandle implements AudioSourceHandle {
   }
 
   pause(): void {
+    this.logger?.debug?.('webaudio: [streamed] pause (position: %dms)', this.positionMs)
     this.element.pause()
   }
 
   stop(): void {
+    this.logger?.debug?.('webaudio: [streamed] stop')
     this.pendingSeekSeconds = undefined
     this.element.pause()
     this.element.currentTime = 0
@@ -344,6 +374,7 @@ class StreamedHandle implements AudioSourceHandle {
   }
 
   dispose(): void {
+    this.logger?.debug?.('webaudio: [streamed] handle disposed')
     this.pendingSeekSeconds = undefined
     this.element.removeEventListener('ended', this.onEndedNative)
     this.element.removeEventListener('seeked', this.onSeekedNative)
@@ -396,6 +427,7 @@ export class AudioWebAudio extends Service implements AudioService {
     this.master = this.context.createGain()
     this.chainInput.connect(this.master)
     this.master.connect(this.context.destination)
+    this.ctx.logger?.info('core-audio-webaudio: initialized (sampleRate: %d)', this.sampleRate)
   }
 
   get chainOutput(): GainNode {
@@ -403,6 +435,7 @@ export class AudioWebAudio extends Service implements AudioService {
   }
 
   async dipVolume(durationMs = 20): Promise<Disposable> {
+    this.ctx.logger?.debug?.('webaudio: dipVolume duration %dms', durationMs)
     const currentGain = this.master.gain.value
     const dipSeconds = Math.max(0.005, durationMs / 1000)
     const now = this.context.currentTime
@@ -445,14 +478,17 @@ export class AudioWebAudio extends Service implements AudioService {
     // the audio graph" (docs/03 §7). Gated here rather than on `chainInput`
     // because this is where a caller actually acquires a node.
     this.gate()
+    this.ctx.logger?.info('webaudio: loading %s (strategy: %s)', String(src), opts.strategy ?? 'stream')
     if (opts.strategy === 'buffer') {
       try {
         return await this.loadBuffered(src, opts)
       } catch (err) {
         // If buffered decoding fails (e.g. 24-bit FLAC, ID3v2-prefixed FLAC, or unsupported bit depth),
         // fallback to streamed HTMLMediaElement if available rather than aborting playback!
+        this.ctx.logger?.warn('webaudio: buffered decoding failed, attempting stream fallback: %s', String(err))
         const canStream = Boolean(this.config.createMediaElement ?? defaultMediaElementFactory())
         if (canStream) {
+          this.ctx.logger?.info('webaudio: falling back to streamed media element for %s', String(src))
           return await this.loadStreamed(src, opts)
         }
         throw err
@@ -472,14 +508,23 @@ export class AudioWebAudio extends Service implements AudioService {
       typeof src === 'string' && src.startsWith('file://') && typeof window !== 'undefined'
         ? src.replace(/^file:\/\//, 'bbebee-file://')
         : src
+    this.ctx.logger?.debug?.('webaudio: fetching %s for buffered load', targetSrc)
     const bytes = await fetchBytes(targetSrc, { headers: opts.headers, signal: opts.signal })
     opts.signal?.throwIfAborted()
+    this.ctx.logger?.debug?.('webaudio: fetched %d bytes, decoding audio data', bytes.byteLength)
 
     const decode = (this.context as BaseAudioContext & { decodeAudioData: DecodeFn }).decodeAudioData
     let buffer: AudioBuffer
     try {
       buffer = await decode.call(this.context, bytes)
+      this.ctx.logger?.info(
+        'webaudio: decodeAudioData succeeded (%dms, %d channels, %dHz)',
+        Math.round(buffer.duration * 1000),
+        buffer.numberOfChannels,
+        buffer.sampleRate,
+      )
     } catch (decodeErr) {
+      this.ctx.logger?.warn('webaudio: decodeAudioData failed for %s, trying bridge decode: %s', src, String(decodeErr))
       if (typeof window !== 'undefined') {
         const bridge = (
           window as unknown as {
@@ -502,10 +547,11 @@ export class AudioWebAudio extends Service implements AudioService {
               }
               opts.signal?.throwIfAborted()
               opts.onBuffered?.(buf.duration)
-              return new BufferedHandle(this.context, buf)
+              this.ctx.logger?.info('webaudio: bridge decodePcm succeeded (%dms, %d channels, %dHz)', res.durationMs, res.channels, res.sampleRate)
+              return new BufferedHandle(this.context, buf, this.ctx.logger)
             }
-          } catch {
-            // Fall through to throw original decode error
+          } catch (bridgeErr) {
+            this.ctx.logger?.error('webaudio: bridge decodePcm failed for %s: %s', src, String(bridgeErr))
           }
         }
       }
@@ -515,7 +561,7 @@ export class AudioWebAudio extends Service implements AudioService {
 
     // A decoded buffer is fully available, so the whole track is buffered.
     opts.onBuffered?.(buffer.duration)
-    return new BufferedHandle(this.context, buffer)
+    return new BufferedHandle(this.context, buffer, this.ctx.logger)
   }
 
   private async loadStreamed(src: string, opts: LoadOptions): Promise<AudioSourceHandle> {
@@ -559,7 +605,8 @@ export class AudioWebAudio extends Service implements AudioService {
     }
 
     this.activeMediaElements.add(element)
-    const handle = new StreamedHandle(element, node)
+    this.ctx.logger?.info('webaudio: streamed source ready for %s', targetSrc)
+    const handle = new StreamedHandle(element, node, this.ctx.logger)
     const originalDispose = handle.dispose.bind(handle)
     handle.dispose = () => {
       this.activeMediaElements.delete(element)
@@ -572,6 +619,7 @@ export class AudioWebAudio extends Service implements AudioService {
   setVolume(v: number): void {
     this.gate()
     const clamped = Math.max(0, Math.min(1, v))
+    this.ctx.logger?.debug?.('webaudio: setVolume %d', clamped)
     if (this.mutedAt !== undefined) {
       // Remember the level so unmuting restores it rather than jumping to 1.
       this.mutedAt = clamped
@@ -582,6 +630,7 @@ export class AudioWebAudio extends Service implements AudioService {
 
   setMuted(m: boolean): void {
     this.gate()
+    this.ctx.logger?.debug?.('webaudio: setMuted %s', m)
     if (m) {
       if (this.mutedAt !== undefined) return
       this.mutedAt = this.master.gain.value
@@ -683,12 +732,14 @@ export class AudioWebAudio extends Service implements AudioService {
     }
 
     if (devices.length > 0) {
+      this.ctx.logger?.debug?.('webaudio: listOutputDevices returned %d devices', devices.length)
       return devices
     }
 
     // Fallback only if enumerateDevices returned nothing (e.g. headless unit tests)
     if (mainDevices.length > 0) {
       const fallbackLabel = cleanAndTagDeviceLabel(mainDevices[0]!.label).label || '音频输出设备'
+      this.ctx.logger?.debug?.('webaudio: listOutputDevices fallback to main process devices (1 device)')
       return [
         {
           id: 'default',
@@ -699,12 +750,14 @@ export class AudioWebAudio extends Service implements AudioService {
       ]
     }
 
+    this.ctx.logger?.debug?.('webaudio: listOutputDevices default fallback')
     return [{ id: 'default', label: '音频输出设备', isDefault: true, isVirtual: false }]
   }
 
   async setOutputDevice(id: string): Promise<void> {
     this.gate()
     this.selectedDeviceId = id
+    this.ctx.logger?.info('webaudio: setOutputDevice(%s)', id)
     let targetId = id === 'default' ? '' : id
 
     // Safety guard: never pass OS IDs (PnP InstanceId, MMDevice ID, ALSA hw) to Chromium setSinkId
@@ -756,16 +809,19 @@ export class AudioWebAudio extends Service implements AudioService {
    * and is written once (docs/05 §5).
    */
   emitInterruption(event: InterruptionEvent): void {
+    this.ctx.logger?.info('webaudio: emitInterruption (type: %s, shouldResume: %s)', event.type, event.shouldResume)
     for (const listener of this.interruptionListeners) listener(event)
   }
 
   /** Publish a route change. Same reasoning as `emitInterruption`. */
   emitRouteChange(event: RouteChangeEvent): void {
+    this.ctx.logger?.info('webaudio: emitRouteChange (reason: %s)', event.reason)
     for (const listener of this.routeListeners) listener(event)
   }
 
   async [Service.init]() {
     return async () => {
+      this.ctx.logger?.info('webaudio: disposing audio service')
       this.chainInput.disconnect()
       this.master.disconnect()
       this.interruptionListeners.clear()

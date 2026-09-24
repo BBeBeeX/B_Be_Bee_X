@@ -1,5 +1,12 @@
 import type { AudioSourceHandle, Disposable } from '@BBeBee/protocol'
 
+export interface AudioLogger {
+  debug?(message: string, ...args: unknown[]): void
+  info?(message: string, ...args: unknown[]): void
+  warn?(message: string, ...args: unknown[]): void
+  error?(message: string, ...args: unknown[]): void
+}
+
 export class WasapiAudioHandle implements AudioSourceHandle {
   readonly node: GainNode
   readonly durationMs: number
@@ -14,16 +21,20 @@ export class WasapiAudioHandle implements AudioSourceHandle {
 
   private readonly context: BaseAudioContext
   private readonly buffer: AudioBuffer
+  private readonly logger?: AudioLogger
 
   constructor(
     context: BaseAudioContext,
     buffer: AudioBuffer,
     durationMs?: number,
+    logger?: AudioLogger,
   ) {
     this.context = context
     this.buffer = buffer
+    this.logger = logger
     this.node = context.createGain()
     this.durationMs = durationMs ?? Math.round(buffer.duration * 1000)
+    this.logger?.debug?.('wasapi: [handle] handle created (duration: %dms)', this.durationMs)
   }
 
   get positionMs(): number {
@@ -35,6 +46,7 @@ export class WasapiAudioHandle implements AudioSourceHandle {
   play(atMs?: number): void {
     if (this.disposed) return
     if (atMs !== undefined) this.offsetSeconds = Math.max(0, atMs / 1000)
+    this.logger?.debug?.('wasapi: [handle] play (offsetSeconds: %s)', this.offsetSeconds)
     this.stopSource()
 
     const source = this.context.createBufferSource()
@@ -43,6 +55,7 @@ export class WasapiAudioHandle implements AudioSourceHandle {
 
     source.onended = () => {
       if (this.source !== source) return
+      this.logger?.debug?.('wasapi: [handle] playback ended')
       this.playing = false
       this.offsetSeconds = this.buffer.duration
       for (const listener of this.endedListeners) listener()
@@ -59,11 +72,13 @@ export class WasapiAudioHandle implements AudioSourceHandle {
     const elapsed = this.context.currentTime - this.startedAt
     this.offsetSeconds = Math.min(this.offsetSeconds + elapsed, this.buffer.duration)
     this.playing = false
+    this.logger?.debug?.('wasapi: [handle] pause (position: %dms)', Math.round(this.offsetSeconds * 1000))
     this.stopSource()
   }
 
   stop(): void {
     if (this.disposed) return
+    this.logger?.debug?.('wasapi: [handle] stop')
     this.playing = false
     this.offsetSeconds = 0
     this.stopSource()
@@ -71,6 +86,7 @@ export class WasapiAudioHandle implements AudioSourceHandle {
 
   seek(atMs: number): void {
     if (this.disposed) return
+    this.logger?.debug?.('wasapi: [handle] seek to %dms', atMs)
     const wasPlaying = this.playing
     this.offsetSeconds = Math.max(0, Math.min(atMs / 1000, this.buffer.duration))
     this.stopSource()
@@ -95,6 +111,7 @@ export class WasapiAudioHandle implements AudioSourceHandle {
 
   dispose(): void {
     if (this.disposed) return
+    this.logger?.debug?.('wasapi: [handle] handle disposed')
     this.disposed = true
     this.playing = false
     this.stopSource()

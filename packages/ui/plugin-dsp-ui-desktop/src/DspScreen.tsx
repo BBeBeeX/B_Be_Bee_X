@@ -924,7 +924,9 @@ export function DspScreen({ ctx }: DspScreenProps): ReactElement {
                 'data-testid': 'reset-eq-button',
                 onClick: handleReset,
                 style: {
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderWidth: 1,
+                  borderStyle: 'solid',
+                  borderColor: 'rgba(255, 255, 255, 0.3)',
                   borderRadius: 20,
                   padding: '6px 20px',
                   background: 'transparent',

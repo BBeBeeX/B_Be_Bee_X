@@ -95,6 +95,11 @@ export class AudioWasapi extends Service implements AudioService {
     if (config.enableExclusive === false) {
       this.master.connect(this.context.destination)
     }
+    this.ctx.logger?.info(
+      'core-audio-wasapi: initialized (sampleRate: %d, exclusive: %s)',
+      this.sampleRate,
+      config.enableExclusive !== false,
+    )
   }
 
   get destination(): AudioNode {
@@ -110,6 +115,7 @@ export class AudioWasapi extends Service implements AudioService {
   }
 
   async dipVolume(durationMs = 20): Promise<Disposable> {
+    this.ctx.logger?.debug?.('wasapi: dipVolume duration %dms', durationMs)
     const currentGain = this.master.gain.value
     const dipSeconds = Math.max(0.005, durationMs / 1000)
     const now = this.context.currentTime
@@ -131,6 +137,7 @@ export class AudioWasapi extends Service implements AudioService {
 
   async load(src: string | Uri, opts: LoadOptions): Promise<AudioSourceHandle> {
     this.gate()
+    this.ctx.logger?.info('wasapi: loading %s (strategy: %s)', String(src), opts.strategy ?? 'stream')
     await this.ensureSinkWorklet()
 
     const bridgeCall =
@@ -143,6 +150,7 @@ export class AudioWasapi extends Service implements AudioService {
     // Attempt FFmpeg decode through bridge for ALAC and Hi-Res formats
     if (bridgeCall) {
       try {
+        this.ctx.logger?.debug?.('wasapi: attempting bridge decodePcm for %s', String(src))
         const decoded = (await bridgeCall('audio', 'decodePcm', [src])) as {
           sampleRate: number
           channels: number
@@ -152,14 +160,24 @@ export class AudioWasapi extends Service implements AudioService {
         }
 
         if (decoded && decoded.pcm && decoded.pcm.length > 0 && decoded.pcm[0]?.length) {
+          this.ctx.logger?.info(
+            'wasapi: bridge decodePcm succeeded (%dms, %d channels, %dHz, %d-bit)',
+            decoded.durationMs,
+            decoded.channels,
+            decoded.sampleRate,
+            decoded.bitDepth || 24,
+          )
           // Initialize WASAPI exclusive stream on main process
+          this.ctx.logger?.info('wasapi: initializing WASAPI exclusive output (%dHz, %dch)', decoded.sampleRate, decoded.channels)
           await bridgeCall('audio', 'initWasapi', [
             {
               sampleRate: decoded.sampleRate,
               channels: decoded.channels,
               bitDepth: decoded.bitDepth || 24,
             },
-          ]).catch(() => {})
+          ]).catch((err) => {
+            this.ctx.logger?.warn('wasapi: initWasapi error: %s', String(err))
+          })
 
           // Create an AudioBuffer matching the decoded sample rate
           const length = decoded.pcm[0]!.length
@@ -179,9 +197,10 @@ export class AudioWasapi extends Service implements AudioService {
           }
 
           opts.onBuffered?.(buffer.duration)
-          return new WasapiAudioHandle(this.context, buffer, decoded.durationMs)
+          return new WasapiAudioHandle(this.context, buffer, decoded.durationMs, this.ctx.logger)
         }
-      } catch {
+      } catch (bridgeErr) {
+        this.ctx.logger?.warn('wasapi: bridge decodePcm failed, falling back to buffered decode (%s): %s', String(src), String(bridgeErr))
         // Fall back to standard byte fetch and decode
       }
     }
@@ -196,15 +215,29 @@ export class AudioWasapi extends Service implements AudioService {
       typeof src === 'string' && src.startsWith('file://') && typeof window !== 'undefined'
         ? src.replace(/^file:\/\//, 'bbebee-file://')
         : src
+    this.ctx.logger?.debug?.('wasapi: fetching bytes for %s', targetSrc)
     const bytes = await fetchBytes(targetSrc, { headers: opts.headers, signal: opts.signal })
     opts.signal?.throwIfAborted()
+    this.ctx.logger?.debug?.('wasapi: fetched %d bytes, decoding audio data', bytes.byteLength)
 
     const decode = (this.context as BaseAudioContext & { decodeAudioData: DecodeFn }).decodeAudioData
-    const buffer = await decode.call(this.context, bytes)
+    let buffer: AudioBuffer
+    try {
+      buffer = await decode.call(this.context, bytes)
+      this.ctx.logger?.info(
+        'wasapi: decodeAudioData succeeded (%dms, %d channels, %dHz)',
+        Math.round(buffer.duration * 1000),
+        buffer.numberOfChannels,
+        buffer.sampleRate,
+      )
+    } catch (decodeErr) {
+      this.ctx.logger?.error('wasapi: decodeAudioData failed for %s: %s', src, String(decodeErr))
+      throw decodeErr
+    }
     opts.signal?.throwIfAborted()
 
     opts.onBuffered?.(buffer.duration)
-    return new WasapiAudioHandle(this.context, buffer)
+    return new WasapiAudioHandle(this.context, buffer, undefined, this.ctx.logger)
   }
 
   private async ensureSinkWorklet(): Promise<void> {
@@ -217,6 +250,7 @@ export class AudioWasapi extends Service implements AudioService {
 
     if (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined') {
       // Testing or environment without AudioWorklet support: fallback to destination
+      this.ctx.logger?.warn('wasapi: audioWorklet not available in this environment, falling back to destination')
       try {
         this.master.connect(this.context.destination)
       } catch {
@@ -254,7 +288,9 @@ export class AudioWasapi extends Service implements AudioService {
 
       this.master.connect(sinkNode)
       this.sinkNode = sinkNode
-    } catch {
+      this.ctx.logger?.info('wasapi: sink worklet initialized and connected')
+    } catch (err) {
+      this.ctx.logger?.error('wasapi: failed to initialize sink worklet, falling back to destination: %s', String(err))
       // Fallback to destination if worklet registration fails
       try {
         this.master.connect(this.context.destination)
@@ -270,11 +306,13 @@ export class AudioWasapi extends Service implements AudioService {
 
   setVolume(v: number): void {
     const clamped = Math.max(0, Math.min(1, v))
+    this.ctx.logger?.debug?.('wasapi: setVolume %d', clamped)
     this.mutedAt = undefined
     this.master.gain.value = clamped
   }
 
   setMuted(m: boolean): void {
+    this.ctx.logger?.debug?.('wasapi: setMuted %s', m)
     if (m) {
       if (this.mutedAt === undefined) this.mutedAt = this.master.gain.value
       this.master.gain.value = 0
@@ -371,11 +409,13 @@ export class AudioWasapi extends Service implements AudioService {
     }
 
     if (devices.length > 0) {
+      this.ctx.logger?.debug?.('wasapi: listOutputDevices returned %d devices', devices.length)
       return devices
     }
 
     if (bridgeDevices.length > 0) {
       const fallbackLabel = cleanAndTagDeviceLabel(bridgeDevices[0]!.label).label || '音频输出设备'
+      this.ctx.logger?.debug?.('wasapi: listOutputDevices fallback to bridge devices (1 device)')
       return [
         {
           id: 'default',
@@ -386,10 +426,12 @@ export class AudioWasapi extends Service implements AudioService {
       ]
     }
 
+    this.ctx.logger?.debug?.('wasapi: listOutputDevices default fallback')
     return [{ id: 'default', label: '音频输出设备', isDefault: true, isVirtual: false }]
   }
 
   async setOutputDevice(id: string): Promise<void> {
+    this.ctx.logger?.info('wasapi: setOutputDevice(%s)', id)
     const bridgeCall =
       this.config.bridgeCall ??
       (typeof window !== 'undefined'
@@ -454,6 +496,32 @@ export class AudioWasapi extends Service implements AudioService {
     this.routeListeners.add(cb)
     return () => {
       this.routeListeners.delete(cb)
+    }
+  }
+
+  emitInterruption(event: InterruptionEvent): void {
+    this.ctx.logger?.info('wasapi: emitInterruption (type: %s, shouldResume: %s)', event.type, event.shouldResume)
+    for (const listener of this.interruptionListeners) listener(event)
+  }
+
+  emitRouteChange(event: RouteChangeEvent): void {
+    this.ctx.logger?.info('wasapi: emitRouteChange (reason: %s)', event.reason)
+    for (const listener of this.routeListeners) listener(event)
+  }
+
+  async [Service.init]() {
+    return async () => {
+      this.ctx.logger?.info('wasapi: disposing audio service')
+      this.chainInput.disconnect()
+      this.master.disconnect()
+      this.interruptionListeners.clear()
+      this.routeListeners.clear()
+      if (this.sinkNode) {
+        this.sinkNode.disconnect()
+        this.sinkNode = undefined
+      }
+      const closable = this.context as BaseAudioContext & { close?: () => Promise<void> }
+      if (closable.close) await closable.close().catch(() => undefined)
     }
   }
 }
@@ -551,6 +619,14 @@ async function unlockMediaDeviceLabels(): Promise<void> {
   } catch {
     // ignore
   }
+}
+
+export const name = 'core-audio-wasapi'
+
+export async function apply(ctx: Context, config: AudioWasapiConfig = {}) {
+  ctx.logger?.info('core-audio-wasapi: loaded')
+  const fiber = await ctx.plugin(AudioWasapi, config)
+  return () => void fiber.dispose()
 }
 
 export default AudioWasapi
