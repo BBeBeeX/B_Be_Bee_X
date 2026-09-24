@@ -6,6 +6,12 @@
     "version": "0.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B0B0F"
+    },
     "newArchEnabled": true,
     "platforms": ["ios", "android"],
     "ios": {
@@ -17,6 +23,10 @@
     },
     "android": {
       "package": "org.bbebee.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B0B0F"
+      },
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.WAKE_LOCK",

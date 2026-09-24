@@ -14,6 +14,7 @@ import { createElement as h, useEffect, useRef, useState, type CSSProperties, ty
 import type { Context } from 'cordis'
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useSearchSourceSelection, type SearchInterfaceKind } from '@BBeBee/plugin-sources/hooks'
+import logoWhiteUrl from './assets/logo-white.png'
 
 export interface ElectronCSSProperties extends CSSProperties {
   WebkitAppRegion?: 'drag' | 'no-drag'
@@ -288,7 +289,7 @@ export function TopBar({
         zIndex: 50,
       } as ElectronCSSProperties,
     },
-    // Left Group: More (⋯), Back (←), Forward (→)
+    // Left Group: Logo, More (⋯), Back (←), Forward (→)
     h(
       'div',
       {
@@ -299,6 +300,44 @@ export function TopBar({
           ...noDragStyle,
         },
       },
+      // Brand Logo (BBeBee)
+      h(
+        'button',
+        {
+          type: 'button',
+          'aria-label': 'BBeBee Home',
+          title: 'BBeBee',
+          onClick: onHome,
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 32,
+            height: 32,
+            padding: 0,
+            borderRadius: '50%',
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            transition: 'transform 0.15s ease, opacity 0.15s ease',
+          },
+          onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+            e.currentTarget.style.transform = 'scale(1.08)'
+            e.currentTarget.style.opacity = '0.85'
+          },
+          onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+            e.currentTarget.style.transform = 'scale(1)'
+            e.currentTarget.style.opacity = '1'
+          },
+        },
+        h('img', {
+          src: logoWhiteUrl,
+          alt: 'BBeBee',
+          width: 22,
+          height: 22,
+          style: { display: 'block', objectFit: 'contain' },
+        }),
+      ),
       // More Menu (⋯)
       h(
         'div',

@@ -229,6 +229,12 @@ function isDebug(): boolean {
 }
 
 function createWindow(): BrowserWindow {
+  const iconCandidate = [
+    join(here, '../resources/icon.png'),
+    join(here, '../../resources/icon.png'),
+    join(here, 'resources/icon.png'),
+  ].find((p) => existsSync(p))
+
   const window = new BrowserWindow({
     width: 1180,
     height: 760,
@@ -238,6 +244,7 @@ function createWindow(): BrowserWindow {
     frame: false,
     titleBarStyle: 'hidden',
     autoHideMenuBar: true,
+    icon: iconCandidate,
     webPreferences: {
       // The security posture from docs/02 §2. None of these are negotiable:
       // the renderer hosts third-party plugin code (docs/03 §6.2).
@@ -480,7 +487,7 @@ function showWindow(): void {
 function createTray(): Tray | undefined {
   try {
     const icon = nativeImage.createFromDataURL(
-      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAkklEQVR42u3XwQqAIAzGcR/BQ+//ltKx6BaC+on7OyMHHgLZfoxlFsKOlSOl83oWtV9OqCY1B/QkRgqrCLx4rRDW9nwGepc7wASyPCDGI6AIBaAgcEALMQVQQ0wDlBDTZqCEcAXgr2Fe8P2Mn4QtgEsH8CFUJ98EoRT/D2CkONYB/LNscR9AT8JPAFyuZPufsidu5RtMtHn4VVsAAAAASUVORK5CYII=',
     )
     const created = new Tray(icon)
     created.setToolTip('BBeBee')
