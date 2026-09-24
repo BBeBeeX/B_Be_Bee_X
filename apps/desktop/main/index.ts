@@ -1056,36 +1056,19 @@ void app.whenReady().then(async () => {
   )
 
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
-    if (
-      permission === 'media' ||
-      (permission as string) === 'speaker-selection' ||
-      (permission as string) === 'audio-capture' ||
-      (permission as string) === 'media-stream'
-    ) {
+    if (permission === 'media' || (permission as string) === 'speaker-selection') {
       return true
     }
     return false
   })
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    if (
-      permission === 'media' ||
-      (permission as string) === 'speaker-selection' ||
-      (permission as string) === 'audio-capture' ||
-      (permission as string) === 'media-stream'
-    ) {
+    if (permission === 'media' || (permission as string) === 'speaker-selection') {
       callback(true)
       return
     }
     callback(false)
   })
-
-  const sessWithDeviceHandler = session.defaultSession as unknown as {
-    setDevicePermissionHandler?: (fn: (details: unknown) => boolean) => void
-  }
-  if (typeof sessWithDeviceHandler.setDevicePermissionHandler === 'function') {
-    sessWithDeviceHandler.setDevicePermissionHandler(() => true)
-  }
 
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
     try {

@@ -399,6 +399,96 @@ describe('the audio gate', () => {
   })
 })
 
+describe('output devices and routing', () => {
+  it('enumerates devices using Chromium deviceIds and marks virtual cards', async () => {
+    const { audio } = await harness()
+    const origNavDesc = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    const origWindowDesc = Object.getOwnPropertyDescriptor(globalThis, 'window')
+
+    const mockEnumerate = async () => [
+      { kind: 'audiooutput', deviceId: 'default', label: '默认 - 扬声器 (Realtek Audio)' },
+      { kind: 'audiooutput', deviceId: 'dev-realtek-123', label: '扬声器 (Realtek Audio)' },
+      { kind: 'audiooutput', deviceId: 'dev-vm-456', label: 'VoiceMeeter Input' },
+      { kind: 'audioinput', deviceId: 'mic-1', label: '麦克风' },
+    ]
+
+    const mockBridgeCall = async (service: string, method: string) => {
+      if (service === 'audio' && method === 'getOutputDevices') {
+        return [
+          { id: '{0.0.0.00000000}.{realtek-guid}', label: '扬声器 (Realtek Audio)', isDefault: true, isVirtual: false },
+          { id: '{0.0.0.00000000}.{vm-guid}', label: 'VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)', isDefault: false, isVirtual: true },
+        ]
+      }
+      return undefined
+    }
+
+    try {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: { mediaDevices: { enumerateDevices: mockEnumerate } },
+        configurable: true,
+        writable: true,
+      })
+      Object.defineProperty(globalThis, 'window', {
+        value: { BBeBeeBridge: { call: mockBridgeCall } },
+        configurable: true,
+        writable: true,
+      })
+
+      const devices = await audio.listOutputDevices()
+      expect(devices).toHaveLength(3)
+
+      // Ensure every device id is strictly a Chromium deviceId
+      expect(devices[0]!.id).toBe('default')
+      expect(devices[0]!.label).toBe('扬声器 (Realtek Audio)')
+      expect(devices[0]!.isVirtual).toBe(false)
+
+      expect(devices[1]!.id).toBe('dev-realtek-123')
+      expect(devices[1]!.label).toBe('扬声器 (Realtek Audio)')
+      expect(devices[1]!.isVirtual).toBe(false)
+
+      expect(devices[2]!.id).toBe('dev-vm-456')
+      expect(devices[2]!.label).toContain('VoiceMeeter Input')
+      expect(devices[2]!.label).toContain('(虚拟)')
+      expect(devices[2]!.isVirtual).toBe(true)
+
+      // Ensure native OS IDs are NEVER injected
+      expect(devices.some((d) => d.id.includes('{'))).toBe(false)
+    } finally {
+      if (origNavDesc) {
+        Object.defineProperty(globalThis, 'navigator', origNavDesc)
+      } else {
+        delete (globalThis as Record<string, unknown>)['navigator']
+      }
+      if (origWindowDesc) {
+        Object.defineProperty(globalThis, 'window', origWindowDesc)
+      } else {
+        delete (globalThis as Record<string, unknown>)['window']
+      }
+    }
+  })
+
+  it('sanitizes OS IDs in setOutputDevice so setSinkId is never passed a raw OS ID', async () => {
+    const { audio, engine } = await harness()
+    let sinkCalledWith: string | undefined
+    ;(engine as unknown as { setSinkId?: (id: string) => Promise<void> }).setSinkId = async (id: string) => {
+      sinkCalledWith = id
+    }
+
+    // Pass an OS ID (e.g. Windows MMDevice ID or PnP InstanceId)
+    await audio.setOutputDevice('{0.0.0.00000000}.{test-guid}')
+    // Must be sanitized to '' so Chromium setSinkId does not reject
+    expect(sinkCalledWith).toBe('')
+
+    // Pass valid deviceId
+    await audio.setOutputDevice('valid-device-id')
+    expect(sinkCalledWith).toBe('valid-device-id')
+
+    // Pass 'default'
+    await audio.setOutputDevice('default')
+    expect(sinkCalledWith).toBe('')
+  })
+})
+
 describe(audioConformance.service, () => {
   for (const check of audioConformance.checks) {
     it(`${check.name} — ${check.because}`, async () => {

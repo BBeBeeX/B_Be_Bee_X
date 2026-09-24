@@ -326,22 +326,41 @@ export class AudioWasapi extends Service implements AudioService {
       for (let i = 0; i < rawOutputs.length; i++) {
         const out = rawOutputs[i]!
         let label = out.label
-        if (isGenericPlaceholder(label)) {
-          const matched =
-            bridgeDevices.find((b) => b.id === out.deviceId) ??
-            (out.deviceId === 'default' ? (bridgeDevices.find((b) => b.isDefault) ?? bridgeDevices[0]) : undefined) ??
-            bridgeDevices[i]
 
-          if (matched?.label && !isGenericPlaceholder(matched.label)) {
-            label = matched.label
+        // Match with bridgeDevices solely for metadata (label & virtual card detection)
+        let matchedBridge: OutputDevice | undefined
+        if (bridgeDevices.length > 0) {
+          if (!isGenericPlaceholder(label)) {
+            const cleanL = normalizeBaseLabel(label)
+            matchedBridge = bridgeDevices.find((b) => {
+              const cleanB = normalizeBaseLabel(b.label)
+              return cleanB === cleanL || cleanB.includes(cleanL) || cleanL.includes(cleanB)
+            })
+          }
+          if (!matchedBridge) {
+            if (out.deviceId === 'default') {
+              matchedBridge = bridgeDevices.find((b) => b.isDefault) ?? bridgeDevices[0]
+            } else if (i < bridgeDevices.length) {
+              matchedBridge = bridgeDevices[i]
+            }
           }
         }
 
-        const { label: cleanLabel, isVirtual } = cleanAndTagDeviceLabel(label, out.deviceId)
+        if (isGenericPlaceholder(label) && matchedBridge?.label && !isGenericPlaceholder(matchedBridge.label)) {
+          label = matchedBridge.label
+        }
+
+        const { label: cleanLabel, isVirtual } = cleanAndTagDeviceLabel(
+          label,
+          out.deviceId,
+          matchedBridge?.isVirtual,
+        )
+
         const finalLabel = !isGenericPlaceholder(cleanLabel)
           ? cleanLabel
-          : (!isGenericPlaceholder(bridgeDevices[0]?.label || '') ? bridgeDevices[0]!.label : '音频输出设备')
+          : (matchedBridge?.label && !isGenericPlaceholder(matchedBridge.label) ? matchedBridge.label : '音频输出设备')
 
+        // CRITICAL: WebAudio devices MUST use Chromium's deviceId, never native OS IDs!
         devices.push({
           id: out.deviceId,
           label: finalLabel,
@@ -351,30 +370,23 @@ export class AudioWasapi extends Service implements AudioService {
       }
     }
 
+    if (devices.length > 0) {
+      return devices
+    }
+
     if (bridgeDevices.length > 0) {
-      for (const bd of bridgeDevices) {
-        if (!isGenericPlaceholder(bd.label)) {
-          const { label: cleanLabel, isVirtual } = cleanAndTagDeviceLabel(bd.label, bd.id, bd.isVirtual)
-          if (!devices.some((d) => d.id === bd.id || d.label === cleanLabel)) {
-            devices.push({
-              ...bd,
-              label: cleanLabel || bd.label,
-              isVirtual,
-            })
-          }
-        }
-      }
+      const fallbackLabel = cleanAndTagDeviceLabel(bridgeDevices[0]!.label).label || '音频输出设备'
+      return [
+        {
+          id: 'default',
+          label: fallbackLabel,
+          isDefault: true,
+          isVirtual: Boolean(bridgeDevices[0]!.isVirtual),
+        },
+      ]
     }
 
-    if (devices.length > 0 && isGenericPlaceholder(devices[0]!.label) && bridgeDevices.length > 0 && !isGenericPlaceholder(bridgeDevices[0]!.label)) {
-      devices[0]!.label = bridgeDevices[0]!.label
-    }
-
-    return devices.length > 0
-      ? devices
-      : (bridgeDevices.length > 0
-          ? bridgeDevices
-          : [{ id: 'default', label: '音频输出设备', isDefault: true, isVirtual: false }])
+    return [{ id: 'default', label: '音频输出设备', isDefault: true, isVirtual: false }]
   }
 
   async setOutputDevice(id: string): Promise<void> {
@@ -386,12 +398,47 @@ export class AudioWasapi extends Service implements AudioService {
         : undefined)
 
     if (bridgeCall) {
-      await bridgeCall('audio', 'setOutputDevice', [id]).catch(() => {})
+      // Find matching native bridge device if id is a Chromium deviceId
+      let nativeId = id
+      try {
+        const fetched = (await bridgeCall('audio', 'getOutputDevices', [])) as OutputDevice[]
+        if (Array.isArray(fetched) && fetched.length > 0) {
+          if (id === 'default') {
+            nativeId = fetched.find((f) => f.isDefault)?.id || 'default'
+          } else {
+            const media = (globalThis as {
+              navigator?: { mediaDevices?: { enumerateDevices: () => Promise<Array<{ deviceId: string; kind: string; label: string }>> } }
+            }).navigator?.mediaDevices
+            if (media?.enumerateDevices) {
+              const raw = await media.enumerateDevices()
+              const matchedOut = raw.find((r) => r.deviceId === id)
+              if (matchedOut?.label) {
+                const cleanOut = normalizeBaseLabel(matchedOut.label)
+                const foundNative = fetched.find((f) => {
+                  const cleanF = normalizeBaseLabel(f.label)
+                  return cleanF === cleanOut || cleanF.includes(cleanOut) || cleanOut.includes(cleanF)
+                })
+                if (foundNative?.id) {
+                  nativeId = foundNative.id
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+      await bridgeCall('audio', 'setOutputDevice', [nativeId]).catch(() => {})
+    }
+
+    // Safety guard: never pass OS IDs (PnP InstanceId, MMDevice ID, ALSA hw) to Chromium setSinkId
+    let targetId = id === 'default' ? '' : id
+    if (targetId && (targetId.includes('\\') || targetId.includes('{') || targetId.startsWith('hw:'))) {
+      targetId = ''
     }
 
     const sink = (this.context as BaseAudioContext & { setSinkId?: (id: string) => Promise<void> }).setSinkId
     if (typeof sink === 'function') {
-      const targetId = id === 'default' ? '' : id
       await sink.call(this.context, targetId).catch(() => {})
     }
   }
@@ -427,6 +474,15 @@ function isGenericPlaceholder(label: string): boolean {
     trimmed === 'Default Audio Device' ||
     trimmed === 'Audio Output Device'
   )
+}
+
+function normalizeBaseLabel(l: string): string {
+  return (l || '')
+    .toLowerCase()
+    .replace(/\s*(\(虚拟\)|\[虚拟\])\s*$/g, '')
+    .replace(/^(默认\s*[-–:：]\s*|default\s*[-–:：]\s*|系统默认\s*[-–:：]\s*)/i, '')
+    .replace(/\s*\((system default|默认)\)$/i, '')
+    .trim()
 }
 
 function cleanAndTagDeviceLabel(

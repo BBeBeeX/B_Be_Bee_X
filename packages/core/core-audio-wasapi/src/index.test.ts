@@ -87,4 +87,67 @@ describe('core-audio-wasapi', () => {
     audio.setMuted(false)
     expect(audio.sampleRate).toBe(48000)
   })
+
+  it('enumerates output devices using Chromium deviceIds and routes without passing OS IDs to setSinkId', async () => {
+    let bridgeDeviceSet: string | undefined
+    let sinkCalledWith: string | undefined
+
+    const mockBridgeCall = async (service: string, method: string, args: unknown[]) => {
+      if (service === 'audio' && method === 'getOutputDevices') {
+        return [
+          { id: '{0.0.0.00000000}.{wasapi-realtek}', label: '扬声器 (Realtek Audio)', isDefault: true, isVirtual: false },
+          { id: '{0.0.0.00000000}.{wasapi-vm}', label: 'VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)', isDefault: false, isVirtual: true },
+        ]
+      }
+      if (service === 'audio' && method === 'setOutputDevice') {
+        bridgeDeviceSet = args[0] as string
+        return undefined
+      }
+      return undefined
+    }
+
+    const { audio, engine } = await harness(mockBridgeCall)
+    ;(engine as unknown as { setSinkId?: (id: string) => Promise<void> }).setSinkId = async (id: string) => {
+      sinkCalledWith = id
+    }
+
+    const origNavDesc = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    const mockEnumerate = async () => [
+      { kind: 'audiooutput', deviceId: 'default', label: '默认 - 扬声器 (Realtek Audio)' },
+      { kind: 'audiooutput', deviceId: 'dev-vm-789', label: 'VoiceMeeter Input' },
+    ]
+
+    try {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: { mediaDevices: { enumerateDevices: mockEnumerate } },
+        configurable: true,
+        writable: true,
+      })
+
+      const devices = await audio.listOutputDevices()
+      expect(devices).toHaveLength(2)
+      expect(devices[0]!.id).toBe('default')
+      expect(devices[1]!.id).toBe('dev-vm-789')
+      expect(devices[1]!.isVirtual).toBe(true)
+      expect(devices[1]!.label).toContain('(虚拟)')
+
+      // Set to VoiceMeeter by Chromium deviceId
+      await audio.setOutputDevice('dev-vm-789')
+      // Native host gets the matched native WASAPI IMMDevice ID
+      expect(bridgeDeviceSet).toBe('{0.0.0.00000000}.{wasapi-vm}')
+      // But Web Audio setSinkId receives the Chromium deviceId, NEVER the OS ID!
+      expect(sinkCalledWith).toBe('dev-vm-789')
+
+      // Set to default
+      await audio.setOutputDevice('default')
+      expect(bridgeDeviceSet).toBe('{0.0.0.00000000}.{wasapi-realtek}')
+      expect(sinkCalledWith).toBe('')
+    } finally {
+      if (origNavDesc) {
+        Object.defineProperty(globalThis, 'navigator', origNavDesc)
+      } else {
+        delete (globalThis as Record<string, unknown>)['navigator']
+      }
+    }
+  })
 })

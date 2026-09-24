@@ -46,23 +46,7 @@ export function PlaybackSection({
           return
         }
       } catch {
-        // fallback
-      }
-
-      const bridge = (
-        window as unknown as {
-          BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> }
-        }
-      ).BBeBeeBridge
-      if (bridge?.call) {
-        try {
-          const list = (await bridge.call('audio', 'getOutputDevices', [])) as OutputDevice[]
-          if (mounted && Array.isArray(list) && list.length > 0) {
-            setOutputDevices(list)
-          }
-        } catch {
-          // ignore
-        }
+        // ignore
       }
     }
     void fetchDevices()
@@ -98,6 +82,20 @@ export function PlaybackSection({
 
   const currentEngine = settings.audioOutputEngine ?? 'wasapi'
   const currentDeviceId = settings.audioOutputDeviceId ?? 'default'
+
+  useEffect(() => {
+    if (
+      currentDeviceId &&
+      currentDeviceId !== 'default' &&
+      (currentDeviceId.includes('MMDEVAPI') ||
+        currentDeviceId.includes('{0.0.') ||
+        currentDeviceId.startsWith('SWD\\') ||
+        currentDeviceId.startsWith('hw:'))
+    ) {
+      void update({ audioOutputDeviceId: 'default' })
+      void ctx.audio?.setOutputDevice?.('default').catch(() => {})
+    }
+  }, [currentDeviceId, update, ctx])
 
   const isGenericPlaceholder = (text: string): boolean => {
     if (!text) return true

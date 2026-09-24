@@ -128,27 +128,47 @@ export class WasapiEngine {
       const script = `
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
         [Console]::InputEncoding = [System.Text.Encoding]::UTF8;
-        $pnp = Get-PnpDevice -Class AudioEndpoint -Status OK -ErrorAction SilentlyContinue | Select-Object -Property InstanceId, FriendlyName;
-        if ($pnp) {
-          $pnp | ConvertTo-Json -Compress
-        } else {
-          $wmi = Get-CimInstance Win32_PnPEntity -Filter "PNPClass = 'AudioEndpoint'" -ErrorAction SilentlyContinue | Select-Object -Property DeviceID, Name;
-          if ($wmi) {
-            $wmi | ConvertTo-Json -Compress
-          } else {
-            $reg = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render';
-            if (Test-Path $reg) {
-              Get-ChildItem $reg | ForEach-Object {
-                $val = Get-ItemProperty $_.PsPath;
-                if ($val.DeviceState -eq 1) {
-                  $name = (Get-ItemProperty "$($_.PsPath)\\Properties").'{a45c254e-df1c-4efd-8020-67d146a850e0},2';
-                  if ($name) {
-                    [PSCustomObject]@{ InstanceId = $_.PSChildName; FriendlyName = $name }
+        $results = @();
+        $reg = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render';
+        if (Test-Path $reg) {
+          Get-ChildItem $reg -ErrorAction SilentlyContinue | ForEach-Object {
+            $state = (Get-ItemProperty $_.PsPath -Name DeviceState -ErrorAction SilentlyContinue).DeviceState;
+            if ($state -eq 1) {
+              $propPath = Join-Path $_.PsPath 'Properties';
+              if (Test-Path $propPath) {
+                $props = Get-ItemProperty $propPath -ErrorAction SilentlyContinue;
+                $name = $props.'{a45c254e-df1c-4efd-8020-67d146a850e0},2';
+                if (-not $name) {
+                  $name = $props.'{b3f8fa53-0004-438e-9003-51a46e139bfc},6';
+                }
+                if (-not $name) {
+                  $name = $props.'{a45c254e-df1c-4efd-8020-67d146a850e0},14';
+                }
+                if ($name) {
+                  $results += [PSCustomObject]@{
+                    Id = $_.PSChildName;
+                    FriendlyName = [string]$name;
                   }
                 }
-              } | ConvertTo-Json -Compress
+              }
             }
           }
+        }
+        if ($results.Count -eq 0) {
+          $pnp = Get-PnpDevice -Class AudioEndpoint -Status OK -ErrorAction SilentlyContinue;
+          if ($pnp) {
+            $pnp | ForEach-Object {
+              if ($_.FriendlyName) {
+                $results += [PSCustomObject]@{
+                  Id = $_.InstanceId;
+                  FriendlyName = [string]$_.FriendlyName;
+                }
+              }
+            }
+          }
+        }
+        if ($results.Count -gt 0) {
+          $results | ConvertTo-Json -Compress
         }
       `.replace(/\s+/g, ' ').trim()
 
