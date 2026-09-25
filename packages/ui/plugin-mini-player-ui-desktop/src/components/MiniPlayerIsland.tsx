@@ -61,7 +61,7 @@ export function MiniPlayerIsland({
             borderRadius: 24,
             backgroundColor: '#0A0A0F',
             border: '1px solid rgba(255, 255, 255, 0.08)',
-            boxShadow: '0 12px 28px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4)',
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2)',
             animation: 'miniPlayerExpand 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
             WebkitAppRegion: 'drag',
           },
@@ -273,8 +273,8 @@ export function MiniPlayerIsland({
           backgroundColor: '#000000',
           border: '1px solid rgba(255, 255, 255, 0.08)',
           boxShadow: hovered
-            ? '0 6px 16px rgba(0, 0, 0, 0.55)'
-            : '0 4px 12px rgba(0, 0, 0, 0.45)',
+            ? '0 3px 8px rgba(0, 0, 0, 0.35)'
+            : '0 2px 6px rgba(0, 0, 0, 0.25)',
           cursor: 'pointer',
           transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
           WebkitAppRegion: 'drag',

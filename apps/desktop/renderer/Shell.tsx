@@ -11,6 +11,8 @@ import {
   createElement as h,
   useCallback,
   useEffect,
+  useMemo,
+  useRef,
   useState,
   type ComponentType,
   type ReactNode,
@@ -104,7 +106,7 @@ function useEntries(ctx: Context): { routes: readonly RouteContribution[]; entri
 }
 
 class ViewBoundary extends Component<
-  { title: string; onError: (error: Error) => void; children?: ReactNode },
+  { title: string; onError: (error: Error) => void; resetKey?: string; children?: ReactNode },
   { error?: Error }
 > {
   override state: { error?: Error } = {}
@@ -115,6 +117,12 @@ class ViewBoundary extends Component<
 
   override componentDidCatch(error: Error): void {
     this.props.onError(error)
+  }
+
+  override componentDidUpdate(prevProps: { title: string; resetKey?: string }): void {
+    if (this.state.error && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: undefined })
+    }
   }
 
   override render(): ReactNode {
@@ -137,6 +145,24 @@ class ViewBoundary extends Component<
 interface HistoryItem {
   id: string
   params?: Record<string, unknown>
+}
+
+interface CachedPageItem {
+  key: string
+  id: string
+  params?: Record<string, unknown>
+}
+
+function getPageKey(id: string, params?: Record<string, unknown>): string {
+  if (!params || Object.keys(params).length === 0) {
+    return id
+  }
+  const sortedKeys = Object.keys(params).sort()
+  const sortedParams: Record<string, unknown> = {}
+  for (const k of sortedKeys) {
+    sortedParams[k] = params[k]
+  }
+  return `${id}:${JSON.stringify(sortedParams)}`
 }
 
 export function Shell({ ctx }: { ctx: Context }) {
@@ -227,19 +253,85 @@ export function Shell({ ctx }: { ctx: Context }) {
     navState.history[navState.index] ?? (defaultEntry ? { id: defaultEntry.id } : undefined)
   const currentId = currentItem?.id
   const currentParams = currentItem?.params
+  const currentKey = currentId ? getPageKey(currentId, currentParams) : ''
+
+  const [cachedPages, setCachedPages] = useState<Map<string, CachedPageItem>>(() => {
+    const map = new Map<string, CachedPageItem>()
+    if (currentKey && currentId) {
+      map.set(currentKey, { key: currentKey, id: currentId, params: currentParams })
+    }
+    return map
+  })
+
+  const pagesToRender = useMemo(() => {
+    const map = new Map(cachedPages)
+    if (currentKey && currentId && !map.has(currentKey)) {
+      map.set(currentKey, { key: currentKey, id: currentId, params: currentParams })
+    }
+    return map
+  }, [cachedPages, currentKey, currentId, currentParams])
+
+  useEffect(() => {
+    if (currentKey && currentId) {
+      setCachedPages((prev) => {
+        if (prev.has(currentKey)) return prev
+        const next = new Map(prev)
+        next.set(currentKey, { key: currentKey, id: currentId, params: currentParams })
+        if (next.size > 20) {
+          const firstKey = next.keys().next().value
+          if (firstKey && firstKey !== currentKey) {
+            next.delete(firstKey)
+          }
+        }
+        return next
+      })
+    }
+  }, [currentKey, currentId, currentParams])
+
+  const scrollPositionsRef = useRef<Map<string, { el: HTMLElement; top: number; left: number }[]>>(new Map())
+  const pageContainerRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const prevKeyRef = useRef<string>(currentKey)
+
+  useEffect(() => {
+    const prevKey = prevKeyRef.current
+    if (prevKey && prevKey !== currentKey) {
+      const prevContainer = pageContainerRefs.current.get(prevKey)
+      if (prevContainer) {
+        const records: { el: HTMLElement; top: number; left: number }[] = []
+        if (prevContainer.scrollTop > 0 || prevContainer.scrollLeft > 0) {
+          records.push({ el: prevContainer, top: prevContainer.scrollTop, left: prevContainer.scrollLeft })
+        }
+        const scrollables = prevContainer.querySelectorAll<HTMLElement>('*')
+        for (let i = 0; i < scrollables.length; i++) {
+          const el = scrollables[i]
+          if (el && (el.scrollTop > 0 || el.scrollLeft > 0)) {
+            records.push({ el, top: el.scrollTop, left: el.scrollLeft })
+          }
+        }
+        scrollPositionsRef.current.set(prevKey, records)
+      }
+    }
+
+    if (currentKey) {
+      const records = scrollPositionsRef.current.get(currentKey)
+      if (records && records.length > 0) {
+        requestAnimationFrame(() => {
+          for (const rec of records) {
+            if (rec.el && rec.el.isConnected) {
+              rec.el.scrollTop = rec.top
+              rec.el.scrollLeft = rec.left
+            }
+          }
+        })
+      }
+    }
+
+    prevKeyRef.current = currentKey
+  }, [currentKey])
 
   const active =
     entries.find((e) => e.id === currentId) ??
     (currentId ? { id: currentId, title: currentId, group: 'main' as const } : defaultEntry)
-  const View = currentId
-    ? (ctx.ui.viewFor(currentId) as
-        | ComponentType<{
-            ctx: Context
-            onOpenAlbum?: (urn: string) => void
-            [key: string]: unknown
-          }>
-        | undefined)
-    : undefined
   const QueueView = ctx.ui.viewFor('queue.view') as
     | ComponentType<{
         ctx: Context
@@ -579,55 +671,95 @@ export function Shell({ ctx }: { ctx: Context }) {
                 borderRadius: 8,
                 background: 'var(--bg-primary, #080A12)',
                 border: '1px solid var(--border-subtle, rgba(148,163,184,0.08))',
-                overflow: 'auto',
+                overflow: 'hidden',
                 minHeight: 0,
+                position: 'relative',
               },
             },
-            View
-              ? currentId === 'library.home' && LibraryView
-                ? h(
-                    'div',
-                    {
-                      style: {
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '100%',
-                        color: 'var(--text-tertiary, #8B92A6)',
-                        gap: 12,
-                      },
-                    },
-                    tablerIcon('music', { size: 52, style: { opacity: 0.6 } }),
-                    h('div', { style: { fontSize: 15, fontWeight: 500 } }, '选择歌单或专辑开始播放'),
-                  )
-                : h(
-                    ViewBoundary,
-                    {
-                      // Remounts on navigation, which is what clears a failed view once
-                      // the user goes somewhere else and comes back.
-                      key: currentId + (currentParams ? `:${JSON.stringify(currentParams)}` : ''),
-                      title: active?.title ?? currentId ?? 'This view',
-                      onError: (error) =>
-                        ctx.logger.error(
-                          `ui: view "${currentId}" threw: ${error.stack ?? error.message}`,
-                        ),
-                    },
-                    h(View, {
-                      ctx,
-                      ...currentParams,
-                      onOpenAlbum: (urn: string) => navigateTo('album.view', { urn }),
-                    }),
-                  )
-              : h(
+            pagesToRender.size === 0
+              ? h(
                   'div',
                   { style: { padding: 24, color: 'var(--text-tertiary, #8B92A6)' } },
                   active
-                    ? // A contribution with no view on this target is a normal
-                      // state, not an error — the direct cost of ADR-2 (docs/08 §3).
-                      `"${active.title}" has no desktop view.`
+                    ? `"${active.title}" has no desktop view.`
                     : 'No plugin has contributed a route.',
-                ),
+                )
+              : Array.from(pagesToRender.values()).map((page) => {
+                  const isCurrent = page.key === currentKey
+                  const pageView = page.id
+                    ? (ctx.ui.viewFor(page.id) as
+                        | ComponentType<{
+                            ctx: Context
+                            onOpenAlbum?: (urn: string) => void
+                            [key: string]: unknown
+                          }>
+                        | undefined)
+                    : undefined
+                  const pageActive =
+                    entries.find((e) => e.id === page.id) ??
+                    (page.id ? { id: page.id, title: page.id, group: 'main' as const } : defaultEntry)
+
+                  return h(
+                    'div',
+                    {
+                      key: page.key,
+                      'data-testid': `view-page-${page.id}`,
+                      ref: (el: HTMLDivElement | null) => {
+                        if (el) pageContainerRefs.current.set(page.key, el)
+                        else pageContainerRefs.current.delete(page.key)
+                      },
+                      style: {
+                        display: isCurrent ? 'flex' : 'none',
+                        flexDirection: 'column',
+                        height: '100%',
+                        width: '100%',
+                        minHeight: 0,
+                        overflow: 'auto',
+                      },
+                    },
+                    pageView
+                      ? page.id === 'library.home' && LibraryView
+                        ? h(
+                            'div',
+                            {
+                              style: {
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                height: '100%',
+                                color: 'var(--text-tertiary, #8B92A6)',
+                                gap: 12,
+                              },
+                            },
+                            tablerIcon('music', { size: 52, style: { opacity: 0.6 } }),
+                            h('div', { style: { fontSize: 15, fontWeight: 500 } }, '选择歌单或专辑开始播放'),
+                          )
+                        : h(
+                            ViewBoundary,
+                            {
+                              title: pageActive?.title ?? page.id ?? 'This view',
+                              resetKey: isCurrent ? 'active' : 'inactive',
+                              onError: (error) =>
+                                ctx.logger.error(
+                                  `ui: view "${page.id}" threw: ${error.stack ?? error.message}`,
+                                ),
+                            },
+                            h(pageView, {
+                              ctx,
+                              ...page.params,
+                              onOpenAlbum: (urn: string) => navigateTo('album.view', { urn }),
+                            }),
+                          )
+                      : h(
+                          'div',
+                          { style: { padding: 24, color: 'var(--text-tertiary, #8B92A6)' } },
+                          pageActive
+                            ? `"${pageActive.title}" has no desktop view.`
+                            : 'No plugin has contributed a route.',
+                        ),
+                  )
+                }),
           ),
       isQueueOpen && QueueView
         ? h(

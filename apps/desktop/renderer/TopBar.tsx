@@ -12,11 +12,18 @@
 
 import { createElement as h, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { SleepTimerMode } from '@BBeBee/protocol'
+import type { SleepTimerMode, SleepTimerService } from '@BBeBee/protocol'
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useSearchSourceSelection, type SearchInterfaceKind } from '@BBeBee/plugin-sources/hooks'
 import { useSleepTimer } from '@BBeBee/plugin-sleep-timer/hooks'
 import logoWhiteUrl from './assets/logo-white.png'
+
+function serviceOf<T = unknown>(ctx: Context, key: string): T | undefined {
+  return (ctx as unknown as { reflect?: { get(key: string, required: boolean): unknown } }).reflect?.get?.(
+    key,
+    false,
+  ) as T | undefined
+}
 
 export interface ElectronCSSProperties extends CSSProperties {
   WebkitAppRegion?: 'drag' | 'no-drag'
@@ -97,7 +104,7 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
       closeTimeoutRef.current = null
     }
     setHovered(false)
-    ctx.sleepTimer?.cancel?.()
+    serviceOf<SleepTimerService>(ctx, 'sleepTimer')?.cancel?.()
   }
 
   return h(

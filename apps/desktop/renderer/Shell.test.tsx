@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { act, createElement as h } from 'react'
+import { act, createElement as h, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Context, Service } from 'cordis'
 import type { SleepTimerState } from '@BBeBee/protocol'
@@ -708,6 +708,55 @@ describe('the desktop shell', () => {
 
     expect(sleepTimerRef.cancel).toHaveBeenCalled()
     expect(container.querySelector('[data-testid="topbar-sleep-timer-indicator"]')).toBeNull()
+  })
+
+  it('preserves component state and keep-alive when navigating between routes and returning', async () => {
+    function StatefulView() {
+      const [count, setCount] = useState(0)
+      return h(
+        'div',
+        { 'data-testid': 'stateful-view' },
+        h('span', { 'data-testid': 'counter-value' }, `Count: ${count}`),
+        h('button', { 'data-testid': 'increment-btn', onClick: () => setCount((c) => c + 1) }, 'Increment'),
+      )
+    }
+
+    const { container, ctx } = await mount((ui) => {
+      ui.routes = [route('stateful', 'Stateful'), route('other', 'Other')]
+      ui.views.set('stateful', StatefulView)
+      ui.views.set('other', () => h('div', { 'data-testid': 'other-view' }, 'Other Page Content'))
+    })
+
+    expect(container.querySelector('[data-testid="counter-value"]')?.textContent).toBe('Count: 0')
+
+    // Increment count to 5
+    const incrementBtn = container.querySelector('[data-testid="increment-btn"]') as HTMLButtonElement
+    await act(async () => {
+      incrementBtn.click()
+      incrementBtn.click()
+      incrementBtn.click()
+      incrementBtn.click()
+      incrementBtn.click()
+    })
+    expect(container.querySelector('[data-testid="counter-value"]')?.textContent).toBe('Count: 5')
+
+    // Navigate away to 'other'
+    await act(async () => {
+      ctx.emit('ui/navigate', 'other')
+    })
+    expect(container.querySelector('[data-testid="other-view"]')).not.toBeNull()
+    const statefulContainer = container.querySelector('[data-testid="view-page-stateful"]') as HTMLElement
+    expect(statefulContainer.style.display).toBe('none')
+
+    // Navigate back to 'stateful'
+    const backBtn = container.querySelector('button[aria-label="Go back"]') as HTMLButtonElement
+    await act(async () => {
+      backBtn.click()
+    })
+
+    // Stateful view is visible again and count is still 5!
+    expect(statefulContainer.style.display).toBe('flex')
+    expect(container.querySelector('[data-testid="counter-value"]')?.textContent).toBe('Count: 5')
   })
 })
 

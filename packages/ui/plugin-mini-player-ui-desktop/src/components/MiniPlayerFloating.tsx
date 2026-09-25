@@ -59,8 +59,8 @@ export function MiniPlayerFloating({
           WebkitBackdropFilter: 'blur(20px)',
           border: '1px solid rgba(255, 255, 255, 0.08)',
           boxShadow: hovered
-            ? '0 10px 24px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35)'
-            : '0 6px 16px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.25)',
+            ? '0 4px 12px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2)'
+            : '0 2px 8px rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.18)',
           transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
           overflow: 'hidden',
         },
