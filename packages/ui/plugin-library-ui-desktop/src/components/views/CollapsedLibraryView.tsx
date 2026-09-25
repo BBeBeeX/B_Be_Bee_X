@@ -2,6 +2,7 @@ import { createElement as h } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
+import { LIBRARY_VIEWS } from '@BBeBee/plugin-library/views'
 import { CachedArtwork } from '../CachedArtwork.js'
 import type { UnifiedItem } from '../UnifiedLibraryRow.js'
 
@@ -15,6 +16,10 @@ export interface CollapsedLibraryViewProps {
   setCollapsedMenuPos: (pos: { top: number; left: number }) => void
   renderCreateMenu: (isCollapsed: boolean) => ReactElement | null
   items: readonly UnifiedItem[]
+  /** The two quick entries (喜欢 / 本地和下载) stay visible even collapsed. */
+  favoriteCount: number
+  localCount: number
+  activeViewId?: string
   modals: ReactElement
   contextMenus: ReactElement
 }
@@ -29,9 +34,53 @@ export function CollapsedLibraryView({
   setCollapsedMenuPos,
   renderCreateMenu,
   items,
+  favoriteCount,
+  localCount,
+  activeViewId,
   modals,
   contextMenus,
 }: CollapsedLibraryViewProps): ReactElement {
+  // Same light-dark pairing as the sidebar quick rows, so the collapsed rail
+  // reads as the same menu squeezed down to icons.
+  const quickTile = (icon: 'heart' | 'download', viewId: string, label: string, count: number) => {
+    const selected = activeViewId === viewId
+    return h(
+      'button',
+      {
+        key: viewId,
+        type: 'button',
+        'aria-label': `${label}·${count}`,
+        title: `${label}·${count}`,
+        'aria-current': selected ? 'page' : undefined,
+        onClick: () => ctx.ui.navigate(viewId),
+        style: {
+          width: 44,
+          height: 44,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 10,
+          border: 'none',
+          cursor: 'pointer',
+          color: 'light-dark(#17171C, #F2F3F7)',
+          background: selected ? 'light-dark(#E9E9EC, rgba(255, 255, 255, 0.09))' : 'transparent',
+          transition: 'background-color 0.15s ease',
+        },
+        onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+          if (!selected) {
+            e.currentTarget.style.backgroundColor = 'light-dark(#F2F2F4, rgba(255, 255, 255, 0.05))'
+          }
+        },
+        onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = selected
+            ? 'light-dark(#E9E9EC, rgba(255, 255, 255, 0.09))'
+            : 'transparent'
+        },
+      },
+      tablerIcon(icon, { size: 24 }),
+    )
+  }
+
   return h(
     'section',
     {
@@ -163,6 +212,16 @@ export function CollapsedLibraryView({
         ),
       ),
       renderCreateMenu(true),
+    ),
+    // 喜欢 / 本地和下载: the two quick entries keep their place on the rail.
+    h(
+      'div',
+      {
+        'aria-label': '音乐库快捷入口',
+        style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginBottom: 12 },
+      },
+      quickTile('heart', LIBRARY_VIEWS.favorites, '喜欢', favoriteCount),
+      quickTile('download', LIBRARY_VIEWS.local, '本地和下载', localCount),
     ),
     h(
       'div',

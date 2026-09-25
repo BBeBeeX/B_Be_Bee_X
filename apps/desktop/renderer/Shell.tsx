@@ -624,19 +624,13 @@ export function Shell({ ctx }: { ctx: Context }) {
         ? `${sidebarCol} 1fr ${queueCol}`
         : `${sidebarCol} 1fr`
 
-  return h(
+  // The top bar lives at the top of the content pane — inside the main card
+  // normally, inside the expanded library pane when that takes over — so the
+  // sidebar and queue columns run the full window height. Sticky keeps the
+  // window controls reachable when the expanded library scrolls.
+  const topBar = h(
     'div',
-    {
-      style: {
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        minHeight: '100vh',
-        width: '100%',
-        overflow: 'hidden',
-        background: 'var(--bg-app, #05060B)',
-      },
-    },
+    { style: { flexShrink: 0, position: 'sticky', top: 0, zIndex: 60 } },
     h(TopBar, {
       ctx,
       canGoBack,
@@ -654,6 +648,21 @@ export function Shell({ ctx }: { ctx: Context }) {
         navigateTo('settings.view')
       },
     }),
+  )
+
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: '100vh',
+        width: '100%',
+        overflow: 'hidden',
+        background: 'var(--bg-app, #05060B)',
+      },
+    },
     h(
       'div',
       {
@@ -707,7 +716,13 @@ export function Shell({ ctx }: { ctx: Context }) {
         LibraryView
           ? h(
               'div',
-              { style: { height: '100%', width: '100%', display: 'flex', flexDirection: 'column' } },
+              {
+                style:
+                  libraryMode === 'expanded'
+                    ? { flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column' }
+                    : { height: '100%', width: '100%', display: 'flex', flexDirection: 'column' },
+              },
+              libraryMode === 'expanded' ? topBar : null,
               h('span', { style: { display: 'none' } }, 'Library'),
               h(LibraryView, {
                 ctx,
@@ -807,17 +822,23 @@ export function Shell({ ctx }: { ctx: Context }) {
                 overflow: 'hidden',
                 minHeight: 0,
                 position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
               },
             },
-            pagesToRender.size === 0
-              ? h(
-                  'div',
-                  { style: { padding: 24, color: 'var(--text-tertiary, #8B92A6)' } },
-                  active
-                    ? `"${active.title}" has no desktop view.`
-                    : 'No plugin has contributed a route.',
-                )
-              : Array.from(pagesToRender.values()).map((page) => {
+            topBar,
+            h(
+              'div',
+              { style: { flex: 1, minHeight: 0, position: 'relative' } },
+              pagesToRender.size === 0
+                ? h(
+                    'div',
+                    { style: { padding: 24, color: 'var(--text-tertiary, #8B92A6)' } },
+                    active
+                      ? `"${active.title}" has no desktop view.`
+                      : 'No plugin has contributed a route.',
+                  )
+                : Array.from(pagesToRender.values()).map((page) => {
                   const isCurrent = page.key === currentKey
                   const pageView = page.id
                     ? (ctx.ui.viewFor(page.id) as
@@ -893,6 +914,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                         ),
                   )
                 }),
+              ),
           ),
       isQueueOpen && QueueView
         ? h(

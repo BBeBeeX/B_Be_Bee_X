@@ -129,6 +129,14 @@ export function LibraryScreen({
   const [error, setError] = useState<string | undefined>(undefined)
   const [generation, setGeneration] = useState(0)
 
+  // The quick entries (喜欢 / 本地和下载) highlight when their view is the one
+  // the user navigated to, wherever the navigation came from.
+  const [activeViewId, setActiveViewId] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    const offNavigate = ctx.on('ui/navigate', (routeId: string) => setActiveViewId(routeId))
+    return () => void offNavigate()
+  }, [ctx])
+
   const playlistMenu = usePlaylistMenu(ctx)
   const collectionMenu = useCollectionMenu(ctx)
   const albumMenu = useAddToCollection(ctx)
@@ -157,7 +165,6 @@ export function LibraryScreen({
     collectionFirstArtworks,
     containedPlaylistUrns,
     setContainedPlaylistUrns,
-    favoriteArtwork,
   } = useLibraryHydration({
     ctx,
     generation,
@@ -209,79 +216,9 @@ export function LibraryScreen({
   })
 
   const favoriteUrns = useMemo(() => savedTrackEntries.data?.map((e) => e.urn) ?? [], [savedTrackEntries.data])
-  const localUrns = useMemo(() => localTracks.map((t) => t.urn), [localTracks])
 
-  const favoriteItem: UnifiedItem = useMemo(() => {
-    const isPinned = isItemPinned({ id: 'builtin:favorite' })
-    const lastPlayedAt = favoriteUrns.length > 0 ? Math.max(0, ...favoriteUrns.map((u) => historyMap.get(u) ?? 0)) : 0
-    return {
-      id: 'builtin:favorite',
-      kind: 'favorite',
-      title: '已点赞的歌曲',
-      subtitle: '歌单 • Revers',
-      creator: 'Revers',
-      artwork: favoriteArtwork,
-      artworkSeed: 'favorite',
-      pinned: isPinned,
-      addedAt: savedTrackEntries.data?.[0]?.addedAt ?? Date.now() - 7 * 24 * 3600 * 1000,
-      lastPlayedAt,
-      isDownloaded: false,
-      onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.favorites),
-      onPlay: () => {
-        if (favoriteUrns[0])
-          void player?.playFromContext(favoriteUrns[0], favoriteUrns, {
-            context: { kind: 'favorites', label: '收藏夹' },
-          })
-      },
-      onMore: (anchor) =>
-        openBuiltinMenu(
-          '已点赞的歌曲',
-          () => {
-            if (favoriteUrns[0])
-              void player?.playFromContext(favoriteUrns[0], favoriteUrns, {
-                context: { kind: 'favorites', label: '收藏夹' },
-              })
-          },
-          isPinned,
-          { id: 'builtin:favorite' },
-          anchor,
-        ),
-    }
-  }, [ctx, favoriteArtwork, favoriteUrns, historyMap, isItemPinned, openBuiltinMenu, player, savedTrackEntries.data])
-
-  const localItem: UnifiedItem = useMemo(() => {
-    const isPinned = isItemPinned({ id: 'builtin:local' })
-    const lastPlayedAt = localUrns.length > 0 ? Math.max(0, ...localUrns.map((u) => historyMap.get(u) ?? 0)) : 0
-    const maxFetched = localTracks.length > 0 ? Math.max(0, ...localTracks.map((t) => t.fetchedAt ?? 0)) : 0
-    const localAddedAt = maxFetched > 0 ? maxFetched : (localTracks.length > 0 ? Date.now() : 0)
-    return {
-      id: 'builtin:local',
-      kind: 'local',
-      title: '本地音乐',
-      subtitle: `${localTracks.length} 首歌曲`,
-      creator: '本地文件',
-      artwork: localTracks[0]?.artwork,
-      artworkSeed: 'local',
-      pinned: isPinned,
-      addedAt: localAddedAt,
-      lastPlayedAt,
-      isDownloaded: true,
-      onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.local),
-      onPlay: () => {
-        if (localUrns[0]) void player?.playNow(localUrns)
-      },
-      onMore: (anchor) =>
-        openBuiltinMenu(
-          '本地音乐',
-          () => {
-            if (localUrns[0]) void player?.playNow(localUrns)
-          },
-          isPinned,
-          { id: 'builtin:local' },
-          anchor,
-        ),
-    }
-  }, [ctx, isItemPinned, localTracks, localUrns, historyMap, openBuiltinMenu, player])
+  // 收藏夹和本地音乐不再是下方列表里的两张卡：它们作为两个快捷入口渲染在
+  // 音乐库标题之下、筛选工具条之上（见 renderQuickItem）。
 
   const playlistItems: UnifiedItem[] = useMemo(() => {
     return (playlists.data ?? [])
@@ -300,8 +237,8 @@ export function LibraryScreen({
           title: playlist.name,
           subtitle: playlist.isSmart
             ? '智能歌单'
-            : '歌单 • Revers',
-          creator: 'Revers',
+            : '歌单 • Mine',
+          creator: 'Mine',
           artwork: playlist.artwork ?? playlistFirstTrackArtworks.get(playlist.urn),
           artworkSeed: playlist.urn,
           pinned: isPinned,
@@ -359,7 +296,7 @@ export function LibraryScreen({
         kind: 'collection',
         title: collection.name,
         subtitle: `文件夹 • ${collection.itemCount ?? 0} 个项目`,
-        creator: 'Revers',
+        creator: 'Mine',
         artwork: collectionFirstArtworks.get(collection.id),
         artworkSeed: collection.id,
         pinned: isPinned,
@@ -400,8 +337,8 @@ export function LibraryScreen({
   }, [ctx, isItemPinned, openBuiltinMenu, savedArtistEntries.data])
 
   const allItems = useMemo(() => {
-    return [favoriteItem, localItem, ...playlistItems, ...albumItems, ...collectionItems, ...artistItems]
-  }, [favoriteItem, localItem, playlistItems, albumItems, collectionItems, artistItems])
+    return [...playlistItems, ...albumItems, ...collectionItems, ...artistItems]
+  }, [playlistItems, albumItems, collectionItems, artistItems])
 
   const filteredItems = useMemo(() => {
     let result = allItems
@@ -456,8 +393,8 @@ export function LibraryScreen({
               urn: matchedPlaylist.urn,
               kind: 'playlist',
               title: matchedPlaylist.name,
-              subtitle: matchedPlaylist.isSmart ? '智能歌单' : '歌单 • Revers',
-              creator: 'Revers',
+              subtitle: matchedPlaylist.isSmart ? '智能歌单' : '歌单 • Mine',
+              creator: 'Mine',
               artwork: matchedPlaylist.artwork ?? playlistFirstTrackArtworks.get(matchedPlaylist.urn),
               artworkSeed: matchedPlaylist.urn,
               pinned: isPinned,
@@ -535,8 +472,8 @@ export function LibraryScreen({
                   urn: detail.urn,
                   kind: 'playlist',
                   title: detail.name,
-                  subtitle: detail.isSmart ? '智能歌单' : '歌单 • Revers',
-                  creator: 'Revers',
+                  subtitle: detail.isSmart ? '智能歌单' : '歌单 • Mine',
+                  creator: 'Mine',
                   artwork: detail.artwork ?? playlistFirstTrackArtworks.get(detail.urn),
                   artworkSeed: detail.urn,
                   pinned: isPinned,
@@ -786,6 +723,73 @@ export function LibraryScreen({
     })
   }
 
+  // 极简侧边栏快捷入口：扁平行、图标 + 文字 + 数量，选中项圆角浅灰高亮。
+  // 颜色走 light-dark()，随颜色模式在浅色（黑图标/深灰字/浅灰底）与深色间切换。
+  const renderQuickItem = (
+    icon: 'heart' | 'download',
+    label: string,
+    count: number,
+    viewId: string,
+  ) => {
+    const selected = activeViewId === viewId
+    return h(
+      'button',
+      {
+        key: viewId,
+        type: 'button',
+        'aria-current': selected ? 'page' : undefined,
+        onClick: () => ctx.ui.navigate(viewId),
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '10px 14px',
+          borderRadius: 10,
+          border: 'none',
+          background: selected ? 'light-dark(#E9E9EC, rgba(255, 255, 255, 0.09))' : 'transparent',
+          cursor: 'pointer',
+          textAlign: 'left',
+          font: 'inherit',
+          transition: 'background-color 0.15s ease',
+        },
+        onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+          if (!selected) {
+            e.currentTarget.style.backgroundColor = 'light-dark(#F2F2F4, rgba(255, 255, 255, 0.05))'
+          }
+        },
+        onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+          e.currentTarget.style.backgroundColor = selected
+            ? 'light-dark(#E9E9EC, rgba(255, 255, 255, 0.09))'
+            : 'transparent'
+        },
+      },
+      tablerIcon(icon, { size: 20, color: 'light-dark(#17171C, #F2F3F7)' }),
+      h(
+        'span',
+        {
+          style: {
+            fontSize: 13,
+            fontWeight: 500,
+            color: 'light-dark(#494950, #A9AEB9)',
+            whiteSpace: 'nowrap',
+          },
+        },
+        label,
+        h(
+          'span',
+          {
+            style: {
+              fontWeight: 400,
+              fontVariantNumeric: 'tabular-nums',
+              color: 'light-dark(#8E8E96, #6E7380)',
+            },
+          },
+          `·${count}`,
+        ),
+      ),
+    )
+  }
+
   const renderCreateMenu = (isCollapsed: boolean) => {
     return h(LibraryCreateMenu, {
       isCreateMenuOpen,
@@ -920,6 +924,9 @@ export function LibraryScreen({
       setCollapsedMenuPos,
       renderCreateMenu,
       items: activeFolderId !== null ? filteredFolderItems : filteredItems,
+      favoriteCount: favoriteUrns.length,
+      localCount: localTracks.length,
+      activeViewId,
       modals: renderModals(),
       contextMenus: renderContextMenus(),
     })
@@ -942,6 +949,7 @@ export function LibraryScreen({
       setSortMenuAnchor,
       activeFilter,
       setActiveFilter,
+      hasArtists: artistItems.length > 0,
       filteredItems,
       filteredFolderItems,
       modals: renderModals(),
@@ -1066,6 +1074,15 @@ export function LibraryScreen({
         ),
       ),
     ),
+    h(
+      'nav',
+      {
+        'aria-label': '音乐库快捷入口',
+        style: { display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 },
+      },
+      renderQuickItem('heart', '喜欢', favoriteUrns.length, LIBRARY_VIEWS.favorites),
+      renderQuickItem('download', '本地和下载', localTracks.length, LIBRARY_VIEWS.local),
+    ),
     h(LibraryToolbar, {
       activeFilter,
       setActiveFilter,
@@ -1075,6 +1092,7 @@ export function LibraryScreen({
       setSearchQuery,
       sortMode,
       setSortMenuAnchor,
+      hasArtists: artistItems.length > 0,
     }),
     error ? h(Text, { variant: 'sm', tone: 'error', testID: 'playlists-error' }, error) : null,
     h(

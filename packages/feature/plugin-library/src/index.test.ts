@@ -39,7 +39,9 @@ describe('plugin-library', () => {
     // protocol's `LibraryService` accepts this service, and it answers.
     const asContract: LibraryService = library
     expect(typeof asContract.setSaved).toBe('function')
-    expect((await asContract.listPlaylists()).items).toEqual([])
+    // A fresh library is seeded with one default playlist — the curation page
+    // must not open empty.
+    expect((await asContract.listPlaylists()).items.map((p) => p.name)).toEqual(['我的歌单'])
   })
 
   it('emits library/changed for playlist edits and collections-changed for collections', async () => {

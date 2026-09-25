@@ -82,6 +82,14 @@ export class Library extends Service implements LibraryService {
   async [Service.init]() {
     this.ownCtx.logger.debug('library: curation tables ready')
 
+    // A fresh install opens with one playlist: an empty curation page reads as
+    // "broken" less charitably than a starting point. The seed re-runs only
+    // while the library holds no playlists at all.
+    const existing = await this.playlists.list()
+    if (existing.items.length === 0) {
+      await this.createPlaylist('我的歌单')
+    }
+
     // Descriptors, not components: the headless plugin says what exists and
     // where it belongs; whichever view package was loaded for this target
     // binds a component to the same id (docs/08 §2). The `ui` inject is a

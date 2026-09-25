@@ -10,7 +10,6 @@ export const LIBRARY_FILTER_BUTTONS = [
   { key: 'playlist', label: '歌单' },
   { key: 'album', label: '专辑' },
   { key: 'artist', label: '艺人' },
-  { key: 'downloaded', label: '已下载' },
 ] as const
 
 export const LIBRARY_SORT_LABELS: Record<LibrarySortMode, string> = {
@@ -29,6 +28,8 @@ export interface LibraryToolbarProps {
   setSearchQuery: (query: string) => void
   sortMode: LibrarySortMode
   setSortMenuAnchor: (anchor: MenuAnchor | undefined) => void
+  /** The 艺人 chip only makes sense when the library actually holds artists. */
+  hasArtists?: boolean
 }
 
 export function LibraryToolbar({
@@ -40,7 +41,9 @@ export function LibraryToolbar({
   setSearchQuery,
   sortMode,
   setSortMenuAnchor,
+  hasArtists = true,
 }: LibraryToolbarProps): ReactElement {
+  const filterButtons = LIBRARY_FILTER_BUTTONS.filter(({ key }) => key !== 'artist' || hasArtists)
   return h(
     'div',
     null,
@@ -56,7 +59,7 @@ export function LibraryToolbar({
           flexWrap: 'wrap',
         },
       },
-      LIBRARY_FILTER_BUTTONS.map(({ key, label }) => {
+      filterButtons.map(({ key, label }) => {
         const active = activeFilter === key
         return h(
           'button',
@@ -125,27 +128,28 @@ export function LibraryToolbar({
             })
           : null,
       ),
-      h(
-        'button',
-        {
-          type: 'button',
-          onClick: (e: { clientX: number; clientY: number }) =>
-            setSortMenuAnchor({ x: e.clientX, y: e.clientY }),
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            background: 'transparent',
-            border: 'none',
-            color: '#A0A0AE',
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: 'pointer',
+        // The sort label steps aside while the search field needs the row.
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: (e: { clientX: number; clientY: number }) =>
+              setSortMenuAnchor({ x: e.clientX, y: e.clientY }),
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'transparent',
+              border: 'none',
+              color: '#A0A0AE',
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: 'pointer',
+            },
           },
-        },
-        h('span', null, LIBRARY_SORT_LABELS[sortMode]),
-        tablerIcon('list', { size: 20 }),
-      ),
+          searchOpen ? null : h('span', null, LIBRARY_SORT_LABELS[sortMode]),
+          tablerIcon('list', { size: 20 }),
+        ),
     ),
   )
 }

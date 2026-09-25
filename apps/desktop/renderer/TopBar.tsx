@@ -569,9 +569,10 @@ export function TopBar({
         height: 48,
         minHeight: 48,
         maxHeight: 48,
+        flexShrink: 0,
         paddingLeft: 12,
         paddingRight: 0,
-        background: 'var(--bg-app, #05060B)',
+        background: 'transparent',
         borderBottom: 'none',
         userSelect: 'none',
         WebkitAppRegion: 'drag',
@@ -816,7 +817,7 @@ export function TopBar({
         tablerIcon('chevron-right', { size: 20 }),
       ),
     ),
-    // Center Group: Home Button, Search Bar
+    // Center Group: Search Bar
     h(
       'div',
       {
@@ -826,43 +827,10 @@ export function TopBar({
           gap: 10,
           flex: 1,
           justifyContent: 'center',
-          maxWidth: 520,
+          maxWidth: 360,
           ...noDragStyle,
         },
       },
-      // Home Button
-      h(
-        'button',
-        {
-          type: 'button',
-          'aria-label': 'Home',
-          title: 'Home',
-          onClick: onHome,
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 36,
-            height: 36,
-            borderRadius: '50%',
-            border: 'none',
-            background: 'rgba(255, 255, 255, 0.08)',
-            color: 'var(--text-primary, #F5F7FF)',
-            cursor: 'pointer',
-            flexShrink: 0,
-            transition: 'background-color 0.15s ease, transform 0.15s ease',
-          },
-          onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.14)'
-            e.currentTarget.style.transform = 'scale(1.04)'
-          },
-          onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'
-            e.currentTarget.style.transform = 'scale(1)'
-          },
-        },
-        tablerIcon('home', { size: 22 }),
-      ),
       // Search Bar Container with Dropdown
       h(
         'div',

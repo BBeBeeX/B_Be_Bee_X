@@ -42,8 +42,8 @@ describe('redactForTrace', () => {
   })
 
   it('strips secret-looking body parameters', () => {
-    const out = redactForTrace('username=revers&password=hunter2')
-    expect(out).toContain('username=revers')
+    const out = redactForTrace('username=Mine&password=hunter2')
+    expect(out).toContain('username=Mine')
     expect(out).not.toContain('hunter2')
   })
 
@@ -71,7 +71,7 @@ describe('redactForTrace', () => {
     const parsed = new URL(out)
     expect(parsed.hostname).toBe('music.example.org')
     expect(parsed.pathname).toBe('/rest')
-    expect(parsed.searchParams.get('u')).toBe('revers')
+    expect(parsed.searchParams.get('u')).toBe('Mine')
     expect(parsed.searchParams.get('t')).not.toBe('abc')
   })
 
@@ -87,16 +87,16 @@ describe('redactForTrace', () => {
   })
 
   it('redacts a JSON body, which no query or header rule can see', () => {
-    const out = redactForTrace('{"user":"revers","token":"abc123","password":"hunter2"}')
-    expect(out).toContain('"user":"revers"')
+    const out = redactForTrace('{"user":"Mine","token":"abc123","password":"hunter2"}')
+    expect(out).toContain('"user":"Mine"')
     expect(out).not.toContain('abc123')
     expect(out).not.toContain('hunter2')
   })
 
   it('redacts a quoted form value without destroying the quotes', () => {
-    const out = redactForTrace('token="abc123"&user="revers"')
+    const out = redactForTrace('token="abc123"&user="Mine"')
     expect(out).not.toContain('abc123')
-    expect(out).toContain('user="revers"')
+    expect(out).toContain('user="Mine"')
   })
 
   it('redacts credential-named headers beyond Authorization', () => {
@@ -109,9 +109,9 @@ describe('redactForTrace', () => {
   it('redacts a JSON value containing an escaped quote', () => {
     // `[^"]*` stopped at the `\"` and left the tail of the secret in the
     // trace — the one outcome this function exists to prevent.
-    const out = redactForTrace('{"token":"ab\\"cd","user":"revers"}')
+    const out = redactForTrace('{"token":"ab\\"cd","user":"Mine"}')
     expect(out).not.toContain('cd')
-    expect(out).toContain('"user":"revers"')
+    expect(out).toContain('"user":"Mine"')
   })
 
   it('does not let one pair swallow the next', () => {

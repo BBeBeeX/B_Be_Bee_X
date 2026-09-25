@@ -32,6 +32,8 @@ export interface ExpandedLibraryViewProps {
 
   activeFilter: LibraryFilterKey
   setActiveFilter: (filter: LibraryFilterKey) => void
+  /** The 艺人 chip only makes sense when the library actually holds artists. */
+  hasArtists?: boolean
 
   filteredItems: readonly UnifiedItem[]
   filteredFolderItems: readonly UnifiedItem[]
@@ -58,6 +60,7 @@ export function ExpandedLibraryView({
 
   activeFilter,
   setActiveFilter,
+  hasArtists = true,
 
   filteredItems,
   filteredFolderItems,
@@ -498,7 +501,7 @@ export function ExpandedLibraryView({
       h(
         'div',
         { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-        LIBRARY_FILTER_BUTTONS.map(({ key, label }) => {
+        LIBRARY_FILTER_BUTTONS.filter(({ key }) => key !== 'artist' || hasArtists).map(({ key, label }) => {
           const active = activeFilter === key
           return h(
             'button',

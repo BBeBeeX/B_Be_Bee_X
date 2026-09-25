@@ -235,10 +235,11 @@ describe('the desktop shell', () => {
     expect(backBtn).not.toBeNull()
     expect(forwardBtn).not.toBeNull()
 
-    // Center controls: Home, Search
-    const homeBtn = container.querySelector('button[aria-label="Home"]') as HTMLButtonElement
+    // Center controls: Search. (Home navigation lives on the brand logo and
+    // the More menu — the standalone Home button was removed.)
+    const logoBtn = container.querySelector('button[aria-label="BBeBee Home"]') as HTMLButtonElement
     const searchInput = container.querySelector('input[aria-label="Search"]') as HTMLInputElement
-    expect(homeBtn).not.toBeNull()
+    expect(logoBtn).not.toBeNull()
     expect(searchInput).not.toBeNull()
 
     // Right controls: Profile, Minimize, Maximize, Close
@@ -354,7 +355,7 @@ describe('the desktop shell', () => {
 
     const backBtn = container.querySelector('button[aria-label="Go back"]') as HTMLButtonElement
     const forwardBtn = container.querySelector('button[aria-label="Go forward"]') as HTMLButtonElement
-    const homeBtn = container.querySelector('button[aria-label="Home"]') as HTMLButtonElement
+    const homeBtn = container.querySelector('button[aria-label="BBeBee Home"]') as HTMLButtonElement
 
     // Initial state: on Home, cannot go back or forward
     expect(container.textContent).toContain('Home Screen')

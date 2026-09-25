@@ -272,20 +272,20 @@ describe('LibraryScreen', () => {
         await tick()
       })
 
-      expect(container.textContent).toContain('最喜欢的音乐')
-      expect(container.textContent).toContain('本地音乐')
+      expect(container.textContent).toContain('喜欢')
+      expect(container.textContent).toContain('本地和下载')
       expect(container.textContent).toContain('Road trip')
       expect(container.textContent).toContain('Ambient mix')
       expect(container.textContent).toContain('Homogenic')
 
       await act(async () => {
-        getByText('本地音乐').click()
+        getByText('本地和下载').click()
         await tick()
       })
       expect(ui.calls).toContain('library.local:{}')
 
       await act(async () => {
-        getByText('最喜欢的音乐').click()
+        getByText('喜欢').click()
         await tick()
       })
       expect(ui.calls).toContain('library.favorites:{}')
@@ -308,7 +308,9 @@ describe('LibraryScreen', () => {
         await tick()
       })
       expect(container.textContent).toContain('Road trip')
-      expect(container.textContent).toContain('最喜欢的音乐')
+      // The 喜欢 / 本地和下载 quick entries live above the toolbar and are
+      // independent of the active filter.
+      expect(container.textContent).toContain('本地和下载')
       expect(container.textContent).not.toContain('Homogenic')
       expect(container.textContent).not.toContain('Ambient mix')
 
