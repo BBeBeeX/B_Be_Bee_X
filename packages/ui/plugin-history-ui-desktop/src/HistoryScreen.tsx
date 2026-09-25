@@ -7,7 +7,7 @@
  * 3. Playback history track list with date filtering, playback controls, and context menus.
  */
 
-import { createElement as h, useMemo, useState } from 'react'
+import { createElement as h, memo, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { PlayRecord, Track } from '@BBeBee/protocol'
@@ -20,18 +20,143 @@ import {
 } from '@BBeBee/plugin-player/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { useTrackMenu } from '@BBeBee/ui-menus'
-import { ContextMenu, EmptyState, TrackRow } from '@BBeBee/ui-kit-desktop'
-import type { TrackRowProps } from '@BBeBee/ui-core'
+import { ContextMenu, EmptyState, List, TrackRow } from '@BBeBee/ui-kit-desktop'
+import type { MenuAnchor, TrackRowProps } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
 import { PlayHeatmap, formatPlayDuration } from './PlayHeatmap.js'
 
-function CachedTrackRow({ ctx, ...props }: TrackRowProps & { ctx: Context }): ReactElement {
-  const artwork = useResolvedArtwork(ctx, props.track.artwork)
-  return h(TrackRow, {
-    ...props,
-    track: artwork ? { ...props.track, artwork } : props.track,
-  })
+const CachedTrackRow = memo(
+  function CachedTrackRow({ ctx, ...props }: TrackRowProps & { ctx: Context }): ReactElement {
+    const artwork = useResolvedArtwork(ctx, props.track.artwork)
+    return h(TrackRow, {
+      ...props,
+      track: artwork ? { ...props.track, artwork } : props.track,
+    })
+  },
+  (prev, next) =>
+    prev.track.urn === next.track.urn &&
+    prev.track.title === next.track.title &&
+    prev.track.artwork === next.track.artwork &&
+    prev.active === next.active,
+)
+
+interface HistoryTrackRowProps {
+  ctx: Context
+  record: PlayRecord
+  track: Track
+  isActive: boolean
+  playCount: number
+  onPress: () => void
+  onContextMenu: (e: React.MouseEvent) => void
+  onMore: (anchor?: MenuAnchor) => void
 }
+
+const HistoryTrackRow = memo(
+  function HistoryTrackRow({
+    ctx,
+    record,
+    track,
+    isActive,
+    playCount,
+    onPress,
+    onContextMenu,
+    onMore,
+  }: HistoryTrackRowProps): ReactElement {
+    return h(
+      'div',
+      {
+        onContextMenu,
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          borderRadius: tokens.radius.sm,
+          background: isActive ? 'rgba(87, 242, 135, 0.06)' : 'transparent',
+          height: 56,
+          boxSizing: 'border-box',
+        },
+      },
+      h(
+        'div',
+        { style: { flex: 1, minWidth: 0 } },
+        h(CachedTrackRow, {
+          ctx,
+          track,
+          active: isActive,
+          showArtwork: true,
+          onPress,
+          onMore,
+        }),
+      ),
+      h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            paddingRight: 16,
+            fontSize: 12,
+            color: '#8e8e93',
+            whiteSpace: 'nowrap',
+            userSelect: 'none',
+          },
+        },
+        h(
+          'span',
+          {
+            style: {
+              fontSize: 11,
+              padding: '1px 6px',
+              borderRadius: 4,
+              background: 'rgba(255, 255, 255, 0.08)',
+              color: '#8e8e93',
+            },
+          },
+          `播放 ${playCount} 次`,
+        ),
+        record.completed
+          ? h(
+              'span',
+              {
+                style: {
+                  fontSize: 11,
+                  padding: '1px 6px',
+                  borderRadius: 4,
+                  background: 'rgba(57, 211, 83, 0.15)',
+                  color: '#39d353',
+                },
+              },
+              '完播',
+            )
+          : record.skipped
+            ? h(
+                'span',
+                {
+                  style: {
+                    fontSize: 11,
+                    padding: '1px 6px',
+                    borderRadius: 4,
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    color: '#8e8e93',
+                  },
+                },
+                '跳过',
+              )
+            : null,
+        h('span', null, formatHistoryTime(record.startedAt)),
+      ),
+    )
+  },
+  (prev, next) =>
+    prev.record.id === next.record.id &&
+    prev.record.completed === next.record.completed &&
+    prev.record.skipped === next.record.skipped &&
+    prev.track.urn === next.track.urn &&
+    prev.track.title === next.track.title &&
+    prev.track.artwork === next.track.artwork &&
+    prev.isActive === next.isActive &&
+    prev.playCount === next.playCount,
+)
 
 function formatHistoryTime(timestamp: number): string {
   const date = new Date(timestamp)
@@ -148,6 +273,11 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
         padding: '24px 32px',
         maxWidth: 1200,
         margin: '0 auto',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       },
     },
     // Header
@@ -159,6 +289,7 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
           justifyContent: 'space-between',
           alignItems: 'center',
           marginBottom: 20,
+          flexShrink: 0,
         },
       },
       h(
@@ -238,6 +369,7 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
           gap: 12,
           flexWrap: 'wrap',
           marginBottom: 20,
+          flexShrink: 0,
         },
       },
       h(StatCard, {
@@ -262,11 +394,15 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
       }),
     ),
     // Heatmap
-    h(PlayHeatmap, {
-      heatmap,
-      selectedDate,
-      onSelectDate: (date) => setSelectedDate(date),
-    }),
+    h(
+      'div',
+      { style: { flexShrink: 0 } },
+      h(PlayHeatmap, {
+        heatmap,
+        selectedDate,
+        onSelectDate: (date) => setSelectedDate(date),
+      }),
+    ),
     // Track List Header
     h(
       'div',
@@ -276,6 +412,7 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
           justifyContent: 'space-between',
           alignItems: 'center',
           marginBottom: 12,
+          flexShrink: 0,
         },
       },
       h(
@@ -299,104 +436,35 @@ export function HistoryScreen({ ctx }: { ctx: Context }): ReactElement {
           'div',
           {
             style: {
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
+              flex: 1,
+              minHeight: 0,
             },
           },
-          uniqueRecords.map((record) => {
-            const track = tracks.get(record.trackUrn) ?? fallbackTrack(record.trackUrn)
-            const isActive = transport.trackUrn === record.trackUrn
-            const playCount = playCountMap.get(record.trackUrn) ?? 1
+          h(List<PlayRecord>, {
+            items: uniqueRecords,
+            estimatedItemSize: 56,
+            keyExtractor: (r) => r.id,
+            renderItem: (record) => {
+              const track = tracks.get(record.trackUrn) ?? fallbackTrack(record.trackUrn)
+              const isActive = transport.trackUrn === record.trackUrn
+              const playCount = playCountMap.get(record.trackUrn) ?? 1
 
-            return h(
-              'div',
-              {
-                key: record.id,
+              return h(HistoryTrackRow, {
+                ctx,
+                record,
+                track,
+                isActive,
+                playCount,
+                onPress: () => {
+                  void ctx.player?.playNow?.([record.trackUrn])
+                },
                 onContextMenu: (e: React.MouseEvent) => {
                   e.preventDefault()
-                  menu.open({ track }, { x: e.clientX, y: e.clientY })
+                  menu.open({ track, historyRecordId: record.id }, { x: e.clientX, y: e.clientY })
                 },
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  borderRadius: tokens.radius.sm,
-                  background: isActive ? 'rgba(87, 242, 135, 0.06)' : 'transparent',
-                },
-              },
-              h(
-                'div',
-                { style: { flex: 1, minWidth: 0 } },
-                h(CachedTrackRow, {
-                  ctx,
-                  track,
-                  active: isActive,
-                  showArtwork: true,
-                  onPress: () => {
-                    void ctx.player?.playNow?.([record.trackUrn])
-                  },
-                  onMore: (anchor) => menu.open({ track }, anchor),
-                }),
-              ),
-              h(
-                'div',
-                {
-                  style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    paddingRight: 16,
-                    fontSize: 12,
-                    color: '#8e8e93',
-                    whiteSpace: 'nowrap',
-                    userSelect: 'none',
-                  },
-                },
-                h(
-                  'span',
-                  {
-                    style: {
-                      fontSize: 11,
-                      padding: '1px 6px',
-                      borderRadius: 4,
-                      background: 'rgba(255, 255, 255, 0.08)',
-                      color: '#8e8e93',
-                    },
-                  },
-                  `播放 ${playCount} 次`,
-                ),
-                record.completed
-                  ? h(
-                      'span',
-                      {
-                        style: {
-                          fontSize: 11,
-                          padding: '1px 6px',
-                          borderRadius: 4,
-                          background: 'rgba(57, 211, 83, 0.15)',
-                          color: '#39d353',
-                        },
-                      },
-                      '完播',
-                    )
-                  : record.skipped
-                    ? h(
-                        'span',
-                        {
-                          style: {
-                            fontSize: 11,
-                            padding: '1px 6px',
-                            borderRadius: 4,
-                            background: 'rgba(255, 255, 255, 0.08)',
-                            color: '#8e8e93',
-                          },
-                        },
-                        '跳过',
-                      )
-                    : null,
-                h('span', null, formatHistoryTime(record.startedAt)),
-              ),
-            )
+                onMore: (anchor) => menu.open({ track, historyRecordId: record.id }, anchor),
+              })
+            },
           }),
         ),
     h(ContextMenu, menu.menuProps),

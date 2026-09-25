@@ -13,6 +13,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { act, createElement as h, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { fireEvent } from '@testing-library/react'
 import { Context, Service } from 'cordis'
 import type { SleepTimerState } from '@BBeBee/protocol'
 import { resetSearchSourceSelection } from '@BBeBee/plugin-sources/hooks'
@@ -781,6 +782,65 @@ describe('the desktop shell', () => {
 
     // Dropdown is closed
     expect(container.textContent).not.toContain('Settings')
+  })
+
+  it('allows adjusting sidebar and queue widths via draggable splitters', async () => {
+    const { container, ctx } = await mount((ui) => {
+      ui.routes = [route('home', 'Home')]
+      ui.views.set('home', () => h('div', { 'data-testid': 'home-view' }, 'Home View'))
+      ui.views.set('queue.view', () => h('div', { 'data-testid': 'queue-view' }, 'Queue View'))
+    })
+
+    const workspace = container.querySelector('nav')?.parentElement as HTMLElement
+    expect(workspace).not.toBeNull()
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr')
+
+    const sidebarSplitter = container.querySelector('[data-testid="sidebar-splitter"]') as HTMLElement
+    expect(sidebarSplitter).not.toBeNull()
+
+    // Mock getBoundingClientRect for workspace
+    vi.spyOn(workspace, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      right: 1000,
+      top: 0,
+      bottom: 800,
+      width: 1000,
+      height: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    })
+
+    // Drag sidebar splitter to 350px
+    fireEvent.mouseDown(sidebarSplitter, { clientX: 288 })
+    fireEvent(window, new MouseEvent('mousemove', { clientX: 358 }))
+    fireEvent(window, new MouseEvent('mouseup', {}))
+
+    expect(workspace.style.gridTemplateColumns).toBe('350px 1fr')
+
+    // Double click resets sidebar width to 280px
+    fireEvent.doubleClick(sidebarSplitter)
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr')
+
+    // Open queue view
+    await act(async () => {
+      ctx.emit('ui/navigate', 'queue.view')
+    })
+
+    const queueSplitter = container.querySelector('[data-testid="queue-splitter"]') as HTMLElement
+    expect(queueSplitter).not.toBeNull()
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr minmax(260px, 28%)')
+
+    // Drag queue splitter to 320px
+    fireEvent.mouseDown(queueSplitter, { clientX: 700 })
+    fireEvent(window, new MouseEvent('mousemove', { clientX: 672 })) // 1000 - 8 - 672 = 320
+    fireEvent(window, new MouseEvent('mouseup', {}))
+
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr 320px')
+
+    // Double click resets queue width to null (default minmax)
+    fireEvent.doubleClick(queueSplitter)
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr minmax(260px, 28%)')
   })
 })
 

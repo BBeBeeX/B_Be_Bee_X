@@ -854,6 +854,12 @@ export class Player extends Service implements PlayerService {
     this.ownCtx.emit('player/history-changed')
   }
 
+  async removeHistory(idOrUrn: string): Promise<void> {
+    this.ownCtx.logger.info('player: removeHistory %s', idOrUrn)
+    await this.store.removeHistory(idOrUrn)
+    this.ownCtx.emit('player/history-changed')
+  }
+
   /** The upcoming order, which under shuffle is the permutation, not the rows. */
   upcoming(): QueueItem[] {
     const order = this.model.order()

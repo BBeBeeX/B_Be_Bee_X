@@ -7,7 +7,7 @@
  * and event wiring only (docs/08 §1).
  */
 
-import { createElement as h, useMemo, useState } from 'react'
+import { createElement as h, memo, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { PlayRecord, Track } from '@BBeBee/protocol'
@@ -54,15 +54,16 @@ interface QueueTrackRowProps {
   onMore?: (anchor: { x: number; y: number }) => void
 }
 
-function QueueTrackRow({
-  ctx,
-  track,
-  active = false,
-  itemId,
-  extraRight,
-  onPress,
-  onMore,
-}: QueueTrackRowProps): ReactElement {
+const QueueTrackRow = memo(
+  function QueueTrackRow({
+    ctx,
+    track,
+    active = false,
+    itemId,
+    extraRight,
+    onPress,
+    onMore,
+  }: QueueTrackRowProps): ReactElement {
   const [hovered, setHovered] = useState(false)
   const artwork = useResolvedArtwork(ctx, track.artwork)
   const artists = track.artists?.map((a) => a.name).join(', ')
@@ -164,7 +165,15 @@ function QueueTrackRow({
         )
       : null,
   )
-}
+},
+(prev, next) =>
+  prev.track.urn === next.track.urn &&
+  prev.track.title === next.track.title &&
+  prev.track.artwork === next.track.artwork &&
+  prev.active === next.active &&
+  prev.itemId === next.itemId &&
+  prev.extraRight === next.extraRight,
+)
 
 export interface QueueScreenProps {
   ctx: Context
@@ -423,7 +432,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
               itemId: currentItem.id,
               extraRight: formatDuration(currentTrack.durationMs),
               onPress: () => void ctx.player.playFromContext(currentItem.trackUrn),
-              onMore: (anchor) => menu.open({ track: currentTrack }, anchor),
+              onMore: (anchor) => menu.open({ track: currentTrack, queueItemId: currentItem.id }, anchor),
             }),
           ),
         ),
@@ -463,7 +472,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
                     itemId: item.id,
                     extraRight: formatDuration(track.durationMs),
                     onPress: () => void ctx.player.playFromContext(item.trackUrn),
-                    onMore: (anchor) => menu.open({ track }, anchor),
+                    onMore: (anchor) => menu.open({ track, queueItemId: item.id }, anchor),
                   }),
                 )
               }),
@@ -520,7 +529,7 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
             active: isActive,
             extraRight: formatRelativeTime(record.startedAt),
             onPress: () => void ctx.player.playFromContext(record.trackUrn, uniqueHistoryUrns),
-            onMore: (anchor) => menu.open({ track }, anchor),
+            onMore: (anchor) => menu.open({ track, historyRecordId: record.id }, anchor),
           }),
         )
       }),

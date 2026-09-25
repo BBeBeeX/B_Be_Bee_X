@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
   type ComponentType,
+  type ReactElement,
   type ReactNode,
 } from 'react'
 import type { Context } from 'cordis'
@@ -165,6 +166,60 @@ function getPageKey(id: string, params?: Record<string, unknown>): string {
   return `${id}:${JSON.stringify(sortedParams)}`
 }
 
+function Splitter({
+  position,
+  isDragging,
+  onMouseDown,
+  onDoubleClick,
+  'data-testid': testId,
+}: {
+  position: { left?: number | string; right?: number | string }
+  isDragging: boolean
+  onMouseDown: (e: React.MouseEvent) => void
+  onDoubleClick?: () => void
+  'data-testid'?: string
+}): ReactElement {
+  const [hovered, setHovered] = useState(false)
+  return h(
+    'div',
+    {
+      'data-testid': testId,
+      role: 'separator',
+      'aria-orientation': 'vertical',
+      tabIndex: 0,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      onMouseDown,
+      onDoubleClick,
+      style: {
+        position: 'absolute',
+        top: 8,
+        bottom: 8,
+        ...position,
+        width: 8,
+        cursor: 'col-resize',
+        zIndex: 25,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        userSelect: 'none',
+      },
+    },
+    h('div', {
+      style: {
+        width: 2,
+        height: '100%',
+        borderRadius: 1,
+        backgroundColor:
+          isDragging || hovered
+            ? 'var(--color-primary, #5F87FF)'
+            : 'transparent',
+        transition: isDragging ? 'none' : 'background-color 0.15s ease',
+      },
+    }),
+  )
+}
+
 export function Shell({ ctx }: { ctx: Context }) {
   const { entries } = useEntries(ctx)
   const defaultEntry = entries.find((e) => e.id !== 'now-playing.view') ?? entries[0]
@@ -172,6 +227,73 @@ export function Shell({ ctx }: { ctx: Context }) {
   const [isBottomBarHovered, setIsBottomBarHovered] = useState(false)
   const [isQueueOpen, setIsQueueOpen] = useState(false)
   const [libraryMode, setLibraryMode] = useState<'collapsed' | 'sidebar' | 'expanded'>('sidebar')
+  const [sidebarWidth, setSidebarWidth] = useState<number>(280)
+  const [queueWidth, setQueueWidth] = useState<number | null>(null)
+  const [measuredAsideWidth, setMeasuredAsideWidth] = useState<number>(300)
+  const [isDragging, setIsDragging] = useState<'sidebar' | 'queue' | null>(null)
+  const workspaceRef = useRef<HTMLDivElement | null>(null)
+
+  const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDragging('sidebar')
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!workspaceRef.current) return
+      const rect = workspaceRef.current.getBoundingClientRect()
+      const newWidth = Math.round(moveEvent.clientX - (rect.left + 8))
+      if (newWidth < 120) {
+        setLibraryMode('collapsed')
+      } else {
+        setLibraryMode('sidebar')
+        setSidebarWidth(Math.min(480, Math.max(180, newWidth)))
+      }
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(null)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }, [])
+
+  const handleQueueMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDragging('queue')
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!workspaceRef.current) return
+      const rect = workspaceRef.current.getBoundingClientRect()
+      const newWidth = Math.round((rect.right - 8) - moveEvent.clientX)
+      setQueueWidth(Math.min(560, Math.max(240, newWidth)))
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(null)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [])
 
   const [navState, setNavState] = useState<{ history: HistoryItem[]; index: number }>({
     history: [],
@@ -483,6 +605,23 @@ export function Shell({ ctx }: { ctx: Context }) {
     )
   }
 
+  const queueCol = queueWidth !== null ? `${queueWidth}px` : 'minmax(260px, 28%)'
+  const sidebarCol =
+    libraryMode === 'expanded'
+      ? '1fr'
+      : libraryMode === 'collapsed'
+        ? '72px'
+        : `${sidebarWidth}px`
+
+  const gridColumns =
+    libraryMode === 'expanded'
+      ? isQueueOpen
+        ? `1fr ${queueCol}`
+        : '1fr'
+      : isQueueOpen
+        ? `${sidebarCol} 1fr ${queueCol}`
+        : `${sidebarCol} 1fr`
+
   return h(
     'div',
     {
@@ -515,26 +654,17 @@ export function Shell({ ctx }: { ctx: Context }) {
     h(
       'div',
       {
+        ref: workspaceRef,
         style: {
           display: 'grid',
-          gridTemplateColumns:
-            libraryMode === 'expanded'
-              ? isQueueOpen
-                ? '1fr minmax(260px, 28%)'
-                : '1fr'
-              : libraryMode === 'collapsed'
-                ? isQueueOpen
-                  ? '72px 1fr minmax(260px, 28%)'
-                  : '72px 1fr'
-                : isQueueOpen
-                  ? '280px 1fr minmax(260px, 28%)'
-                  : '280px 1fr',
+          position: 'relative',
+          gridTemplateColumns: gridColumns,
           gap: 8,
           padding: 8,
           flex: 1,
           minHeight: 0,
           overflow: 'hidden',
-          transition: 'grid-template-columns 0.28s cubic-bezier(0.2, 0, 0, 1)',
+          transition: isDragging ? 'none' : 'grid-template-columns 0.28s cubic-bezier(0.2, 0, 0, 1)',
         },
       },
       h(
@@ -766,6 +896,11 @@ export function Shell({ ctx }: { ctx: Context }) {
             'aside',
             {
               'data-testid': 'queue-sidebar-panel',
+              ref: (el: HTMLElement | null) => {
+                if (el && queueWidth === null && el.offsetWidth > 0) {
+                  setMeasuredAsideWidth(el.offsetWidth)
+                }
+              },
               style: {
                 borderRadius: 8,
                 background: 'var(--bg-primary, #080A12)',
@@ -789,6 +924,37 @@ export function Shell({ ctx }: { ctx: Context }) {
               }),
             ),
           )
+        : null,
+      // Left Splitter (between nav and main)
+      libraryMode !== 'expanded'
+        ? h(Splitter, {
+            'data-testid': 'sidebar-splitter',
+            position: {
+              left: 8 + (libraryMode === 'collapsed' ? 72 : sidebarWidth),
+            },
+            isDragging: isDragging === 'sidebar',
+            onMouseDown: handleSidebarMouseDown,
+            onDoubleClick: () => {
+              if (libraryMode === 'collapsed') {
+                setLibraryMode('sidebar')
+                setSidebarWidth(280)
+              } else {
+                setSidebarWidth(280)
+              }
+            },
+          })
+        : null,
+      // Right Splitter (between main and aside)
+      isQueueOpen && QueueView
+        ? h(Splitter, {
+            'data-testid': 'queue-splitter',
+            position: {
+              right: 8 + (queueWidth ?? measuredAsideWidth),
+            },
+            isDragging: isDragging === 'queue',
+            onMouseDown: handleQueueMouseDown,
+            onDoubleClick: () => setQueueWidth(null),
+          })
         : null,
     ),
     BottomBar

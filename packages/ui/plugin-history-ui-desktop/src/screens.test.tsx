@@ -6,6 +6,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { createElement as h } from 'react'
 import { fireEvent, render, cleanup } from '@testing-library/react'
+import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
 import { Context, Service } from 'cordis'
 import type { PlayHistoryHeatmapDay, PlayHistoryStats, PlayRecord, Track, TransportState } from '@BBeBee/protocol'
 import { HistoryScreen } from './HistoryScreen.js'
@@ -107,6 +108,9 @@ async function harness(options: {
     clearHistory = async () => {
       calls.push('clearHistory')
     }
+    removeHistory = async (id: string) => {
+      calls.push(`removeHistory:${id}`)
+    }
     playNow = async (urns: string | string[]) => {
       calls.push(`playNow:${Array.isArray(urns) ? urns.join(',') : urns}`)
     }
@@ -130,7 +134,7 @@ async function harness(options: {
 describe('HistoryScreen', () => {
   it('shows empty state when no history exists', async () => {
     const { ctx } = await harness({ records: [] })
-    const { findByText } = render(h(HistoryScreen, { ctx }))
+    const { findByText } = withListLayout(() => render(h(HistoryScreen, { ctx })))
     expect(await findByText('暂无播放记录')).toBeTruthy()
   })
 
@@ -155,7 +159,7 @@ describe('HistoryScreen', () => {
     }
 
     const { ctx, calls } = await harness({ records, tracks })
-    const { findByText } = render(h(HistoryScreen, { ctx }))
+    const { findByText } = withListLayout(() => render(h(HistoryScreen, { ctx })))
 
     expect(await findByText('播放历史')).toBeTruthy()
     expect(await findByText('总播放次数')).toBeTruthy()
@@ -180,7 +184,7 @@ describe('HistoryScreen', () => {
       },
     ]
     const { ctx, calls } = await harness({ records })
-    const { findByText } = render(h(HistoryScreen, { ctx }))
+    const { findByText } = withListLayout(() => render(h(HistoryScreen, { ctx })))
 
     const clearBtn = await findByText('清空历史')
     fireEvent.click(clearBtn)
@@ -240,7 +244,7 @@ describe('HistoryScreen', () => {
     }
 
     const { ctx } = await harness({ records, tracks })
-    const { findByText, findAllByText } = render(h(HistoryScreen, { ctx }))
+    const { findByText, findAllByText } = withListLayout(() => render(h(HistoryScreen, { ctx })))
 
     // De-duplicated count in header: (2 首)
     expect(await findByText('最近播放记录 (2 首)')).toBeTruthy()
@@ -254,5 +258,38 @@ describe('HistoryScreen', () => {
     // Play count badge
     expect(await findByText('播放 3 次')).toBeTruthy()
     expect(await findByText('播放 1 次')).toBeTruthy()
+  })
+
+  it('offers “从最近播放中移除” in context menu and calls removeHistory', async () => {
+    const records: PlayRecord[] = [
+      {
+        id: 'rec-1',
+        trackUrn: 'BBeBee:local:track:1',
+        startedAt: Date.now(),
+        msPlayed: 180000,
+        completed: true,
+        skipped: false,
+      },
+    ]
+    const tracks: Record<string, Track> = {
+      'BBeBee:local:track:1': {
+        urn: 'BBeBee:local:track:1',
+        title: 'Song One',
+        artists: [],
+      },
+    }
+
+    const { ctx, calls } = await harness({ records, tracks })
+    const { container, findByText } = withListLayout(() => render(h(HistoryScreen, { ctx })))
+
+    await findByText('Song One')
+    const row = container.querySelector('[role="row"]') as HTMLElement
+    expect(row).toBeTruthy()
+    fireEvent.contextMenu(row, { clientX: 100, clientY: 100 })
+
+    const removeOption = await findByText('从最近播放中移除')
+    expect(removeOption).toBeTruthy()
+    fireEvent.click(removeOption)
+    expect(calls).toContain('removeHistory:rec-1')
   })
 })

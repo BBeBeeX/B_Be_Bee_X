@@ -353,6 +353,10 @@ export class PlayerStore {
     await this.db.exec('DELETE FROM play_history')
   }
 
+  async removeHistory(idOrUrn: string): Promise<void> {
+    await this.db.exec('DELETE FROM play_history WHERE id = ? OR track_urn = ?', [idOrUrn, idOrUrn])
+  }
+
   /** A track the provider says is gone: greyed out in lists, not hidden. */
   async markUnavailable(urn: string): Promise<void> {
     await this.db.exec('UPDATE tracks SET available = 0 WHERE urn = ?', [urn])

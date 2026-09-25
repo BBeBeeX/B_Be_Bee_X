@@ -25,6 +25,16 @@ export interface TrackMenuTarget {
    * Its presence is what makes "remove from this playlist" offerable.
    */
   playlistItemId?: string
+  /**
+   * The row's id inside the queue, when shown in the queue.
+   * Its presence makes "remove from queue" offerable.
+   */
+  queueItemId?: string
+  /**
+   * The history record id or track urn, when shown in history.
+   * Its presence makes "remove from history" offerable.
+   */
+  historyRecordId?: string
 }
 
 export interface TrackMenuOptions {
@@ -34,6 +44,8 @@ export interface TrackMenuOptions {
   playlists?: readonly Playlist[]
   /** Same, for the "add to collection" submenu. */
   collections?: readonly Collection[]
+  /** Set when used in a history list. */
+  isHistory?: boolean
 }
 
 /**
@@ -67,6 +79,28 @@ export function trackMenuItems(
       icon: 'minus',
       tone: 'danger',
       onSelect: () => library.removeItems(playlistUrn, [itemId]),
+    })
+  }
+
+  if (player && target.queueItemId) {
+    const queueItemId = target.queueItemId
+    items.push({
+      id: 'remove-from-queue',
+      label: '从队列中移除',
+      icon: 'trash',
+      tone: 'danger',
+      onSelect: () => player.removeItems([queueItemId]),
+    })
+  }
+
+  if (player && (target.historyRecordId || opts.isHistory)) {
+    const historyTarget = target.historyRecordId ?? track.urn
+    items.push({
+      id: 'remove-from-history',
+      label: '从最近播放中移除',
+      icon: 'trash',
+      tone: 'danger',
+      onSelect: () => void player.removeHistory?.(historyTarget),
     })
   }
 

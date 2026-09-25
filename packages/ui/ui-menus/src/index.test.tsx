@@ -98,6 +98,12 @@ class PlayerStub extends Service {
   enqueueLast(urns: string[]) {
     this.calls.push(`enqueue:${urns.join(',')}`)
   }
+  removeItems(ids: string[]) {
+    this.calls.push(`removeItems:${ids.join(',')}`)
+  }
+  async removeHistory(id: string) {
+    this.calls.push(`removeHistory:${id}`)
+  }
 }
 
 class DownloadsStub extends Service {
@@ -204,6 +210,28 @@ describe('trackMenuItems', () => {
     )
     await press(inside, 'remove-from-playlist')
     expect(h.library.calls).toContain('remove:BBeBee:local:playlist:1:item-1')
+  })
+
+  it('offers “remove from queue” when queueItemId is present', async () => {
+    const h = await harness()
+    const items = trackMenuItems(h.ctx, { track, queueItemId: 'queue-entry-1' }, { playlists })
+    const removeItem = items.find((i) => i.id === 'remove-from-queue')
+    expect(removeItem).toBeTruthy()
+    expect(removeItem?.label).toBe('从队列中移除')
+    expect(removeItem?.tone).toBe('danger')
+    await press(items, 'remove-from-queue')
+    expect(h.player.calls).toContain('removeItems:queue-entry-1')
+  })
+
+  it('offers “remove from history” when historyRecordId or isHistory is present', async () => {
+    const h = await harness()
+    const items = trackMenuItems(h.ctx, { track, historyRecordId: 'hist-1' }, { playlists })
+    const removeItem = items.find((i) => i.id === 'remove-from-history')
+    expect(removeItem).toBeTruthy()
+    expect(removeItem?.label).toBe('从最近播放中移除')
+    expect(removeItem?.tone).toBe('danger')
+    await press(items, 'remove-from-history')
+    expect(h.player.calls).toContain('removeHistory:hist-1')
   })
 
   it('unlikes through both stores, so the heart and the shelf agree', async () => {

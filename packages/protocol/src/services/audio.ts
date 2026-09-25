@@ -150,6 +150,7 @@ export interface PlayerService {
   getHistoryStats(): Promise<PlayHistoryStats>
   getHistoryHeatmap(days?: number): Promise<PlayHistoryHeatmapDay[]>
   clearHistory(): Promise<void>
+  removeHistory(idOrUrn: string): Promise<void>
 }
 
 /* ── ctx.dsp ────────────────────────────────────────────────────────────── */
