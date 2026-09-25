@@ -12,7 +12,7 @@ export interface QueueItem {
   id: string
   trackUrn: string
   /** Where this came from — an album, a playlist, radio. Drives "playing from". */
-  sourceContext?: { kind: 'album' | 'playlist' | 'artist' | 'search' | 'radio'; urn?: string; label?: string }
+  sourceContext?: { kind: 'album' | 'playlist' | 'artist' | 'search' | 'radio' | 'local' | 'favorites'; urn?: string; label?: string }
   addedBy: 'user' | 'autoplay' | 'radio'
 }
 
@@ -98,6 +98,9 @@ Behaviours worth pinning down, because they are where players feel wrong:
     index, `QueueModel.rotateShuffle(firstId)` circularly rotates the permutation so the chosen track
     is placed at index 0, followed by the remaining tracks in their pseudo-random order. If no track is
     specified (e.g. clicking "Shuffle All"), playback starts with the head of the permutation.
+  - **Shuffle never runs dry**: when the permutation is exhausted, `next()` wraps to its head (and
+    `previous()` to its tail) regardless of the `repeat` flag — a shuffled queue is circular by
+    definition. Only a plain sequence without repeat-all reaches an end and goes idle.
 - **Repeat-one** does not re-resolve the stream; it reuses the loaded buffer.
 - **`stalled`** is distinct from `paused`. The UI shows a spinner, not a play button, and
   `ctx.mediaSession` keeps reporting `playing` so the lock screen does not flicker.

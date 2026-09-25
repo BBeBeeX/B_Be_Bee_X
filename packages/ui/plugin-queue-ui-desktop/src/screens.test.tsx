@@ -59,6 +59,10 @@ async function harness(
     get queue() {
       return queue
     }
+    upcoming = () => {
+      const at = queue.findIndex((i) => i.id === transport.currentItemId)
+      return at < 0 ? queue : [...queue.slice(at + 1), ...queue.slice(0, at)]
+    }
     togglePlay = () => void calls.push('togglePlay')
     next = async () => void calls.push('next')
     previous = async () => void calls.push('previous')
@@ -183,7 +187,7 @@ describe('QueueScreen', () => {
     expect(activeSpan?.getAttribute('style')).toContain('--primary')
   })
 
-  it('displays context label in next-up header when available', async () => {
+  it('displays the NEXT track context label in the next-up header', async () => {
     const { ctx } = await harness(
       { currentItemId: 'a' },
       [
@@ -191,9 +195,14 @@ describe('QueueScreen', () => {
           id: 'a',
           trackUrn: 'BBeBee:local:track:a',
           addedBy: 'user',
-          sourceContext: { kind: 'album', label: 'My Cool Album' },
+          sourceContext: { kind: 'album', label: 'Current Album' },
         },
-        { id: 'b', trackUrn: 'BBeBee:local:track:b', addedBy: 'user' },
+        {
+          id: 'b',
+          trackUrn: 'BBeBee:local:track:b',
+          addedBy: 'user',
+          sourceContext: { kind: 'playlist', label: 'My Cool Playlist' },
+        },
       ],
       {
         'BBeBee:local:track:a': { urn: 'BBeBee:local:track:a', title: 'Song A', artists: [] },
@@ -202,7 +211,29 @@ describe('QueueScreen', () => {
     )
     const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
     expect(container.textContent).toContain('下一首歌来自：')
-    expect(container.textContent).toContain('My Cool Album')
+    expect(container.textContent).toContain('My Cool Playlist')
+    expect(container.textContent).not.toContain('Current Album')
+  })
+
+  it('falls back to the kind label when the next context has no label', async () => {
+    const { ctx } = await harness(
+      { currentItemId: 'a' },
+      [
+        { id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' },
+        {
+          id: 'b',
+          trackUrn: 'BBeBee:local:track:b',
+          addedBy: 'user',
+          sourceContext: { kind: 'local' },
+        },
+      ],
+      {
+        'BBeBee:local:track:a': { urn: 'BBeBee:local:track:a', title: 'Song A', artists: [] },
+        'BBeBee:local:track:b': { urn: 'BBeBee:local:track:b', title: 'Song B', artists: [] },
+      },
+    )
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+    expect(container.textContent).toContain('下一首歌来自： 本地音乐')
   })
 
   it('switches to 最近播放 tab and lists play history', async () => {

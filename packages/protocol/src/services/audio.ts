@@ -129,6 +129,14 @@ export interface PlayerService {
   cyclePlayMode(): PlayMode
 
   readonly queue: readonly QueueItem[]
+  /**
+   * The items after the current one, in real play order.
+   *
+   * Under shuffle this is the seeded permutation, not the queue's row order —
+   * the order a "up next" view must show for anything to agree with what
+   * actually plays next.
+   */
+  upcoming(): QueueItem[]
   playNow(urns: string[], opts?: PlayNowOptions): Promise<void>
   /**
    * Play one track the way a tap in a list means it.

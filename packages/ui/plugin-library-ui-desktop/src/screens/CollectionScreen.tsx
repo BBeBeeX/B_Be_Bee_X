@@ -1,7 +1,7 @@
 import { createElement as h, useState } from 'react'
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { Track } from '@BBeBee/protocol'
+import type { PlayNowOptions, Track } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { LIBRARY_VIEWS } from '@BBeBee/plugin-library/views'
 import { useCollectionDetail, type CollectionMember } from '@BBeBee/plugin-library/hooks'
@@ -201,7 +201,7 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
   }
   if (!detail) return h(EmptyState, { title: 'Loading…' })
 
-  const players = serviceOf<{ playNow(urns: string[]): Promise<void> }>(ctx, 'player')
+  const players = serviceOf<{ playNow(urns: string[], opts?: PlayNowOptions): Promise<void> }>(ctx, 'player')
 
   return h(
     'section',
@@ -219,7 +219,11 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
         h(Text, { variant: 'sm', tone: 'muted' }, `${detail.members.length} items`),
       ),
       h(Button, {
-        onPress: () => trackUrns[0] && void players?.playNow(trackUrns),
+        onPress: () =>
+          trackUrns[0] &&
+          void players?.playNow(trackUrns, {
+            context: { kind: 'playlist', label: detail.collection?.name ?? '合集' },
+          }),
         disabled: trackUrns.length === 0,
         testID: 'collection-play',
         children: 'Play',
@@ -246,9 +250,13 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
               onAddToFavorites: handleAddToFavorites,
               onOpenPlaylistMenu: openAddToPlaylistMenu,
               onPress: () =>
-                void players?.playNow(trackUrns).then(() => {
-                  /* playNow starts at the first track; the context is the collection */
-                }),
+                void players
+                  ?.playNow(trackUrns, {
+                    context: { kind: 'playlist', label: detail.collection?.name ?? '合集' },
+                  })
+                  .then(() => {
+                    /* playNow starts at the first track; the context is the collection */
+                  }),
               onMore: (anchor) => menu.open({ track: member.track! }, anchor),
             })
           }

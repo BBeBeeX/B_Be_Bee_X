@@ -376,6 +376,20 @@ describe('transport', () => {
     expect(player.state.status).toBe('playing')
   })
 
+  it('keeps playing under shuffle even when the shuffled order runs out', async () => {
+    const { player, audio } = await harness()
+    await player.playNow([urn('a'), urn('b'), urn('c')])
+    player.setShuffle(true)
+
+    // Drive the whole permutation to its end and one wrap past it: shuffle
+    // means the music continues, it does not stop at the last permuted track.
+    for (let i = 0; i < 3; i++) {
+      audio.finish()
+      await tick()
+    }
+    expect(player.state.status, 'shuffle never runs dry').toBe('playing')
+  })
+
   it('honours repeat one and repeat all', async () => {
     const { player, audio } = await harness()
     await player.playNow([urn('a'), urn('b')])

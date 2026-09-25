@@ -418,7 +418,11 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
             type: 'button',
             'data-testid': 'favorites-play',
             'aria-label': '播放全部',
-            onClick: () => sortedUrns[0] && player?.playFromContext(sortedUrns[0], sortedUrns),
+            onClick: () =>
+              sortedUrns[0] &&
+              player?.playFromContext(sortedUrns[0], sortedUrns, {
+                context: { kind: 'favorites', label: '收藏夹' },
+              }),
             disabled: sortedUrns.length === 0,
             style: {
               width: 56,
@@ -446,7 +450,10 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
             onClick: () => {
               if (sortedUrns.length > 0) {
                 const shuffled = [...sortedUrns].sort(() => Math.random() - 0.5)
-                if (shuffled[0]) void player?.playFromContext(shuffled[0], shuffled)
+                if (shuffled[0])
+                  void player?.playFromContext(shuffled[0], shuffled, {
+                    context: { kind: 'favorites', label: '收藏夹' },
+                  })
               }
             },
           },
@@ -643,7 +650,10 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
                 ctx,
                 track: t,
                 index,
-                onPress: () => player?.playFromContext(t.urn, sortedUrns),
+                onPress: () =>
+                  player?.playFromContext(t.urn, sortedUrns, {
+                    context: { kind: 'favorites', label: '收藏夹' },
+                  }),
                 onMore: (anchor) => menu.open({ track: t }, anchor),
                 onOpenPlaylistMenu: openAddToPlaylistMenu,
               }),

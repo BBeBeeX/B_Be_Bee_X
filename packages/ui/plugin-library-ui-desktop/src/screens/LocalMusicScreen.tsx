@@ -686,7 +686,9 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
             type: 'button',
             'data-testid': 'local-music-play',
             'aria-label': '播放全部',
-            onClick: () => sortedTrackUrns[0] && player?.playNow(sortedTrackUrns),
+            onClick: () =>
+              sortedTrackUrns[0] &&
+              player?.playNow(sortedTrackUrns, { context: { kind: 'local', label: '本地音乐' } }),
             disabled: sortedTrackUrns.length === 0,
             style: {
               width: 56,
@@ -714,7 +716,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
             onClick: () => {
               if (sortedTrackUrns.length > 0) {
                 const shuffled = [...sortedTrackUrns].sort(() => Math.random() - 0.5)
-                void player?.playNow(shuffled)
+                void player?.playNow(shuffled, { context: { kind: 'local', label: '本地音乐' } })
               }
             },
           },
@@ -931,7 +933,10 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                       track: t,
                       index,
                       inLibrary: isTrackInLibrary(t),
-                      onPress: () => player?.playFromContext(t.urn, sortedTrackUrns),
+                      onPress: () =>
+                        player?.playFromContext(t.urn, sortedTrackUrns, {
+                          context: { kind: 'local', label: '本地音乐' },
+                        }),
                       onMore: (anchor) => menu.open({ track: t }, anchor),
                       onAddToFavorites: handleAddToFavorites,
                       onOpenPlaylistMenu: openAddToPlaylistMenu,
@@ -984,7 +989,9 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                         )
                         const urns = albumTracks.map((t) => t.urn)
                         if (urns[0]) {
-                          void player?.playNow(urns)
+                          void player?.playNow(urns, {
+                            context: { kind: 'album', label: album.title ?? '本地音乐' },
+                          })
                         }
                       },
                     }),

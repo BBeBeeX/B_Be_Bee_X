@@ -143,7 +143,7 @@ export function useLibraryActions({
           const trackUrns = page.items
             .filter((i) => tryParseUrn(i.urn)?.kind === 'track')
             .map((i) => i.urn)
-          if (trackUrns[0]) void player?.playNow(trackUrns)
+          if (trackUrns[0]) void player?.playNow(trackUrns, { context: { kind: 'playlist', urn: id } })
         })
         .catch(fail('could not play collection'))
     },
@@ -251,7 +251,10 @@ export function useLibraryActions({
                   .catch(fail('could not move the collection'))
               },
               onPlay: () => {
-                if (allTracks[0]) void player?.playNow(allTracks)
+                if (allTracks[0])
+                  void player?.playNow(allTracks, {
+                    context: { kind: 'playlist', urn: collection.id, label: collection.name },
+                  })
               },
             },
           ),

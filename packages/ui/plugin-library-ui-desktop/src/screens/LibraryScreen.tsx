@@ -228,13 +228,19 @@ export function LibraryScreen({
       isDownloaded: false,
       onOpen: () => ctx.ui.navigate(LIBRARY_VIEWS.favorites),
       onPlay: () => {
-        if (favoriteUrns[0]) void player?.playFromContext(favoriteUrns[0], favoriteUrns)
+        if (favoriteUrns[0])
+          void player?.playFromContext(favoriteUrns[0], favoriteUrns, {
+            context: { kind: 'favorites', label: '收藏夹' },
+          })
       },
       onMore: (anchor) =>
         openBuiltinMenu(
           '已点赞的歌曲',
           () => {
-            if (favoriteUrns[0]) void player?.playFromContext(favoriteUrns[0], favoriteUrns)
+            if (favoriteUrns[0])
+              void player?.playFromContext(favoriteUrns[0], favoriteUrns, {
+                context: { kind: 'favorites', label: '收藏夹' },
+              })
           },
           isPinned,
           { id: 'builtin:favorite' },

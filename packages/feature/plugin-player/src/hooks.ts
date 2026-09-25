@@ -61,6 +61,24 @@ export function useQueue(ctx: Context): readonly QueueItem[] {
 }
 
 /**
+ * The real upcoming order.
+ *
+ * Under shuffle this is the seeded permutation after the current item, not
+ * the queue's row order (docs/05 §2) — a page listing "up next" in row order
+ * while shuffle is on shows an order nothing will ever play. Re-read on queue
+ * changes and on transport changes (the cut point moves with `currentItemId`),
+ * compared element-wise like the queue itself.
+ */
+export function useUpcoming(ctx: Context): readonly QueueItem[] {
+  return useServiceState(
+    ctx,
+    ['queue/changed', 'player/state-changed'],
+    () => ctx.player.upcoming(),
+    { isEqual: shallowArrayEqual },
+  )
+}
+
+/**
  * The catalogue rows behind a list of URNs — what a queue row shows instead
  * of the URN itself.
  *

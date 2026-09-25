@@ -14,7 +14,7 @@ export type PlaybackStatus =
   | 'error'
 
 export interface QueueSourceContext {
-  kind: 'album' | 'playlist' | 'artist' | 'search' | 'radio'
+  kind: 'album' | 'playlist' | 'artist' | 'search' | 'radio' | 'local' | 'favorites'
   urn?: string
   label?: string
 }

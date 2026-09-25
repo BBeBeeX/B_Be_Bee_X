@@ -10,7 +10,7 @@
 import { createElement as h, memo, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { PlayRecord, Track } from '@BBeBee/protocol'
+import type { PlayRecord, QueueSourceContext, Track } from '@BBeBee/protocol'
 import { QUEUE_VIEWS } from '@BBeBee/plugin-queue/views'
 import {
   queueTrackFallback,
@@ -18,6 +18,7 @@ import {
   useQueue,
   useTracksByUrn,
   useTransport,
+  useUpcoming,
 } from '@BBeBee/plugin-player/hooks'
 import { Artwork, ContextMenu, EmptyState, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
@@ -30,6 +31,17 @@ function formatDuration(ms?: number): string {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+/** Label shown for a context that carries a kind but no label. */
+const CONTEXT_KIND_LABELS: Record<QueueSourceContext['kind'], string> = {
+  album: '专辑',
+  playlist: '歌单',
+  artist: '歌手',
+  search: '搜索',
+  radio: '电台',
+  local: '本地音乐',
+  favorites: '收藏夹',
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -184,6 +196,7 @@ export interface QueueScreenProps {
 export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
   const [tab, setTab] = useState<'queue' | 'history'>('queue')
   const queue = useQueue(ctx)
+  const upcoming = useUpcoming(ctx)
   const state = useTransport(ctx)
   const menu = useTrackMenu(ctx)
 
@@ -385,13 +398,17 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
       queueTracks.get(currentItem.trackUrn) ??
       queueTrackFallback(currentItem, state.nowPlaying, true)
 
-    const upcomingItems = [
-      ...queue.slice(currentIdx + 1),
-      ...queue.slice(0, currentIdx),
-    ]
+    // The real play order after the current item — under shuffle this is the
+    // permutation, not the queue's row order.
+    const upcomingItems = upcoming
 
-    const contextLabel = currentItem.sourceContext?.label || state.nowPlaying?.album
-    const nextTitle = contextLabel ? `下一首歌来自： ${contextLabel}` : '下一首播放'
+    // The header describes the *next* song's origin, not the playing one's.
+    const nextItem = upcomingItems[0]
+    const nextContext = nextItem?.sourceContext
+    const contextLabel = nextContext
+      ? (nextContext.label ?? CONTEXT_KIND_LABELS[nextContext.kind])
+      : undefined
+    const nextTitle = nextItem && contextLabel ? `下一首歌来自： ${contextLabel}` : '下一首播放'
 
     return h(
       'div',

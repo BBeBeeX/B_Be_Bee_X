@@ -179,7 +179,13 @@ export class QueueModel {
     return moved
   }
 
-  /** What follows `id`, honouring repeat. `undefined` means the queue ended. */
+  /**
+   * What follows `id`, honouring repeat. `undefined` means the queue ended.
+   *
+   * Shuffle never ends: a permutation that runs out wraps to its head, which
+   * is what "随机播放" means — the order is random, the music is continuous.
+   * A plain sequence without repeat-all is the only way a queue runs out.
+   */
   next(id: string | undefined, repeat: RepeatMode): QueueEntry | undefined {
     if (this.entries.length === 0) return undefined
     if (repeat === 'one' && id) return this.entry(id)
@@ -188,15 +194,19 @@ export class QueueModel {
     const at = id ? order.indexOf(id) : -1
     const nextId = order[at + 1]
     if (nextId) return this.entry(nextId)
-    return repeat === 'all' ? this.entry(order[0]!) : undefined
+    return repeat === 'all' || this.shuffleOn ? this.entry(order[0]!) : undefined
   }
 
-  /** What precedes `id`. Wraps only under repeat-all, like every other player. */
+  /** What precedes `id`. Wraps under repeat-all or shuffle, like `next`. */
   previous(id: string | undefined, repeat: RepeatMode): QueueEntry | undefined {
     if (this.entries.length === 0) return undefined
     const order = this.order()
     const at = id ? order.indexOf(id) : 0
-    if (at <= 0) return repeat === 'all' ? this.entry(order[order.length - 1]!) : undefined
+    if (at <= 0) {
+      return repeat === 'all' || this.shuffleOn
+        ? this.entry(order[order.length - 1]!)
+        : undefined
+    }
     return this.entry(order[at - 1]!)
   }
 
