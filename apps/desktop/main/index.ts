@@ -42,6 +42,9 @@ import { createAudioHost } from './audio/index.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
+const APP_NAME = 'BBeBee'
+app.setName(APP_NAME)
+
 // Unlock Chromium media permissions and Web Audio output device selection
 app.commandLine.appendSwitch('enable-experimental-web-platform-features')
 
