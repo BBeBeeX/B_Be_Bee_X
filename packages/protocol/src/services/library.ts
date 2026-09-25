@@ -37,6 +37,20 @@ import type {
 import type { Playlist, PlaylistDetail } from '../entities/catalog.js'
 import type { PageRequest } from './sources.js'
 
+/**
+ * The local user.
+ *
+ * One row, created on first run: `id` is a UUID that never changes, `name`
+ * defaults to "Mine" and is editable in Settings. It is what created
+ * playlists show as their creator — a single-user player has no other
+ * creator concept, and remote playlists that carry their own `owner`
+ * display that instead.
+ */
+export interface UserProfile {
+  id: string
+  name: string
+}
+
 /* ── Errors ─────────────────────────────────────────────────────────────── */
 
 export type LibraryErrorCode = 'not-found' | 'smart-playlist' | 'invalid-urn' | 'invalid-name'
@@ -201,6 +215,22 @@ export interface LibraryService {
   addToCollection(id: string, urns: readonly string[]): Promise<number>
 
   removeFromCollection(id: string, urns: readonly string[]): Promise<void>
+
+  /* ── profile ───────────────────────────────────────────────────────── */
+
+  /**
+   * The local user, created on first run (UUID id, name "Mine").
+   *
+   * The name is what created playlists display as their creator; remote
+   * playlists that carry their own `owner` keep showing that instead.
+   */
+  getProfile(): Promise<UserProfile>
+
+  /**
+   * Rename the local user. An empty or whitespace-only name is refused with
+   * an `invalid-name` LibraryError. Emits `library/profile-changed`.
+   */
+  updateProfile(patch: { name?: string }): Promise<UserProfile>
 }
 
 declare module 'cordis' {

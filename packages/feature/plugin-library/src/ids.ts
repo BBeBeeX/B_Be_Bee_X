@@ -18,3 +18,16 @@ export function newId(prefix: string): string {
   const random = Math.floor(Math.random() * 0x1_0000_0000).toString(36)
   return `${prefix}${Date.now().toString(36)}${counter.toString(36).padStart(2, '0')}${random}`
 }
+
+/**
+ * A RFC-4122 v4 UUID where the platform provides `crypto.randomUUID` (Node,
+ * Chromium), and a random fallback where it does not (Hermes). The profile id
+ * is the one caller; it only has to be unique per install.
+ */
+export function randomUuid(): string {
+  const c = globalThis.crypto as { randomUUID?: () => string } | undefined
+  if (typeof c?.randomUUID === 'function') return c.randomUUID()
+  const hex = (n: number) =>
+    Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('')
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-a${hex(3)}-${hex(12)}`
+}

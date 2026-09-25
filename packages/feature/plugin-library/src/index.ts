@@ -32,10 +32,12 @@ import type {
   SavedKind,
   SmartPlaylist,
   UrnKind,
+  UserProfile,
 } from '@BBeBee/protocol'
 import { Playlists } from './playlists.js'
 import { Saved } from './saved.js'
 import { Collections } from './collections.js'
+import { Profile } from './profile.js'
 import { LIBRARY_ROUTES } from './views.js'
 
 /**
@@ -69,6 +71,7 @@ export class Library extends Service implements LibraryService {
   private readonly playlists: Playlists
   private readonly saved: Saved
   private readonly collections: Collections
+  private readonly profile: Profile
 
   constructor(ctx: Context) {
     super(ctx, 'library')
@@ -77,10 +80,14 @@ export class Library extends Service implements LibraryService {
     this.playlists = new Playlists(this.ownDb)
     this.saved = new Saved(this.ownDb)
     this.collections = new Collections(this.ownDb)
+    this.profile = new Profile(this.ownDb)
   }
 
   async [Service.init]() {
     this.ownCtx.logger.debug('library: curation tables ready')
+
+    // The local user: one row, created on first run (UUID id, name "Mine").
+    await this.profile.ensure()
 
     // A fresh install opens with one playlist: an empty curation page reads as
     // "broken" less charitably than a starting point. The seed re-runs only
@@ -277,6 +284,23 @@ export class Library extends Service implements LibraryService {
     await this.collections.removeItems(id, urns)
     this.ownCtx.logger.info(`library: removed ${urns.length} item(s) from collection ${id}`)
     this.collectionsChanged()
+  }
+
+  /* ── profile ───────────────────────────────────────────────────────── */
+
+  getProfile(): Promise<UserProfile> {
+    return this.profile.ensure()
+  }
+
+  async updateProfile(patch: { name?: string }): Promise<UserProfile> {
+    const name = patch.name?.trim()
+    if (name !== undefined && name.length === 0) {
+      throw new LibraryError('a profile name cannot be empty', 'invalid-name')
+    }
+    const updated = await this.profile.update(patch)
+    this.ownCtx.logger.info(`library: profile is now "${updated.name}" (${updated.id})`)
+    this.ownCtx.emit('library/profile-changed')
+    return updated
   }
 
   /* ── events ────────────────────────────────────────────────────────── */

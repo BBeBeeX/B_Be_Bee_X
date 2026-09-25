@@ -67,7 +67,7 @@ describe('redactForTrace', () => {
   })
 
   it('redacts the query but keeps the url structure intact', () => {
-    const out = redactForTrace('https://music.example.org/rest?u=revers&t=abc&s=def')
+    const out = redactForTrace('https://music.example.org/rest?u=Mine&t=abc&s=def')
     const parsed = new URL(out)
     expect(parsed.hostname).toBe('music.example.org')
     expect(parsed.pathname).toBe('/rest')

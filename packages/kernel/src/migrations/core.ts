@@ -732,4 +732,10 @@ export const CORE_MIGRATIONS: Migration[] = [
           AND urn NOT IN (SELECT urn FROM track_stats WHERE loved = 1)`,
     ],
   },
+  {
+    version: 6,
+    // The local user: one row, seeded by plugin-library on first run. Its
+    // name is what created playlists show as their creator.
+    up: [`CREATE TABLE library_profile (id TEXT PRIMARY KEY, name TEXT NOT NULL)`],
+  },
 ]

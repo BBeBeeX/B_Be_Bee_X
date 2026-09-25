@@ -2,12 +2,125 @@ import { createElement as h, useEffect, useRef, useState, type ReactElement } fr
 import type { Context } from 'cordis'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { AppSettings, ThemeDefinition, ThemeService } from '@BBeBee/protocol'
-import { Sheet, tablerIcon } from '@BBeBee/ui-kit-desktop'
+import { Sheet, TextField, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { midnightPurpleTheme } from '@BBeBee/ui-tokens'
 import { Select } from '../Select.js'
 import { SettingsRow } from '../SettingsRow.js'
 import { SettingsSection } from '../SettingsSection.js'
 import { Switch } from '../Switch.js'
+
+interface LibraryProfileApi {
+  getProfile(): Promise<{ id: string; name: string }>
+  updateProfile(patch: { name?: string }): Promise<{ id: string; name: string }>
+}
+
+/**
+ * The local user (UUID id, name defaulting to "Mine") — what created
+ * playlists show as their creator. Stored by `plugin-library`; edited here.
+ */
+function UserProfileSection({ ctx }: { ctx?: Context }): ReactElement {
+  const library = ctx
+    ? serviceOf<LibraryProfileApi>(ctx, 'library')
+    : undefined
+
+  const [name, setName] = useState('')
+  const [userId, setUserId] = useState('')
+  const [justSaved, setJustSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!library?.getProfile || !ctx) return
+    let cancelled = false
+    void library
+      .getProfile()
+      .then((p) => {
+        if (cancelled) return
+        setUserId(p.id)
+        setName(p.name)
+      })
+      .catch(() => undefined)
+    const off = ctx.on('library/profile-changed', () => {
+      void library
+        .getProfile()
+        .then((p) => {
+          if (cancelled) return
+          setUserId(p.id)
+          setName(p.name)
+        })
+        .catch(() => undefined)
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [ctx, library])
+
+  const handleSave = () => {
+    if (!library?.updateProfile) return
+    const trimmed = name.trim()
+    if (!trimmed) {
+      setError('用户名不能为空')
+      return
+    }
+    void library
+      .updateProfile({ name: trimmed })
+      .then((p) => {
+        setName(p.name)
+        setError(null)
+        setJustSaved(true)
+        setTimeout(() => setJustSaved(false), 1500)
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+  }
+
+  return h(
+    SettingsSection,
+    {
+      title: '用户',
+      description: '本地用户资料，歌单等内容的创建者将显示此名称',
+    },
+    h(SettingsRow, {
+      title: '用户名',
+      description: error ?? (justSaved ? '已保存' : '创建歌单时作为创建者显示'),
+      action: h(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+        h(TextField, {
+          value: name,
+          onChange: setName,
+          placeholder: 'Mine',
+          testID: 'profile-name-input',
+        }),
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-testid': 'profile-name-save',
+            onClick: handleSave,
+            disabled: !library?.updateProfile,
+            style: {
+              padding: '6px 14px',
+              borderRadius: 6,
+              border: 'none',
+              background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
+              color: '#FFFFFF',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: library?.updateProfile ? 'pointer' : 'not-allowed',
+              flexShrink: 0,
+            },
+          },
+          justSaved ? '已保存' : '保存',
+        ),
+      ),
+    }),
+    h(SettingsRow, {
+      title: '用户 ID',
+      description: userId || '—',
+      borderBottom: false,
+    }),
+  )
+}
 
 export function GeneralSection({
   ctx,
@@ -138,6 +251,7 @@ export function GeneralSection({
   return h(
     'div',
     { id: 'section-general' },
+    h(UserProfileSection, { ctx }),
     h(
       SettingsSection,
       {

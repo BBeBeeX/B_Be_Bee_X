@@ -435,7 +435,17 @@ CREATE TABLE collection_items (
   position      TEXT NOT NULL,
   PRIMARY KEY (collection_id, urn)
 );
+
+CREATE TABLE library_profile (
+  id   TEXT PRIMARY KEY,                -- UUID,首次运行时生成一次
+  name TEXT NOT NULL                    -- 默认 'Mine',可在设置中修改
+);
 ```
+
+**本地用户(`library_profile`)只有一行**,由 `plugin-library` 在首次运行时播种:创建的歌单以当前
+用户名作为创建者显示(自带 `owner` 的远端歌单优先显示其 owner);在设置中改名会即时生效并广播
+`library/profile-changed`。同理,曲库没有任何歌单时会播种一个名为「我的歌单」的默认歌单,保证
+页面不为空。
 
 ### 4.7 播放
 

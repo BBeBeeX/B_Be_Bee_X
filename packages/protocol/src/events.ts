@@ -146,6 +146,12 @@ declare module 'cordis' {
      * event.
      */
     'library/collections-changed'(): void
+    /**
+     * The local user's profile changed (currently: the name, editable in
+     * Settings). Screens showing the user as a creator re-read
+     * `ctx.library.getProfile()` on this.
+     */
+    'library/profile-changed'(): void
     'scan/specified-dirs-changed'(dirs: readonly ScanSpecifiedDir[]): void
     'scan/started'(specifiedDirId: string): void
     'scan/progress'(specifiedDirId: string, done: number, total?: number): void
@@ -213,6 +219,7 @@ export const DISPATCH_MODES = {
   'download/changed': 'emit',
   'library/changed': 'emit',
   'library/collections-changed': 'emit',
+  'library/profile-changed': 'emit',
   'scan/specified-dirs-changed': 'emit',
   'scan/started': 'emit',
   'scan/progress': 'emit',

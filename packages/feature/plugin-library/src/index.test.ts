@@ -44,6 +44,23 @@ describe('plugin-library', () => {
     expect((await asContract.listPlaylists()).items.map((p) => p.name)).toEqual(['我的歌单'])
   })
 
+  it('seeds a local user profile, and renames it', async () => {
+    const { library } = await harness()
+    const profile = await library.getProfile()
+    expect(profile.name).toBe('Mine')
+    // A UUID: version 4 nibble and the RFC variant nibble.
+    expect(profile.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+
+    // ensure() is idempotent: the same row comes back, no second insert.
+    expect((await library.getProfile()).id).toBe(profile.id)
+
+    const renamed = await library.updateProfile({ name: '  Bee  ' })
+    expect(renamed.name).toBe('Bee')
+    expect((await library.getProfile()).name).toBe('Bee')
+    expect((await library.getProfile()).id).toBe(profile.id)
+    await expect(library.updateProfile({ name: '   ' })).rejects.toMatchObject({ code: 'invalid-name' })
+  })
+
   it('emits library/changed for playlist edits and collections-changed for collections', async () => {
     const { ctx, library } = await harness()
     const libraryEvents: { kind: string; urns: readonly string[] }[] = []

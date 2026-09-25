@@ -56,6 +56,8 @@ declare module 'cordis' {
     'library/changed'(kind: 'track' | 'album' | 'artist' | 'playlist', urns: string[]): void
     /** A collection was created, renamed, deleted or re-membered (no URN, no kind). */
     'library/collections-changed'(): void
+    /** The local user was renamed — re-read `ctx.library.getProfile()`. */
+    'library/profile-changed'(): void
     'scan/started'(specifiedDirId: string): void
     'scan/progress'(specifiedDirId: string, done: number, total?: number): void
     'scan/finished'(specifiedDirId: string, summary: { added: number; updated: number; errors: number }): void

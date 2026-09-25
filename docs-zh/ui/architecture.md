@@ -330,6 +330,10 @@ export const usePosition = () =>
    - 全屏自由拖拽：容器样式配置 `-webkit-app-region: drag`，按钮控制项配置 `-webkit-app-region: no-drag`。
    - 鼠标穿透（锁定模式）：动态调用 `lyricWindow.setIgnoreMouseEvents(locked, { forward: true })`，让鼠标穿透歌词点击底层软件。
 
+5. **桌面歌词的交互不使用拖拽区**：
+   - 歌词窗口根节点**不能**携带 `-webkit-app-region: drag`——拖拽区会吞掉悬停工具栏依赖的鼠标事件（工具栏曾因此永远不出现）。拖拽改为手动实现：指针捕获 + `desktop-lyrics:set-position` IPC（基于 `screenX/screenY` 增量），拖动结束时通过 `desktop-lyrics:commit-position` 上报最终位置（主进程对程序化移动抑制回声）。
+   - 锁定（穿透）时，歌词窗口在工具栏原位置显示唯一的"解锁"胶囊。由于 `forward` 在 Linux 上是空操作，主进程在锁定且可见期间**轮询系统光标**（`desktop-lyrics:cursor`）；渲染端仅在光标位于窗口内时显示该胶囊，并随光标进出胶囊区域切换鼠标处理（`set-ignore-mouse`），窗口其余部分保持完全穿透。
+
 ---
 
 ## 8. 无障碍

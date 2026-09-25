@@ -80,3 +80,8 @@ Each piece of application state has exactly ONE owner:
 
 - **Entity hierarchy**: Folders (`collections`) organize collection-level entities: `playlist`, `album`, `artist`, and child folders (`collection`).
 - **No direct tracks**: Folders **never** hold individual tracks (`track` URNs). Individual tracks belong exclusively to playlists or albums. `ctx.library.addToCollection` rejects `track` URNs with `LibraryError(..., 'invalid-urn')`.
+
+## 7. Local User & Library Seeds
+
+- **One profile row**: `library_profile` (core migration v6) holds the local user — UUID id, name defaulting to `Mine`, editable via `ctx.library.updateProfile` (Settings → 通用 → 用户). Created playlists display the *current* profile name as creator (`playlist.owner` wins for remote ones); renames emit `library/profile-changed`.
+- **Never-empty library**: on init `plugin-library` seeds one playlist named `我的歌单` while the library holds no playlists, so the curation page never opens empty.

@@ -26,6 +26,7 @@ import type {
   SourcesService,
   Track,
   UrnKind,
+  UserProfile,
 } from '@BBeBee/protocol'
 import { tryParseUrn } from '@BBeBee/protocol'
 import { serviceOf, type AsyncState } from '@BBeBee/ui-core'
@@ -151,6 +152,33 @@ export function useCollections(ctx: Context): LibraryRead<readonly Collection[]>
     'collections',
     { onCollectionsChanged: true },
   )
+}
+
+/**
+ * The local user — the creator name playlists display.
+ *
+ * Re-read on `library/profile-changed`, so renaming in Settings updates every
+ * "creator" label without a restart.
+ */
+export function useLibraryProfile(ctx: Context): UserProfile | undefined {
+  const [profile, setProfile] = useState<UserProfile | undefined>(undefined)
+  useEffect(() => {
+    let cancelled = false
+    const read = () => {
+      // Optional call: a stub without a profile (old harnesses) degrades to
+      // `undefined` instead of throwing.
+      void Promise.resolve(ctx.library.getProfile?.()).then((p) => {
+        if (!cancelled && p) setProfile(p)
+      }).catch(() => undefined)
+    }
+    read()
+    const off = ctx.on('library/profile-changed', () => read())
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [ctx])
+  return profile
 }
 
 /**

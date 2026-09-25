@@ -10,6 +10,7 @@ import { LIBRARY_VIEWS } from '@BBeBee/plugin-library/views'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import {
   useCollections,
+  useLibraryProfile,
   usePlaylists,
   useSaved,
 } from '@BBeBee/plugin-library/hooks'
@@ -217,6 +218,10 @@ export function LibraryScreen({
 
   const favoriteUrns = useMemo(() => savedTrackEntries.data?.map((e) => e.urn) ?? [], [savedTrackEntries.data])
 
+  // 本地用户即创建者：歌单行的 creator 与 "歌单 • X" 副标题都用它。
+  const profile = useLibraryProfile(ctx)
+  const creatorName = profile?.name ?? 'Mine'
+
   // 收藏夹和本地音乐不再是下方列表里的两张卡：它们作为两个快捷入口渲染在
   // 音乐库标题之下、筛选工具条之上（见 renderQuickItem）。
 
@@ -237,8 +242,8 @@ export function LibraryScreen({
           title: playlist.name,
           subtitle: playlist.isSmart
             ? '智能歌单'
-            : '歌单 • Mine',
-          creator: 'Mine',
+            : `歌单 • ${playlist.owner ?? creatorName}`,
+          creator: playlist.owner ?? creatorName,
           artwork: playlist.artwork ?? playlistFirstTrackArtworks.get(playlist.urn),
           artworkSeed: playlist.urn,
           pinned: isPinned,
@@ -251,7 +256,7 @@ export function LibraryScreen({
           onMore: (anchor) => openPlaylistMenu(playlist, anchor, isPinned),
         }
       })
-  }, [allSaved.data, containedPlaylistUrns, ctx, fail, isItemPinned, openPlaylistMenu, playPlaylist, playlistFirstTrackArtworks, playlists.data])
+  }, [allSaved.data, containedPlaylistUrns, ctx, creatorName, fail, isItemPinned, openPlaylistMenu, playPlaylist, playlistFirstTrackArtworks, playlists.data])
 
   const albumItems: UnifiedItem[] = useMemo(() => {
     return (savedAlbumEntries.data ?? []).map((entry) => {
@@ -296,7 +301,7 @@ export function LibraryScreen({
         kind: 'collection',
         title: collection.name,
         subtitle: `文件夹 • ${collection.itemCount ?? 0} 个项目`,
-        creator: 'Mine',
+        creator: creatorName,
         artwork: collectionFirstArtworks.get(collection.id),
         artworkSeed: collection.id,
         pinned: isPinned,
@@ -310,7 +315,7 @@ export function LibraryScreen({
         onMore: (anchor) => openCollectionMenu(collection, anchor, isPinned),
       }
     })
-  }, [collectionFirstArtworks, collections.data, ctx, fail, isItemPinned, openCollectionMenu, playCollection, setActiveFolderId])
+  }, [collectionFirstArtworks, collections.data, ctx, creatorName, fail, isItemPinned, openCollectionMenu, playCollection, setActiveFolderId])
 
   const artistItems: UnifiedItem[] = useMemo(() => {
     return (savedArtistEntries.data ?? []).map((entry) => {
@@ -393,8 +398,8 @@ export function LibraryScreen({
               urn: matchedPlaylist.urn,
               kind: 'playlist',
               title: matchedPlaylist.name,
-              subtitle: matchedPlaylist.isSmart ? '智能歌单' : '歌单 • Mine',
-              creator: 'Mine',
+              subtitle: matchedPlaylist.isSmart ? '智能歌单' : `歌单 • ${matchedPlaylist.owner ?? creatorName}`,
+              creator: matchedPlaylist.owner ?? creatorName,
               artwork: matchedPlaylist.artwork ?? playlistFirstTrackArtworks.get(matchedPlaylist.urn),
               artworkSeed: matchedPlaylist.urn,
               pinned: isPinned,
@@ -472,8 +477,8 @@ export function LibraryScreen({
                   urn: detail.urn,
                   kind: 'playlist',
                   title: detail.name,
-                  subtitle: detail.isSmart ? '智能歌单' : '歌单 • Mine',
-                  creator: 'Mine',
+                  subtitle: detail.isSmart ? '智能歌单' : `歌单 • ${detail.owner ?? creatorName}`,
+                  creator: detail.owner ?? creatorName,
                   artwork: detail.artwork ?? playlistFirstTrackArtworks.get(detail.urn),
                   artworkSeed: detail.urn,
                   pinned: isPinned,
@@ -564,6 +569,7 @@ export function LibraryScreen({
     [
       albumItems,
       ctx,
+      creatorName,
       fail,
       historyMap,
       isItemPinned,

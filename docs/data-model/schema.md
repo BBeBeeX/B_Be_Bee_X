@@ -489,6 +489,11 @@ CREATE TABLE collection_items (
   position      TEXT NOT NULL,
   PRIMARY KEY (collection_id, urn)
 );
+
+CREATE TABLE library_profile (
+  id   TEXT PRIMARY KEY,                -- a UUID, generated once on first run
+  name TEXT NOT NULL                    -- default 'Mine'; editable in Settings
+);
 ```
 
 **`ctx.library` (`plugin-library`) owns all five tables.** It is the only writer outside the
@@ -522,6 +527,10 @@ interface LibraryService {
   listCollectionItems(id: string, page?: PageRequest): Promise<Paged<CollectionItem>>
   addToCollection(id: string, urns: readonly string[]): Promise<number>
   removeFromCollection(id: string, urns: readonly string[]): Promise<void>
+
+  // profile — library_profile (one row)
+  getProfile(): Promise<UserProfile>
+  updateProfile(patch: { name?: string }): Promise<UserProfile>
 }
 ```
 
@@ -535,6 +544,15 @@ re-saving it cannot silently reorder the shelf.
 The service emits `library/changed(kind, urns)` for favourites and playlist edits, and
 `library/collections-changed()` for collections: a collection has no URN and no `UrnKind`, so
 folding it into `library/changed` would mean emitting a kind that named something else.
+`library/profile-changed` fires when the local user is renamed.
+
+**The local user (`library_profile`) is one row**, seeded on first run with a UUID id and the
+name `Mine`, editable in Settings (`updateProfile` refuses an empty name and emits
+`library/profile-changed`). It has no per-playlist data: every created playlist displays the
+*current* profile name as its creator, so a rename applies everywhere at once — while a playlist
+that carries its own `owner` (a remote one from a source) keeps showing that. For the same
+"never opens empty" reason, the service also seeds one playlist named `我的歌单` on first run,
+and re-seeds only while the library holds no playlists at all.
 
 A collection is an organizational container for collection-level entities (playlists, albums,
 artists, and child collections). A collection **cannot** contain individual tracks; tracks belong

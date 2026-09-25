@@ -13,9 +13,7 @@
       "mobile": "./dist/index.js"
     }
   },
-  "capabilities": [
-    "audio"
-  ],
+  "capabilities": [],
   "contributes": {
     "services": [
       "settings"

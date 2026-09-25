@@ -51,6 +51,8 @@ declare module 'cordis' {
 
     // library / scanning
     'library/changed'(kind: 'track' | 'album' | 'artist' | 'playlist', urns: string[]): void
+    /** 本地用户资料变更(如改名)——重新读取 ctx.library.getProfile()。 */
+    'library/profile-changed'(): void
     'scan/started'(rootId: string): void
     'scan/progress'(rootId: string, done: number, total?: number): void
     'scan/finished'(rootId: string, summary: { added: number; updated: number; errors: number }): void

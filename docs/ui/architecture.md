@@ -439,9 +439,18 @@ author. It is the highest-leverage piece of shell code in the project.
 
 The desktop shell organizes primary navigation between the left sidebar and the top bar:
 
+0. **TopBar placement**: The TopBar is **embedded at the top of the main content pane** (not a
+   full-width row above the workspace), so the sidebar and the queue panel run the full window
+   height. When the library's expanded mode takes over the workspace, the TopBar moves into the
+   expanded library pane instead (sticky, so the window controls stay reachable). There is no
+   standalone Home button — Home lives on the brand logo and the More menu — and the centered
+   search input is deliberately narrow (`max-width: 360px`). With the queue panel open, the
+   window controls sit at the top-right of the main pane, left of the queue.
+
 1. **Left Sidebar Filtering**:
    - The left navigation rail is dedicated to browsing user content and collections (`library.view`, `history.view`, user playlists).
    - Global utility entries — specifically `settings.view` (Settings Center) and `sources.search` (Search) — are intentionally excluded from sidebar route rendering to avoid visual clutter and maintain Spotify-style navigation parity.
+   - The **library sidebar** keeps two quick entries — 喜欢 (heart, with the saved-track count) and 本地和下载 (download, with the local-track count) — between the "音乐库" title and the filter pills; they navigate to `library.favorites` / `library.local`, highlight the active one, and stay visible in the collapsed rail as two icon tiles. The 艺人 filter chip renders only when the library actually holds artists, the 已下载 chip is gone, and the sort label hides while the in-library search field is open.
 
 2. **TopBar Interactive Search & 2×2 Matrix Dropdown**:
    - **Dynamic Search Icon Shift**:
@@ -479,6 +488,10 @@ When desktop features require OS-level window detachment — such as **Desktop L
    - Free dragging via CSS `-webkit-app-region: drag` and interactive buttons via `-webkit-app-region: no-drag`.
    - Mouse click-through: `setIgnoreMouseEvents(locked, { forward: true })` toggled dynamically upon lock state where applicable.
 
+5. **Desktop Lyrics Interaction Without Drag Regions**:
+   - The lyrics window root must never carry `-webkit-app-region: drag`: a drag region swallows the mouse events the hover toolbar depends on (the reason the toolbar once never appeared). Dragging is manual instead — pointer capture plus `desktop-lyrics:set-position` IPC using `screenX/screenY` deltas, and the final position is reported through `desktop-lyrics:commit-position` when the drag ends (programmatic moves are echo-suppressed in main).
+   - While locked (click-through), the lyrics window shows a single 解锁 pill at the toolbar spot. Because `forward` is a no-op on Linux, **main polls the OS cursor** (`desktop-lyrics:cursor`) while the window is locked and visible; the renderer shows the pill only while the cursor is over the window and flips mouse handling (`set-ignore-mouse`) as the cursor crosses the pill, so the rest of the window stays click-through.
+
 ### 7.3 Mini Player & Dynamic Island Window Architecture
 
 The **Mini Player / Dynamic Island** (`plugin-mini-player` and `plugin-mini-player-ui-desktop`) provides a dedicated secondary floating window with dynamic morphing between a standard floating media pill and an Apple-inspired "Dynamic Island" docked at the screen top:
@@ -495,7 +508,8 @@ The **Mini Player / Dynamic Island** (`plugin-mini-player` and `plugin-mini-play
 
 3. **Gesture-First Interaction**:
    - Redundant explicit toggle buttons ("折叠灵动岛", "脱离吸附", "吸附到顶部") are omitted to prevent visual clutter.
-   - Dragging near the top snaps to island; dragging down detaches; clicking the capsule expands; double-clicking the background collapses back to capsule.
+   - Dragging near the top snaps to island; dragging down detaches; clicking the capsule expands; double-clicking the background collapses back to capsule; clicking the dancing wave bars in the expanded island also collapses back to the capsule.
+   - The window is absent from the taskbar (`skipTaskbar: true`) — the main window's entry represents the app in both mini-player and Dynamic Island modes.
 
 4. **Security & Artwork Path Resolution**:
    - Chromium blocks `file://` resources inside renderer documents with `ERR_UNKNOWN_URL_SCHEME` / security violations.
