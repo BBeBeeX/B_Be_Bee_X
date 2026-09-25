@@ -23,7 +23,7 @@ import type {
   RouteChangeEvent,
   Uri,
 } from '@BBeBee/protocol'
-import { WasapiAudioHandle } from './wasapi-audio-handle.js'
+import { WasapiAudioHandle, type AudioLogger } from './wasapi-audio-handle.js'
 import { SharedRingBuffer } from './ring-buffer.js'
 import { WASAPI_SINK_WORKLET_CODE, WASAPI_SINK_WORKLET_NAME } from './worklets/wasapi-sink-processor.js'
 
@@ -324,7 +324,8 @@ export class AudioWasapi extends Service implements AudioService {
   }
 
   async listOutputDevices(): Promise<OutputDevice[]> {
-    await unlockMediaDeviceLabels()
+    this.ctx.logger?.info('wasapi: listOutputDevices() started')
+    await unlockMediaDeviceLabels(this.ctx.logger)
 
     const devices: OutputDevice[] = []
     const media = (globalThis as {
@@ -334,11 +335,20 @@ export class AudioWasapi extends Service implements AudioService {
     let rawOutputs: Array<{ deviceId: string; kind: string; label: string }> = []
     if (media?.enumerateDevices) {
       try {
+        this.ctx.logger?.debug?.('wasapi: calling navigator.mediaDevices.enumerateDevices()...')
         const raw = await media.enumerateDevices()
         rawOutputs = raw.filter((d) => d.kind === 'audiooutput')
-      } catch {
-        // ignore
+        this.ctx.logger?.info(
+          'wasapi: enumerateDevices() returned %d total devices (%d audiooutput): %s',
+          raw.length,
+          rawOutputs.length,
+          JSON.stringify(rawOutputs.map((d) => ({ deviceId: d.deviceId, label: d.label }))),
+        )
+      } catch (err) {
+        this.ctx.logger?.warn('wasapi: enumerateDevices() failed: %s', String(err))
       }
+    } else {
+      this.ctx.logger?.debug?.('wasapi: navigator.mediaDevices.enumerateDevices is not available')
     }
 
     const bridgeCall =
@@ -351,12 +361,20 @@ export class AudioWasapi extends Service implements AudioService {
     let bridgeDevices: OutputDevice[] = []
     if (bridgeCall) {
       try {
+        this.ctx.logger?.debug?.('wasapi: calling bridge getOutputDevices...')
         const fetched = (await bridgeCall('audio', 'getOutputDevices', [])) as OutputDevice[]
         if (Array.isArray(fetched) && fetched.length > 0) {
           bridgeDevices = fetched
+          this.ctx.logger?.info(
+            'wasapi: bridge getOutputDevices returned %d devices: %s',
+            fetched.length,
+            JSON.stringify(fetched.map((d) => ({ id: d.id, label: d.label, isDefault: d.isDefault, isVirtual: d.isVirtual }))),
+          )
+        } else {
+          this.ctx.logger?.debug?.('wasapi: bridge getOutputDevices returned empty or non-array')
         }
-      } catch {
-        // fallback
+      } catch (err) {
+        this.ctx.logger?.warn('wasapi: bridge getOutputDevices failed: %s', String(err))
       }
     }
 
@@ -364,6 +382,7 @@ export class AudioWasapi extends Service implements AudioService {
       for (let i = 0; i < rawOutputs.length; i++) {
         const out = rawOutputs[i]!
         let label = out.label
+        let matchReason = 'none'
 
         // Match with bridgeDevices solely for metadata (label & virtual card detection)
         let matchedBridge: OutputDevice | undefined
@@ -374,17 +393,27 @@ export class AudioWasapi extends Service implements AudioService {
               const cleanB = normalizeBaseLabel(b.label)
               return cleanB === cleanL || cleanB.includes(cleanL) || cleanL.includes(cleanB)
             })
+            if (matchedBridge) matchReason = `label match ("${cleanL}" ~ "${matchedBridge.label}")`
           }
           if (!matchedBridge) {
             if (out.deviceId === 'default') {
               matchedBridge = bridgeDevices.find((b) => b.isDefault) ?? bridgeDevices[0]
+              matchReason = 'default device fallback'
             } else if (i < bridgeDevices.length) {
               matchedBridge = bridgeDevices[i]
+              matchReason = `index match [${i}]`
             }
           }
         }
 
         if (isGenericPlaceholder(label) && matchedBridge?.label && !isGenericPlaceholder(matchedBridge.label)) {
+          this.ctx.logger?.debug?.(
+            'wasapi: replacing generic label "%s" (deviceId=%s) with native label "%s" via %s',
+            label,
+            out.deviceId,
+            matchedBridge.label,
+            matchReason,
+          )
           label = matchedBridge.label
         }
 
@@ -398,6 +427,15 @@ export class AudioWasapi extends Service implements AudioService {
           ? cleanLabel
           : (matchedBridge?.label && !isGenericPlaceholder(matchedBridge.label) ? matchedBridge.label : '音频输出设备')
 
+        this.ctx.logger?.debug?.(
+          'wasapi: processed device[%d]: id="%s", raw="%s", final="%s", isVirtual=%s',
+          i,
+          out.deviceId,
+          out.label,
+          finalLabel,
+          isVirtual,
+        )
+
         // CRITICAL: WebAudio devices MUST use Chromium's deviceId, never native OS IDs!
         devices.push({
           id: out.deviceId,
@@ -409,13 +447,17 @@ export class AudioWasapi extends Service implements AudioService {
     }
 
     if (devices.length > 0) {
-      this.ctx.logger?.debug?.('wasapi: listOutputDevices returned %d devices', devices.length)
+      this.ctx.logger?.info(
+        'wasapi: listOutputDevices returning %d processed devices: %s',
+        devices.length,
+        JSON.stringify(devices.map((d) => ({ id: d.id, label: d.label, isDefault: d.isDefault, isVirtual: d.isVirtual }))),
+      )
       return devices
     }
 
     if (bridgeDevices.length > 0) {
       const fallbackLabel = cleanAndTagDeviceLabel(bridgeDevices[0]!.label).label || '音频输出设备'
-      this.ctx.logger?.debug?.('wasapi: listOutputDevices fallback to bridge devices (1 device)')
+      this.ctx.logger?.warn('wasapi: listOutputDevices fallback to bridge devices (1 device): %s', fallbackLabel)
       return [
         {
           id: 'default',
@@ -426,12 +468,12 @@ export class AudioWasapi extends Service implements AudioService {
       ]
     }
 
-    this.ctx.logger?.debug?.('wasapi: listOutputDevices default fallback')
+    this.ctx.logger?.warn('wasapi: listOutputDevices default fallback (no devices discovered anywhere)')
     return [{ id: 'default', label: '音频输出设备', isDefault: true, isVirtual: false }]
   }
 
   async setOutputDevice(id: string): Promise<void> {
-    this.ctx.logger?.info('wasapi: setOutputDevice(%s)', id)
+    this.ctx.logger?.info('wasapi: setOutputDevice("%s") started', id)
     const bridgeCall =
       this.config.bridgeCall ??
       (typeof window !== 'undefined'
@@ -467,21 +509,35 @@ export class AudioWasapi extends Service implements AudioService {
             }
           }
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        this.ctx.logger?.warn('wasapi: setOutputDevice failed to resolve native device ID: %s', String(err))
       }
-      await bridgeCall('audio', 'setOutputDevice', [nativeId]).catch(() => {})
+      this.ctx.logger?.info('wasapi: sending native deviceId "%s" to bridge audio.setOutputDevice', nativeId)
+      try {
+        await bridgeCall('audio', 'setOutputDevice', [nativeId])
+        this.ctx.logger?.info('wasapi: bridge audio.setOutputDevice("%s") succeeded', nativeId)
+      } catch (err) {
+        this.ctx.logger?.error('wasapi: bridge audio.setOutputDevice("%s") failed: %s', nativeId, String(err))
+      }
     }
 
     // Safety guard: never pass OS IDs (PnP InstanceId, MMDevice ID, ALSA hw) to Chromium setSinkId
     let targetId = id === 'default' ? '' : id
     if (targetId && (targetId.includes('\\') || targetId.includes('{') || targetId.startsWith('hw:'))) {
+      this.ctx.logger?.warn('wasapi: setOutputDevice received raw OS ID "%s", sanitized to "" for Chromium setSinkId', targetId)
       targetId = ''
     }
 
     const sink = (this.context as BaseAudioContext & { setSinkId?: (id: string) => Promise<void> }).setSinkId
     if (typeof sink === 'function') {
-      await sink.call(this.context, targetId).catch(() => {})
+      try {
+        await sink.call(this.context, targetId)
+        this.ctx.logger?.info('wasapi: AudioContext.setSinkId("%s") succeeded', targetId)
+      } catch (err) {
+        this.ctx.logger?.error('wasapi: AudioContext.setSinkId("%s") failed: %s', targetId, String(err))
+      }
+    } else {
+      this.ctx.logger?.debug?.('wasapi: AudioContext.setSinkId is not supported in this runtime')
     }
   }
 
@@ -584,8 +640,11 @@ function cleanAndTagDeviceLabel(
 
 let mediaDeviceLabelsUnlocked = false
 
-async function unlockMediaDeviceLabels(): Promise<void> {
-  if (mediaDeviceLabelsUnlocked) return
+async function unlockMediaDeviceLabels(logger?: AudioLogger): Promise<void> {
+  if (mediaDeviceLabelsUnlocked) {
+    logger?.debug?.('wasapi: unlockMediaDeviceLabels skipped, already unlocked')
+    return
+  }
   const nav = (globalThis as unknown as {
     navigator?: {
       permissions?: { query?: (q: { name: string }) => Promise<{ state: string }> }
@@ -594,20 +653,28 @@ async function unlockMediaDeviceLabels(): Promise<void> {
       }
     }
   }).navigator
-  if (!nav?.mediaDevices) return
+  if (!nav?.mediaDevices) {
+    logger?.debug?.('wasapi: navigator.mediaDevices not available to unlock labels')
+    return
+  }
 
   try {
     if (typeof nav.permissions?.query === 'function') {
+      logger?.debug?.('wasapi: querying speaker-selection permission...')
       const status = await nav.permissions.query({ name: 'speaker-selection' }).catch(() => null)
+      logger?.debug?.('wasapi: speaker-selection status: %s', status?.state)
       if (status?.state === 'granted') {
         mediaDeviceLabelsUnlocked = true
+        logger?.info?.('wasapi: speaker-selection permission is granted, device labels unlocked')
         return
       }
     }
 
     if (typeof nav.mediaDevices.getUserMedia === 'function') {
+      logger?.debug?.('wasapi: requesting getUserMedia({ audio: true }) to unlock device labels...')
       const stream = await nav.mediaDevices.getUserMedia({ audio: true })
-      for (const track of stream.getTracks()) {
+      const tracks = stream.getTracks()
+      for (const track of tracks) {
         try {
           track.stop()
         } catch {
@@ -615,9 +682,10 @@ async function unlockMediaDeviceLabels(): Promise<void> {
         }
       }
       mediaDeviceLabelsUnlocked = true
+      logger?.info?.('wasapi: getUserMedia succeeded (%d tracks stopped), device labels unlocked', tracks.length)
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    logger?.warn?.('wasapi: unlockMediaDeviceLabels failed: %s', String(err))
   }
 }
 

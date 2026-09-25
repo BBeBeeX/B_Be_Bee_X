@@ -1,9 +1,9 @@
 import { FfmpegDecoder } from './ffmpeg-decoder.js'
-import { WasapiEngine } from './wasapi-engine.js'
+import { WasapiEngine, type AudioMainLogger } from './wasapi-engine.js'
 import type { AudioDecodedPcm, AudioProbeResult, WasapiInitConfig, WasapiInitResult } from './types.js'
 
 export * from './types.js'
-export { FfmpegDecoder, WasapiEngine }
+export { FfmpegDecoder, WasapiEngine, type AudioMainLogger }
 
 export interface AudioHostApi {
   probe(uri: string): Promise<AudioProbeResult>
@@ -15,9 +15,9 @@ export interface AudioHostApi {
   setOutputDevice(id: string): Promise<void>
 }
 
-export function createAudioHost(): AudioHostApi {
+export function createAudioHost(logger?: AudioMainLogger): AudioHostApi {
   const decoder = new FfmpegDecoder()
-  const wasapi = new WasapiEngine()
+  const wasapi = new WasapiEngine(logger)
 
   return {
     probe: (uri) => decoder.probe(uri),

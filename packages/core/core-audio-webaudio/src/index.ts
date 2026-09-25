@@ -648,7 +648,8 @@ export class AudioWebAudio extends Service implements AudioService {
    * the picker when there is only one entry (docs/05 §1).
    */
   async listOutputDevices(): Promise<OutputDevice[]> {
-    await unlockMediaDeviceLabels()
+    this.ctx.logger?.info('webaudio: listOutputDevices() started')
+    await unlockMediaDeviceLabels(this.ctx.logger)
 
     const devices: OutputDevice[] = []
     const media = (globalThis as { navigator?: { mediaDevices?: MediaDevicesLike } }).navigator
@@ -657,11 +658,20 @@ export class AudioWebAudio extends Service implements AudioService {
     let rawOutputs: Array<{ deviceId: string; kind: string; label: string }> = []
     if (media?.enumerateDevices) {
       try {
+        this.ctx.logger?.debug?.('webaudio: calling navigator.mediaDevices.enumerateDevices()...')
         const raw = await media.enumerateDevices()
         rawOutputs = raw.filter((d) => d.kind === 'audiooutput')
-      } catch {
-        // ignore
+        this.ctx.logger?.info(
+          'webaudio: enumerateDevices() returned %d total devices (%d audiooutput): %s',
+          raw.length,
+          rawOutputs.length,
+          JSON.stringify(rawOutputs.map((d) => ({ deviceId: d.deviceId, label: d.label }))),
+        )
+      } catch (err) {
+        this.ctx.logger?.warn('webaudio: navigator.mediaDevices.enumerateDevices() failed: %s', String(err))
       }
+    } else {
+      this.ctx.logger?.debug?.('webaudio: navigator.mediaDevices.enumerateDevices is not available')
     }
 
     let mainDevices: OutputDevice[] = []
@@ -673,12 +683,20 @@ export class AudioWebAudio extends Service implements AudioService {
       ).BBeBeeBridge
       if (bridge?.call) {
         try {
+          this.ctx.logger?.debug?.('webaudio: calling bridge.call("audio", "getOutputDevices")...')
           const fetched = (await bridge.call('audio', 'getOutputDevices', [])) as OutputDevice[]
           if (Array.isArray(fetched) && fetched.length > 0) {
             mainDevices = fetched
+            this.ctx.logger?.info(
+              'webaudio: bridge getOutputDevices returned %d devices: %s',
+              fetched.length,
+              JSON.stringify(fetched.map((d) => ({ id: d.id, label: d.label, isDefault: d.isDefault, isVirtual: d.isVirtual }))),
+            )
+          } else {
+            this.ctx.logger?.debug?.('webaudio: bridge getOutputDevices returned empty or non-array')
           }
-        } catch {
-          // ignore
+        } catch (err) {
+          this.ctx.logger?.warn('webaudio: bridge getOutputDevices call failed: %s', String(err))
         }
       }
     }
@@ -687,6 +705,7 @@ export class AudioWebAudio extends Service implements AudioService {
       for (let i = 0; i < rawOutputs.length; i++) {
         const d = rawOutputs[i]!
         let label = d.label
+        let matchReason = 'none'
 
         // Match with mainDevices solely for metadata (label & virtual card detection)
         let matchedMain: OutputDevice | undefined
@@ -697,17 +716,27 @@ export class AudioWebAudio extends Service implements AudioService {
               const cleanM = normalizeBaseLabel(m.label)
               return cleanM === cleanL || cleanM.includes(cleanL) || cleanL.includes(cleanM)
             })
+            if (matchedMain) matchReason = `label match ("${cleanL}" ~ "${matchedMain.label}")`
           }
           if (!matchedMain) {
             if (d.deviceId === 'default') {
               matchedMain = mainDevices.find((m) => m.isDefault) ?? mainDevices[0]
+              matchReason = 'default device fallback'
             } else if (i < mainDevices.length) {
               matchedMain = mainDevices[i]
+              matchReason = `index match [${i}]`
             }
           }
         }
 
         if (isGenericPlaceholder(label) && matchedMain?.label && !isGenericPlaceholder(matchedMain.label)) {
+          this.ctx.logger?.debug?.(
+            'webaudio: replacing generic label "%s" (deviceId=%s) with native label "%s" via %s',
+            label,
+            d.deviceId,
+            matchedMain.label,
+            matchReason,
+          )
           label = matchedMain.label
         }
 
@@ -721,6 +750,15 @@ export class AudioWebAudio extends Service implements AudioService {
           ? cleanLabel
           : (matchedMain?.label && !isGenericPlaceholder(matchedMain.label) ? matchedMain.label : '音频输出设备')
 
+        this.ctx.logger?.debug?.(
+          'webaudio: processed device[%d]: id="%s", raw="%s", final="%s", isVirtual=%s',
+          i,
+          d.deviceId,
+          d.label,
+          finalLabel,
+          isVirtual,
+        )
+
         // CRITICAL: WebAudio devices MUST use Chromium's deviceId, never native OS IDs!
         devices.push({
           id: d.deviceId,
@@ -732,14 +770,18 @@ export class AudioWebAudio extends Service implements AudioService {
     }
 
     if (devices.length > 0) {
-      this.ctx.logger?.debug?.('webaudio: listOutputDevices returned %d devices', devices.length)
+      this.ctx.logger?.info(
+        'webaudio: listOutputDevices returning %d processed devices: %s',
+        devices.length,
+        JSON.stringify(devices.map((d) => ({ id: d.id, label: d.label, isDefault: d.isDefault, isVirtual: d.isVirtual }))),
+      )
       return devices
     }
 
     // Fallback only if enumerateDevices returned nothing (e.g. headless unit tests)
     if (mainDevices.length > 0) {
       const fallbackLabel = cleanAndTagDeviceLabel(mainDevices[0]!.label).label || '音频输出设备'
-      this.ctx.logger?.debug?.('webaudio: listOutputDevices fallback to main process devices (1 device)')
+      this.ctx.logger?.warn('webaudio: listOutputDevices fallback to main process devices (1 device): %s', fallbackLabel)
       return [
         {
           id: 'default',
@@ -750,31 +792,44 @@ export class AudioWebAudio extends Service implements AudioService {
       ]
     }
 
-    this.ctx.logger?.debug?.('webaudio: listOutputDevices default fallback')
+    this.ctx.logger?.warn('webaudio: listOutputDevices default fallback (no devices discovered anywhere)')
     return [{ id: 'default', label: '音频输出设备', isDefault: true, isVirtual: false }]
   }
 
   async setOutputDevice(id: string): Promise<void> {
     this.gate()
     this.selectedDeviceId = id
-    this.ctx.logger?.info('webaudio: setOutputDevice(%s)', id)
+    this.ctx.logger?.info('webaudio: setOutputDevice("%s")', id)
     let targetId = id === 'default' ? '' : id
 
     // Safety guard: never pass OS IDs (PnP InstanceId, MMDevice ID, ALSA hw) to Chromium setSinkId
     if (targetId && (targetId.includes('\\') || targetId.includes('{') || targetId.startsWith('hw:'))) {
+      this.ctx.logger?.warn('webaudio: setOutputDevice received raw OS ID "%s", sanitized to "" for Chromium setSinkId', targetId)
       targetId = ''
     }
 
     const sink = (this.context as BaseAudioContext & { setSinkId?: (id: string) => Promise<void> })
       .setSinkId
     if (sink) {
-      await sink.call(this.context, targetId).catch(() => {})
+      try {
+        await sink.call(this.context, targetId)
+        this.ctx.logger?.info('webaudio: AudioContext.setSinkId("%s") succeeded', targetId)
+      } catch (err) {
+        this.ctx.logger?.error('webaudio: AudioContext.setSinkId("%s") failed: %s', targetId, String(err))
+      }
+    } else {
+      this.ctx.logger?.debug?.('webaudio: AudioContext.setSinkId is not supported in this runtime')
     }
 
     for (const element of this.activeMediaElements) {
       const elWithSink = element as unknown as { setSinkId?: (id: string) => Promise<void> }
       if (typeof elWithSink.setSinkId === 'function') {
-        void elWithSink.setSinkId(targetId).catch(() => {})
+        try {
+          await elWithSink.setSinkId(targetId)
+          this.ctx.logger?.debug?.('webaudio: MediaElement.setSinkId("%s") succeeded', targetId)
+        } catch (err) {
+          this.ctx.logger?.warn('webaudio: MediaElement.setSinkId("%s") failed: %s', targetId, String(err))
+        }
       }
     }
 
@@ -785,7 +840,12 @@ export class AudioWebAudio extends Service implements AudioService {
         }
       ).BBeBeeBridge
       if (bridge?.call) {
-        void bridge.call('audio', 'setOutputDevice', [id]).catch(() => {})
+        try {
+          await bridge.call('audio', 'setOutputDevice', [id])
+          this.ctx.logger?.info('webaudio: bridge.call("audio", "setOutputDevice", ["%s"]) succeeded', id)
+        } catch (err) {
+          this.ctx.logger?.warn('webaudio: bridge.call("audio", "setOutputDevice") failed: %s', String(err))
+        }
       }
     }
   }
@@ -891,8 +951,11 @@ function cleanAndTagDeviceLabel(
   return { label, isVirtual }
 }
 
-async function unlockMediaDeviceLabels(): Promise<void> {
-  if (mediaDeviceLabelsUnlocked) return
+async function unlockMediaDeviceLabels(logger?: AudioLogger): Promise<void> {
+  if (mediaDeviceLabelsUnlocked) {
+    logger?.debug?.('webaudio: unlockMediaDeviceLabels skipped, already unlocked')
+    return
+  }
   const nav = (globalThis as unknown as {
     navigator?: {
       permissions?: { query?: (q: { name: string }) => Promise<{ state: string }> }
@@ -901,20 +964,28 @@ async function unlockMediaDeviceLabels(): Promise<void> {
       }
     }
   }).navigator
-  if (!nav?.mediaDevices) return
+  if (!nav?.mediaDevices) {
+    logger?.debug?.('webaudio: navigator.mediaDevices not available to unlock labels')
+    return
+  }
 
   try {
     if (typeof nav.permissions?.query === 'function') {
+      logger?.debug?.('webaudio: querying speaker-selection permission...')
       const status = await nav.permissions.query({ name: 'speaker-selection' }).catch(() => null)
+      logger?.debug?.('webaudio: speaker-selection status: %s', status?.state)
       if (status?.state === 'granted') {
         mediaDeviceLabelsUnlocked = true
+        logger?.info?.('webaudio: speaker-selection permission is granted, device labels unlocked')
         return
       }
     }
 
     if (typeof nav.mediaDevices.getUserMedia === 'function') {
+      logger?.debug?.('webaudio: requesting getUserMedia({ audio: true }) to unlock device labels...')
       const stream = await nav.mediaDevices.getUserMedia({ audio: true })
-      for (const track of stream.getTracks()) {
+      const tracks = stream.getTracks()
+      for (const track of tracks) {
         try {
           track.stop()
         } catch {
@@ -922,9 +993,10 @@ async function unlockMediaDeviceLabels(): Promise<void> {
         }
       }
       mediaDeviceLabelsUnlocked = true
+      logger?.info?.('webaudio: getUserMedia succeeded (%d tracks stopped), device labels unlocked', tracks.length)
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    logger?.warn?.('webaudio: unlockMediaDeviceLabels failed: %s', String(err))
   }
 }
 

@@ -1197,7 +1197,22 @@ void app.whenReady().then(async () => {
           : await dialog.showOpenDialog({ properties: ['openDirectory'] })
         return result.canceled ? undefined : result.filePaths[0]
       },
-      audio: createAudioHost(),
+      audio: createAudioHost({
+        info: (msg, ...args) => process.stdout.write(`[desktop:audio] ${msg} ${args.length ? JSON.stringify(args) : ''}\n`),
+        warn: (msg, ...args) => process.stdout.write(`[desktop:audio:WARN] ${msg} ${args.length ? JSON.stringify(args) : ''}\n`),
+        error: (msg, ...args) => process.stderr.write(`[desktop:audio:ERROR] ${msg} ${args.length ? JSON.stringify(args) : ''}\n`),
+        debug: (msg, ...args) => {
+          if (isDebug()) process.stdout.write(`[desktop:audio:DEBUG] ${msg} ${args.length ? JSON.stringify(args) : ''}\n`)
+        },
+      }),
+      logger: {
+        info: (msg, ...args) => process.stdout.write(`[desktop:bridge] ${msg} ${args.length ? JSON.stringify(args) : ''}\n`),
+        warn: (msg, ...args) => process.stdout.write(`[desktop:bridge:WARN] ${msg} ${args.length ? JSON.stringify(args) : ''}\n`),
+        error: (msg, ...args) => process.stderr.write(`[desktop:bridge:ERROR] ${msg} ${args.length ? JSON.stringify(args) : ''}\n`),
+        debug: (msg, ...args) => {
+          if (isDebug()) process.stdout.write(`[desktop:bridge:DEBUG] ${msg} ${args.length ? JSON.stringify(args) : ''}\n`)
+        },
+      },
     },
   )
 

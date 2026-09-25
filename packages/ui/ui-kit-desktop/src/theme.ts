@@ -49,7 +49,9 @@ export function buttonStyle(variant: ButtonVariant, disabled: boolean, hovered: 
     opacity: disabled ? 0.5 : 1,
     transition: `transform ${tokens.duration.fast}ms, background-color ${tokens.duration.fast}ms, color ${tokens.duration.fast}ms, border-color ${tokens.duration.fast}ms, box-shadow ${tokens.duration.fast}ms`,
     transform: hovered && !disabled ? 'scale(1.04)' : 'scale(1)',
-    border: `1px solid transparent`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'transparent',
   }
   switch (variant) {
     case 'secondary':

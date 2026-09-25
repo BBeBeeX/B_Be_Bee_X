@@ -38,32 +38,62 @@ export function PlaybackSection({
 
   useEffect(() => {
     let mounted = true
-    const fetchDevices = async () => {
+    const fetchDevices = async (reason = 'mount') => {
+      ctx.logger?.info('playback-settings: fetchDevices started (reason: %s)', reason)
       try {
-        const list = await ctx.audio?.listOutputDevices?.()
+        if (!ctx.audio?.listOutputDevices) {
+          ctx.logger?.warn('playback-settings: ctx.audio.listOutputDevices is unavailable')
+          return
+        }
+        const list = await ctx.audio.listOutputDevices()
+        ctx.logger?.info(
+          'playback-settings: listOutputDevices returned %d devices: %s',
+          list?.length ?? 0,
+          JSON.stringify(list?.map((d) => ({ id: d.id, label: d.label, isDefault: d.isDefault, isVirtual: (d as { isVirtual?: boolean }).isVirtual }))),
+        )
         if (mounted && Array.isArray(list) && list.length > 0) {
           setOutputDevices(list)
           return
         }
-      } catch {
-        // ignore
+        if (mounted) {
+          ctx.logger?.warn('playback-settings: listOutputDevices returned empty or non-array list')
+        }
+      } catch (err) {
+        ctx.logger?.error('playback-settings: listOutputDevices failed: %s', String(err))
       }
     }
-    void fetchDevices()
+    void fetchDevices('mount')
+
+    let offRouteChange: (() => void) | undefined
+    try {
+      offRouteChange = ctx.audio?.onRouteChange?.((ev) => {
+        ctx.logger?.info('playback-settings: audio route-changed event received (reason: %s)', ev.reason)
+        void fetchDevices('route-change')
+      })
+    } catch {
+      // ignore
+    }
 
     const media = (globalThis as {
       navigator?: { mediaDevices?: { addEventListener?: (t: string, cb: () => void) => void; removeEventListener?: (t: string, cb: () => void) => void } }
     }).navigator?.mediaDevices
 
+    const onDeviceChange = () => {
+      ctx.logger?.info('playback-settings: navigator.mediaDevices devicechange event received')
+      void fetchDevices('devicechange')
+    }
+
     if (media?.addEventListener && media?.removeEventListener) {
-      media.addEventListener('devicechange', fetchDevices)
+      media.addEventListener('devicechange', onDeviceChange)
       return () => {
         mounted = false
-        media.removeEventListener?.('devicechange', fetchDevices)
+        offRouteChange?.()
+        media.removeEventListener?.('devicechange', onDeviceChange)
       }
     }
     return () => {
       mounted = false
+      offRouteChange?.()
     }
   }, [ctx])
 
@@ -92,8 +122,14 @@ export function PlaybackSection({
         currentDeviceId.startsWith('SWD\\') ||
         currentDeviceId.startsWith('hw:'))
     ) {
+      ctx.logger?.warn(
+        'playback-settings: invalid/native OS deviceId "%s" found in settings, resetting to "default"',
+        currentDeviceId,
+      )
       void update({ audioOutputDeviceId: 'default' })
-      void ctx.audio?.setOutputDevice?.('default').catch(() => {})
+      void ctx.audio?.setOutputDevice?.('default').catch((err) => {
+        ctx.logger?.error('playback-settings: failed to set output device to default: %s', String(err))
+      })
     }
   }, [currentDeviceId, update, ctx])
 
@@ -197,6 +233,7 @@ export function PlaybackSection({
           h(Button, {
             variant: currentEngine === 'wasapi' ? 'primary' : 'secondary',
             onPress: () => {
+              ctx.logger?.info('playback-settings: user clicked backend switch -> wasapi')
               void update({ audioOutputEngine: 'wasapi' })
             },
             children: 'WASAPI 独占 Hi-Res',
@@ -204,6 +241,7 @@ export function PlaybackSection({
           h(Button, {
             variant: currentEngine === 'webaudio' ? 'primary' : 'secondary',
             onPress: () => {
+              ctx.logger?.info('playback-settings: user clicked backend switch -> webaudio')
               void update({ audioOutputEngine: 'webaudio' })
             },
             children: 'WebAudio',
@@ -218,8 +256,11 @@ export function PlaybackSection({
           options: deviceOptions,
           accessibilityLabel: '音频输出设备',
           onChange: (newDeviceId: string) => {
+            ctx.logger?.info('playback-settings: user selected output device "%s"', newDeviceId)
             void update({ audioOutputDeviceId: newDeviceId })
-            void ctx.audio?.setOutputDevice?.(newDeviceId).catch(() => {})
+            void ctx.audio?.setOutputDevice?.(newDeviceId).catch((err) => {
+              ctx.logger?.error('playback-settings: setOutputDevice("%s") failed: %s', newDeviceId, String(err))
+            })
           },
         }),
       }),

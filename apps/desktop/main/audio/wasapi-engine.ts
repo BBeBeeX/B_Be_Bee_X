@@ -47,17 +47,57 @@ export function cleanAndTagDeviceLabel(
   return { label, isVirtual }
 }
 
+export interface AudioMainLogger {
+  info(message: string, ...args: unknown[]): void
+  warn(message: string, ...args: unknown[]): void
+  error(message: string, ...args: unknown[]): void
+  debug?(message: string, ...args: unknown[]): void
+}
+
 export class WasapiEngine {
   private activeConfig?: WasapiInitConfig
   private isRunning = false
   private totalFramesWritten = 0
   private selectedDeviceId = 'default'
 
+  constructor(private logger?: AudioMainLogger) {}
+
+  private logInfo(msg: string, ...args: unknown[]): void {
+    if (this.logger?.info) {
+      this.logger.info(msg, ...args)
+    } else {
+      process.stdout.write(`[desktop:audio] ${msg} ${args.length ? JSON.stringify(args) : ''}\n`)
+    }
+  }
+
+  private logWarn(msg: string, ...args: unknown[]): void {
+    if (this.logger?.warn) {
+      this.logger.warn(msg, ...args)
+    } else {
+      process.stdout.write(`[desktop:audio:WARN] ${msg} ${args.length ? JSON.stringify(args) : ''}\n`)
+    }
+  }
+
+  private logError(msg: string, ...args: unknown[]): void {
+    if (this.logger?.error) {
+      this.logger.error(msg, ...args)
+    } else {
+      process.stderr.write(`[desktop:audio:ERROR] ${msg} ${args.length ? JSON.stringify(args) : ''}\n`)
+    }
+  }
+
+  private logDebug(msg: string, ...args: unknown[]): void {
+    if (this.logger?.debug) {
+      this.logger.debug(msg, ...args)
+    }
+  }
+
   async isSupported(): Promise<boolean> {
     return process.platform === 'win32'
   }
 
   async init(config: WasapiInitConfig): Promise<WasapiInitResult> {
+    this.logInfo('init() called with config:', config)
     this.activeConfig = config
     this.isRunning = true
     this.totalFramesWritten = 0
@@ -84,11 +124,13 @@ export class WasapiEngine {
   }
 
   async stop(): Promise<void> {
+    this.logInfo('stop() called in WasapiEngine')
     this.isRunning = false
     this.activeConfig = undefined
   }
 
   async getOutputDevices(): Promise<SystemAudioDevice[]> {
+    this.logInfo(`getOutputDevices() query started for platform="${process.platform}"`)
     let systemDevices: SystemAudioDevice[] = []
     if (process.platform === 'win32') {
       systemDevices = await this.queryWindowsDevices()
@@ -96,7 +138,10 @@ export class WasapiEngine {
       systemDevices = await this.queryDarwinDevices()
     } else if (process.platform === 'linux') {
       systemDevices = await this.queryLinuxDevices()
+    } else {
+      this.logWarn(`unsupported platform "${process.platform}" for getOutputDevices`)
     }
+    this.logInfo(`raw platform devices discovered (${systemDevices.length}):`, systemDevices)
 
     const results: SystemAudioDevice[] = []
     for (const dev of systemDevices) {
@@ -108,21 +153,28 @@ export class WasapiEngine {
           isDefault: dev.isDefault,
           isVirtual,
         })
+      } else {
+        this.logDebug(`skipping duplicate device id="${dev.id}", label="${label}"`)
       }
     }
 
     if (results.length === 0) {
+      this.logWarn('no system audio devices discovered; returning default fallback device')
       results.push({ id: 'default', label: '音频输出设备', isDefault: true, isVirtual: false })
+    } else {
+      this.logInfo(`getOutputDevices returning ${results.length} processed devices:`, results)
     }
 
     return results
   }
 
   async setOutputDevice(id: string): Promise<void> {
+    this.logInfo(`setOutputDevice("${id}") invoked in WasapiEngine`)
     this.selectedDeviceId = id
   }
 
   private async queryWindowsDevices(): Promise<SystemAudioDevice[]> {
+    this.logInfo('queryWindowsDevices: executing PowerShell MMDevices/PnP script...')
     const devices: SystemAudioDevice[] = []
     try {
       const script = `
@@ -172,7 +224,7 @@ export class WasapiEngine {
         }
       `.replace(/\s+/g, ' ').trim()
 
-      const { stdout } = await execAsync(
+      const { stdout, stderr } = await execAsync(
         `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${script}"`,
         {
           timeout: 4000,
@@ -186,6 +238,11 @@ export class WasapiEngine {
           maxBuffer: 1024 * 1024 * 4,
         },
       )
+
+      if (stderr && stderr.trim()) {
+        this.logWarn('queryWindowsDevices: powershell stderr:', stderr.trim())
+      }
+      this.logDebug(`queryWindowsDevices: powershell stdout length=${stdout?.length ?? 0}`)
 
       if (stdout && stdout.trim()) {
         const parsed = JSON.parse(stdout.trim())
@@ -201,8 +258,12 @@ export class WasapiEngine {
             })
           }
         }
+        this.logInfo(`queryWindowsDevices: parsed ${devices.length} devices from MMDevices/PnP`)
+      } else {
+        this.logWarn('queryWindowsDevices: MMDevices/PnP script returned empty stdout')
       }
-    } catch {
+    } catch (err) {
+      this.logWarn(`queryWindowsDevices: MMDevices/PnP script failed (${String(err)}), falling back to Win32_SoundDevice...`)
       // fallback to Win32_SoundDevice if PnP failed
       try {
         const { stdout } = await execAsync(
@@ -226,15 +287,17 @@ export class WasapiEngine {
               })
             }
           }
+          this.logInfo(`queryWindowsDevices: Win32_SoundDevice fallback parsed ${devices.length} devices`)
         }
-      } catch {
-        // ignore
+      } catch (fallbackErr) {
+        this.logError(`queryWindowsDevices: Win32_SoundDevice fallback also failed: ${String(fallbackErr)}`)
       }
     }
     return devices
   }
 
   private async queryLinuxDevices(): Promise<SystemAudioDevice[]> {
+    this.logInfo('queryLinuxDevices: querying Linux audio devices (pactl / aplay / /proc/asound)...')
     const devices: SystemAudioDevice[] = []
     let defaultSink = ''
     try {
@@ -243,8 +306,9 @@ export class WasapiEngine {
         env: { ...process.env, LC_ALL: 'C.UTF-8' },
       })
       defaultSink = defOut.trim()
-    } catch {
-      // ignore
+      this.logDebug(`queryLinuxDevices: pactl default sink="${defaultSink}"`)
+    } catch (err) {
+      this.logDebug(`queryLinuxDevices: pactl get-default-sink failed: ${String(err)}`)
     }
 
     try {
@@ -272,10 +336,13 @@ export class WasapiEngine {
             })
           }
         }
-        if (devices.length > 0) return devices
+        if (devices.length > 0) {
+          this.logInfo(`queryLinuxDevices: parsed ${devices.length} devices from pactl sinks`)
+          return devices
+        }
       }
-    } catch {
-      // ignore pactl failure and try aplay fallback
+    } catch (err) {
+      this.logWarn(`queryLinuxDevices: pactl -f json list sinks failed (${String(err)}), falling back to aplay -l`)
     }
 
     try {
@@ -291,13 +358,18 @@ export class WasapiEngine {
           isDefault: false,
         })
       }
-    } catch {
-      // ignore
+      if (devices.length > 0) {
+        this.logInfo(`queryLinuxDevices: parsed ${devices.length} devices from aplay -l`)
+      }
+    } catch (err) {
+      this.logWarn(`queryLinuxDevices: aplay -l failed: ${String(err)}`)
     }
 
     if (devices.length === 0) {
+      this.logInfo('queryLinuxDevices: trying /proc/asound fallback...')
       const procDevices = this.queryLinuxAlsaProc()
       if (procDevices.length > 0) {
+        this.logInfo(`queryLinuxDevices: found ${procDevices.length} devices from /proc/asound`)
         return procDevices
       }
     }
@@ -371,6 +443,7 @@ export class WasapiEngine {
   }
 
   private async queryDarwinDevices(): Promise<SystemAudioDevice[]> {
+    this.logInfo('queryDarwinDevices: querying macOS audio devices via system_profiler...')
     const devices: SystemAudioDevice[] = []
     try {
       const { stdout } = await execAsync('system_profiler SPAudioDataType -json', { timeout: 2500 })
@@ -393,9 +466,10 @@ export class WasapiEngine {
             })
           }
         }
+        this.logInfo(`queryDarwinDevices: parsed ${devices.length} devices from system_profiler`)
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      this.logError(`queryDarwinDevices: system_profiler query failed: ${String(err)}`)
     }
     return devices
   }

@@ -117,6 +117,15 @@ export interface HostOptions {
   pickDirectory?: (sender?: unknown) => Promise<string | undefined>
   /** Native audio decoding (e.g. FFmpeg) and hardware output (e.g. WASAPI exclusive). */
   audio?: AudioHost
+  /** Optional logger for host operations */
+  logger?: BridgeLogger
+}
+
+export interface BridgeLogger {
+  info?(message: string, ...args: unknown[]): void
+  warn?(message: string, ...args: unknown[]): void
+  error?(message: string, ...args: unknown[]): void
+  debug?(message: string, ...args: unknown[]): void
 }
 
 export interface AudioHost {
@@ -353,6 +362,11 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
         unknown[],
         string | undefined,
       ]
+      if (service === 'audio') {
+        options.logger?.info?.(
+          `bridge: audio.${method}(${args && (args as unknown[]).length > 0 ? JSON.stringify(args) : ''}) called`,
+        )
+      }
       const target = services[service]?.()
       if (!target) throw new Error(`bridge: unknown service "${service}"`)
       if (!ALLOWED[service].has(method)) {
@@ -415,8 +429,17 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
       if (service === 'fs' && method === 'pickDirectory' && typeof result === 'string') {
         extraRoots.add(toFileUri(result))
       }
+      if (service === 'audio') {
+        options.logger?.info?.(
+          `bridge: audio.${method} succeeded` +
+            (method === 'getOutputDevices' && Array.isArray(result)
+              ? ` (${result.length} devices)`
+              : ''),
+        )
+      }
       return { __bbebee_bridge__: true, ok: true, result }
     } catch (error) {
+      options.logger?.error?.(`bridge call failed: ${String(error)}`)
       return {
         __bbebee_bridge__: true,
         ok: false,
