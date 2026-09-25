@@ -56,8 +56,10 @@ function formatSleepTimerRemaining(targetEpochMs?: number, mode?: SleepTimerMode
 export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | null {
   const timerState = useSleepTimer(ctx)
   const [hovered, setHovered] = useState(false)
+  const [pinned, setPinned] = useState(false)
   const [, setTick] = useState(0)
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!timerState.active) return
@@ -74,6 +76,28 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!pinned) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setPinned(false)
+        setHovered(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPinned(false)
+        setHovered(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [pinned])
 
   if (!timerState.active) return null
 
@@ -97,19 +121,28 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
     }, 350)
   }
 
+  const handleClickIndicator = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation()
+    setPinned((p) => !p)
+  }
+
   const handleCancel = (e: { stopPropagation: () => void }) => {
     e.stopPropagation()
     if (closeTimeoutRef.current) {
       clearTimeout(closeTimeoutRef.current)
       closeTimeoutRef.current = null
     }
+    setPinned(false)
     setHovered(false)
     serviceOf<SleepTimerService>(ctx, 'sleepTimer')?.cancel?.()
   }
 
+  const showPopover = hovered || pinned
+
   return h(
     'div',
     {
+      ref: containerRef,
       'data-testid': 'topbar-sleep-timer-container',
       style: {
         position: 'relative',
@@ -125,10 +158,10 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
       'button',
       {
         type: 'button',
-        'aria-label': `睡眠定时器：${remainingText}，点击取消`,
-        title: `睡眠定时器：${remainingText}`,
+        'aria-label': `睡眠定时器：${remainingText}，点击查看详情`,
+        title: `睡眠定时器：${remainingText}（点击查看详情）`,
         'data-testid': 'topbar-sleep-timer-indicator',
-        onClick: handleCancel,
+        onClick: handleClickIndicator,
         style: {
           display: 'inline-flex',
           alignItems: 'center',
@@ -149,7 +182,7 @@ export function SleepTimerIndicator({ ctx }: { ctx: Context }): ReactElement | n
       tablerIcon('alarm', { size: 16 }),
       h('span', { style: { fontSize: 11, fontVariantNumeric: 'tabular-nums' } }, remainingText),
     ),
-    hovered
+    showPopover
       ? h(
           'div',
           {
@@ -427,6 +460,7 @@ export function TopBar({
   const [searchActive, setSearchActive] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const searchContainerRef = useRef<HTMLDivElement | null>(null)
+  const menuContainerRef = useRef<HTMLDivElement | null>(null)
 
   const [history, setHistory] = useState<string[]>(() => {
     try {
@@ -456,6 +490,26 @@ export function TopBar({
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [searchActive])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuContainerRef.current && !menuContainerRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [menuOpen])
 
   const handleCommitSearch = (rawQuery: string) => {
     const trimmed = rawQuery.trim()
@@ -577,7 +631,7 @@ export function TopBar({
       // More Menu (⋯)
       h(
         'div',
-        { style: { position: 'relative' } },
+        { ref: menuContainerRef, style: { position: 'relative' } },
         h(
           'button',
           {

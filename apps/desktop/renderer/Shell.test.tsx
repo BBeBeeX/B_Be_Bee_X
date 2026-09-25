@@ -758,5 +758,29 @@ describe('the desktop shell', () => {
     expect(statefulContainer.style.display).toBe('flex')
     expect(container.querySelector('[data-testid="counter-value"]')?.textContent).toBe('Count: 5')
   })
+
+  it('closes More options menu when clicking outside', async () => {
+    const { container } = await mount((ui) => {
+      ui.routes = [route('home', 'Home')]
+      ui.views.set('home', () => h('p', null, 'Home Screen'))
+    })
+
+    const moreBtn = container.querySelector('button[aria-label="More options"]') as HTMLButtonElement
+    expect(moreBtn).not.toBeNull()
+
+    // Click more button to open dropdown
+    await act(async () => {
+      moreBtn.click()
+    })
+    expect(container.textContent).toContain('Settings')
+
+    // Click outside on document body
+    await act(async () => {
+      document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    })
+
+    // Dropdown is closed
+    expect(container.textContent).not.toContain('Settings')
+  })
 })
 
