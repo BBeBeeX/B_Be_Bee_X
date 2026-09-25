@@ -76,6 +76,7 @@ declare global {
         setVisible(visible: boolean, pos?: { x: number; y: number }): Promise<void>
         setPosition?(pos: { x: number; y: number }): Promise<void>
         getPosition?(): Promise<{ x: number; y: number } | undefined>
+        commitPosition?(pos: { x: number; y: number }): Promise<void>
         onMoved?(callback: (pos: { x: number; y: number }) => void): () => void
         setLocked(locked: boolean): Promise<void>
         updateData(data: unknown): Promise<void>

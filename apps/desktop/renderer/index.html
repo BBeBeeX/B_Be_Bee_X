@@ -243,9 +243,11 @@
         background-color: var(--bg-app, #05060A);
       }
       html.is-mini-player-window,
-      body.is-mini-player-window,
+      html.is-mini-player-window body,
+      html.is-mini-player-window #root,
       html.is-lyrics-window,
-      body.is-lyrics-window {
+      html.is-lyrics-window body,
+      html.is-lyrics-window #root {
         background: transparent !important;
         background-color: transparent !important;
       }

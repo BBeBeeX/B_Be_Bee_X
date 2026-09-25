@@ -59,6 +59,8 @@ const api = {
       ipcRenderer.invoke('desktop-lyrics:set-position', pos),
     getPosition: (): Promise<{ x: number; y: number } | undefined> =>
       ipcRenderer.invoke('desktop-lyrics:get-position'),
+    commitPosition: (pos: { x: number; y: number }): Promise<void> =>
+      ipcRenderer.invoke('desktop-lyrics:commit-position', pos),
     getData: (): Promise<unknown> => ipcRenderer.invoke('desktop-lyrics:get-data'),
     onMoved: (callback: (pos: { x: number; y: number }) => void): (() => void) => {
       const listener = (_event: unknown, pos: { x: number; y: number }) => callback(pos)

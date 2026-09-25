@@ -1,4 +1,4 @@
-import { createElement as h, useEffect, useState } from 'react'
+import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import type { DesktopLyricsPayload, DesktopLyricsAction } from './desktop-lyrics-types.js'
@@ -19,6 +19,71 @@ const DEFAULT_PAYLOAD: DesktopLyricsPayload = {
 export function DesktopLyricsWindow(): ReactElement {
   const [data, setData] = useState<DesktopLyricsPayload>(DEFAULT_PAYLOAD)
   const [hovered, setHovered] = useState(false)
+
+  /**
+   * Manual window drag: a `-webkit-app-region: drag` root would swallow the
+   * mouse events the hover toolbar depends on, so the window is moved through
+   * `setPosition` from pointer events instead.
+   */
+  const pointerDownRef = useRef(false)
+  const dragRef = useRef<{
+    pointerId: number
+    startMouseX: number
+    startMouseY: number
+    startPos: { x: number; y: number }
+  } | null>(null)
+  const [dragging, setDragging] = useState(false)
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (locked || e.button !== 0) return
+    const target = e.target as HTMLElement
+    if (target.closest('button') || target.closest('[data-lyrics-toolbar]')) return
+    const bridge = window.BBeBee?.desktopLyrics
+    const getPosition = bridge?.getPosition
+    if (!bridge || !getPosition) return
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    pointerDownRef.current = true
+    void getPosition.call(bridge).then((startPos) => {
+      // The pointer may already be up again for a fast click.
+      if (!pointerDownRef.current || !startPos) return
+      dragRef.current = {
+        pointerId: e.pointerId,
+        startMouseX: e.screenX,
+        startMouseY: e.screenY,
+        startPos,
+      }
+      setDragging(true)
+    })
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const drag = dragRef.current
+    const setPosition = window.BBeBee?.desktopLyrics?.setPosition
+    if (!drag || !setPosition || e.pointerId !== drag.pointerId) return
+    void setPosition({
+      x: Math.round(drag.startPos.x + (e.screenX - drag.startMouseX)),
+      y: Math.round(drag.startPos.y + (e.screenY - drag.startMouseY)),
+    })
+  }
+
+  const endDrag = (e: React.PointerEvent<HTMLElement>, commit: boolean) => {
+    const drag = dragRef.current
+    pointerDownRef.current = false
+    dragRef.current = null
+    setDragging(false)
+    if (!drag || e.pointerId !== drag.pointerId) return
+    if (!commit) return
+    const pos = {
+      x: Math.round(drag.startPos.x + (e.screenX - drag.startMouseX)),
+      y: Math.round(drag.startPos.y + (e.screenY - drag.startMouseY)),
+    }
+    const setPosition = window.BBeBee?.desktopLyrics?.setPosition
+    if (setPosition) void setPosition(pos)
+    // Programmatic moves are echo-suppressed in main, so the final position
+    // must be reported explicitly to reach the settings writer.
+    void window.BBeBee?.desktopLyrics?.commitPosition?.(pos)
+  }
 
   useEffect(() => {
     document.body.style.background = 'transparent'
@@ -64,6 +129,7 @@ export function DesktopLyricsWindow(): ReactElement {
     'div',
     {
       style: {
+        position: 'relative',
         width: '100vw',
         height: '100vh',
         boxSizing: 'border-box',
@@ -74,8 +140,8 @@ export function DesktopLyricsWindow(): ReactElement {
         padding: '8px 16px',
         userSelect: 'none',
         WebkitUserSelect: 'none',
-        cursor: locked ? 'default' : 'move',
-        WebkitAppRegion: locked ? 'no-drag' : 'drag',
+        touchAction: 'none',
+        cursor: dragging ? 'grabbing' : locked ? 'default' : 'move',
         background: hovered && !locked ? 'rgba(15, 15, 22, 0.6)' : 'transparent',
         borderRadius: 12,
         border: hovered && !locked ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid transparent',
@@ -84,14 +150,22 @@ export function DesktopLyricsWindow(): ReactElement {
         transition: 'all 0.2s ease',
         overflow: 'hidden',
       },
-      onMouseEnter: () => setHovered(true),
+      onMouseEnter: () => {
+        // Locked windows forward mouse moves for hover, but must stay inert.
+        if (!locked) setHovered(true)
+      },
       onMouseLeave: () => setHovered(false),
+      onPointerDown: handlePointerDown,
+      onPointerMove: handlePointerMove,
+      onPointerUp: (e) => endDrag(e, true),
+      onPointerCancel: (e) => endDrag(e, false),
     },
-    // Toolbar (shown on hover when unlocked)
-    (hovered || !locked) &&
+    // Toolbar (revealed on hover while unlocked)
+    !locked &&
       h(
         'div',
         {
+          'data-lyrics-toolbar': '',
           style: {
             position: 'absolute',
             top: 4,
@@ -99,6 +173,7 @@ export function DesktopLyricsWindow(): ReactElement {
             alignItems: 'center',
             gap: 6,
             opacity: hovered ? 1 : 0,
+            pointerEvents: hovered ? 'auto' : 'none',
             transition: 'opacity 0.2s ease',
             background: 'rgba(24, 24, 32, 0.85)',
             padding: '3px 8px',

@@ -818,6 +818,25 @@ function registerHandlers(): void {
     return undefined
   })
 
+  // A renderer-driven drag moves the window through `set-position`, whose
+  // echoes are suppressed; the drag end reports the final position here so it
+  // re-enters persistence through the same `moved` channel a native move uses.
+  ipcMain.handle(
+    'desktop-lyrics:commit-position',
+    (_event, position: { x: number; y: number }) => {
+      if (
+        position &&
+        typeof position.x === 'number' &&
+        typeof position.y === 'number' &&
+        mainWindow &&
+        !mainWindow.isDestroyed()
+      ) {
+        const clamped = clampToVisibleScreen(position.x, position.y, 860, 140)
+        mainWindow.webContents.send('desktop-lyrics:moved', { x: clamped.x, y: clamped.y })
+      }
+    },
+  )
+
   ipcMain.handle('desktop-lyrics:get-data', () => {
     return latestLyricData
   })
