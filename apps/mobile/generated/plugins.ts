@@ -71,7 +71,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-download-ui-mobile": {
     load: () => import('@BBeBee/plugin-download-ui-mobile'),
-    manifest: {"id":"@BBeBee/plugin-download-ui-mobile","version":"0.0.0","displayName":"Downloads (mobile views)","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["downloads"]}},
+    manifest: {"id":"@BBeBee/plugin-download-ui-mobile","version":"0.0.0","displayName":"Downloads (mobile views)","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","fs:read:downloads","fs:write:downloads","db:read:core","db:write:core"],"contributes":{"services":["downloads"]}},
     builtin: true,
   },
   "@BBeBee/plugin-dsp": {
@@ -81,7 +81,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-dsp-ui-mobile": {
     load: () => import('@BBeBee/plugin-dsp-ui-mobile'),
-    manifest: {"id":"@BBeBee/plugin-dsp-ui-mobile","version":"0.0.0","displayName":"DSP Effect Chain (mobile views)","description":"ctx.dsp — effect chain builder, presets, and audio processing effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["dsp"]}},
+    manifest: {"id":"@BBeBee/plugin-dsp-ui-mobile","version":"0.0.0","displayName":"DSP Effect Chain (mobile views)","description":"ctx.dsp — effect chain builder, presets, and audio processing effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["dsp"]}},
     builtin: true,
   },
   "@BBeBee/plugin-history": {
@@ -106,7 +106,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-library-ui-mobile": {
     load: () => import('@BBeBee/plugin-library-ui-mobile'),
-    manifest: {"id":"@BBeBee/plugin-library-ui-mobile","version":"0.0.0","displayName":"Library (mobile views)","description":"ctx.library — playlists, favourites, collections and smart playlists.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["library"]}},
+    manifest: {"id":"@BBeBee/plugin-library-ui-mobile","version":"0.0.0","displayName":"Library (mobile views)","description":"ctx.library — playlists, favourites, collections and smart playlists.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["library"]}},
     builtin: true,
   },
   "@BBeBee/plugin-local-scanner": {
@@ -116,7 +116,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-local-scanner-ui-mobile": {
     load: () => import('@BBeBee/plugin-local-scanner-ui-mobile'),
-    manifest: {"id":"@BBeBee/plugin-local-scanner-ui-mobile","version":"0.0.0","displayName":"Local Scanner (mobile views)","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["scanner"]}},
+    manifest: {"id":"@BBeBee/plugin-local-scanner-ui-mobile","version":"0.0.0","displayName":"Local Scanner (mobile views)","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:media","fs:read:all","fs:read:cache","fs:write:cache","db:read:core","db:write:core","background"],"contributes":{"services":["scanner"]}},
     builtin: true,
   },
   "@BBeBee/plugin-lyrics": {
@@ -161,7 +161,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-settings-ui-mobile": {
     load: () => import('@BBeBee/plugin-settings-ui-mobile'),
-    manifest: {"id":"@BBeBee/plugin-settings-ui-mobile","version":"0.0.0","displayName":"Settings (mobile views)","description":"Global application preferences, settings service, and settings views.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["settings"]}},
+    manifest: {"id":"@BBeBee/plugin-settings-ui-mobile","version":"0.0.0","displayName":"Settings (mobile views)","description":"Global application preferences, settings service, and settings views.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["settings"]}},
     builtin: true,
   },
   "@BBeBee/plugin-sleep-timer": {
@@ -186,7 +186,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-sources-ui-mobile": {
     load: () => import('@BBeBee/plugin-sources-ui-mobile'),
-    manifest: {"id":"@BBeBee/plugin-sources-ui-mobile","version":"0.0.0","displayName":"Sources (mobile views)","description":"ctx.sources — imported source documents, the registry, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["sources"]}},
+    manifest: {"id":"@BBeBee/plugin-sources-ui-mobile","version":"0.0.0","displayName":"Sources (mobile views)","description":"ctx.sources — imported source documents, the registry, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["sources"]}},
     builtin: true,
   },
   "@BBeBee/plugin-theme": {

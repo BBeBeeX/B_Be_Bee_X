@@ -86,7 +86,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-download-ui-desktop": {
     load: () => import('@BBeBee/plugin-download-ui-desktop'),
-    manifest: {"id":"@BBeBee/plugin-download-ui-desktop","version":"0.0.0","displayName":"Downloads (desktop views)","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["downloads"]}},
+    manifest: {"id":"@BBeBee/plugin-download-ui-desktop","version":"0.0.0","displayName":"Downloads (desktop views)","description":"ctx.downloads — the managed download queue.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","fs:read:cache","fs:write:cache","fs:read:downloads","fs:write:downloads","db:read:core","db:write:core"],"contributes":{"services":["downloads"]}},
     builtin: true,
   },
   "@BBeBee/plugin-dsp": {
@@ -96,7 +96,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-dsp-ui-desktop": {
     load: () => import('@BBeBee/plugin-dsp-ui-desktop'),
-    manifest: {"id":"@BBeBee/plugin-dsp-ui-desktop","version":"0.0.0","displayName":"DSP Effect Chain (desktop views)","description":"ctx.dsp — effect chain builder, presets, and audio processing effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["dsp"]}},
+    manifest: {"id":"@BBeBee/plugin-dsp-ui-desktop","version":"0.0.0","displayName":"DSP Effect Chain (desktop views)","description":"ctx.dsp — effect chain builder, presets, and audio processing effects.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["dsp"]}},
     builtin: true,
   },
   "@BBeBee/plugin-history": {
@@ -126,7 +126,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-library-ui-desktop": {
     load: () => import('@BBeBee/plugin-library-ui-desktop'),
-    manifest: {"id":"@BBeBee/plugin-library-ui-desktop","version":"0.0.0","displayName":"Library (desktop views)","description":"ctx.library — playlists, favourites, collections and smart playlists.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["library"]}},
+    manifest: {"id":"@BBeBee/plugin-library-ui-desktop","version":"0.0.0","displayName":"Library (desktop views)","description":"ctx.library — playlists, favourites, collections and smart playlists.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["library"]}},
     builtin: true,
   },
   "@BBeBee/plugin-local-scanner": {
@@ -136,7 +136,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-local-scanner-ui-desktop": {
     load: () => import('@BBeBee/plugin-local-scanner-ui-desktop'),
-    manifest: {"id":"@BBeBee/plugin-local-scanner-ui-desktop","version":"0.0.0","displayName":"Local Scanner (desktop views)","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["scanner"]}},
+    manifest: {"id":"@BBeBee/plugin-local-scanner-ui-desktop","version":"0.0.0","displayName":"Local Scanner (desktop views)","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:media","fs:read:all","fs:read:cache","fs:write:cache","db:read:core","db:write:core","background"],"contributes":{"services":["scanner"]}},
     builtin: true,
   },
   "@BBeBee/plugin-lyrics": {
@@ -146,7 +146,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-lyrics-ui-desktop": {
     load: () => import('@BBeBee/plugin-lyrics-ui-desktop'),
-    manifest: {"id":"@BBeBee/plugin-lyrics-ui-desktop","version":"0.0.0","displayName":"Lyrics (desktop views)","description":"ctx.lyrics — lyric retrieval, caching, synchronization and unified state.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["lyrics"]}},
+    manifest: {"id":"@BBeBee/plugin-lyrics-ui-desktop","version":"0.0.0","displayName":"Lyrics (desktop views)","description":"ctx.lyrics — lyric retrieval, caching, synchronization and unified state.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["lyrics"]}},
     builtin: true,
   },
   "@BBeBee/plugin-mini-player": {
@@ -191,7 +191,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-settings-ui-desktop": {
     load: () => import('@BBeBee/plugin-settings-ui-desktop'),
-    manifest: {"id":"@BBeBee/plugin-settings-ui-desktop","version":"0.0.0","displayName":"Settings (desktop views)","description":"Global application preferences, settings service, and settings views.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["settings"]}},
+    manifest: {"id":"@BBeBee/plugin-settings-ui-desktop","version":"0.0.0","displayName":"Settings (desktop views)","description":"Global application preferences, settings service, and settings views.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["settings"]}},
     builtin: true,
   },
   "@BBeBee/plugin-sleep-timer": {
@@ -216,7 +216,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-sources-ui-desktop": {
     load: () => import('@BBeBee/plugin-sources-ui-desktop'),
-    manifest: {"id":"@BBeBee/plugin-sources-ui-desktop","version":"0.0.0","displayName":"Sources (desktop views)","description":"ctx.sources — imported source documents, the registry, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["sources"]}},
+    manifest: {"id":"@BBeBee/plugin-sources-ui-desktop","version":"0.0.0","displayName":"Sources (desktop views)","description":"ctx.sources — imported source documents, the registry, and the catalogue cache.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["sources"]}},
     builtin: true,
   },
   "@BBeBee/plugin-theme": {
@@ -236,7 +236,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-visualizer-ui-desktop": {
     load: () => import('@BBeBee/plugin-visualizer-ui-desktop'),
-    manifest: {"id":"@BBeBee/plugin-visualizer-ui-desktop","version":"0.0.0","displayName":"Audio Visualizer (desktop views)","description":"ctx.visualizer — audio spectrum and waveform analysis service.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["visualizer"]}},
+    manifest: {"id":"@BBeBee/plugin-visualizer-ui-desktop","version":"0.0.0","displayName":"Audio Visualizer (desktop views)","description":"ctx.visualizer — audio spectrum and waveform analysis service.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["visualizer"]}},
     builtin: true,
   },
   "@BBeBee/plugin-log-buffer": {

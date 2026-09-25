@@ -138,7 +138,7 @@ export function render(plugins: DiscoveredPlugin[], target: 'mobile' | 'desktop'
           ...row.manifest,
           id: uiId,
           displayName: `${row.manifest.displayName} (${target} views)`,
-          capabilities: [],
+          capabilities: row.manifest.capabilities ?? [],
           entry: { main: row.ui },
         })},`,
       )
