@@ -729,6 +729,57 @@ export function LibraryScreen({
     })
   }
 
+  // The create trigger as an icon-only plus, living at the far right of the
+  // filter row (moved out of the header).
+  const renderToolbarCreate = () => {
+    return h(
+      'div',
+      { style: { position: 'relative', display: 'flex', alignItems: 'center' } },
+      h(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'create-dropdown-trigger',
+          'aria-label': '创建',
+          title: '创建',
+          onClick: () => setIsCreateMenuOpen((prev) => !prev),
+          style: {
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            border: 'none',
+            background: 'transparent',
+            color: isCreateMenuOpen ? '#FFFFFF' : '#A0A0AE',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'color 0.15s ease',
+          },
+          onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+            e.currentTarget.style.color = '#FFFFFF'
+          },
+          onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+            if (!isCreateMenuOpen) e.currentTarget.style.color = '#A0A0AE'
+          },
+        },
+        h(
+          'span',
+          {
+            style: {
+              transform: isCreateMenuOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+              transition: 'transform 0.25s cubic-bezier(0.2, 0, 0, 1)',
+              display: 'inline-flex',
+              lineHeight: 1,
+            },
+          },
+          tablerIcon('plus', { size: 20 }),
+        ),
+      ),
+      renderCreateMenu(false),
+    )
+  }
+
   // 极简侧边栏快捷入口：扁平行、图标 + 文字 + 数量，选中项圆角浅灰高亮。
   // 颜色走 light-dark()，随颜色模式在浅色（黑图标/深灰字/浅灰底）与深色间切换。
   const renderQuickItem = (
@@ -1047,8 +1098,6 @@ export function LibraryScreen({
       h(
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 8, position: 'relative' } },
-        renderCreateButton(),
-        renderCreateMenu(false),
         h(
           'button',
           {
@@ -1099,6 +1148,7 @@ export function LibraryScreen({
       sortMode,
       setSortMenuAnchor,
       hasArtists: artistItems.length > 0,
+      createSlot: renderToolbarCreate(),
     }),
     error ? h(Text, { variant: 'sm', tone: 'error', testID: 'playlists-error' }, error) : null,
     h(

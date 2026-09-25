@@ -30,6 +30,8 @@ export interface LibraryToolbarProps {
   setSortMenuAnchor: (anchor: MenuAnchor | undefined) => void
   /** The 艺人 chip only makes sense when the library actually holds artists. */
   hasArtists?: boolean
+  /** Rendered at the far right of the filter row (the create + trigger). */
+  createSlot?: ReactElement
 }
 
 export function LibraryToolbar({
@@ -42,46 +44,70 @@ export function LibraryToolbar({
   sortMode,
   setSortMenuAnchor,
   hasArtists = true,
+  createSlot,
 }: LibraryToolbarProps): ReactElement {
   const filterButtons = LIBRARY_FILTER_BUTTONS.filter(({ key }) => key !== 'artist' || hasArtists)
   return h(
     'div',
     null,
-    // Filter Pills
+    // Filter row: flat text buttons split by hairlines, an outer glow marks
+    // the active one — no pill backgrounds — and the create trigger sits at
+    // the far right.
     h(
       'div',
       {
         style: {
           display: 'flex',
-          gap: 8,
+          gap: 4,
           alignItems: 'center',
           marginBottom: 12,
           flexWrap: 'wrap',
         },
       },
-      filterButtons.map(({ key, label }) => {
+      filterButtons.map(({ key, label }, index) => {
         const active = activeFilter === key
-        return h(
-          'button',
-          {
-            key,
-            type: 'button',
-            onClick: () => setActiveFilter(active ? 'all' : key),
-            style: {
-              padding: '5px 12px',
-              borderRadius: 16,
-              border: 'none',
-              backgroundColor: active ? '#FFFFFF' : '#242424',
-              color: active ? '#000000' : '#FFFFFF',
-              fontSize: 13,
-              fontWeight: active ? 600 : 500,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
+        return [
+          // Hairline split between the flat filter buttons.
+          index > 0
+            ? h('span', {
+                key: `sep-${key}`,
+                'aria-hidden': true,
+                style: {
+                  width: 1,
+                  height: 14,
+                  background: 'rgba(255, 255, 255, 0.16)',
+                  flexShrink: 0,
+                },
+              })
+            : null,
+          h(
+            'button',
+            {
+              key,
+              type: 'button',
+              'aria-pressed': active,
+              onClick: () => setActiveFilter(active ? 'all' : key),
+              style: {
+                padding: '5px 12px',
+                borderRadius: 16,
+                border: 'none',
+                background: 'transparent',
+                color: active ? 'var(--text-primary, #FFFFFF)' : '#A0A0AE',
+                fontSize: 13,
+                fontWeight: active ? 600 : 500,
+                cursor: 'pointer',
+                // The active filter glows outward instead of filling.
+                boxShadow: active
+                  ? 'var(--glow-brand-sm, 0 0 10px rgba(95, 135, 255, 0.35))'
+                  : 'none',
+                transition: 'all 0.15s ease',
+              },
             },
-          },
-          label,
-        )
+            label,
+          ),
+        ]
       }),
+      createSlot ? h('div', { key: 'create-slot', style: { marginLeft: 'auto' } }, createSlot) : null,
     ),
     // Search + Sort Row
     h(
