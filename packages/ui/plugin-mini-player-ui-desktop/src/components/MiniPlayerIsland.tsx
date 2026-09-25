@@ -159,7 +159,21 @@ export function MiniPlayerIsland({
                 WebkitAppRegion: 'no-drag',
               },
             },
-            h(IslandWaveBars, { isPlaying, height: 16 }),
+            // The dancing notes toggle the island back to its capsule form.
+            h(
+              'div',
+              {
+                onClick: onCollapse,
+                title: '点击收起灵动岛',
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  padding: 2,
+                },
+              },
+              h(IslandWaveBars, { isPlaying, height: 16 }),
+            ),
             // Restore Main
             h(
               'button',

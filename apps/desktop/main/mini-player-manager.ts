@@ -202,7 +202,7 @@ export class MiniPlayerWindowManager {
       transparent: true,
       frame: false,
       alwaysOnTop: true,
-      skipTaskbar: false,
+      skipTaskbar: true,
       resizable: false,
       hasShadow: false,
       show: false,
