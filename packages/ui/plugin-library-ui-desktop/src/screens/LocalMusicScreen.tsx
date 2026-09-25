@@ -22,6 +22,7 @@ function LocalTrackTableRow({
   onMore,
   onAddToFavorites,
   onOpenPlaylistMenu,
+  onOpenAlbum,
 }: {
   ctx: Context
   track: Track
@@ -31,6 +32,7 @@ function LocalTrackTableRow({
   onMore: (anchor: { x: number; y: number }) => void
   onAddToFavorites?: (track: Track) => void
   onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
+  onOpenAlbum?: (track: Track) => void
 }): ReactElement {
   const [hovered, setHovered] = useState(false)
   const artists = track.artists?.map((a) => a.name).join(', ')
@@ -169,7 +171,41 @@ function LocalTrackTableRow({
           whiteSpace: 'nowrap',
         },
       },
-      track.albumTitle || '-',
+      track.albumTitle
+        ? h(
+            'span',
+            {
+              role: 'button',
+              tabIndex: 0,
+              'data-testid': `track-album-link-${track.urn}`,
+              'aria-label': `查看专辑：${track.albumTitle}`,
+              title: `查看专辑：${track.albumTitle}`,
+              onClick: (e: ReactMouseEvent) => {
+                e.stopPropagation()
+                onOpenAlbum?.(track)
+              },
+              onKeyDown: (e: KeyboardEvent) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation()
+                  onOpenAlbum?.(track)
+                }
+              },
+              style: {
+                cursor: 'pointer',
+                transition: 'color 0.15s ease',
+              },
+              onMouseEnter: (e: ReactMouseEvent<HTMLSpanElement>) => {
+                e.currentTarget.style.color = '#FFFFFF'
+                e.currentTarget.style.textDecoration = 'underline'
+              },
+              onMouseLeave: (e: ReactMouseEvent<HTMLSpanElement>) => {
+                e.currentTarget.style.color = '#b3b3b3'
+                e.currentTarget.style.textDecoration = 'none'
+              },
+            },
+            track.albumTitle,
+          )
+        : '-',
     ),
     // Col 4: Checkmark + Duration & actions
     h(
@@ -349,6 +385,24 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   }, [tracks, searchQuery, trackSortKey, trackSortOrder])
 
   const sortedTrackUrns = useMemo(() => sortedTracks.map((t) => t.urn), [sortedTracks])
+
+  const albumUrnByTitle = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const a of albums) {
+      if (a.title) map.set(a.title, a.urn)
+    }
+    return map
+  }, [albums])
+
+  const handleOpenAlbum = (t: Track) => {
+    const urn =
+      t.albumUrn ||
+      (t.albumTitle ? albumUrnByTitle.get(t.albumTitle) : undefined) ||
+      (t.albumTitle ? `BBeBee:local:album:${encodeURIComponent(t.albumTitle)}` : undefined)
+    if (urn) {
+      ctx.ui.navigate(ALBUM_VIEWS.album, { urn })
+    }
+  }
 
   const sortedAlbums = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -881,6 +935,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                       onMore: (anchor) => menu.open({ track: t }, anchor),
                       onAddToFavorites: handleAddToFavorites,
                       onOpenPlaylistMenu: openAddToPlaylistMenu,
+                      onOpenAlbum: handleOpenAlbum,
                     }),
                 }),
               ),

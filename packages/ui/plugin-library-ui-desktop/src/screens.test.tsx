@@ -1217,5 +1217,39 @@ describe('LocalMusicScreen', () => {
     expect(result[0]?.urn).toBe('track-1')
     expect(result[1]?.urn).toBe('track-2')
   })
+
+  it('navigates to album page when clicking album in local track row', async () => {
+    const { ctx, ui, sources, player } = await harness()
+    const ALBUM_TARGET = 'BBeBee:demo:album:homogenic'
+    sources.tracks = [
+      {
+        urn: TRACK,
+        title: 'Alpha',
+        artists: [{ urn: 'BBeBee:demo:artist:a', name: 'A', role: 'main', ordinal: 0 }],
+        albumTitle: 'Homogenic',
+        albumUrn: ALBUM_TARGET,
+      },
+    ]
+
+    await withListLayout(async () => {
+      const { getByTestId } = render(h(LocalMusicScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      const albumLink = getByTestId(`track-album-link-${TRACK}`)
+      expect(albumLink).toBeTruthy()
+      expect(albumLink.textContent).toBe('Homogenic')
+
+      await act(async () => {
+        albumLink.click()
+        await tick()
+      })
+
+      expect(ui.calls).toContain(`album.view:{"urn":"${ALBUM_TARGET}"}`)
+      // Clicking album must not play the track (e.stopPropagation was called)
+      expect(player.calls.some((c) => c.startsWith(TRACK))).toBe(false)
+    })
+  })
 })
 
