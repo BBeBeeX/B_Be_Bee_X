@@ -451,6 +451,12 @@ The desktop shell organizes primary navigation between the left sidebar and the 
    - The left navigation rail is dedicated to browsing user content and collections (`library.view`, `history.view`, user playlists).
    - Global utility entries — specifically `settings.view` (Settings Center) and `sources.search` (Search) — are intentionally excluded from sidebar route rendering to avoid visual clutter and maintain Spotify-style navigation parity.
    - The **library sidebar** keeps two quick entries — 喜欢 (heart, with the saved-track count) and 本地和下载 (download, with the local-track count) — between the "音乐库" title and the filter pills; they navigate to `library.favorites` / `library.local`, highlight the active one, and stay visible in the collapsed rail as two icon tiles. The 艺人 filter chip renders only when the library actually holds artists, the 已下载 chip is gone, and the sort label hides while the in-library search field is open.
+   - The **filter row** itself is flat: the 歌单/专辑(/艺人) buttons carry no pill background — the active one is marked by an outer glow (`--glow-brand-sm`) — and hairline vertical separators divide them. The create trigger moved out of the header into this row's far right as an icon-only plus (its dropdown — 创建歌单/创建文件夹 — anchors beneath it); the header keeps only the title and the expand button.
+
+1a. **Track & Album View Modes (紧凑/列表/平铺)**:
+   - The album, playlist, favourites and local-music pages offer a **视图模式** section at the bottom of the 排序方式 dropdown menu (`viewModeMenuItems` in `ui-kit-desktop`): a flush-left muted heading (`MenuItemSpec.heading`, no icon slot, no hover) behind a hairline divider, then one entry per mode with a check on the active one.
+   - **列表 (list)** is the default and matches the historical row: artwork, title with artists beneath, album, date, duration. **紧凑 (compact)** drops the artwork and promotes artists to their own column (header included). The local-albums tab additionally offers **平铺 (tiled)** — the current card grid (`LocalAlbumCard`) — as its default, with 列表/紧凑 rendering album rows instead.
+   - The choice persists per page in `localStorage` (`bbebee_view_mode:<key>` via `useViewMode`), so a page the user prefers compact stays compact across restarts.
 
 2. **TopBar Interactive Search & 2×2 Matrix Dropdown**:
    - **Dynamic Search Icon Shift**:

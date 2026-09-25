@@ -23,12 +23,18 @@ export function Button(props: ButtonProps) {
   )
 }
 
+// The play triangle optically reads left-of-center inside a round button; the
+// hero and mini-player play buttons compensate by hand, the kit must too.
+const PLAY_GLYPHS = new Set(['play', 'play-filled', '▶'])
+
 export function IconButton(props: IconButtonProps): ReactElement {
   const { variant = 'ghost', disabled = false, size = tokens.size.icon } = props
   const [hovered, hoverProps] = useHover()
+  const playGlyph = typeof props.icon === 'string' && PLAY_GLYPHS.has(props.icon)
   const renderedIcon = tablerIcon(props.icon, {
     size,
     'data-icon': typeof props.icon === 'string' ? props.icon : undefined,
+    style: playGlyph ? { marginLeft: size * 0.08 } : undefined,
   }) as ReactNode
 
   return h(

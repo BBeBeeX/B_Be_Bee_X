@@ -134,7 +134,7 @@ The primary visual identity is derived directly from the **Bee anime character v
 
 ```css
 /* Core Cyber Neon Gradients */
---gradient-brand: linear-gradient(135deg, #4D8BFF 0%, #7C86FF 38%, #9087FF 65%, #B47BFF 100%);
+--gradient-brand: linear-gradient(135deg, #5F87FF 0%, #7C86FF 45%, #9687FF 75%, #A99CFF 100%);
 --gradient-progress: linear-gradient(90deg, #3875F6 0%, #4D8BFF 30%, #7C86FF 70%, #A99CFF 100%);
 --gradient-blue-violet: linear-gradient(135deg, #4D8BFF 0%, #A99CFF 100%);
 --gradient-ice: linear-gradient(135deg, #EAF1FF 0%, #91B0FF 50%, #4D8BFF 100%);

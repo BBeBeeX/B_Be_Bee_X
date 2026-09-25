@@ -532,15 +532,22 @@ function showWindow(): void {
  * window is reachable and the app is quittable, which is the whole of what
  * close-to-tray owes the user.
  *
- * The icon is generated rather than shipped as a file — a 1×1 transparent
- * image that every platform renders as its default tray slot — because a
- * missing icon file makes `new Tray()` throw and take the boot with it.
+ * The icon ships as `resources/tray-icon.png`. A missing icon file makes
+ * `new Tray()` throw and take the boot with it, so the transparent
+ * placeholder stays as the fallback — an empty tray slot beats a dead boot.
  */
 function createTray(): Tray | undefined {
   try {
-    const icon = nativeImage.createFromDataURL(
-      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAkklEQVR42u3XwQqAIAzGcR/BQ+//ltKx6BaC+on7OyMHHgLZfoxlFsKOlSOl83oWtV9OqCY1B/QkRgqrCLx4rRDW9nwGepc7wASyPCDGI6AIBaAgcEALMQVQQ0wDlBDTZqCEcAXgr2Fe8P2Mn4QtgEsH8CFUJ98EoRT/D2CkONYB/LNscR9AT8JPAFyuZPufsidu5RtMtHn4VVsAAAAASUVORK5CYII=',
-    )
+    const trayIconPath = [
+      join(here, '../resources/tray-icon.png'),
+      join(here, '../../resources/tray-icon.png'),
+      join(here, 'resources/tray-icon.png'),
+    ].find((p) => existsSync(p))
+    const icon = trayIconPath
+      ? nativeImage.createFromPath(trayIconPath)
+      : nativeImage.createFromDataURL(
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAkklEQVR42u3XwQqAIAzGcR/BQ+//ltKx6BaC+on7OyMHHgLZfoxlFsKOlSOl83oWtV9OqCY1B/QkRgqrCLx4rRDW9nwGepc7wASyPCDGI6AIBaAgcEALMQVQQ0wDlBDTZqCEcAXgr2Fe8P2Mn4QtgEsH8CFUJ98EoRT/D2CkONYB/LNscR9AT8JPAFyuZPufsidu5RtMtHn4VVsAAAAASUVORK5CYII=',
+        )
     const created = new Tray(icon)
     created.setToolTip('BBeBee')
     created.setContextMenu(

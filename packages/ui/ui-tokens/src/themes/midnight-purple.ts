@@ -81,7 +81,7 @@ export const midnightPurpleTokens: ColorTokens = {
     accentHover: cyberBeePrimitives.lavender400, // #BEB4FF
   },
   gradient: {
-    brand: 'linear-gradient(135deg, #5F87FF 0%, #7C86FF 45%, #A99CFF 75%, #B28CFF 100%)',
+    brand: 'linear-gradient(135deg, #5F87FF 0%, #7C86FF 45%, #9687FF 75%, #A99CFF 100%)',
     progress: 'linear-gradient(90deg, #4F73FF 0%, #6F9BFF 35%, #8996FF 65%, #B28CFF 100%)',
     blueViolet: 'linear-gradient(90deg, #5F87FF 0%, #7C86FF 50%, #A99CFF 100%)',
     ice: 'linear-gradient(135deg, #91B0FF 0%, #BEB4FF 50%, #D4CCFF 100%)',
@@ -207,7 +207,7 @@ export const cyberBeeCssVariables: Record<string, string> = {
   '--color-waveform-active': 'var(--lavender-400)',
 
   // Gradients
-  '--gradient-brand': 'linear-gradient(135deg, #5F87FF 0%, #7C86FF 45%, #A99CFF 75%, #B28CFF 100%)',
+  '--gradient-brand': 'linear-gradient(135deg, #5F87FF 0%, #7C86FF 45%, #9687FF 75%, #A99CFF 100%)',
   '--gradient-blue-violet': 'linear-gradient(90deg, #5F87FF 0%, #7C86FF 50%, #A99CFF 100%)',
   '--gradient-ice': 'linear-gradient(135deg, #91B0FF 0%, #BEB4FF 50%, #D4CCFF 100%)',
   '--gradient-progress': 'linear-gradient(90deg, #4F73FF 0%, #6F9BFF 35%, #8996FF 65%, #B28CFF 100%)',

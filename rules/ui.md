@@ -197,6 +197,7 @@ All visual icons across desktop UI components are standardized on **Tabler Icons
 ### Context Menu Design Standards
 - **Dark Card Theme**: `#242424` background, 8px border radius, 4px padding, `0 12px 32px rgba(0,0,0,0.55)` depth shadow, and 1px border (`rgba(255, 255, 255, 0.08)`).
 - **Dividers**: Menu items support `divider: true` to render a 1px translucent separator line (`rgba(255, 255, 255, 0.08)`).
+- **Section Headings**: Menu items support `heading: true` to render as a flush-left muted section label (12px padding, no 18px icon slot, no hover highlight, smaller bold type) — use it to name a group of options, with `divider: true` on the preceding item to close the previous group.
 - **Outline Icons**: Standard actions map to Tabler SVG icons (`stroke: 1.25`): `pencil`, `trash`, `pin`, `plus`, `folder`, `play-filled`, `download`, `playlist`.
 - **Folder (Collection) Semantics**: Folders are directory containers for collection-level entities (playlists, albums, artists, child folders). Folders **never** contain individual tracks; individual tracks belong to playlists and albums. Track context menus only offer "添加到歌单" (`add-to-playlist`), never "加入合集 / 移动至文件夹" (`add-to-collection`).
 - **Recursive Track Gathering**: When adding a folder's contents to other playlists ("添加至其他歌单") or playing a folder, `collectAllFolderTracks` recursively scans all nested playlist tracks, nested album tracks, and all descendant subfolders without duplicates (folders do not contain direct tracks).
@@ -225,6 +226,11 @@ All visual icons across desktop UI components are standardized on **Tabler Icons
 - **Action Bar Sort Dropdown (`ContextMenu`)**:
   - Dedicated sort dropdown button (e.g. `默认顺序` / `自定义顺序` / `标题` accompanied by Tabler `arrows-sort` or `list` icon).
   - Clicking reveals a structured `ContextMenu` with sort key options and an asc/desc toggle option.
+- **View Mode Section in the Sort Menu (`viewModeMenuItems`)**:
+  - The sort menu ends with a 视图模式 section: a hairline divider closes the sort options, then a flush-left `heading` 视图模式 label and one entry per mode with a check icon on the active one.
+  - Album / Playlist / Favourites / Local-tracks offer 紧凑 (compact) and 列表 (list); the local-albums tab adds 平铺 (tiled, the card grid).
+  - 紧凑 drops the artwork and promotes artists to their own column (table header included); 列表 matches the historical row.
+  - The choice persists per page in `localStorage` (`bbebee_view_mode:<key>` via `useViewMode` from `ui-kit-desktop`).
 - **Unified Row Library Action Button (`TrackLibraryActionButton`) & Popover**:
   - Replaces previous static checkmark or favorite icon in track rows across `LocalMusicScreen`, `PlaylistDetailScreen`, `FavoritesScreen`, and `CollectionScreen`.
   - Hidden by default; smoothly fades in on row hover (`opacity: 1`).
