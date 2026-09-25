@@ -536,6 +536,7 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
         borderBottom: 'none',
         margin: 0,
         outline: 'none',
+        boxShadow: 'none',
         background: 'var(--player-bg, var(--bg-app, #05060B))',
       },
     },

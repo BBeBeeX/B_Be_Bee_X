@@ -45,6 +45,11 @@ const here = dirname(fileURLToPath(import.meta.url))
 // Unlock Chromium media permissions and Web Audio output device selection
 app.commandLine.appendSwitch('enable-experimental-web-platform-features')
 
+// Mitigate Windows 10/11 DirectComposition 1px white border artifact in fullscreen / maximized mode
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('disable-direct-composition')
+}
+
 /**
  * Only web URLs may be handed to the OS.
  *
