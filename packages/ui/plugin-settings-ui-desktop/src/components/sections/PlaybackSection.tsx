@@ -1,6 +1,6 @@
-import { createElement as h, useEffect, useState, type ReactElement } from 'react'
+import { createElement as h, useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { AppSettings, EffectParamValue, OutputDevice, UiService } from '@BBeBee/protocol'
+import type { AppSettings, AudioService, EffectParamValue, OutputDevice, UiService } from '@BBeBee/protocol'
 import { serviceOf, useServiceState } from '@BBeBee/ui-core'
 import { Button, Slider } from '@BBeBee/ui-kit-desktop'
 import { Select } from '../Select.js'
@@ -35,38 +35,48 @@ export function PlaybackSection({
   const [compExpanded, setCompExpanded] = useState(true)
   const [reverbExpanded, setReverbExpanded] = useState(true)
   const [outputDevices, setOutputDevices] = useState<OutputDevice[]>([])
+  const mountedRef = useRef(true)
 
   useEffect(() => {
-    let mounted = true
-    const fetchDevices = async (reason = 'mount') => {
-      ctx.logger?.info('playback-settings: fetchDevices started (reason: %s)', reason)
-      try {
-        if (!ctx.audio?.listOutputDevices) {
-          ctx.logger?.warn('playback-settings: ctx.audio.listOutputDevices is unavailable')
-          return
-        }
-        const list = await ctx.audio.listOutputDevices()
-        ctx.logger?.info(
-          'playback-settings: listOutputDevices returned %d devices: %s',
-          list?.length ?? 0,
-          JSON.stringify(list?.map((d) => ({ id: d.id, label: d.label, isDefault: d.isDefault, isVirtual: (d as { isVirtual?: boolean }).isVirtual }))),
-        )
-        if (mounted && Array.isArray(list) && list.length > 0) {
-          setOutputDevices(list)
-          return
-        }
-        if (mounted) {
-          ctx.logger?.warn('playback-settings: listOutputDevices returned empty or non-array list')
-        }
-      } catch (err) {
-        ctx.logger?.error('playback-settings: listOutputDevices failed: %s', String(err))
-      }
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
     }
+  }, [])
+
+  const fetchDevices = useCallback(async (reason = 'mount') => {
+    ctx.logger?.info('playback-settings: fetchDevices started (reason: %s)', reason)
+    try {
+      const audio = serviceOf<AudioService>(ctx, 'audio')
+      if (!audio?.listOutputDevices) {
+        ctx.logger?.warn('playback-settings: audio service or listOutputDevices is unavailable')
+        return
+      }
+      const list = await audio.listOutputDevices()
+      ctx.logger?.info(
+        'playback-settings: listOutputDevices returned %d devices: %s',
+        list?.length ?? 0,
+        JSON.stringify(list?.map((d) => ({ id: d.id, label: d.label, isDefault: d.isDefault, isVirtual: (d as { isVirtual?: boolean }).isVirtual }))),
+      )
+      if (mountedRef.current && Array.isArray(list) && list.length > 0) {
+        setOutputDevices(list)
+        return
+      }
+      if (mountedRef.current) {
+        ctx.logger?.warn('playback-settings: listOutputDevices returned empty or non-array list')
+      }
+    } catch (err) {
+      ctx.logger?.error('playback-settings: listOutputDevices failed: %s', String(err))
+    }
+  }, [ctx])
+
+  useEffect(() => {
     void fetchDevices('mount')
 
     let offRouteChange: (() => void) | undefined
     try {
-      offRouteChange = ctx.audio?.onRouteChange?.((ev) => {
+      const audio = serviceOf<AudioService>(ctx, 'audio')
+      offRouteChange = audio?.onRouteChange?.((ev) => {
         ctx.logger?.info('playback-settings: audio route-changed event received (reason: %s)', ev.reason)
         void fetchDevices('route-change')
       })
@@ -86,16 +96,14 @@ export function PlaybackSection({
     if (media?.addEventListener && media?.removeEventListener) {
       media.addEventListener('devicechange', onDeviceChange)
       return () => {
-        mounted = false
         offRouteChange?.()
         media.removeEventListener?.('devicechange', onDeviceChange)
       }
     }
     return () => {
-      mounted = false
       offRouteChange?.()
     }
-  }, [ctx])
+  }, [ctx, fetchDevices])
 
   const eqEntry = chain.find((c) => c.effectId === 'eq10')
   const normEntry = chain.find((c) => c.effectId === 'normalize')
@@ -114,6 +122,10 @@ export function PlaybackSection({
   const currentDeviceId = settings.audioOutputDeviceId ?? 'default'
 
   useEffect(() => {
+    void fetchDevices(`engine-${currentEngine}`)
+  }, [currentEngine, fetchDevices])
+
+  useEffect(() => {
     if (
       currentDeviceId &&
       currentDeviceId !== 'default' &&
@@ -127,7 +139,7 @@ export function PlaybackSection({
         currentDeviceId,
       )
       void update({ audioOutputDeviceId: 'default' })
-      void ctx.audio?.setOutputDevice?.('default').catch((err) => {
+      void serviceOf<AudioService>(ctx, 'audio')?.setOutputDevice?.('default').catch((err) => {
         ctx.logger?.error('playback-settings: failed to set output device to default: %s', String(err))
       })
     }
@@ -235,6 +247,7 @@ export function PlaybackSection({
             onPress: () => {
               ctx.logger?.info('playback-settings: user clicked backend switch -> wasapi')
               void update({ audioOutputEngine: 'wasapi' })
+              void fetchDevices('engine-switch')
             },
             children: 'WASAPI 独占 Hi-Res',
           }),
@@ -243,6 +256,7 @@ export function PlaybackSection({
             onPress: () => {
               ctx.logger?.info('playback-settings: user clicked backend switch -> webaudio')
               void update({ audioOutputEngine: 'webaudio' })
+              void fetchDevices('engine-switch')
             },
             children: 'WebAudio',
           }),
@@ -258,7 +272,7 @@ export function PlaybackSection({
           onChange: (newDeviceId: string) => {
             ctx.logger?.info('playback-settings: user selected output device "%s"', newDeviceId)
             void update({ audioOutputDeviceId: newDeviceId })
-            void ctx.audio?.setOutputDevice?.(newDeviceId).catch((err) => {
+            void serviceOf<AudioService>(ctx, 'audio')?.setOutputDevice?.(newDeviceId).catch((err) => {
               ctx.logger?.error('playback-settings: setOutputDevice("%s") failed: %s', newDeviceId, String(err))
             })
           },
