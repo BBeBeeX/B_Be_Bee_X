@@ -6,7 +6,7 @@ import { usePlaylist } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import type { MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { useTrackMenu } from '@BBeBee/ui-menus'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon, ViewModeSelector, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
 import { QuadArtworkCollage } from '../components/QuadArtworkCollage.js'
@@ -745,16 +745,6 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
         tablerIcon('pencil', { size: 18 }),
         '名称和详情',
       ),
-      // 排序方式之下：视图模式切换（列表为默认）。
-      h(
-        'div',
-        { style: { marginLeft: 'auto' } },
-        h(ViewModeSelector, {
-          value: viewMode,
-          onChange: setViewMode,
-          testIDPrefix: 'playlist',
-        }),
-      ),
     ),
     error ? h('div', { style: { padding: '0 32px 8px 32px' } }, h(Text, { variant: 'sm', tone: 'error' }, error)) : null,
     // Table Header
@@ -948,7 +938,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
       onClose: () => setSortMenuAnchor(null),
       x: sortMenuAnchor?.x ?? 0,
       y: sortMenuAnchor?.y ?? 0,
-      items: sortMenuItems,
+      items: viewModeMenuItems(sortMenuItems, viewMode, setViewMode),
       title: '排序方式',
     }),
     showEditModal

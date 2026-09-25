@@ -5,7 +5,7 @@ import type { PlayerService, Track } from '@BBeBee/protocol'
 import { useSaved } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import { serviceOf, type MenuAnchor, type MenuItemSpec } from '@BBeBee/ui-core'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon, ViewModeSelector, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -550,12 +550,6 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
             h('span', null, sortLabelMap[sortKey]),
             tablerIcon('list', { size: 20 }),
           ),
-          // 排序方式之下：视图模式切换（列表为默认）。
-          h(ViewModeSelector, {
-            value: viewMode,
-            onChange: setViewMode,
-            testIDPrefix: 'favorites',
-          }),
         ),
       ),
     ),
@@ -725,7 +719,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
       onClose: () => setSortMenuAnchor(null),
       x: sortMenuAnchor?.x ?? 0,
       y: sortMenuAnchor?.y ?? 0,
-      items: sortMenuItems,
+      items: viewModeMenuItems(sortMenuItems, viewMode, setViewMode),
       title: '排序方式',
     }),
   )

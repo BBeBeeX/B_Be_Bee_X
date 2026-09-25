@@ -27,7 +27,7 @@ import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { formatDuration, formatTotalDuration } from '@BBeBee/toolkit'
 import { addToCollectionSubmenu, sleepTimerSubmenu, useSaveToPlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
-import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, tablerIcon, ViewModeSelector, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, tablerIcon, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -873,12 +873,6 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             h('span', null, sortLabelMap[sortKey]),
             tablerIcon('list', { size: 20 }),
           ),
-          // 排序方式之下：视图模式切换（列表为默认）。
-          h(ViewModeSelector, {
-            value: viewMode,
-            onChange: setViewMode,
-            testIDPrefix: 'album',
-          }),
         ),
       ),
     ),
@@ -1051,7 +1045,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       onClose: () => setSortMenuAnchor(null),
       x: sortMenuAnchor?.x ?? 0,
       y: sortMenuAnchor?.y ?? 0,
-      items: sortMenuItems,
+      items: viewModeMenuItems(sortMenuItems, viewMode, setViewMode),
       title: '排序方式',
     }),
     h(SaveToPlaylistPopover, saveToPlaylistMenu.menuProps),

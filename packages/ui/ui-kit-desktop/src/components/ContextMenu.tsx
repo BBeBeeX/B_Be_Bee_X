@@ -454,11 +454,14 @@ function MenuRow({
 }): ReactElement {
   const [hovered, hoverProps] = useHover()
   const danger = item.tone === 'danger'
+  // A heading is a section label, not an action: flush left, no icon slot,
+  // no hover — the row exists to name the group beneath it.
+  const heading = item.heading === true
   return h(
     'button',
     {
       type: 'button',
-      role: 'menuitem',
+      role: heading ? 'presentation' : 'menuitem',
       disabled: item.disabled,
       'aria-haspopup': item.submenu ? 'menu' : undefined,
       onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -479,23 +482,31 @@ function MenuRow({
         alignItems: 'center',
         gap: 12,
         width: '100%',
-        minHeight: 36,
-        padding: '0 12px',
+        minHeight: heading ? 24 : 36,
+        padding: heading ? '2px 12px' : '0 12px',
         margin: '1px 0',
         border: 'none',
         borderRadius: 6,
         textAlign: 'left',
         cursor: item.disabled ? 'default' : 'pointer',
-        opacity: item.disabled ? 0.45 : 1,
+        opacity: item.disabled && !heading ? 0.45 : 1,
         background: (hovered || active) && !item.disabled ? 'var(--surface-hover, #191E30)' : 'transparent',
-        color: danger ? 'var(--error, #EF4444)' : (hovered || active) ? 'var(--text-primary, #F5F7FF)' : 'var(--text-secondary, #C5CAD8)',
+        color: danger
+          ? 'var(--error, #EF4444)'
+          : heading
+            ? 'var(--text-muted, #626A80)'
+            : (hovered || active)
+              ? 'var(--text-primary, #F5F7FF)'
+              : 'var(--text-secondary, #C5CAD8)',
         font: 'inherit',
-        fontSize: '13.5px',
+        fontSize: heading ? '12px' : '13.5px',
+        fontWeight: heading ? 600 : undefined,
+        letterSpacing: heading ? 0.5 : undefined,
         outline: 'none',
         transition: 'background-color 100ms ease, color 100ms ease',
       },
     },
-    renderMenuIcon(item.icon),
+    heading ? null : renderMenuIcon(item.icon),
     h(
       'span',
       {

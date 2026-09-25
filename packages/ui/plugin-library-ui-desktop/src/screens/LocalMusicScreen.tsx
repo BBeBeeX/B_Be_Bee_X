@@ -4,7 +4,7 @@ import type { Context } from 'cordis'
 import type { Album, PlayerService, Track } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { serviceOf, type MenuAnchor, type MenuItemSpec } from '@BBeBee/ui-core'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon, ViewModeSelector, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -1021,19 +1021,6 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
             h('span', null, viewMode === 'tracks' ? trackSortLabelMap[trackSortKey] : albumSortLabelMap[albumSortKey]),
             tablerIcon('list', { size: 20 }),
           ),
-          // 排序方式之下：视图模式切换（歌曲默认列表，专辑默认平铺）。
-          viewMode === 'tracks'
-            ? h(ViewModeSelector, {
-                value: trackViewMode,
-                onChange: setTrackViewMode,
-                testIDPrefix: 'local-tracks',
-              })
-            : h(ViewModeSelector, {
-                value: albumViewMode,
-                onChange: setAlbumViewMode,
-                allowTiled: true,
-                testIDPrefix: 'local-albums',
-              }),
         ),
       ),
     ),
@@ -1290,7 +1277,12 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
       onClose: () => setSortMenuAnchor(null),
       x: sortMenuAnchor?.x ?? 0,
       y: sortMenuAnchor?.y ?? 0,
-      items: viewMode === 'tracks' ? trackSortMenuItems : albumSortMenuItems,
+      items:
+        viewMode === 'tracks'
+          ? viewModeMenuItems(trackSortMenuItems, trackViewMode, setTrackViewMode)
+          : viewModeMenuItems(albumSortMenuItems, albumViewMode, setAlbumViewMode, {
+              allowTiled: true,
+            }),
       title: '排序方式',
     }),
   )

@@ -76,6 +76,11 @@ export interface MenuItemSpec {
   /** A leading glyph or element. The label is the accessible name. */
   icon?: string | ReactNode
   disabled?: boolean
+  /**
+   * Renders as a muted, flush-left section label rather than an action row:
+   * no icon slot, no hover highlight, smaller type. Implies non-interactive.
+   */
+  heading?: boolean
   /** Destructive actions render in the error tone and sort last. */
   tone?: 'default' | 'danger'
   onSelect?: () => void | Promise<void>

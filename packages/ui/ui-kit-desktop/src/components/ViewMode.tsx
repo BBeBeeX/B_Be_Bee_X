@@ -7,8 +7,8 @@
  * prefers compact stays compact.
  */
 
-import { createElement as h, useCallback, useState } from 'react'
-import type { ReactElement } from 'react'
+import { useCallback, useState } from 'react'
+import type { MenuItemSpec } from '@BBeBee/ui-core'
 import { tablerIcon } from '../icons/index.js'
 
 export type TrackViewMode = 'compact' | 'list'
@@ -48,84 +48,33 @@ export function useViewMode<T extends string>(
 const MODE_LABELS = { compact: '紧凑', list: '列表', tiled: '平铺' } as const
 
 /**
+ * Append the 视图模式 section to a sort menu: a hairline divider closes the
+ * sort options, then a flush-left muted 视图模式 heading and one entry per
+ * mode, a check icon marking the active one.
+ */
+export function viewModeMenuItems(
+  base: MenuItemSpec[],
+  value: TrackViewMode | AlbumViewMode,
+  onChange: (mode: TrackViewMode | AlbumViewMode) => void,
+  opts: { allowTiled?: boolean } = {},
+): MenuItemSpec[] {
+  const modes: (TrackViewMode | AlbumViewMode)[] = opts.allowTiled
+    ? ['compact', 'list', 'tiled']
+    : ['compact', 'list']
+  const section: MenuItemSpec[] = [
+    { id: 'view-mode-header', label: '视图模式', heading: true, disabled: true },
+    ...modes.map((mode) => ({
+      id: `view-mode-${mode}`,
+      label: MODE_LABELS[mode],
+      icon: value === mode ? tablerIcon('check', { size: 16 }) : undefined,
+      onSelect: () => onChange(mode),
+    })),
+  ]
+  if (base.length === 0) return section
+  return [...base.slice(0, -1), { ...base[base.length - 1]!, divider: true }, ...section]
+}
+
+/**
  * `视图模式: 紧凑/列表(/平铺)` — a segmented capsule rendered next to the
  * page's sort control. The active segment is highlighted, not filled.
  */
-export function ViewModeSelector({
-  value,
-  onChange,
-  allowTiled = false,
-  testIDPrefix,
-}: {
-  value: TrackViewMode | AlbumViewMode
-  onChange: (mode: TrackViewMode | AlbumViewMode) => void
-  allowTiled?: boolean
-  testIDPrefix?: string
-}): ReactElement {
-  const modes: (TrackViewMode | AlbumViewMode)[] = allowTiled
-    ? ['compact', 'list', 'tiled']
-    : ['compact', 'list']
-  return h(
-    'div',
-    {
-      style: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-      },
-    },
-    h(
-      'span',
-      {
-        style: {
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          color: '#b3b3b3',
-          fontSize: 13,
-        },
-      },
-      tablerIcon('layout-grid', { size: 16 }),
-      '视图模式',
-    ),
-    h(
-      'div',
-      {
-        role: 'group',
-        'aria-label': '视图模式',
-        style: {
-          display: 'flex',
-          alignItems: 'center',
-          backgroundColor: 'rgba(255, 255, 255, 0.1)',
-          borderRadius: 16,
-          padding: '2px',
-        },
-      },
-      modes.map((mode) => {
-        const active = value === mode
-        return h(
-          'button',
-          {
-            key: mode,
-            type: 'button',
-            'aria-pressed': active,
-            'data-testid': testIDPrefix ? `${testIDPrefix}-view-${mode}` : undefined,
-            onClick: () => onChange(mode),
-            style: {
-              padding: '3px 12px',
-              borderRadius: 14,
-              border: 'none',
-              background: active ? 'rgba(255, 255, 255, 0.16)' : 'transparent',
-              color: active ? '#FFFFFF' : '#b3b3b3',
-              fontSize: 12,
-              fontWeight: active ? 600 : 500,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            },
-          },
-          MODE_LABELS[mode],
-        )
-      }),
-    ),
-  )
-}
