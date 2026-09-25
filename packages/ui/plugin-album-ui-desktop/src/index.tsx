@@ -696,7 +696,10 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           {
             type: 'button',
             'aria-label': 'Play album',
-            onClick: () => void player?.playNow(sortedUrns),
+            onClick: () =>
+              void player?.playNow(sortedUrns, {
+                context: { kind: 'album', urn: detail.urn, label: detail.title },
+              }),
             disabled: detail.tracks.length === 0,
             style: {
               width: 56,
@@ -741,7 +744,9 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             onClick: () => {
               if (sortedUrns.length > 0) {
                 const shuffled = [...sortedUrns].sort(() => Math.random() - 0.5)
-                void player?.playNow(shuffled)
+                void player?.playNow(shuffled, {
+                  context: { kind: 'album', urn: detail.urn, label: detail.title },
+                })
               }
             },
           },

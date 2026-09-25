@@ -15,7 +15,7 @@ import { createElement as h, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
-import type { Album, Collection, Playlist } from '@BBeBee/protocol'
+import type { Album, Collection, Playlist, QueueSourceContext } from '@BBeBee/protocol'
 import { tryParseUrn } from '@BBeBee/protocol'
 import { LIBRARY_VIEWS } from '@BBeBee/plugin-library/views'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
@@ -477,10 +477,9 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   const entries = saved.data ?? []
   const urns = entries.map((entry) => entry.urn)
   const tracks = useTracksByUrn(ctx, urns)
-  const player = serviceOf<{ playFromContext(urn: string, contextUrns?: readonly string[]): Promise<void> }>(
-    ctx,
-    'player',
-  )
+  const player = serviceOf<{
+    playFromContext(urn: string, contextUrns?: readonly string[], opts?: { context?: QueueSourceContext }): Promise<void>
+  }>(ctx, 'player')
   const [error, setError] = useState<string | undefined>(undefined)
   const menu = useTrackMenu(ctx)
 
@@ -494,7 +493,11 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
       h(Text, { variant: 'sm', tone: 'muted' }, `${urns.length} saved`),
       h(Button, {
         variant: 'secondary',
-        onPress: () => urns[0] && player?.playFromContext(urns[0], urns),
+        onPress: () =>
+          urns[0] &&
+          player?.playFromContext(urns[0], urns, {
+            context: { kind: 'favorites', label: '收藏夹' },
+          }),
         disabled: urns.length === 0,
         children: 'Play all',
       }),
@@ -526,7 +529,10 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
               { style: { flex: 1, minWidth: 0 } },
               h(TrackRow, {
                 track,
-                onPress: () => player?.playFromContext(entryUrn, urns),
+                onPress: () =>
+                  player?.playFromContext(entryUrn, urns, {
+                    context: { kind: 'favorites', label: '收藏夹' },
+                  }),
                 onMore: (anchor) => menu.open({ track }, anchor),
               }),
             ),
@@ -623,7 +629,7 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
     .filter((member) => member.kind === 'track' && member.track)
     .map((member) => member.urn)
   const menu = useTrackMenu(ctx)
-  const player = serviceOf<{ playNow(urns: string[]): Promise<void> }>(ctx, 'player')
+  const player = serviceOf<{ playNow(urns: string[], opts?: { context?: QueueSourceContext }): Promise<void> }>(ctx, 'player')
 
   if (!id) return h(EmptyState, { title: 'No collection chosen' })
   if (state.status === 'error') {
@@ -644,7 +650,11 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
         h(Text, { variant: 'sm', tone: 'muted' }, `${members.length} items`),
       ),
       h(Button, {
-        onPress: () => trackUrns[0] && void player?.playNow(trackUrns),
+        onPress: () =>
+          trackUrns[0] &&
+          void player?.playNow(trackUrns, {
+            context: { kind: 'playlist', label: detail.collection?.name ?? '合集' },
+          }),
         disabled: trackUrns.length === 0,
         testID: 'collection-play',
         children: 'Play',
@@ -672,7 +682,10 @@ export function CollectionScreen({ ctx, id }: { ctx: Context; id?: string }): Re
                 { style: { flex: 1, minWidth: 0 } },
                 h(TrackRow, {
                   track: member.track,
-                  onPress: () => void player?.playNow(trackUrns),
+                  onPress: () =>
+                    void player?.playNow(trackUrns, {
+                      context: { kind: 'playlist', label: detail.collection?.name ?? '合集' },
+                    }),
                   onMore: (anchor) => menu.open({ track: member.track! }, anchor),
                 }),
               ),

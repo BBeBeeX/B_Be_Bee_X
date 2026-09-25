@@ -126,7 +126,10 @@ export function AlbumScreen({
       }),
       h(Button, {
         // Playback announces itself in the mini-player; no navigation.
-        onPress: () => void player?.playNow(urns),
+        onPress: () =>
+          void player?.playNow(urns, {
+            context: { kind: 'album', urn: detail.urn, label: detail.title },
+          }),
         children: 'Play album',
         disabled: detail.tracks.length === 0,
       }),
