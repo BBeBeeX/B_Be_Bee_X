@@ -35,5 +35,6 @@ export {
   type PlaylistSaveOption,
   type CollectionSaveOption,
 } from './components/SaveToPlaylistPopover.js'
+export { ViewModeSelector, useViewMode, type TrackViewMode, type AlbumViewMode } from './components/ViewMode.js'
 export { tablerIcon } from './icons/index.js'
 

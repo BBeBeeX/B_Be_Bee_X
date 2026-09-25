@@ -6,7 +6,7 @@ import { usePlaylist } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import type { MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { useTrackMenu } from '@BBeBee/ui-menus'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon, ViewModeSelector, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
 import { QuadArtworkCollage } from '../components/QuadArtworkCollage.js'
@@ -22,6 +22,7 @@ function PlaylistTrackTableRow({
   index,
   isSmart,
   playlistName,
+  compact,
   onPress,
   onRemove,
   onMore,
@@ -33,6 +34,8 @@ function PlaylistTrackTableRow({
   index: number
   isSmart?: boolean
   playlistName: string
+  /** 紧凑视图：无封面，艺人独立成列。 */
+  compact?: boolean
   onPress: () => void
   onRemove?: () => void
   onMore: (anchor: { x: number; y: number }) => void
@@ -84,7 +87,7 @@ function PlaylistTrackTableRow({
       },
       hovered ? tablerIcon('play', { size: 18, color: '#FFFFFF' }) : String(index + 1),
     ),
-    // Col 2: Artwork + Title + Artist
+    // Col 2: Artwork (list only) + Title + Artist
     h(
       'div',
       {
@@ -98,25 +101,27 @@ function PlaylistTrackTableRow({
           gap: 12,
         },
       },
-      h(
-        'div',
-        {
-          style: {
-            width: 40,
-            height: 40,
-            borderRadius: 4,
-            overflow: 'hidden',
-            flexShrink: 0,
-            backgroundColor: '#282828',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          },
-        },
-        track.artwork
-          ? h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 })
-          : tablerIcon('music', { size: 22, color: '#7f7f7f' }),
-      ),
+      compact
+        ? null
+        : h(
+            'div',
+            {
+              style: {
+                width: 40,
+                height: 40,
+                borderRadius: 4,
+                overflow: 'hidden',
+                flexShrink: 0,
+                backgroundColor: '#282828',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
+            },
+            track.artwork
+              ? h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 })
+              : tablerIcon('music', { size: 22, color: '#7f7f7f' }),
+          ),
       h(
         'div',
         {
@@ -142,7 +147,7 @@ function PlaylistTrackTableRow({
           },
           track.title,
         ),
-        artists
+        !compact && artists
           ? h(
               'span',
               {
@@ -160,6 +165,25 @@ function PlaylistTrackTableRow({
           : null,
       ),
     ),
+    // Col 3 (compact only): Artist as its own column
+    compact
+      ? h(
+          'div',
+          {
+            style: {
+              flex: 1,
+              minWidth: 0,
+              paddingRight: 16,
+              fontSize: 13,
+              color: '#b3b3b3',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            },
+          },
+          artists || '-',
+        )
+      : null,
     // Col 3: Album
     h(
       'div',
@@ -295,6 +319,8 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   const [showEditModal, setShowEditModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortKey, setSortKey] = useState<PlaylistSortKey>('custom')
+  // 视图模式：列表为默认（与历史行为一致），紧凑不显示封面并把艺人单列。
+  const [viewMode, setViewMode] = useViewMode('playlist-detail', 'list', ['compact', 'list'] as const)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
   const menu = useTrackMenu(ctx, { fromPlaylistUrn: urn })
@@ -719,6 +745,16 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
         tablerIcon('pencil', { size: 18 }),
         '名称和详情',
       ),
+      // 排序方式之下：视图模式切换（列表为默认）。
+      h(
+        'div',
+        { style: { marginLeft: 'auto' } },
+        h(ViewModeSelector, {
+          value: viewMode,
+          onChange: setViewMode,
+          testIDPrefix: 'playlist',
+        }),
+      ),
     ),
     error ? h('div', { style: { padding: '0 32px 8px 32px' } }, h(Text, { variant: 'sm', tone: 'error' }, error)) : null,
     // Table Header
@@ -779,6 +815,23 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
         '标题',
         renderSortIndicator('title'),
       ),
+      viewMode === 'compact'
+        ? h(
+            'div',
+            {
+              key: 'playlist-header-artist',
+              style: {
+                flex: 1,
+                minWidth: 0,
+                textAlign: 'left',
+                color: '#b3b3b3',
+                fontSize: 13,
+                fontWeight: 500,
+              },
+            },
+            '艺人',
+          )
+        : null,
       h(
         'button',
         {
@@ -874,6 +927,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             index,
             isSmart: detail.isSmart,
             playlistName: detail.name,
+            compact: viewMode === 'compact',
             onPress: () => play(trackUrn),
             onRemove: () => {
               setError(undefined)

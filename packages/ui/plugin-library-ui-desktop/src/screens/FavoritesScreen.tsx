@@ -5,7 +5,7 @@ import type { PlayerService, Track } from '@BBeBee/protocol'
 import { useSaved } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import { serviceOf, type MenuAnchor, type MenuItemSpec } from '@BBeBee/ui-core'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon, ViewModeSelector, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -17,6 +17,7 @@ function FavoriteTrackTableRow({
   ctx,
   track,
   index,
+  compact,
   onPress,
   onMore,
   onOpenPlaylistMenu,
@@ -24,6 +25,8 @@ function FavoriteTrackTableRow({
   ctx: Context
   track: Track
   index: number
+  /** 紧凑视图：无封面，艺人独立成列。 */
+  compact?: boolean
   onPress: () => void
   onMore: (anchor: { x: number; y: number }) => void
   onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
@@ -88,7 +91,7 @@ function FavoriteTrackTableRow({
           gap: 12,
         },
       },
-      h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 }),
+      compact ? null : h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 }),
       h(
         'div',
         {
@@ -114,7 +117,7 @@ function FavoriteTrackTableRow({
           },
           track.title,
         ),
-        artists
+        !compact && artists
           ? h(
               'span',
               {
@@ -132,6 +135,25 @@ function FavoriteTrackTableRow({
           : null,
       ),
     ),
+    // Col 3 (compact only): Artist as its own column
+    compact
+      ? h(
+          'div',
+          {
+            style: {
+              flex: 1,
+              minWidth: 0,
+              paddingRight: 16,
+              fontSize: 13,
+              color: '#b3b3b3',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            },
+          },
+          artists || '-',
+        )
+      : null,
     // Col 3: Album
     h(
       'div',
@@ -224,6 +246,8 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   const [sortKey, setSortKey] = useState<FavoriteSortKey>('default')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
+  // 视图模式：列表为默认（与历史行为一致），紧凑不显示封面并把艺人单列。
+  const [viewMode, setViewMode] = useViewMode('favorites', 'list', ['compact', 'list'] as const)
   const menu = useTrackMenu(ctx)
   const { openAddToPlaylistMenu, saveToPlaylistMenuProps } = useTrackLibraryInfo(ctx)
 
@@ -492,29 +516,46 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
           }),
         ),
         h(
-          'button',
+          'div',
           {
-            type: 'button',
-            'data-testid': 'favorites-sort-trigger',
-            title: '排序方式',
-            onClick: (e: ReactMouseEvent) => {
-              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-              setSortMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
-            },
             style: {
-              background: 'none',
-              border: 'none',
-              color: '#b3b3b3',
-              fontSize: 14,
-              cursor: 'pointer',
               display: 'flex',
-              alignItems: 'center',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
               gap: 6,
-              padding: 0,
             },
           },
-          h('span', null, sortLabelMap[sortKey]),
-          tablerIcon('list', { size: 20 }),
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-testid': 'favorites-sort-trigger',
+              title: '排序方式',
+              onClick: (e: ReactMouseEvent) => {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                setSortMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
+              },
+              style: {
+                background: 'none',
+                border: 'none',
+                color: '#b3b3b3',
+                fontSize: 14,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: 0,
+              },
+            },
+            h('span', null, sortLabelMap[sortKey]),
+            tablerIcon('list', { size: 20 }),
+          ),
+          // 排序方式之下：视图模式切换（列表为默认）。
+          h(ViewModeSelector, {
+            value: viewMode,
+            onChange: setViewMode,
+            testIDPrefix: 'favorites',
+          }),
         ),
       ),
     ),
@@ -580,6 +621,23 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
         '标题',
         renderSortIndicator('title'),
       ),
+      viewMode === 'compact'
+        ? h(
+            'div',
+            {
+              key: 'favorites-header-artist',
+              style: {
+                flex: 1,
+                minWidth: 0,
+                textAlign: 'left',
+                color: '#b3b3b3',
+                fontSize: 13,
+                fontWeight: 500,
+              },
+            },
+            '艺人',
+          )
+        : null,
       h(
         'button',
         {
@@ -650,6 +708,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
                 ctx,
                 track: t,
                 index,
+                compact: viewMode === 'compact',
                 onPress: () =>
                   player?.playFromContext(t.urn, sortedUrns, {
                     context: { kind: 'favorites', label: '收藏夹' },

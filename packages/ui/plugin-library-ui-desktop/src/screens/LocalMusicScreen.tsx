@@ -4,7 +4,7 @@ import type { Context } from 'cordis'
 import type { Album, PlayerService, Track } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { serviceOf, type MenuAnchor, type MenuItemSpec } from '@BBeBee/ui-core'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon, ViewModeSelector, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -18,6 +18,7 @@ function LocalTrackTableRow({
   track,
   index,
   inLibrary,
+  compact,
   onPress,
   onMore,
   onAddToFavorites,
@@ -28,6 +29,8 @@ function LocalTrackTableRow({
   track: Track
   index: number
   inLibrary: boolean
+  /** 紧凑视图：无封面，艺人独立成列。 */
+  compact?: boolean
   onPress: () => void
   onMore: (anchor: { x: number; y: number }) => void
   onAddToFavorites?: (track: Track) => void
@@ -80,7 +83,7 @@ function LocalTrackTableRow({
       },
       hovered ? tablerIcon('play', { size: 18, color: '#FFFFFF' }) : String(index + 1),
     ),
-    // Col 2: Artwork + Title + Artist
+    // Col 2: Artwork (list only) + Title + Artist
     h(
       'div',
       {
@@ -94,25 +97,27 @@ function LocalTrackTableRow({
           gap: 12,
         },
       },
-      h(
-        'div',
-        {
-          style: {
-            width: 40,
-            height: 40,
-            borderRadius: 4,
-            overflow: 'hidden',
-            flexShrink: 0,
-            backgroundColor: '#282828',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          },
-        },
-        track.artwork
-          ? h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 })
-          : tablerIcon('music', { size: 22, color: '#7f7f7f' }),
-      ),
+      compact
+        ? null
+        : h(
+            'div',
+            {
+              style: {
+                width: 40,
+                height: 40,
+                borderRadius: 4,
+                overflow: 'hidden',
+                flexShrink: 0,
+                backgroundColor: '#282828',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
+            },
+            track.artwork
+              ? h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 })
+              : tablerIcon('music', { size: 22, color: '#7f7f7f' }),
+          ),
       h(
         'div',
         {
@@ -138,7 +143,7 @@ function LocalTrackTableRow({
           },
           track.title,
         ),
-        artists
+        !compact && artists
           ? h(
               'span',
               {
@@ -156,6 +161,25 @@ function LocalTrackTableRow({
           : null,
       ),
     ),
+    // Col 3 (compact only): Artist as its own column
+    compact
+      ? h(
+          'div',
+          {
+            style: {
+              flex: 1,
+              minWidth: 0,
+              paddingRight: 16,
+              fontSize: 13,
+              color: '#b3b3b3',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            },
+          },
+          artists || '-',
+        )
+      : null,
     // Col 3: Album
     h(
       'div',
@@ -273,6 +297,193 @@ function LocalTrackTableRow({
 type LocalTrackSortKey = 'default' | 'title' | 'artist' | 'album' | 'duration'
 type LocalAlbumSortKey = 'default' | 'title' | 'artist' | 'year' | 'count'
 
+/** 专辑的列表/紧凑行：平铺模式仍用 LocalAlbumCard 网格。 */
+function LocalAlbumRow({
+  ctx,
+  album,
+  compact,
+  onOpen,
+  onPlay,
+}: {
+  ctx: Context
+  album: Album
+  /** 紧凑视图：无封面，艺人独立成列。 */
+  compact?: boolean
+  onOpen: () => void
+  onPlay?: () => void
+}): ReactElement {
+  const [hovered, setHovered] = useState(false)
+  const artists = album.artists?.map((a) => a.name).join(', ') || '未知艺人'
+  const meta = `${album.year ? `${album.year} • ` : ''}${album.trackCount ? `${album.trackCount} 首歌曲` : '专辑'}`
+
+  return h(
+    'div',
+    {
+      role: 'row',
+      tabIndex: 0,
+      'aria-label': album.title,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      onClick: onOpen,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        height: 56,
+        padding: '0 32px',
+        borderRadius: 4,
+        cursor: 'pointer',
+        background: hovered ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+        transition: 'background-color 0.15s ease',
+        boxSizing: 'border-box',
+      },
+    },
+    // Col 1: Cover (list only) or disc icon
+    compact
+      ? null
+      : h(
+          'div',
+          {
+            style: {
+              width: 40,
+              height: 40,
+              borderRadius: 4,
+              overflow: 'hidden',
+              flexShrink: 0,
+              backgroundColor: '#282828',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            },
+          },
+          album.artwork
+            ? h(CachedArtwork, { ctx, artwork: album.artwork, seed: album.urn, size: 40, radius: 4 })
+            : tablerIcon('disc', { size: 22, color: '#7f7f7f' }),
+        ),
+    // Col 2: Title (+ artists inline in list mode)
+    h(
+      'div',
+      {
+        style: {
+          flex: 2,
+          minWidth: 0,
+          paddingLeft: compact ? 0 : 12,
+          paddingRight: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+        },
+      },
+      h(
+        'div',
+        {
+          style: {
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+          },
+        },
+        h(
+          'span',
+          {
+            style: {
+              color: '#FFFFFF',
+              fontSize: 15,
+              fontWeight: 500,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            },
+          },
+          album.title,
+        ),
+        !compact
+          ? h(
+              'span',
+              {
+                style: {
+                  color: '#b3b3b3',
+                  fontSize: 13,
+                  marginTop: 2,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                },
+              },
+              artists,
+            )
+          : null,
+      ),
+    ),
+    // Col 3 (compact only): Artist as its own column
+    compact
+      ? h(
+          'div',
+          {
+            style: {
+              flex: 1.5,
+              minWidth: 0,
+              paddingRight: 16,
+              fontSize: 13,
+              color: '#b3b3b3',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            },
+          },
+          artists,
+        )
+      : null,
+    // Col 4: Year & count
+    h(
+      'div',
+      {
+        style: {
+          flex: 1,
+          minWidth: 0,
+          paddingRight: 16,
+          fontSize: 13,
+          color: '#b3b3b3',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        },
+      },
+      meta,
+    ),
+    // Col 5: Play on hover
+    h(
+      'button',
+      {
+        type: 'button',
+        'aria-label': `播放 ${album.title}`,
+        title: `播放 ${album.title}`,
+        onClick: (e: ReactMouseEvent) => {
+          e.stopPropagation()
+          onPlay?.()
+        },
+        style: {
+          width: 36,
+          height: 36,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
+          color: '#ffffff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          opacity: hovered ? 1 : 0,
+          transition: 'opacity 0.15s ease',
+        },
+      },
+      tablerIcon('play', { size: 20, color: '#ffffff' }),
+    ),
+  )
+}
+
 export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   const [tracks, setTracks] = useState<readonly Track[]>([])
   const [albums, setAlbums] = useState<readonly Album[]>([])
@@ -285,6 +496,9 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   const [albumSortKey, setAlbumSortKey] = useState<LocalAlbumSortKey>('default')
   const [albumSortOrder, setAlbumSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
+  // 视图模式：歌曲页默认列表，专辑页默认平铺（卡片网格），选择按页记忆。
+  const [trackViewMode, setTrackViewMode] = useViewMode('local-tracks', 'list', ['compact', 'list'] as const)
+  const [albumViewMode, setAlbumViewMode] = useViewMode('local-albums', 'tiled', ['compact', 'list', 'tiled'] as const)
   const player = serviceOf<PlayerService>(ctx, 'player')
   const menu = useTrackMenu(ctx)
   const {
@@ -773,29 +987,53 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
           tablerIcon('settings', { size: 22 }),
         ),
         h(
-          'button',
+          'div',
           {
-            type: 'button',
-            'data-testid': 'local-music-sort-trigger',
-            title: '排序方式',
-            onClick: (e: ReactMouseEvent) => {
-              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-              setSortMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
-            },
             style: {
-              background: 'none',
-              border: 'none',
-              color: '#b3b3b3',
-              fontSize: 14,
-              cursor: 'pointer',
               display: 'flex',
-              alignItems: 'center',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
               gap: 6,
-              padding: 0,
             },
           },
-          h('span', null, viewMode === 'tracks' ? trackSortLabelMap[trackSortKey] : albumSortLabelMap[albumSortKey]),
-          tablerIcon('list', { size: 20 }),
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-testid': 'local-music-sort-trigger',
+              title: '排序方式',
+              onClick: (e: ReactMouseEvent) => {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                setSortMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
+              },
+              style: {
+                background: 'none',
+                border: 'none',
+                color: '#b3b3b3',
+                fontSize: 14,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: 0,
+              },
+            },
+            h('span', null, viewMode === 'tracks' ? trackSortLabelMap[trackSortKey] : albumSortLabelMap[albumSortKey]),
+            tablerIcon('list', { size: 20 }),
+          ),
+          // 排序方式之下：视图模式切换（歌曲默认列表，专辑默认平铺）。
+          viewMode === 'tracks'
+            ? h(ViewModeSelector, {
+                value: trackViewMode,
+                onChange: setTrackViewMode,
+                testIDPrefix: 'local-tracks',
+              })
+            : h(ViewModeSelector, {
+                value: albumViewMode,
+                onChange: setAlbumViewMode,
+                allowTiled: true,
+                testIDPrefix: 'local-albums',
+              }),
         ),
       ),
     ),
@@ -862,6 +1100,23 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
               '标题',
               renderTrackSortIndicator('title'),
             ),
+            trackViewMode === 'compact'
+              ? h(
+                  'div',
+                  {
+                    key: 'local-header-artist',
+                    style: {
+                      flex: 1,
+                      minWidth: 0,
+                      textAlign: 'left',
+                      color: '#b3b3b3',
+                      fontSize: 13,
+                      fontWeight: 500,
+                    },
+                  },
+                  '艺人',
+                )
+              : null,
             h(
               'button',
               {
@@ -933,6 +1188,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                       track: t,
                       index,
                       inLibrary: isTrackInLibrary(t),
+                      compact: trackViewMode === 'compact',
                       onPress: () =>
                         player?.playFromContext(t.urn, sortedTrackUrns, {
                           context: { kind: 'local', label: '本地音乐' },
@@ -946,7 +1202,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
               ),
         ]
       : [
-          // Albums Grid
+          // Albums: 平铺(卡片网格,默认) / 列表 / 紧凑
           loading
             ? h(EmptyState, { key: 'album-loading', title: '加载中…' })
             : sortedAlbums.length === 0
@@ -956,7 +1212,8 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                 title: '暂无本地专辑',
                 description: '添加包含专辑信息的本地音乐文件夹后，专辑将在此显示。',
               })
-            : h(
+            : albumViewMode === 'tiled'
+            ? h(
                 'div',
                 {
                   key: 'album-grid-container',
@@ -996,6 +1253,33 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                       },
                     }),
                   ),
+                ),
+              )
+            : h(
+                'div',
+                {
+                  key: 'album-list-container',
+                  style: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 0 32px 0' },
+                },
+                sortedAlbums.map((album) =>
+                  h(LocalAlbumRow, {
+                    key: album.urn,
+                    ctx,
+                    album,
+                    compact: albumViewMode === 'compact',
+                    onOpen: () => ctx.ui.navigate(ALBUM_VIEWS.album, { urn: album.urn }),
+                    onPlay: () => {
+                      const albumTracks = tracks.filter(
+                        (t) => t.albumUrn === album.urn || (album.title && t.albumTitle === album.title),
+                      )
+                      const urns = albumTracks.map((t) => t.urn)
+                      if (urns[0]) {
+                        void player?.playNow(urns, {
+                          context: { kind: 'album', label: album.title ?? '本地音乐' },
+                        })
+                      }
+                    },
+                  }),
                 ),
               ),
         ],

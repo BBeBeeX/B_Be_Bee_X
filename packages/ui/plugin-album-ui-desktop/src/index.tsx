@@ -27,7 +27,7 @@ import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { formatDuration, formatTotalDuration } from '@BBeBee/toolkit'
 import { addToCollectionSubmenu, sleepTimerSubmenu, useSaveToPlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
-import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, tablerIcon } from '@BBeBee/ui-kit-desktop'
+import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, tablerIcon, ViewModeSelector, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -100,6 +100,7 @@ function AlbumTrackTableRow({
   index,
   albumTitle,
   inLibrary,
+  compact,
   onAddToFavorites,
   onOpenPlaylistMenu,
   onPress,
@@ -110,6 +111,8 @@ function AlbumTrackTableRow({
   index: number
   albumTitle?: string
   inLibrary: boolean
+  /** 紧凑视图：艺人独立成列。 */
+  compact?: boolean
   onAddToFavorites?: (track: Track) => void
   onOpenPlaylistMenu?: (track: Track, anchor: MenuAnchor) => void
   onPress: () => void
@@ -190,7 +193,7 @@ function AlbumTrackTableRow({
         },
         track.title,
       ),
-      artists
+      !compact && artists
         ? h(
             'span',
             {
@@ -207,6 +210,25 @@ function AlbumTrackTableRow({
           )
         : null,
     ),
+    // Col 3 (compact only): Artist as its own column
+    compact
+      ? h(
+          'div',
+          {
+            style: {
+              flex: 1,
+              minWidth: 0,
+              paddingRight: 16,
+              fontSize: 13,
+              color: '#b3b3b3',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            },
+          },
+          artists || '-',
+        )
+      : null,
     // Col 3: Album
     h(
       'div',
@@ -331,6 +353,8 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const [sortKey, setSortKey] = useState<AlbumSortKey>('trackNo')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
+  // 视图模式：列表为默认（与历史行为一致），紧凑把艺人单列。
+  const [viewMode, setViewMode] = useViewMode('album-detail', 'list', ['compact', 'list'] as const)
   const [albumMenuAnchor, setAlbumMenuAnchor] = useState<MenuAnchor | null>(null)
   const [collections, setCollections] = useState<readonly Collection[]>([])
   const [isSaved, setIsSaved] = useState(false)
@@ -815,29 +839,46 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 6 } },
         h(
-          'button',
+          'div',
           {
-            type: 'button',
-            'data-testid': 'album-sort-trigger',
-            title: '排序方式',
-            onClick: (e: React.MouseEvent) => {
-              const rect = e.currentTarget.getBoundingClientRect()
-              setSortMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
-            },
             style: {
-              background: 'none',
-              border: 'none',
-              color: '#b3b3b3',
-              fontSize: 14,
-              cursor: 'pointer',
               display: 'flex',
-              alignItems: 'center',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
               gap: 6,
-              padding: 0,
             },
           },
-          h('span', null, sortLabelMap[sortKey]),
-          tablerIcon('list', { size: 20 }),
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-testid': 'album-sort-trigger',
+              title: '排序方式',
+              onClick: (e: React.MouseEvent) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                setSortMenuAnchor({ x: rect.left, y: rect.bottom + 6 })
+              },
+              style: {
+                background: 'none',
+                border: 'none',
+                color: '#b3b3b3',
+                fontSize: 14,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: 0,
+              },
+            },
+            h('span', null, sortLabelMap[sortKey]),
+            tablerIcon('list', { size: 20 }),
+          ),
+          // 排序方式之下：视图模式切换（列表为默认）。
+          h(ViewModeSelector, {
+            value: viewMode,
+            onChange: setViewMode,
+            testIDPrefix: 'album',
+          }),
         ),
       ),
     ),
@@ -900,6 +941,23 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
         '标题',
         renderSortIndicator('title'),
       ),
+      viewMode === 'compact'
+        ? h(
+            'div',
+            {
+              key: 'album-header-artist',
+              style: {
+                flex: 1,
+                minWidth: 0,
+                textAlign: 'left',
+                color: '#b3b3b3',
+                fontSize: 13,
+                fontWeight: 500,
+              },
+            },
+            '艺人',
+          )
+        : null,
       h(
         'button',
         {
@@ -966,6 +1024,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             index,
             albumTitle: detail.title,
             inLibrary: track.loved === true || savedTrackUrns.has(track.urn),
+            compact: viewMode === 'compact',
             onAddToFavorites: handleTrackAddToFavorites,
             onOpenPlaylistMenu: (t, anchor) => saveToPlaylistMenu.open(t, anchor),
             onPress: () => {
