@@ -79,6 +79,7 @@ declare global {
         commitPosition?(pos: { x: number; y: number }): Promise<void>
         onMoved?(callback: (pos: { x: number; y: number }) => void): () => void
         setLocked(locked: boolean): Promise<void>
+        setIgnoreMouse?(ignore: boolean): Promise<void>
         updateData(data: unknown): Promise<void>
         sendAction(action: unknown): Promise<void>
         onData(callback: (data: unknown) => void): () => void

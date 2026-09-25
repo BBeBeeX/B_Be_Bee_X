@@ -71,6 +71,8 @@ const api = {
     },
     setLocked: (locked: boolean): Promise<void> =>
       ipcRenderer.invoke('desktop-lyrics:set-locked', locked),
+    setIgnoreMouse: (ignore: boolean): Promise<void> =>
+      ipcRenderer.invoke('desktop-lyrics:set-ignore-mouse', ignore),
     updateData: (data: unknown): Promise<void> =>
       ipcRenderer.invoke('desktop-lyrics:update-data', data),
     sendAction: (action: unknown): Promise<void> =>

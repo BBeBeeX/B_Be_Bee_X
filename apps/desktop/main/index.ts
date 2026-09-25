@@ -847,6 +847,14 @@ function registerHandlers(): void {
     }
   })
 
+  // The click-through window keeps one interactive hotspot (the unlock pill);
+  // the renderer flips mouse handling as the cursor crosses that hotspot.
+  ipcMain.handle('desktop-lyrics:set-ignore-mouse', (_event, ignore: boolean) => {
+    if (lyricWindow && !lyricWindow.isDestroyed()) {
+      lyricWindow.setIgnoreMouseEvents(Boolean(ignore), { forward: true })
+    }
+  })
+
   ipcMain.handle('desktop-lyrics:update-data', (_event, data: unknown) => {
     latestLyricData = data
     if (lyricWindow && !lyricWindow.isDestroyed()) {

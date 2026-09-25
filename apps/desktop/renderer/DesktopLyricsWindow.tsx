@@ -125,6 +125,41 @@ export function DesktopLyricsWindow(): ReactElement {
     lineMode = 'double',
   } = data
 
+  // While locked the window is click-through; the unlock pill is its one
+  // interactive hotspot, so mouse handling flips as the cursor crosses it.
+  const [unlockHovered, setUnlockHovered] = useState(false)
+  const unlockRef = useRef<HTMLButtonElement | null>(null)
+  const mouseIgnoredRef = useRef(false)
+
+  useEffect(() => {
+    const setIgnoreMouse = window.BBeBee?.desktopLyrics?.setIgnoreMouse
+    setUnlockHovered(false)
+    if (!locked || !setIgnoreMouse) {
+      mouseIgnoredRef.current = false
+      return
+    }
+    mouseIgnoredRef.current = true
+
+    const syncMouseMode = (x: number, y: number) => {
+      const el = unlockRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const inside = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+      if (inside === mouseIgnoredRef.current) {
+        mouseIgnoredRef.current = !inside
+        void setIgnoreMouse(!inside)
+      }
+    }
+
+    // With forward:true the click-through window still receives moves, which
+    // is what lets the hotspot break out of click-through on approach.
+    const onMouseMove = (e: MouseEvent) => syncMouseMode(e.clientX, e.clientY)
+    window.addEventListener('mousemove', onMouseMove)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+    }
+  }, [locked])
+
   return h(
     'div',
     {
@@ -258,6 +293,39 @@ export function DesktopLyricsWindow(): ReactElement {
           },
           tablerIcon('x', { size: 18 }),
         ),
+      ),
+    // Locked: no hover chrome — a single unlock pill takes the toolbar's spot
+    // and is the only interactive hotspot of the click-through window.
+    locked &&
+      h(
+        'button',
+        {
+          ref: unlockRef,
+          title: '解锁桌面歌词',
+          onClick: () => sendAction({ type: 'toggle-lock' }),
+          onMouseEnter: () => setUnlockHovered(true),
+          onMouseLeave: () => setUnlockHovered(false),
+          style: {
+            position: 'absolute',
+            top: 4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            opacity: unlockHovered ? 1 : 0.6,
+            background: unlockHovered ? 'rgba(24, 24, 32, 0.9)' : 'rgba(24, 24, 32, 0.55)',
+            color: '#E0E0E0',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            borderRadius: 20,
+            padding: '2px 10px',
+            fontSize: 12,
+            fontFamily: 'inherit',
+            cursor: 'pointer',
+            zIndex: 100,
+            transition: 'opacity 0.2s ease, background 0.2s ease',
+          },
+        },
+        tablerIcon('lock-open', { size: 14 }),
+        '解锁',
       ),
     // Current Line
     h(
