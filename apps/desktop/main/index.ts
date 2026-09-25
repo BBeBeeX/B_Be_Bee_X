@@ -343,8 +343,10 @@ function clampToVisibleScreen(
 let lyricWindow: BrowserWindow | undefined
 let lyricWindowReady = false
 let lyricWindowVisible = false
+let lyricWindowLocked = false
 let latestLyricData: unknown = undefined
 let programmaticMove = false
+let lyricCursorTimer: NodeJS.Timeout | undefined
 
 function setLyricWindowPosition(x: number, y: number): void {
   if (!lyricWindow || lyricWindow.isDestroyed()) return
@@ -357,6 +359,41 @@ function setLyricWindowPosition(x: number, y: number): void {
     setTimeout(() => {
       programmaticMove = false
     }, 60)
+  }
+}
+
+/**
+ * While the lyrics window is locked (click-through) the renderer cannot rely
+ * on forwarded mouse moves — `forward` is a no-op on Linux — so main polls
+ * the OS cursor and reports window-relative coordinates instead. `{x:-1,y:-1}`
+ * announces that the cursor left the window.
+ */
+function startLyricCursorTracking(): void {
+  if (lyricCursorTimer) return
+  let lastInside = false
+  lyricCursorTimer = setInterval(() => {
+    const win = lyricWindow
+    if (!win || win.isDestroyed() || !lyricWindowVisible || !lyricWindowLocked) {
+      stopLyricCursorTracking()
+      return
+    }
+    if (!win.isVisible()) return
+    const cursor = screen.getCursorScreenPoint()
+    const bounds = win.getContentBounds()
+    const x = Math.round(cursor.x - bounds.x)
+    const y = Math.round(cursor.y - bounds.y)
+    const inside = x >= 0 && x < bounds.width && y >= 0 && y < bounds.height
+    if (inside || lastInside) {
+      win.webContents.send('desktop-lyrics:cursor', inside ? { x, y } : { x: -1, y: -1 })
+    }
+    lastInside = inside
+  }, 120)
+}
+
+function stopLyricCursorTracking(): void {
+  if (lyricCursorTimer) {
+    clearInterval(lyricCursorTimer)
+    lyricCursorTimer = undefined
   }
 }
 
@@ -460,6 +497,7 @@ function createLyricWindow(pos?: { x?: number; y?: number }): BrowserWindow {
       lyricWindow = undefined
       lyricWindowReady = false
       lyricWindowVisible = false
+      stopLyricCursorTracking()
     }
   })
 
@@ -795,6 +833,11 @@ function registerHandlers(): void {
           lyricWindow.hide()
         }
       }
+      if (lyricWindowVisible && lyricWindowLocked) {
+        startLyricCursorTracking()
+      } else {
+        stopLyricCursorTracking()
+      }
     },
   )
 
@@ -842,13 +885,19 @@ function registerHandlers(): void {
   })
 
   ipcMain.handle('desktop-lyrics:set-locked', (_event, locked: boolean) => {
+    lyricWindowLocked = Boolean(locked)
     if (lyricWindow && !lyricWindow.isDestroyed()) {
-      lyricWindow.setIgnoreMouseEvents(Boolean(locked), { forward: true })
+      lyricWindow.setIgnoreMouseEvents(lyricWindowLocked, { forward: true })
+    }
+    if (lyricWindowLocked && lyricWindowVisible) {
+      startLyricCursorTracking()
+    } else {
+      stopLyricCursorTracking()
     }
   })
 
-  // The click-through window keeps one interactive hotspot (the unlock pill);
-  // the renderer flips mouse handling as the cursor crosses that hotspot.
+  // The click-through lyrics window keeps one interactive hotspot (the unlock
+  // pill); the renderer flips mouse handling as the polled cursor crosses it.
   ipcMain.handle('desktop-lyrics:set-ignore-mouse', (_event, ignore: boolean) => {
     if (lyricWindow && !lyricWindow.isDestroyed()) {
       lyricWindow.setIgnoreMouseEvents(Boolean(ignore), { forward: true })

@@ -73,6 +73,13 @@ const api = {
       ipcRenderer.invoke('desktop-lyrics:set-locked', locked),
     setIgnoreMouse: (ignore: boolean): Promise<void> =>
       ipcRenderer.invoke('desktop-lyrics:set-ignore-mouse', ignore),
+    onCursor: (callback: (pos: { x: number; y: number }) => void): (() => void) => {
+      const listener = (_event: unknown, pos: { x: number; y: number }) => callback(pos)
+      ipcRenderer.on('desktop-lyrics:cursor', listener)
+      return () => {
+        ipcRenderer.removeListener('desktop-lyrics:cursor', listener)
+      }
+    },
     updateData: (data: unknown): Promise<void> =>
       ipcRenderer.invoke('desktop-lyrics:update-data', data),
     sendAction: (action: unknown): Promise<void> =>

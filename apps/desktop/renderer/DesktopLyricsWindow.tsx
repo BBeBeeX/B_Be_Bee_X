@@ -125,39 +125,45 @@ export function DesktopLyricsWindow(): ReactElement {
     lineMode = 'double',
   } = data
 
-  // While locked the window is click-through; the unlock pill is its one
-  // interactive hotspot, so mouse handling flips as the cursor crosses it.
+  // While locked the window is click-through. Main polls the OS cursor and
+  // reports window-relative coordinates; the unlock pill shows only while the
+  // cursor is over the window and is the single hotspot that breaks out of
+  // click-through.
+  const [cursorInside, setCursorInside] = useState(false)
   const [unlockHovered, setUnlockHovered] = useState(false)
   const unlockRef = useRef<HTMLButtonElement | null>(null)
   const mouseIgnoredRef = useRef(false)
 
   useEffect(() => {
-    const setIgnoreMouse = window.BBeBee?.desktopLyrics?.setIgnoreMouse
+    const bridge = window.BBeBee?.desktopLyrics
+    const onCursor = bridge?.onCursor
+    setCursorInside(false)
     setUnlockHovered(false)
-    if (!locked || !setIgnoreMouse) {
+    if (!locked || !bridge || !onCursor) {
       mouseIgnoredRef.current = false
       return
     }
     mouseIgnoredRef.current = true
 
-    const syncMouseMode = (x: number, y: number) => {
-      const el = unlockRef.current
-      if (!el) return
-      const rect = el.getBoundingClientRect()
-      const inside = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
-      if (inside === mouseIgnoredRef.current) {
-        mouseIgnoredRef.current = !inside
-        void setIgnoreMouse(!inside)
+    const off = onCursor.call(bridge, (pos) => {
+      const inside = pos.x >= 0 && pos.y >= 0
+      setCursorInside(inside)
+      let overPill = false
+      if (inside) {
+        const el = unlockRef.current
+        if (el) {
+          const rect = el.getBoundingClientRect()
+          overPill =
+            pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom
+        }
       }
-    }
-
-    // With forward:true the click-through window still receives moves, which
-    // is what lets the hotspot break out of click-through on approach.
-    const onMouseMove = (e: MouseEvent) => syncMouseMode(e.clientX, e.clientY)
-    window.addEventListener('mousemove', onMouseMove)
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove)
-    }
+      setUnlockHovered(overPill)
+      if (overPill === mouseIgnoredRef.current) {
+        mouseIgnoredRef.current = !overPill
+        void bridge.setIgnoreMouse?.(!overPill)
+      }
+    })
+    return off
   }, [locked])
 
   return h(
@@ -294,17 +300,16 @@ export function DesktopLyricsWindow(): ReactElement {
           tablerIcon('x', { size: 18 }),
         ),
       ),
-    // Locked: no hover chrome — a single unlock pill takes the toolbar's spot
-    // and is the only interactive hotspot of the click-through window.
+    // Locked: no hover chrome — while the cursor is over the window, a single
+    // unlock pill takes the toolbar's spot as the only interactive hotspot.
     locked &&
+      cursorInside &&
       h(
         'button',
         {
           ref: unlockRef,
           title: '解锁桌面歌词',
           onClick: () => sendAction({ type: 'toggle-lock' }),
-          onMouseEnter: () => setUnlockHovered(true),
-          onMouseLeave: () => setUnlockHovered(false),
           style: {
             position: 'absolute',
             top: 4,

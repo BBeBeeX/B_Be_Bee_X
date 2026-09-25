@@ -80,6 +80,7 @@ declare global {
         onMoved?(callback: (pos: { x: number; y: number }) => void): () => void
         setLocked(locked: boolean): Promise<void>
         setIgnoreMouse?(ignore: boolean): Promise<void>
+        onCursor?(callback: (pos: { x: number; y: number }) => void): () => void
         updateData(data: unknown): Promise<void>
         sendAction(action: unknown): Promise<void>
         onData(callback: (data: unknown) => void): () => void
