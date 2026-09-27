@@ -186,12 +186,12 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-settings": {
     load: () => import('@BBeBee/plugin-settings'),
-    manifest: {"id":"@BBeBee/plugin-settings","version":"0.0.0","displayName":"Settings","description":"Global application preferences, settings service, and settings views.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":["audio"],"contributes":{"services":["settings"]}},
+    manifest: {"id":"@BBeBee/plugin-settings","version":"0.0.0","displayName":"Settings","description":"Global application preferences, settings service, and settings views.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["settings"]}},
     builtin: true,
   },
   "@BBeBee/plugin-settings-ui-desktop": {
     load: () => import('@BBeBee/plugin-settings-ui-desktop'),
-    manifest: {"id":"@BBeBee/plugin-settings-ui-desktop","version":"0.0.0","displayName":"Settings (desktop views)","description":"Global application preferences, settings service, and settings views.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["audio"],"contributes":{"services":["settings"]}},
+    manifest: {"id":"@BBeBee/plugin-settings-ui-desktop","version":"0.0.0","displayName":"Settings (desktop views)","description":"Global application preferences, settings service, and settings views.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["settings"]}},
     builtin: true,
   },
   "@BBeBee/plugin-sleep-timer": {

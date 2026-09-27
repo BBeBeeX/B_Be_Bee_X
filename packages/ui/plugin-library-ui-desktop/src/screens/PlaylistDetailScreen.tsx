@@ -721,7 +721,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             gap: 6,
           },
         },
-        tablerIcon('plus', { size: 18 }),
+        tablerIcon('playlist-add', { size: 18 }),
         '添加',
       ),
       h(

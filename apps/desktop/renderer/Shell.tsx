@@ -631,13 +631,13 @@ export function Shell({ ctx }: { ctx: Context }) {
         ? `${sidebarCol} 1fr ${queueCol}`
         : `${sidebarCol} 1fr`
 
-  // The top bar lives at the top of the content pane — inside the main card
-  // normally, inside the expanded library pane when that takes over — so the
-  // sidebar and queue columns run the full window height. Sticky keeps the
-  // window controls reachable when the expanded library scrolls.
+  // The top bar is a window-level row above the workspace grid: the sidebar,
+  // the main card and the queue panel all start beneath the same 48px header.
+  // Opening the queue narrows only the main card — never the top bar — and
+  // the queue panel matches the main view's height.
   const topBar = h(
     'div',
-    { style: { flexShrink: 0, position: 'sticky', top: 0, zIndex: 60 } },
+    { style: { flexShrink: 0, position: 'relative', zIndex: 60 } },
     h(TopBar, {
       ctx,
       canGoBack,
@@ -670,6 +670,7 @@ export function Shell({ ctx }: { ctx: Context }) {
         background: 'var(--bg-app, #05060B)',
       },
     },
+    topBar,
     h(
       'div',
       {
@@ -729,13 +730,16 @@ export function Shell({ ctx }: { ctx: Context }) {
                     ? { flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column' }
                     : { height: '100%', width: '100%', display: 'flex', flexDirection: 'column' },
               },
-              libraryMode === 'expanded' ? topBar : null,
               h('span', { style: { display: 'none' } }, 'Library'),
               h(LibraryView, {
                 ctx,
                 mode: libraryMode,
                 onModeChange: setLibraryMode,
                 onOpenAlbum: (urn: string) => navigateTo('album.view', { urn }),
+                // The quick entries (喜欢 / 本地和下载) highlight from the
+                // route actually on screen, so shell-internal navigation —
+                // opening an album, back/forward, home — clears them too.
+                activeViewId: currentId,
               }),
               entries
                 .filter((e) => e.group === 'settings')
@@ -833,7 +837,6 @@ export function Shell({ ctx }: { ctx: Context }) {
                 flexDirection: 'column',
               },
             },
-            topBar,
             h(
               'div',
               { style: { flex: 1, minHeight: 0, position: 'relative' } },

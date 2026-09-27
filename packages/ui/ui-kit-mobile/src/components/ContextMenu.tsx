@@ -1,11 +1,48 @@
 import { createElement as h, useEffect, useState } from 'react'
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { tokens } from '@BBeBee/ui-tokens'
 import type { ContextMenuProps, MenuItemSpec } from '@BBeBee/ui-core'
 import { c, common, nativePrimitives } from '../primitives.js'
 import { Text } from './Text.js'
 import { TextField } from './TextField.js'
 import { Button } from './Button.js'
+
+/**
+ * Menu icons arrive as Tabler icon *names* from `@BBeBee/ui-menus` (the same
+ * strings the desktop kit resolves through its SVG registry). A phone has no
+ * Tabler set, so each name maps to a glyph; a name without a mapping is
+ * hidden rather than shown as a bare English word, and anything that is
+ * already a glyph (unicode the caller passed directly) passes through.
+ */
+const MENU_ICON_GLYPHS: Record<string, string> = {
+  plus: '＋',
+  minus: '－',
+  'playlist-add': '♫＋',
+  'create-playlist': '♫＋',
+  'create-folder': '📁＋',
+  folder: '📁',
+  pin: '📌',
+  pencil: '✎',
+  trash: '🗑',
+  delete: '🗑',
+  play: '▶',
+  download: '⬇',
+  heart: '♥',
+  'heart-filled': '♥',
+  disc: '◎',
+  clock: '⏱',
+  x: '✕',
+  music: '♪',
+  search: '🔍',
+}
+
+function menuIconGlyph(icon: ReactNode): ReactNode {
+  // Non-string icons are already rendered elements — pass them through.
+  if (typeof icon !== 'string') return icon
+  const mapped = MENU_ICON_GLYPHS[icon]
+  if (mapped) return mapped
+  return /^[a-z0-9-]+$/i.test(icon) ? null : icon
+}
 
 /** One menu row. `role` is Android's, so TalkBack announces it as a menu item. */
 function MenuRow({
@@ -16,6 +53,7 @@ function MenuRow({
   onActivate: (item: MenuItemSpec) => void
 }): ReactElement {
   const native = nativePrimitives()
+  const iconGlyph = item.icon ? menuIconGlyph(item.icon) : null
   return h(
     native.Pressable as never,
     {
@@ -33,7 +71,7 @@ function MenuRow({
         opacity: item.disabled ? 0.45 : 1,
       },
     },
-    item.icon ? h(Text, { variant: 'md' }, item.icon) : null,
+    iconGlyph ? h(Text, { variant: 'md' }, iconGlyph) : null,
     h(Text, {
       variant: 'md',
       tone: item.tone === 'danger' ? 'error' : 'default',

@@ -7,7 +7,7 @@
  * and event wiring only (docs/08 §1).
  */
 
-import { createElement as h, memo, useMemo, useState } from 'react'
+import { createElement as h, memo, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { PlayRecord, QueueSourceContext, Track } from '@BBeBee/protocol'
@@ -24,6 +24,7 @@ import { Artwork, ContextMenu, EmptyState, tablerIcon } from '@BBeBee/ui-kit-des
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
+import { upcomingDropToQueueIndex } from './reorder.js'
 
 function formatDuration(ms?: number): string {
   if (!ms || ms <= 0) return ''
@@ -64,6 +65,17 @@ interface QueueTrackRowProps {
   extraRight?: string
   onPress?: () => void
   onMore?: (anchor: { x: number; y: number }) => void
+  /** Present on upcoming rows only; shuffle and the fixed sections get none. */
+  draggable?: boolean
+  dragging?: boolean
+  /** Accent line at the row's top edge marking where the drop would land. */
+  dropBefore?: boolean
+  onDragStart?: () => void
+  onDragOver?: (e: React.DragEvent) => void
+  onDrop?: (e: React.DragEvent) => void
+  onDragEnd?: () => void
+  /** Alt+↑/↓ reorder for keyboard users; wired on upcoming rows only. */
+  onKeyboardMove?: (direction: -1 | 1) => void
 }
 
 const QueueTrackRow = memo(
@@ -75,6 +87,14 @@ const QueueTrackRow = memo(
     extraRight,
     onPress,
     onMore,
+    draggable = false,
+    dragging = false,
+    dropBefore = false,
+    onDragStart,
+    onDragOver,
+    onDrop,
+    onDragEnd,
+    onKeyboardMove,
   }: QueueTrackRowProps): ReactElement {
   const [hovered, setHovered] = useState(false)
   const artwork = useResolvedArtwork(ctx, track.artwork)
@@ -87,6 +107,11 @@ const QueueTrackRow = memo(
       tabIndex: 0,
       'data-track-urn': track.urn,
       'data-item-id': itemId,
+      draggable,
+      onDragStart: draggable && onDragStart ? onDragStart : undefined,
+      onDragOver: draggable ? onDragOver : undefined,
+      onDrop: draggable ? onDrop : undefined,
+      onDragEnd: draggable ? onDragEnd : undefined,
       onClick: onPress,
       onContextMenu: onMore
         ? (e: { preventDefault: () => void; clientX?: number; clientY?: number }) => {
@@ -94,10 +119,14 @@ const QueueTrackRow = memo(
             onMore({ x: e.clientX ?? 0, y: e.clientY ?? 0 })
           }
         : undefined,
-      onKeyDown: (e: { key: string; preventDefault: () => void }) => {
+      onKeyDown: (e: { key: string; altKey?: boolean; preventDefault: () => void }) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onPress?.()
+        }
+        if (onKeyboardMove && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+          e.preventDefault()
+          onKeyboardMove(e.key === 'ArrowUp' ? -1 : 1)
         }
       },
       onMouseEnter: () => setHovered(true),
@@ -108,12 +137,29 @@ const QueueTrackRow = memo(
         gap: 12,
         padding: '8px 10px',
         borderRadius: tokens.radius.sm,
-        cursor: 'pointer',
+        position: 'relative',
+        cursor: draggable ? 'grab' : 'pointer',
+        opacity: dragging ? 0.4 : 1,
         background: hovered ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
         transition: 'background-color 0.15s ease',
         outline: 'none',
       },
     },
+    dropBefore
+      ? h('div', {
+          'aria-hidden': true,
+          style: {
+            position: 'absolute',
+            top: -2,
+            left: 8,
+            right: 8,
+            height: 2,
+            borderRadius: 2,
+            background: 'var(--tab-active, var(--color-primary, #5F87FF))',
+            pointerEvents: 'none',
+          },
+        })
+      : null,
     h(Artwork, {
       artwork,
       seed: track.urn,
@@ -184,7 +230,10 @@ const QueueTrackRow = memo(
   prev.track.artwork === next.track.artwork &&
   prev.active === next.active &&
   prev.itemId === next.itemId &&
-  prev.extraRight === next.extraRight,
+  prev.extraRight === next.extraRight &&
+  prev.draggable === next.draggable &&
+  prev.dragging === next.dragging &&
+  prev.dropBefore === next.dropBefore,
 )
 
 export interface QueueScreenProps {
@@ -199,6 +248,70 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
   const upcoming = useUpcoming(ctx)
   const state = useTransport(ctx)
   const menu = useTrackMenu(ctx)
+
+  // Drag-to-reorder. The refs carry everything the drop handler reads, because
+  // the memoized rows keep their first handler closures: queue/upcoming are
+  // mirrored every render, drag ids and drop indexes live only here.
+  const queueRef = useRef(queue)
+  queueRef.current = queue
+  const upcomingRef = useRef(upcoming)
+  upcomingRef.current = upcoming
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const dragIdRef = useRef<string | null>(null)
+  const dropIndexRef = useRef<number | null>(null)
+
+  // Under shuffle the visible order is a permutation, not the rows — a drop
+  // position cannot be honoured, so dragging is off and the section says so.
+  const shuffleOn = state.shuffle
+
+  const resetDrag = () => {
+    dragIdRef.current = null
+    dropIndexRef.current = null
+    setDragId(null)
+    setDropIndex(null)
+  }
+
+  const hoverDrag = (e: React.DragEvent) => {
+    e.preventDefault()
+    const row = (e.currentTarget as HTMLElement).closest('[role="listitem"]')
+    const list = row?.parentElement
+    if (!row || !list) return
+    const rect = row.getBoundingClientRect()
+    const before = e.clientY - rect.top < rect.height / 2
+    const at = Math.max(
+      0,
+      Math.min(
+        upcomingRef.current.length,
+        (Array.prototype.indexOf.call(list.children, row) as number) + (before ? 0 : 1),
+      ),
+    )
+    if (dropIndexRef.current !== at) {
+      dropIndexRef.current = at
+      setDropIndex(at)
+    }
+  }
+
+  const commitDrag = () => {
+    const id = dragIdRef.current
+    const at = dropIndexRef.current
+    resetDrag()
+    if (!id || at === null) return
+    const toIndex = upcomingDropToQueueIndex(id, at, queueRef.current, upcomingRef.current)
+    ctx.player.moveItem(id, toIndex)
+  }
+
+  const keyboardMove = (id: string, direction: -1 | 1) => {
+    const from = upcomingRef.current.findIndex((item) => item.id === id)
+    if (from < 0) return
+    // In drop-gap terms: moving up inserts before the row above; moving down
+    // inserts before the row *two* ahead — "after the one below". One ahead
+    // would be the gap right below the dragged row, which is where it is.
+    const gap = direction === -1 ? from - 1 : from + 2
+    if (gap < 0 || gap > upcomingRef.current.length) return
+    const toIndex = upcomingDropToQueueIndex(id, gap, queueRef.current, upcomingRef.current)
+    ctx.player.moveItem(id, toIndex)
+  }
 
   // Queue tracks resolution
   const queueTrackUrns = queue.map((item) => item.trackUrn)
@@ -471,11 +584,32 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
           },
           nextTitle,
         ),
+        shuffleOn
+          ? h(
+              'div',
+              {
+                style: {
+                  fontSize: 12,
+                  color: '#8E8E93',
+                  marginBottom: 8,
+                },
+              },
+              '随机播放中：顺序由随机种子决定，暂不支持拖拽排序',
+            )
+          : null,
         upcomingItems.length > 0
           ? h(
               'div',
-              { role: 'list', 'aria-label': nextTitle },
-              upcomingItems.map((item) => {
+              {
+                role: 'list',
+                'aria-label': nextTitle,
+                onDragOver: (e: React.DragEvent) => e.preventDefault(),
+                onDrop: (e: React.DragEvent) => {
+                  e.preventDefault()
+                  commitDrag()
+                },
+              },
+              upcomingItems.map((item, index) => {
                 const track =
                   queueTracks.get(item.trackUrn) ??
                   queueTrackFallback(item, state.nowPlaying, item.id === state.currentItemId)
@@ -490,9 +624,34 @@ export function QueueScreen({ ctx, onClose }: QueueScreenProps): ReactElement {
                     extraRight: formatDuration(track.durationMs),
                     onPress: () => void ctx.player.playFromContext(item.trackUrn),
                     onMore: (anchor) => menu.open({ track, queueItemId: item.id }, anchor),
+                    draggable: !shuffleOn,
+                    dragging: dragId === item.id,
+                    dropBefore: dragId !== null && dropIndex === index,
+                    onDragStart: () => {
+                      dragIdRef.current = item.id
+                      setDragId(item.id)
+                    },
+                    onDragOver: hoverDrag,
+                    onDrop: (e: React.DragEvent) => {
+                      e.preventDefault()
+                      commitDrag()
+                    },
+                    onDragEnd: resetDrag,
+                    onKeyboardMove: (direction) => keyboardMove(item.id, direction),
                   }),
                 )
               }),
+              dragId !== null && dropIndex === upcomingItems.length
+                ? h('div', {
+                    'aria-hidden': true,
+                    style: {
+                      height: 2,
+                      margin: '0 10px',
+                      borderRadius: 2,
+                      background: 'var(--tab-active, var(--color-primary, #5F87FF))',
+                    },
+                  })
+                : null,
             )
           : h(
               'div',

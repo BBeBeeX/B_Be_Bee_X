@@ -72,6 +72,7 @@ async function harness(
     playNow = async (urns: string[]) => void calls.push(`playNow:${urns.join(',')}`)
     playFromContext = async (urn: string, contextUrns: readonly string[] = []) =>
       void calls.push(`jump:${urn}${contextUrns.length ? `|${contextUrns.join(',')}` : ''}`)
+    moveItem = (id: string, toIndex: number) => void calls.push(`moveItem:${id}:${toIndex}`)
     getHistory = async () => history
   }
 
@@ -113,6 +114,88 @@ describe('QueueScreen', () => {
     // A tap means "play that one" — a jump, never a re-queue of one track.
     expect(calls).toContain('jump:BBeBee:local:track:a')
     expect(calls).not.toContain('playNow:BBeBee:local:track:a')
+  })
+
+  it('reorders the upcoming list by drag, translating the drop into a queue move', async () => {
+    const { ctx, calls } = await harness({ currentItemId: 'a' }, [
+      { id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' },
+      { id: 'b', trackUrn: 'BBeBee:local:track:b', addedBy: 'user' },
+      { id: 'c', trackUrn: 'BBeBee:local:track:c', addedBy: 'user' },
+    ])
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+    const rowOf = (id: string) => container.querySelector(`[data-item-id="${id}"]`) as HTMLElement
+    // jsdom has no DragEvent; a MouseEvent of the same type is what the React
+    // handlers see (and a real DragEvent is a MouseEvent).
+    const dragEvent = (type: string, clientY?: number) =>
+      new MouseEvent(type, { bubbles: true, ...(clientY !== undefined ? { clientY } : {}) })
+
+    // The visible list is play order [b, c]; b dropped onto c's lower half
+    // means "after c" — row index 2 for `moveItem`, not the visible index 1.
+    fireEvent(rowOf('b'), dragEvent('dragstart'))
+    fireEvent(rowOf('c'), dragEvent('dragover', 1))
+    fireEvent(rowOf('c'), dragEvent('drop'))
+    fireEvent(rowOf('b'), dragEvent('dragend'))
+    expect(calls).toContain('moveItem:b:2')
+  })
+
+  it('drops into the upper half of a row before it', async () => {
+    const { ctx, calls } = await harness({ currentItemId: 'a' }, [
+      { id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' },
+      { id: 'b', trackUrn: 'BBeBee:local:track:b', addedBy: 'user' },
+      { id: 'c', trackUrn: 'BBeBee:local:track:c', addedBy: 'user' },
+    ])
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+    const rowOf = (id: string) => container.querySelector(`[data-item-id="${id}"]`) as HTMLElement
+    const dragEvent = (type: string, clientY?: number) =>
+      new MouseEvent(type, { bubbles: true, ...(clientY !== undefined ? { clientY } : {}) })
+
+    // c dropped onto b's upper half lands before b → row order [a, c, b].
+    fireEvent(rowOf('c'), dragEvent('dragstart'))
+    fireEvent(rowOf('b'), dragEvent('dragover', -1))
+    fireEvent(rowOf('b'), dragEvent('drop'))
+    expect(calls).toContain('moveItem:c:1')
+  })
+
+  it('moves an upcoming row with Alt+Arrow keys', async () => {
+    const { ctx, calls } = await harness({ currentItemId: 'a' }, [
+      { id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' },
+      { id: 'b', trackUrn: 'BBeBee:local:track:b', addedBy: 'user' },
+      { id: 'c', trackUrn: 'BBeBee:local:track:c', addedBy: 'user' },
+    ])
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+    const rowOf = (id: string) => container.querySelector(`[data-item-id="${id}"]`) as HTMLElement
+
+    // Visible order [b, c]: b moves down to [c, b] → row index 2.
+    fireEvent.keyDown(rowOf('b'), { key: 'ArrowDown', altKey: true })
+    expect(calls).toContain('moveItem:b:2')
+
+    // c moves up before b, back to the original order.
+    fireEvent.keyDown(rowOf('c'), { key: 'ArrowUp', altKey: true })
+    expect(calls).toContain('moveItem:c:1')
+
+    // Without Alt the arrows stay navigation keys, not reorder triggers.
+    fireEvent.keyDown(rowOf('b'), { key: 'ArrowDown' })
+    expect(calls.filter((entry) => entry.startsWith('moveItem'))).toHaveLength(2)
+  })
+
+  it('turns dragging off while shuffle is on and says why', async () => {
+    const { ctx, calls } = await harness({ currentItemId: 'a', shuffle: true }, [
+      { id: 'a', trackUrn: 'BBeBee:local:track:a', addedBy: 'user' },
+      { id: 'b', trackUrn: 'BBeBee:local:track:b', addedBy: 'user' },
+      { id: 'c', trackUrn: 'BBeBee:local:track:c', addedBy: 'user' },
+    ])
+    const { container } = withListLayout(() => render(h(QueueScreen, { ctx })))
+
+    // React stringifies the boolean attribute, so "off" is draggable="false".
+    const row = container.querySelector('[data-item-id="b"]') as HTMLElement
+    expect(row.getAttribute('draggable')).toBe('false')
+    expect(container.textContent).toContain('暂不支持拖拽排序')
+
+    // Even a synthetic drag finds no handlers: nothing reaches moveItem.
+    fireEvent(row, new MouseEvent('dragstart', { bubbles: true }))
+    fireEvent(row, new MouseEvent('dragover', { bubbles: true }))
+    fireEvent(row, new MouseEvent('drop', { bubbles: true }))
+    expect(calls.filter((entry) => entry.startsWith('moveItem'))).toHaveLength(0)
   })
 
   it('never shows the URN before the catalogue answers', async () => {

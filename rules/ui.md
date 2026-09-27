@@ -131,17 +131,22 @@ The default visual identity is extracted directly from the character visual refe
 - Sidebar & Navigation Exclusions:
   - Left navigation rail strictly hosts content and library browsing (`library.view`, `history.view`, playlists).
   - `settings.view` and `sources.search` are explicitly excluded from sidebar rendering. Settings is opened via the TopBar user avatar; Search is driven by the TopBar search bar.
+- Window-level TopBar & queue panel:
+  - The TopBar is a full-width row above the workspace grid (a direct child of the shell root), never inside the main card: opening the right-side queue panel narrows the main card only, and the queue panel shares the main view's height beneath the same header.
+  - The library sidebar's quick entries (喜欢 / 本地和下载) highlight from the shell's real current route (`activeViewId` prop), never from `ui/navigate` events — shell-internal navigation (album detail, back/forward, home) emits none.
+  - Queue rows in the desktop queue panel drag to reorder (native HTML5 DnD, no dependency) and accept Alt+↑/↓. The drop gap in the visible play order is translated to a queue row index by `upcomingDropToQueueIndex` (`plugin-queue-ui-desktop/src/reorder.ts`); dragging is disabled while shuffle is on because the visible order is then a permutation, not the rows.
 - Bottom player bar: Solid black (`#000000`), border-free (`borderTop: none`). Center cluster order is `[PlayMode] [Previous] [Play/Pause] [Next] [Volume]`. Play mode cycles sequence/single-loop/list-loop/shuffle. Volume icon indicates sound state (muted `volume-off` or loudness wave tiers `volume-3` / `volume-2` / `volume`) and clicks to pop up a vertical volume bar with a bottom mute toggle.
 
 ### 4.1 Tabler Icons & Stroke Standard (`stroke = 1.25`)
 All visual icons across desktop UI components are standardized on **Tabler Icons SVG paths**:
 1. **Global Stroke Width**: Standardized strictly to `stroke="1.25"` (`DEFAULT_STROKE_WIDTH = 1.25` in `packages/ui/ui-kit-desktop/src/icons/tabler.ts`).
-2. **Zero Handwritten SVG / Unicode Glyphs**: Never use raw unicode/emoji glyphs (e.g. `▶`, `⏸`, `⏮`, `⏭`, `🗑`, `✕`, `＋`, `♡`, `♥`, `⬇`, `⏱`, `📁`, `🗂`, `💿`, `🎵`, `♪`, `⋯`, `📌`, `▲`, `▼`, `✓`, `🕒`, `🔀`, `⚙`, `≣`, `🔍`) or ad-hoc `<svg>` elements in UI components. All icons must be rendered via `tablerIcon(name, props)`, `TablerIcon`, or components consuming `IconName` (e.g. `IconButton`, `EmptyState`).
+2. **Zero Handwritten SVG / Unicode Glyphs**: Never use raw unicode/emoji glyphs (e.g. `▶`, `⏸`, `⏮`, `⏭`, `🗑`, `✕`, `＋`, `♡`, `♥`, `⬇`, `⏱`, `📁`, `🗂`, `💿`, `🎵`, `♪`, `⋯`, `📌`, `▲`, `▼`, `✓`, `🕒`, `🔀`, `⚙`, `≣`, `🔍`) or ad-hoc `<svg>` elements in UI components. All icons must be rendered via `tablerIcon(name, props)`, `TablerIcon`, or components consuming `IconName` (e.g. `IconButton`, `EmptyState`). **Mobile exception**: there is no Tabler set on React Native, so `ui-kit-mobile`'s `ContextMenu` maps the shared menus' icon names to unicode glyphs (`MENU_ICON_GLYPHS`); a name without a mapping is hidden rather than rendered as raw text.
 3. **Semantic Registry**: `packages/ui/ui-kit-desktop/src/icons/registry.ts` provides centralized alias mappings (`ICON_ALIASES`) mapping semantic names to Tabler definitions:
    - Navigation & search: `home`, `search`
    - Playback & volume: `play-filled`, `pause-filled`, `skip-back`, `skip-forward`, `volume`, `volume-2`, `volume-3`, `volume-off`
    - Modes: `shuffle`, `repeat`, `repeat-once`, `list-numbers`
-   - Curation & actions: `heart`, `heart-filled`, `plus`, `minus`, `trash`, `x`, `pin`, `pencil`, `download`, `clock`, `history`, `playlist`, `list`, `arrows-sort`, `dots`, `folder`, `music`, `disc`
+   - Curation & actions: `heart`, `heart-filled`, `plus`, `minus`, `trash`, `x`, `pin`, `pencil`, `download`, `clock`, `history`, `playlist`, `list`, `arrows-sort`, `dots`, `folder`, `music`, `disc`, `playlist-add`
+   - **Add-to-list semantics**: every "加入歌单 / 加入播放列表 / 添加至其他歌单" action (menu items and buttons alike) uses `playlist-add` (list + plus), never a bare `plus` — `plus` is reserved for generic creation and the save-to-library toggle.
    - Direction & UI: `chevron-left`, `chevron-right`, `chevron-down`, `chevron-up`, `check`, `alert`, `settings`, `adjustments`
 4. **Standard Sizing & Scale**: Default icon size is `28px` (`DEFAULT_ICON_SIZE = 28` in `tabler.ts`). Tokens standard: `tokens.size.icon: 24`, `tokens.size.iconLarge: 32`. Sizing scale:
    - `sm`: 16–20px (table row actions, column headers, metadata badges)

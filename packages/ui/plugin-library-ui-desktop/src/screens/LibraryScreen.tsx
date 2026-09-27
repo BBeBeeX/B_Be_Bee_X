@@ -37,6 +37,13 @@ export interface LibraryScreenProps {
   mode?: 'collapsed' | 'sidebar' | 'expanded'
   onModeChange?: (mode: 'collapsed' | 'sidebar' | 'expanded') => void
   onOpenAlbum?: (urn: string) => void
+  /**
+   * The route the shell is actually showing right now — not the last
+   * `ui/navigate` event. Shell-internal navigation (opening an album,
+   * back/forward, home, settings) never emits that event, so the quick
+   * entries (喜欢 / 本地和下载) may only highlight from this prop.
+   */
+  activeViewId?: string
   folderId?: string | null
   onFolderChange?: (folderId: string | null) => void
   [key: string]: unknown
@@ -47,6 +54,7 @@ export function LibraryScreen({
   mode: propMode,
   onModeChange,
   onOpenAlbum,
+  activeViewId,
   folderId: propFolderId,
   onFolderChange,
 }: LibraryScreenProps): ReactElement {
@@ -129,14 +137,6 @@ export function LibraryScreen({
   const [collectionDraft, setCollectionDraft] = useState('')
   const [error, setError] = useState<string | undefined>(undefined)
   const [generation, setGeneration] = useState(0)
-
-  // The quick entries (喜欢 / 本地和下载) highlight when their view is the one
-  // the user navigated to, wherever the navigation came from.
-  const [activeViewId, setActiveViewId] = useState<string | undefined>(undefined)
-  useEffect(() => {
-    const offNavigate = ctx.on('ui/navigate', (routeId: string) => setActiveViewId(routeId))
-    return () => void offNavigate()
-  }, [ctx])
 
   const playlistMenu = usePlaylistMenu(ctx)
   const collectionMenu = useCollectionMenu(ctx)

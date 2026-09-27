@@ -508,7 +508,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
     albumMenuItems.push({
       id: 'enqueue',
       label: '加入播放列表',
-      icon: tablerIcon('plus', { size: 20 }),
+      icon: tablerIcon('playlist-add', { size: 20 }),
       onSelect: () => player.enqueueLast(sortedUrns),
     })
   }

@@ -527,6 +527,37 @@ describe('the desktop shell', () => {
     expect(workspace.style.gridTemplateColumns).toBe('280px 1fr')
   })
 
+  it('mounts the top bar above the workspace grid so the queue panel matches the main height', async () => {
+    const { container, ctx } = await mount((ui) => {
+      ui.routes = [route('home', 'Home')]
+      ui.views.set('home', () => h('p', null, 'home page'))
+      ui.views.set('queue.view', () => h('div', null, 'queue content'))
+      ui.views.set('now-playing.bar', () => h('div', null, 'player bar'))
+    })
+
+    const header = container.querySelector('header[aria-label="Application Header"]') as HTMLElement
+    const main = container.querySelector('main') as HTMLElement
+    const workspace = container.querySelector('nav')?.parentElement as HTMLElement
+    expect(header).not.toBeNull()
+
+    // The top bar is a window-level row: its slot is a sibling of the
+    // workspace grid, not a child of the main card whose width the queue
+    // panel squeezes.
+    const topBarSlot = header.parentElement as HTMLElement
+    expect(topBarSlot.parentElement).toBe(workspace.parentElement)
+    expect(topBarSlot.nextElementSibling).toBe(workspace)
+    expect(main.contains(header)).toBe(false)
+
+    // Opened, the queue panel is a column of the same grid as the main card,
+    // so both start beneath the shared top bar at the same height.
+    await act(async () => {
+      ctx.emit('ui/navigate', 'queue.view')
+    })
+    const aside = container.querySelector('[data-testid="queue-sidebar-panel"]') as HTMLElement
+    expect(aside).not.toBeNull()
+    expect(aside.parentElement).toBe(main.parentElement)
+  })
+
   it('navigates to settings.view when profile avatar is clicked', async () => {
     const { container } = await mount((ui) => {
       ui.routes = [route('home', 'Home'), route('settings.view', 'Settings Center')]

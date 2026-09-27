@@ -243,6 +243,30 @@ describe('LibraryScreen', () => {
     expect(library.calls).toContain('create:New mix')
   })
 
+  it('highlights the quick entries only from the route actually on screen', async () => {
+    const { ctx } = await harness()
+    await withListLayout(async () => {
+      const view = render(h(LibraryScreen, { ctx, activeViewId: 'album.view' }))
+      await act(async () => {
+        await tick()
+      })
+
+      // The main view is an album detail: neither quick entry may claim to be
+      // current, even though the user reached it from the library.
+      expect(view.container.querySelector('button[aria-current="page"]')).toBeNull()
+
+      // Once the shell shows the favorites view, its chip lights up — and
+      // only that one.
+      view.rerender(h(LibraryScreen, { ctx, activeViewId: 'library.favorites' }))
+      const current = view.container.querySelector('button[aria-current="page"]')
+      expect(current?.textContent).toContain('喜欢')
+
+      view.rerender(h(LibraryScreen, { ctx, activeViewId: 'library.local' }))
+      const local = view.container.querySelector('button[aria-current="page"]')
+      expect(local?.textContent).toContain('本地和下载')
+    })
+  })
+
   it('deletes and opens by the playlist URN', async () => {
     const { ctx, library, ui } = await harness()
     await withListLayout(async () => {
