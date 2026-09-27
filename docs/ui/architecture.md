@@ -62,7 +62,7 @@ packages/ui/<package>/src/
 ```
 
 Reaching beyond basic organization, UI packages and UI infrastructure follow consistent modularization rules:
-- **UI Kit Component Structure**: Core UI kit packages (`ui-kit-mobile`, `ui-kit-desktop`) isolate theme tokens and styling primitives into `primitives.ts`, component definitions into atomic files under `src/components/*.tsx` (`Button`, `Text`, `TextField`, `Slider`, `Sheet`, `ContextMenu`, `List`, `Artwork`, `TrackRow`, `Toast`, `JsonTree`), and barrel re-export through `src/index.tsx`.
+- **UI Kit Component Structure**: Core UI kit packages (`ui-kit-mobile`, `ui-kit-desktop`) isolate theme tokens and styling primitives into `primitives.ts`, component definitions into atomic files under `src/components/*.tsx` (`Button`, `Text`, `TextField`, `Slider`, `Sheet`, `ContextMenu`, `List`, `Artwork`, `TrackRow`, `Toast`, `JsonTree`, plus desktop-only `StickyDetailBar` and `coverTheme`), and barrel re-export through `src/index.tsx`.
 - **Menu Controller Architecture**: Context menu hooks in `ui-menus` separate submenus (`src/submenus/*.ts`), individual entity menus (`src/menus/*.ts`), and anchor positioning utilities (`src/types.ts`).
 - **Screen View Decomposition**: Heavy screens with multiple view modes (such as `LibraryScreen`) decouple view renderings into `src/components/views/*` (`CollapsedLibraryView`, `ExpandedLibraryView`, `SidebarFolderView`), action and data hydration into `src/hooks/*` (`useLibraryHydration`, `useLibraryActions`), and control bars/modals into `src/components/*`.
 - **Pure Helper Hoisting**: Reusable pure logic that outgrows one feature (such as formatting durations, artwork IDs, and string helpers) belongs in `@BBeBee/toolkit` (Layer 4 pure library), maintaining a single source of truth across desktop and mobile without duplication.
@@ -284,6 +284,14 @@ which events invalidate which state — are written once. Only the JSX is writte
   when a write fails and rolls back.
 - **Lists virtualise.** `FlashList` on mobile, `@tanstack/react-virtual` on desktop. A library can
   hold 100k tracks; neither platform survives rendering that.
+- **A detail page's header scrolls away with its list.** The desktop `List` owns a `header` slot
+  (hero, action bar, table header — whatever scrolls off) and a `sticky` slot (the
+  `StickyDetailBar` that fades in over ~240px of scroll, leaving title + play button, the Spotify
+  layout). The virtualiser is offset by the header's *measured* height (`scrollMargin`, measured at
+  mount and watched by `ResizeObserver` — a wrapped title makes it unknowable from props). The
+  sticky bar must be the scroller's **direct child**: `position: sticky` only sticks within its
+  parent's box, so nesting it in the header would scroll it away exactly when it finishes arriving.
+  `onScroll` reports `scrollTop` so the bar's fades are a pure function of scroll position.
 - **`player/position` is interpolated, never polled.** The event fires at 1 Hz
   ([07 §5](../data-model/events.md#5-the-event-map)); a progress bar animates between ticks with
   `requestAnimationFrame` and re-syncs on each event.
@@ -308,6 +316,14 @@ which events invalidate which state — are written once. Only the JSX is writte
   native module). Derived data never outranks real data: an image beats an identicon, and a
   `dominant_color` extracted from a real cover beats both. No identity (`seed` absent, no
   `artwork.id`) means no pattern — the plain colour square stands.
+- **A detail page takes its theme colour from its cover.** The screens with a single cover
+  (Album, Playlist — first track's artwork when the playlist has none) compose
+  `useResolvedArtwork` + the kit's `useImageColor`: the ref's `dominantColor` — computed once at
+  cache time — wins; a ref without one gets a one-shot canvas extraction (`extractVibrantColor`,
+  vividness-scored buckets, run on the same URL the `<img>` shows); an unreadable cover (remote
+  URL without CORS taints the canvas) returns `undefined`. `coverGradient(tint)` builds the
+  section background and the sticky bar's wash, and `undefined` falls back to the neutral brand
+  gradient — a missing cover degrades to what the page looked like before, never to an error.
 
 ---
 

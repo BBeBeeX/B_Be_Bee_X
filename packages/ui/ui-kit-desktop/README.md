@@ -26,11 +26,13 @@ Layer 5（ui）— React DOM 版对等组件集（parity component set）的桌�
 | `TrackRow` | `track*`, `onPress?`, `onMore?`, `active?`, `showArtwork?`, `showAlbum?` | **全 app 渲染次数最多的组件**。标题 + 逗号连接的艺人；`active` = 正在播放（不等于选中）。`onMore` 桌面绑**右键**（`onContextMenu`）。键盘可达：`tabIndex=0` + Enter/Space，`role="row"`。 |
 | `Slider` | `value*`, `max*`, `onChange?`（拖动中）, `onCommit?`（释放）, `disabled?` | 原生 `<input type="range">`，键盘步进免费获得；`onPointerUp`/`onKeyUp` commit、`onBlur` 清 dragging；`aria-valuenow`/`aria-valuemax`。 |
 | `Sheet` | `open*`, `onClose*`, `title?`, `children?` | 模态打断面：全屏遮罩 + 居中面板（宽 320–560），`role="dialog"` + `aria-modal`；**Escape 关闭**；点遮罩关闭、面板内 `stopPropagation`。 |
-| `List<T>` | `items*`, `renderItem*`, `keyExtractor*`, `estimatedItemSize?`, `onEndReached?`, `empty?` | `@tanstack/react-virtual` 窗口化（`overscan: 8`），spacer 撑出总滚动高度（滚动条反映整个库）。**`aria-setsize`（真实总数）+ `aria-posinset`**——窗口化对明眼人不可见、对屏读是灾难，除非把真实长度说出来。`onEndReached` 由"最后已渲染行"在 effect 里判定，`firedFor` ref 保证**每页只请求一次**。`count === 0 && empty` 渲染空态——"空白 pane 说明不了是加载、坏了还是真空"。 |
+| `List<T>` | `items*`, `renderItem*`, `keyExtractor*`, `estimatedItemSize?`, `onEndReached?`, `empty?`, `header?`, `sticky?`, `onScroll?` | `@tanstack/react-virtual` 窗口化（`overscan: 8`），spacer 撑出总滚动高度（滚动条反映整个库）。**`aria-setsize`（真实总数）+ `aria-posinset`**——窗口化对明眼人不可见、对屏读是灾难，除非把真实长度说出来。`onEndReached` 由"最后已渲染行"在 effect 里判定，`firedFor` ref 保证**每页只请求一次**。`count === 0 && empty` 渲染空态——"空白 pane 说明不了是加载、坏了还是真空"。**`header`** 随列表一起滚走（详情页的 Spotify 式渐隐头部）：虚拟化器按 header 的**实测高度**（挂载时测量 + `ResizeObserver` 跟随）设置 `scrollMargin` 并抵消行偏移，包裹标题换行等可变高度。**`sticky`** 是吸附栏——必须是滚动容器的**直接子节点**：`position: sticky` 只在父盒范围内吸附，嵌进 header 会恰好在它成型时滚走；净零流高度（`marginBottom: -height`）使其不参与 `scrollMargin`。**`onScroll`** 在每次滚动回报 `scrollTop`，驱动吸附栏的透明度。 |
 | `EmptyState` | `title*`, `description?`, `action?`, `icon?` | 屏幕尚无内容时的展示——**永远不是一块空白**。 |
 | `Toast` | `message*`, `tone?`, `action?`, `onDismiss?` | 瞬时反馈，"播报但不抢焦点"：`role="status"` + `aria-live="polite"`。 |
 
 **kit 级导出**：`setScheme(next: Scheme)`（shell 启动时调用）。
+
+**桌面专属扩展**（不进 parity 清单，mobile 无对应物）：`ContextMenu`（右键菜单 + 子菜单飞出）、`SaveToPlaylistPopover`（心形按钮的"添加到歌单"弹层，最小高度 480px、文件夹二级浮层 320px，随视口封顶）、`StickyDetailBar`（详情页滚动折叠后的吸顶栏：标题 + 播放按钮，透明度/底色均为 `progress` 的函数，`pointer-events` 跟随淡入以免透明的它吃掉 hero 的点击）、`useImageColor` / `coverGradient` / `tintRgba` / `extractVibrantColor`（封面主题色：`dominantColor` 优先，缺失时一次 canvas 取色，失败回退 `undefined` → 调用方的中性渐变）与 `viewModeMenuItems` / `useViewMode`。
 
 ### `src/manifest.ts` — parity 声明
 

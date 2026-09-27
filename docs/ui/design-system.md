@@ -165,6 +165,7 @@ Depth is communicated through **subtle luminance stepping and translucent layers
 | `border.focus` | `var(--border-focus)` | Accessible focus rings clearing WCAG 1.4.11 3:1 contrast. |
 
 - **Dynamic Reactive Canvas Gradients**: Detail views (Album Detail, Favorites, Local Music, Playlist Detail, Settings) render smooth vertical ambient gradients responding to `--surface-hover` / `--surface-selected` / `--surface-1` / `--bg-primary`, adapting instantly to any theme switch.
+- **Cover-Tinted Detail Theming**: The four detail pages (Album Detail, Playlist Detail, Favorites, Local Music) source their top gradient and the scroll-collapsed sticky bar's wash from the cover's `dominantColor` via the kit's `coverGradient(tint)` / `tintRgba` — the tint is strongest at the top (~50% alpha) and fades into `--bg-primary` by 280px. A ref without a declared colour gets a one-shot canvas extraction (`useImageColor` → `extractVibrantColor`); an unreadable cover or no cover at all falls back to the neutral brand wash above, never an error. Favorites pins the liked-songs purple (`#450af5`) as its identity tint; Local Music, with no single cover, keeps the neutral gradient.
 
 ### 6.4 CSS Shorthand & Styling Conventions
 
