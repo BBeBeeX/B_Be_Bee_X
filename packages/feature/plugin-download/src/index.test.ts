@@ -146,6 +146,7 @@ function provider(resolveStream: () => Promise<StreamHandle>): MediaProvider {
     capabilities: {
       search: { tracks: false, albums: false, artists: false, playlists: false, fullText: false },
       browse: false,
+      recommend: false,
       lyrics: false,
       artwork: false,
       library: { read: false, save: false, playlistWrite: false, playlistReorder: false },

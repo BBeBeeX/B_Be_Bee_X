@@ -520,6 +520,612 @@ function biliExploreRows(result) {
   return rows;
 }
 
+/**
+ * The curated recommendation shelf — bilibili 合集 (seasons), one page of
+ * ten at a time through `biliRecommendRows`.
+ *
+ * The ids are bare season ids collected from the web app's own recommendation
+ * listings; everything a card shows (name, cover, the UP's mid and name) is
+ * resolved per id at read time and cached, because a season id alone carries
+ * none of it. Titles are the listing's own with the shared "推荐歌单 " prefix
+ * stripped — the live `meta.name` wins whenever the fetch answers.
+ */
+const BILI_RECOMMEND_SEASONS = [
+  { sid: '96979', title: "合集·神州电音" },
+  { sid: '332081', title: "合集·外语电影歌曲" },
+  { sid: '639664', title: "合集·音乐现场" },
+  { sid: '2974446', title: "合集·华语电影配乐" },
+  { sid: '1601474', title: "合集·纯音乐" },
+  { sid: '323945', title: "合集·外语电影配乐" },
+  { sid: '6046274', title: "合集·今日宜开心*（日语歌）" },
+  { sid: '6046480', title: "合集·今日宜开心*（纯音乐）" },
+  { sid: '8244938', title: "合集·今日宜开心*（英文歌）" },
+  { sid: '6046494', title: "合集·今日宜开心*（中文歌）" },
+  { sid: '6046513', title: "合集·今日宜开心*（其他）" },
+  { sid: '1690393', title: "合集·明日也宜开心*" },
+  { sid: '4375028', title: "合集·『酸酸甜甜~橘子不是青柠。』" },
+  { sid: '8772625', title: "合集·『就是青柠啊~酸酸甜甜。』" },
+  { sid: '7011008', title: "合集·『橘子不是青柠~酸酸甜甜。』" },
+  { sid: '4416910', title: "合集·『酸酸~橘子不是青柠~甜甜。』" },
+  { sid: '649405', title: "合集·日语歌曲合集" },
+  { sid: '672537', title: "合集·英语歌曲合集" },
+  { sid: '4390639', title: "合集·英语循环" },
+  { sid: '4060742', title: "合集·日语循环" },
+  { sid: '4162973', title: "合集·中文歌曲合集" },
+  { sid: '4392304', title: "合集·小曲の循环" },
+  { sid: '4390627', title: "合集·中文循环" },
+  { sid: '672542', title: "合集·纯音乐歌曲合集" },
+  { sid: '4803718', title: "合集·一小时循环单曲" },
+  { sid: '3876365', title: "合集·日推小众歌单" },
+  { sid: '2209498', title: "合集·复古/流行" },
+  { sid: '1698063', title: "合集·纯音乐/新世纪/电子" },
+  { sid: '1698017', title: "合集·哥特/交响" },
+  { sid: '2209438', title: "合集·各种摇滚金属" },
+  { sid: '1698068', title: "合集·旋死" },
+  { sid: '1698036', title: "合集·桶哥" },
+  { sid: '7888554', title: "合集·橙子青提·小众歌单合集" },
+  { sid: '1390756', title: "合集·日推宝藏/中文" },
+  { sid: '7175888', title: "合集·Playlist歌单" },
+  { sid: '3640197', title: "合集·宝藏日语歌单』惊艳你的双耳" },
+  { sid: '3350583', title: "合集·『宝藏欧美歌单』拨动你的心弦" },
+  { sid: '6313946', title: "合集·主题歌单" },
+  { sid: '3621873', title: "合集·『宝藏纯音乐歌单』倾听心动旋律" },
+  { sid: '515827', title: "合集·狗粮之歌" },
+  { sid: '3600329', title: "合集·音乐 💠 最终幻想14" },
+  { sid: '3887187', title: "合集·【 日推 ◈ 舒缓解压】" },
+  { sid: '6103697', title: "合集·【𝐏𝐥𝐚𝐲𝐥𝐢𝐬𝐭】" },
+  { sid: '3639888', title: "合集·【日推歌单】" },
+  { sid: '3793988', title: "合集·【网络 ☁ 歌单】" },
+  { sid: '3942332', title: "合集·【日推 ♨ 盲盒】" },
+  { sid: '5168035', title: "合集·《星际战甲》游戏原声带合集" },
+  { sid: '4860637', title: "合集·《假面骑士》系列音乐合集" },
+  { sid: '5328926', title: "合集·《云顶之弈》游戏原声带合集" },
+  { sid: '6110632', title: "合集·《战锤40K:暗潮》游戏原声带合集" },
+  { sid: '4134881', title: "合集·《刺客信条》游戏原声带合集" },
+  { sid: '6791640', title: "合集·《英雄联盟》游戏原声带合集（2025年起）" },
+  { sid: '225818', title: "合集·KingGnu MV" },
+  { sid: '205152', title: "合集·KingGnu LIVE" },
+  { sid: '7608379', title: "合集·英文精选" },
+  { sid: '7634375', title: "合集·美景音乐" },
+  { sid: '428037', title: "合集·电音" },
+  { sid: '432479', title: "合集·影视原声" },
+  { sid: '980085', title: "合集·纯音乐" },
+  { sid: '980124', title: "合集·史诗｜战歌" },
+  { sid: '2209469', title: "合集·误以为是中国的日本纯音乐" },
+  { sid: '276748', title: "合集·席琳迪翁" },
+  { sid: '274487', title: "合集·肖恩沃德" },
+  { sid: '274592', title: "合集·恩雅" },
+  { sid: '428024', title: "合集·西城男孩" },
+  { sid: '274648', title: "合集·中外翻唱" },
+  { sid: '274512', title: "合集·林肯公园" },
+  { sid: '8996743', title: "合集·【合集2.0版】Playlist（纯音乐+白噪音）" },
+  { sid: '2017771', title: "合集·【合集1.0版】Playlist（背景音乐）" },
+  { sid: '3027328', title: "【合集】𝐏𝐥𝐚𝐲𝐥𝐢𝐬𝐭（英文歌单）" },
+  { sid: '3349852', title: "合集·【尊享版】𝑷𝒍𝒂𝒚𝒍𝒊𝒔𝒕（纯音乐）" },
+  { sid: '1215213', title: "合集·【合集】钢琴爵士乐" },
+  { sid: '1524388', title: "合集·最终幻想16官方音乐" },
+  { sid: '10580', title: "合集·雅尼Yanni的音乐合集" },
+  { sid: '4892161', title: "合集·旅途助眠 | 治愈" },
+  { sid: '5045476', title: "合集·旅途专注 | 解压" },
+  { sid: '5575138', title: "合集·旅途学习 | 沉浸图书馆" },
+  { sid: '5321624', title: "合集·旅途冥想 | 瑜伽" },
+  { sid: '2432263', title: "合集·雅尼经典曲目集！！！" },
+  { sid: '731984', title: "合集·FF14歌词翻译" },
+  { sid: '625271', title: "合集·fripSide II 精选Live合集" },
+  { sid: '8436400', title: "合集·FTSC SURROUND AUDIO" },
+  { sid: '4456026', title: "合集·古典杜比全景声合集" },
+  { sid: '7998243', title: "合集·FANTASONIC Immersive Soundbook by SVRE" },
+  { sid: '8296583', title: "合集·IMMERSIVE KARAOKE！" },
+  { sid: '8055439', title: "合集·Michael Jackson" },
+  { sid: '6407641', title: "合集·FANTASONIC SOUNDBOOK" },
+  { sid: '6111931', title: "合集·ワインレッドの心 杜比全景声" },
+  { sid: '5334215', title: "合集·映画『リズと青い鳥』オリジナルサウンドトラック「girls,dance,staircase」" },
+  { sid: '2163839', title: "合集·DRV PRESENTS" },
+  { sid: '2575629', title: "合集·DRV LIVE COLLECTION" },
+  { sid: '5517375', title: "合集·One More Time， One More Chance" },
+  { sid: '2402511', title: "合集·【Kyoko Sakura】黑胶试听丨童年回忆" },
+  { sid: '6512176', title: "合集·Taylor Swift歌单" },
+  { sid: '6337656', title: "合集·散步歌单" },
+  { sid: '5832289', title: "合集·R&B" },
+  { sid: '5832300', title: "合集·Jazz爵士乐" },
+  { sid: '6289482', title: "合集·华语歌单" },
+  { sid: '5832433', title: "合集·夏日氛围歌单" },
+  { sid: '5832234', title: "合集·Lofi音乐" },
+  { sid: '6409424', title: "合集·CHAOS LAB能量补给站" },
+  { sid: '5832286', title: "合集·日语精选歌单" },
+  { sid: '5832413', title: "合集·卧室歌单" },
+  { sid: '5832450', title: "合集·纯音乐" },
+  { sid: '855193', title: "合集·私藏歌单" },
+  { sid: '1221427', title: "合集·只道相思随雨长" },
+  { sid: '1221436', title: "合集·万物之频" },
+  { sid: '8726432', title: "合集·华语老歌" },
+  { sid: '1367065', title: "合集·澤野弘之" },
+  { sid: '572226', title: "合集·4K日漫音乐现场" },
+  { sid: '1321275', title: "合集·4K日语音乐现场" },
+  { sid: '1983842', title: "合集·4K欧美音乐现场" },
+  { sid: '4236201', title: "合集·4K粤语音乐现场" },
+  { sid: '1321294', title: "合集·4K纯音乐/器乐现场" },
+  { sid: '1082061', title: "音乐现场" },
+  { sid: '3456912', title: "合集·日韩破亿神曲" },
+  { sid: '257515', title: "合集·欧美粉必听,收藏过百万热歌全集" },
+  { sid: '1250489', title: "合集·周杰伦—永远的青春" },
+  { sid: '874587', title: "合集·世界杯名曲合集" },
+  { sid: '230679', title: "合集·王菲：你快乐所以我快乐" },
+  { sid: '1134199', title: "合集·影视原声" },
+  { sid: '1119082', title: "合集·游戏音乐" },
+  { sid: '1326355', title: "合集·ED黄老板" },
+  { sid: '3995253', title: "合集·《明日方舟》音乐" },
+  { sid: '3994902', title: "合集·《原神》音乐" },
+  { sid: '3999786', title: "合集·《绝区零》音乐" },
+  { sid: '1096252', title: "合集·私人专享" },
+  { sid: '3693597', title: "合集·《黑神话：悟空》合集" },
+  { sid: '3995356', title: "合集·《英雄联盟》音乐" },
+  { sid: '3999771', title: "合集·主机游戏 音乐" },
+  { sid: '1785860', title: "合集·演唱会实录" },
+  { sid: '1227331', title: "合集·体育专区" },
+  { sid: '2219179', title: "合集·解压必备" },
+  { sid: '1578577', title: "合集·上海交响乐团" },
+  { sid: '1612755', title: "合集·经典游曲" },
+  { sid: '1740963', title: "合集·经典漫曲" },
+  { sid: '1519400', title: "合集·高达" },
+  { sid: '120812', title: "合集·千禧年之前的经典金曲" },
+  { sid: '3866786', title: "合集·Live (2024 From Zero 世界巡演) - 林肯公园" },
+  { sid: '4796717', title: "合集·纵贯线" },
+  { sid: '1406317', title: "合集·周杰伦" },
+  { sid: '4355599', title: "合集·林俊杰" },
+  { sid: '1406323', title: "合集·陈奕迅" },
+  { sid: '4220383', title: "合集·日语现场" },
+  { sid: '3635260', title: "合集·陶喆" },
+  { sid: '1406328', title: "合集·许嵩" },
+  { sid: '3162072', title: "合集·阿黛尔" },
+  { sid: '1477795', title: "合集·迈克尔·杰克逊" },
+  { sid: '1406333', title: "合集·酷玩" },
+  { sid: '2192336', title: "合集·春节" },
+  { sid: '1635413', title: "合集·伍佰" },
+  { sid: '1406311', title: "合集·歌神张学友" },
+  { sid: '1867441', title: "合集·张宇" },
+  { sid: '1892749', title: "合集·李克勤" },
+  { sid: '1704616', title: "合集·泰勒" },
+  { sid: '1704623', title: "合集·艾薇儿" },
+  { sid: '1635426', title: "合集·赵雷" },
+  { sid: '417471', title: "合集·艺人合作" },
+  { sid: '13325', title: "合集·1989 World Tour" },
+  { sid: '1969319', title: "合集·Ayase-YOASOBI·MV" },
+  { sid: '2006067', title: "合集·Ayase-YOASOBI·LIVE" },
+  { sid: '189745', title: "合集·净慈寺合集" },
+  { sid: '71510', title: "合集·雨声合集" },
+  { sid: '1363249', title: "合集·番茄学习" },
+  { sid: '3568322', title: "合集·助眠音乐" },
+  { sid: '3896257', title: "合集·氛围音乐" },
+  { sid: '3567922', title: "合集·氛围音乐" },
+  { sid: '2047602', title: "合集·羊村助眠" },
+  { sid: '2047095', title: "合集·自然环境助眠" },
+  { sid: '2083437', title: "合集·猫和老鼠" },
+  { sid: '1156187', title: "合集·失眠救星系列" },
+  { sid: '747587', title: "合集·咖啡馆与爵士钢琴乐" },
+  { sid: '753880', title: "合集·静静听雨" },
+  { sid: '742166', title: "合集·蜗居爵士乐" },
+  { sid: '745477', title: "合集·千与千寻系列" },
+  { sid: '4803179', title: "合集·森林雷雨" },
+  { sid: '4803612', title: "合集·城市暴雨" },
+  { sid: '4803555', title: "合集·江南烟雨" },
+  { sid: '243526', title: "合集·【千禧年电台】1990年至2015年氛围白噪音【二〇〇〇年过去了，我很怀念它】" },
+  { sid: '1293012', title: "合集·【四季电台】白日梦想家_工作_学习_助眠_与世隔绝" },
+  { sid: '2085272', title: "合集·【爵士电台】唯有爵士乐不可辜负_工作_学习_助眠_与世隔绝" },
+  { sid: '243543', title: "合集·【末日电台】地球上最后一个人_避难所/战争/超现实/游戏白噪音" },
+  { sid: '243552', title: "合集·【昭和电台】东京夜未眠_工作_学习_助眠_与世隔绝" },
+  { sid: '3588091', title: "合集·奇异人生Life is Strange 专注陪伴音乐" },
+  { sid: '2332063', title: "合集·《冥想催眠》系列-来自宇宙的声音牵引灵魂走向宁静的深处" },
+  { sid: '2468426', title: "合集·《Cozy Ambient Jazz》系列——阅读、放松、发呆、做家务的音乐伴侣" },
+  { sid: '2331536', title: "合集·《寺院诵唱》系列-伴随着木鱼声颂钵声纯粹本真吟诵佛经" },
+  { sid: '3842790', title: "合集·复古格调·城市漫步" },
+  { sid: '2318216', title: "合集·《佛教音乐》系列-经文与音乐构筑的佛音启迪" },
+  { sid: '2279134', title: "合集·《艺术共鸣》系列-融合世界名画与疗愈音乐" },
+  { sid: '2389253', title: "合集·《星际穿越》系列-跟随音乐和画面穿越时空星际，受撼于赛博末世，一起放空沉浸" },
+  { sid: '2340196', title: "合集·《迷失虚妄》系列-跟随Lofi音乐的鼓点和节拍摇摆躯体和灵魂" },
+  { sid: '2448672', title: "合集·佛歌曲" },
+  { sid: '1499661', title: "合集·醉美禅音" },
+  { sid: '4524020', title: "合集·贝多芬交响曲全集" },
+  { sid: '4458095', title: "合集·2025年维也纳新年音乐会" },
+  { sid: '4211719', title: "合集·齐默尔曼" },
+  { sid: '4190729', title: "合集·[中字]【海顿】创世记" },
+  { sid: '3917499', title: "合集·德沃夏克第九交响曲 卡拉扬维也纳爱乐乐团" },
+  { sid: '3820666', title: "合集·三大男高音（帕瓦罗蒂 多明戈 卡雷拉斯）" },
+  { sid: '3789112', title: "合集·【普契尼歌剧】图兰朵 紫禁城版" },
+  { sid: '3784103', title: "合集·普契尼歌剧【图兰朵】" },
+  { sid: '3764922', title: "合集·柏林森林音乐会" },
+  { sid: '3764881', title: "合集·柴可夫斯基《叶甫盖尼·奥涅金》" },
+  { sid: '3397644', title: "合集·贝多芬交响曲和序曲" },
+  { sid: '3359859', title: "合集·德沃夏克第九交响曲" },
+  { sid: '3253566', title: "合集·施特劳斯·拉德斯基进行曲" },
+  { sid: '3206291', title: "合集·欧美音乐现场" },
+  { sid: '431918', title: "合集·贝多芬" },
+  { sid: '876659', title: "合集·穿越星际" },
+  { sid: '436932', title: "合集·莫扎特" },
+  { sid: '444191', title: "合集·海顿" },
+  { sid: '431910', title: "合集·马勒" },
+  { sid: '431887', title: "合集·卡拉扬" },
+  { sid: '436887', title: "合集·柴可夫斯基" },
+  { sid: '436915', title: "合集·巴赫" },
+  { sid: '436989', title: "合集·小提琴 | 大提琴 | 钢琴 | 美声 | 交响乐 | 古典音乐" },
+  { sid: '3629748', title: "合集·AI修复郭德纲相声" },
+  { sid: '3644679', title: "合集·AI修复郭德纲单口相声" },
+  { sid: '3629182', title: "合集·郭德纲无唱助眠相声" },
+  { sid: '1302800', title: "合集·每天漫步雨雪" },
+  { sid: '4553891', title: "合集·马三立相声集" },
+  { sid: '4262997', title: "合集·刘宝瑞高清修复助眠相声" },
+  { sid: '3329955', title: "合集·侯宝林相声高清修复" },
+  { sid: '2947903', title: "合集·侯耀文" },
+  { sid: '2948951', title: "合集·相声" },
+  { sid: '2940903', title: "合集·冯巩" },
+  { sid: '103727', title: "合集·水浒传 修复版" },
+  { sid: '2947877', title: "合集·马季" },
+  { sid: '2940957', title: "合集·陈佩斯" },
+  { sid: '189166', title: "合集·Beyond 黄家驹、黄贯中、黄家强、叶世荣" },
+  { sid: '2947924', title: "合集·姜昆" },
+  { sid: '114764', title: "合集·张学友（Jacky Cheung）" },
+  { sid: '1374170', title: "合集·古典音乐" },
+  { sid: '1373124', title: "合集·楼上噪音解决" },
+  { sid: '1888349', title: "合集·摇滚音乐" },
+  { sid: '1566078', title: "合集·爵士音乐" },
+  { sid: '1763356', title: "合集·蔡琴" },
+  { sid: '1436167', title: "合集·人声hifi" },
+  { sid: '41', title: "合集·BILLBOARD 美国单曲榜" },
+  { sid: '9680', title: "合集·每周歌曲推荐" },
+  { sid: '266', title: "合集·Official Chart 英国单曲榜" },
+  { sid: '443', title: "合集·BILLBOARD 全球单曲榜" },
+  { sid: '4256191', title: "合集·Thai Playlist" },
+  { sid: '48627', title: "合集·历年华语乐坛经典回顾" },
+  { sid: '2122597', title: "合集·2023年各月份热歌排行榜" },
+  { sid: '4142178', title: "合集·【Playlist】音乐合集" },
+  { sid: '1784187', title: "合集·LOFI环境系列" },
+  { sid: '1828749', title: "合集·LOFI街景" },
+  { sid: '1975341', title: "合集·像素Lofi" },
+  { sid: '2372215', title: "合集·漫步LOFI" },
+  { sid: '2074929', title: "合集·【一人学习LOFI合集】" },
+  { sid: '2787260', title: "合集·狐狸与少女" },
+  { sid: '1647617', title: "合集·LOFI敲代码系列" },
+  { sid: '1817781', title: "合集·ET LOFI studio" },
+  { sid: '4720896', title: "合集·【轻音乐歌单】| 学习 放松 治愈" },
+  { sid: '4092430', title: "合集·【Playlist歌单】| 私藏宝藏歌单" },
+  { sid: '2877786', title: "合集·五音療疾" },
+  { sid: '1680358', title: "合集·疗愈舒缓" },
+  { sid: '4511241', title: "合集·专辑" },
+  { sid: '4652973', title: "合集·循环" },
+  { sid: '4652954', title: "合集·日推" },
+  { sid: '4511239', title: "合集·运动" },
+  { sid: '4558738', title: "合集·乐队" },
+  { sid: '1739397', title: "合集·中世纪|凯尔特|酒馆等风格合集" },
+  { sid: '1739402', title: "合集·游戏音乐合集" },
+  { sid: '2209882', title: "合集·吟游诗人合集" },
+  { sid: '1755796', title: "合集·北欧维京音乐系列" },
+  { sid: '1986805', title: "合集·节日音乐" },
+  { sid: '1812732', title: "合集·幻想&魔法&奇幻&史诗音乐合集" },
+  { sid: '1739406', title: "合集·单曲合集" },
+  { sid: '4216345', title: "合集·小千代の音乐补完计划" },
+  { sid: '1855821', title: "合集·进击的巨人音乐盘点合集" },
+  { sid: '32658', title: "合集·凯哥学英语" },
+  { sid: '2836893', title: "合集·久石让曲目精选" },
+  { sid: '2798585', title: "合集·Taylor Swift-THE TORTURED POETS DEPARTMENT" },
+  { sid: '1910387', title: "合集·摇滚与流行｜我们的经典，我们的摇滚" },
+  { sid: '1847641', title: "合集·1989 (Taylor's Version)歌词MV合集" },
+  { sid: '1806326', title: "合集·【Troye Sivan】新专《Something To Give Each Other》" },
+  { sid: '1380315', title: "合集·Taylor Swift泰勒·斯威夫特官方MV精选" },
+  { sid: '1973224', title: "合集·Taylor Swift \"The Eras Tour\"时代巡回演唱会" },
+  { sid: '1616825', title: "合集·嘻哈50年 | 传世经典的自由宣言" },
+  { sid: '1625207', title: "合集·Beyond｜40年光辉岁月" },
+  { sid: '1358751', title: "合集·环球音乐J-POP精选" },
+  { sid: '2623786', title: "合集·张国荣·永远的哥哥风华绝代" },
+  { sid: '1449094', title: "合集·Justin Bieber贾斯汀·比伯官方MV精选" },
+  { sid: '1380269', title: "合集·陈奕迅官方现场精选" },
+  { sid: '1304816', title: "合集·Avicii艾维奇的电音经典" },
+  { sid: '1260237', title: "合集·日韩4K修复" },
+  { sid: '1255767', title: "合集·欧美4K修复" },
+  { sid: '1260240', title: "合集·华语4K修复" },
+  { sid: '46418', title: "合集·【4K修复】Nightwish夜愿乐队2005时代终结演唱会" },
+  { sid: '103735', title: "合集·【4K修复】枪炮与玫瑰1992东京演唱会" },
+  { sid: '215809', title: "合集·【霉霉】泰勒·斯威夫特音乐合集" },
+  { sid: '8008', title: "合集·【4K修复】Nightwish夜愿乐队Wacken 2013演唱会" },
+  { sid: '1003508', title: "合集·日本歌手合集：中岛美雪、滨崎步、美依礼芽、米津玄师、仓木麻衣、坂井泉水、Wands" },
+  { sid: '1282981', title: "合集·那些经典的动漫歌曲" },
+  { sid: '2069904', title: "合集·ost歌曲合集" },
+  { sid: '4704429', title: "合集·唐宋摇滚" },
+  { sid: '1707990', title: "合集·『GUNDAM MUSIC』" },
+  { sid: '2852940', title: "合集·『MUSIC LIVE』" },
+  { sid: '3095846', title: "合集·『影视原声音乐』" },
+  { sid: '4445811', title: "合集·TOKYO ASMR MASSAGE 合集" },
+  { sid: '2966', title: "合集·迈克尔·杰克逊超清合集" },
+  { sid: '510637', title: "合集·后街男孩超清合集" },
+  { sid: '3278', title: "合集·皇后乐队超清合集" },
+  { sid: '513550', title: "合集·小甜甜布兰妮超清视频" },
+  { sid: '4201012', title: "合集·梶浦由记" },
+  { sid: '3654466', title: "合集·动画MV" },
+  { sid: '3403831', title: "合集·高达" },
+  { sid: '1109355', title: "合集·City-Pop° | 城市流行" },
+  { sid: '1109249', title: "合集·Anime BGM | OST Collection Full | 经典动漫音乐歌曲合集" },
+  { sid: '269636', title: "合集·吹唢呐是吧？！" },
+  { sid: '4733530', title: "合集·邓丽君经典歌曲" },
+  { sid: '2062575', title: "合集·「耳机歌单」私藏音乐" },
+  { sid: '4934263', title: "合集·全球经典MV(二）" },
+  { sid: '1865288', title: "合集·全球经典现场" },
+  { sid: '1831934', title: "合集·全球经典MV(一)" },
+  { sid: '4246329', title: "合集·理查德·克莱德曼" },
+  { sid: '2572058', title: "合集·中华名曲" },
+  { sid: '3427065', title: "合集·◢◤A神 Avicii艾维奇作品" },
+  { sid: '4208377', title: "合集·Aimer" },
+  { sid: '3415202', title: "合集·YOASOBI" },
+  { sid: '3634243', title: "合集·LiSA / 织部里沙" },
+  { sid: '4208403', title: "合集·米津玄师" },
+  { sid: '4078099', title: "合集·澤野弘之/泽野弘之" },
+  { sid: '3425395', title: "合集·FF14 BGM循环" },
+  { sid: '1342069', title: "合集·【Aimer Live】4K中日双字幕合集" },
+  { sid: '4141127', title: "合集·如果你也只是想安静的听会歌" },
+  { sid: '3194098', title: "合集·游戏/影视原声大碟 " },
+  { sid: '2049406', title: "合集·中国摇滚精品合集" },
+  { sid: '1688885', title: "合集·我在B站听窦唯" },
+  { sid: '2328688', title: "合集·中岛美雪" },
+  { sid: '4499800', title: "合集·A妹" },
+  { sid: '1633674', title: "合集·摇滚/乐队" },
+  { sid: '1269304', title: "合集·霉霉" },
+  { sid: '4512435', title: "合集·嘎" },
+  { sid: '4512279', title: "合集·牛" },
+  { sid: '4512315', title: "合集·西法德俄..." },
+  { sid: '1633578', title: "合集·Hip-hop" },
+  { sid: '3203527', title: "合集·OneRepublic" },
+  { sid: '1173063', title: "合集·器乐古典" },
+  { sid: '3876810', title: "合集·经典R&B" },
+  { sid: '3352264', title: "合集·瑞鸣音乐之旅" },
+  { sid: '1633398', title: "合集·经典摇滚" },
+  { sid: '1717275', title: "合集·音乐剧/歌剧" },
+  { sid: '4512705', title: "合集·蹲" },
+  { sid: '977181', title: "合集·霸榜盆" },
+  { sid: '1422841', title: "合集·电音" },
+  { sid: '1199802', title: "合集·绝爵" },
+  { sid: '4503168', title: "合集·梨" },
+  { sid: '1269724', title: "合集·Adele" },
+  { sid: '1337162', title: "合集·City Pop" },
+  { sid: '773698', title: "合集·打雷弃曲" },
+  { sid: '4512657', title: "合集·果" },
+];
+
+/* ── Recommendations ─────────────────────────────────────────────────────
+ *
+ * The curated `BILI_RECOMMEND_SEASONS` list is the shelf; a card's name,
+ * cover and owner mid are resolved per season id at read time, because a
+ * bare season id carries none of them. `seasons_archives_list` answers a
+ * season id *without* the owner's mid (verified against the live API), and
+ * its `data.meta` carries the three — `page_size=1`, only the meta wanted.
+ *
+ * The UP's *name* is deliberately not asked here: one `x/web-interface/card`
+ * call per card would double the shelf's request count for a line of text,
+ * so it waits until the playlist page opens (`biliSeasonArtist`, cached).
+ *
+ * Ten cards per page is the shelf contract; the caller pages by passing
+ * `page` (1-based) through the scope.
+ */
+
+/**
+ * One season's meta, in three states:
+ *
+ *   ok     `meta` is present and cached (six hours) — the normal case.
+ *   gone   the backend says the season does not exist (-404) — a permanent
+ *          answer, and the one thing a placeholder may call 无效.
+ *   error  everything else — a 412 risk-control page, a 429, a timeout, an
+ *          unusual API code. Transient by definition: nothing was cached, so
+ *          the next read of the page retries.
+ *
+ * The split exists because the first draft treated every failure as 无效,
+ * and a rate-limited shelf full of "当前资源无效" is a lie told at the
+ * user's expense — the request may have been refused, not the resource.
+ */
+async function biliRecommendMeta(seasonId) {
+  const cacheKey = 'bili_recommend_meta_' + seasonId;
+  const cached = src.cache.get(cacheKey);
+  if (cached) {
+    try {
+      return { state: 'ok', meta: src.parse.json(cached) };
+    } catch (e) {
+      // An unreadable cache entry is as good as absent.
+      src.cache.put(cacheKey, '', 1);
+    }
+  }
+  try {
+    const res = await src.get(
+      'https://api.bilibili.com/x/polymer/web-space/seasons_archives_list?season_id=' +
+        src.url.encode(String(seasonId)) +
+        '&page_num=1&page_size=1',
+      { headers: BROWSER_HEADERS },
+    );
+    const json = src.parse.json(res.body);
+    if (json.code === -404) {
+      return { state: 'gone', reason: json.message || '-404' };
+    }
+    if (json.code !== 0 || !json.data || !json.data.meta) {
+      return { state: 'error', reason: 'code ' + json.code + ' ' + (json.message || '') };
+    }
+    const meta = json.data.meta;
+    src.cache.put(cacheKey, JSON.stringify(meta), 6 * 3600 * 1000);
+    return { state: 'ok', meta: meta };
+  } catch (e) {
+    return { state: 'error', reason: previewValue(String(e && e.message || e), 160) };
+  }
+}
+
+/** One mid's UP name, cached a day. Empty string over any failure. */
+async function biliRecommendOwner(mid) {
+  if (!mid) return '';
+  const cacheKey = 'bili_recommend_owner_' + mid;
+  const cached = src.cache.get(cacheKey);
+  if (cached) return src.parse.json(cached);
+  try {
+    const res = await src.get('https://api.bilibili.com/x/web-interface/card?mid=' + src.url.encode(String(mid)), { headers: BROWSER_HEADERS });
+    const json = src.parse.json(res.body);
+    if (json.code !== 0 || !json.data || !json.data.card) return '';
+    const name = String(json.data.card.name || '');
+    src.cache.put(cacheKey, JSON.stringify(name), 24 * 3600 * 1000);
+    return name;
+  } catch (e) {
+    src.log('biliRecommendOwner(' + mid + ') failed: ' + previewValue(String(e && e.message || e), 120));
+    return '';
+  }
+}
+
+/**
+ * The recommendation plan — the curated list shuffled once, then read front
+ * to back ten at a time.
+ *
+ * One shuffle per plan lifetime (six hours, the same cache entry the page
+ * cursors live in): re-shuffling per page would shuffle pages the user has
+ * already seen, and a feed that repeats itself is worse than a stale order.
+ * `ends[page]` marks where each page stopped, so sequential reads (the shelf,
+ * then the show-all grid stepping through) resume instead of rescanning; when
+ * the plan expires the next read reshuffles and the cursors reset with it —
+ * a feed that starts over after a long pause is what "random" means anyway.
+ */
+function biliRecommendPlan() {
+  const cached = src.cache.get('bili_recommend_plan');
+  if (cached) {
+    try {
+      const plan = src.parse.json(cached);
+      if (plan && Array.isArray(plan.order) && plan.order.length > 0) return plan;
+    } catch (e) {
+      src.log('biliRecommendPlan → cached plan unreadable, reshuffling: ' + previewValue(String(e && e.message || e), 120));
+    }
+  }
+  const order = BILI_RECOMMEND_SEASONS.map(function (e) { return e.sid; });
+  // Fisher–Yates: one backward pass, uniform over permutations.
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+  }
+  const plan = { order: order, ends: {} };
+  src.cache.put('bili_recommend_plan', JSON.stringify(plan), 6 * 3600 * 1000);
+  src.log('biliRecommendPlan → reshuffled ' + order.length + ' season(s)');
+  return plan;
+}
+
+/**
+ * One recommendation page as explore rows.
+ *
+ * Rows are `album` cards carrying the canonical `bili_season_<mid>_<sid>` id
+ * and the season document as `childUrl`, so the runtime caches the payload
+ * `getAlbum` fetches and the card opens exactly like a browsed album. One
+ * request per card — the meta lookup; the UP's name is not asked here, it
+ * belongs to the playlist page the card opens.
+ *
+ * A dead id (a retired season answers -404) is not skipped — its slot becomes
+ * a placeholder row (`当前资源无效`, naming the resource) and the failure is
+ * logged with the resource named, because an empty-looking slot the user
+ * cannot explain is worse than a marked one. The page still fills to ten,
+ * placeholders included.
+ */
+async function biliRecommendRows(result, page) {
+  // Risk control: bilibili's web api answers 412 to a client with no buvid3,
+  // and the shelf fires a dozen calls back to back. Search and explore
+  // bootstrap the cookie; the shelf must too, or its first cold read pays
+  // for the omission in placeholders.
+  await ensureBuvid();
+  const pageNumber = Math.max(1, parseInt(page, 10) || 1);
+  const pageSize = 10;
+  const plan = biliRecommendPlan();
+  const bySid = {};
+  for (const e of BILI_RECOMMEND_SEASONS) bySid[e.sid] = e;
+
+  let index;
+  if (pageNumber === 1) {
+    index = 0;
+  } else {
+    const marked = plan.ends[pageNumber - 1];
+    index = typeof marked === 'number' ? marked : (pageNumber - 1) * pageSize;
+  }
+
+  const rows = [];
+  while (rows.length < pageSize && index < plan.order.length) {
+    const sid = plan.order[index];
+    index += 1;
+    const entry = bySid[sid] || { sid: sid, title: sid };
+    const outcome = await biliRecommendMeta(sid);
+    if (outcome.state === 'gone') {
+      // The permanent answer: the backend says this season is gone.
+      src.log('biliRecommendRows → 推荐合集无效: ' + entry.title + ' (sid ' + sid + '): ' + outcome.reason);
+      rows.push({
+        kind: 'folder',
+        trackId: 'bili_invalid_' + sid,
+        title: '当前资源无效',
+        artist: entry.title + ' · sid ' + sid,
+      });
+      continue;
+    }
+    if (outcome.state === 'error') {
+      // Transient — risk control, rate limiting, a timeout. Named on the
+      // card and in the log, and nothing cached, so the next read retries.
+      src.log('biliRecommendRows → 推荐合集加载失败: ' + entry.title + ' (sid ' + sid + '): ' + outcome.reason);
+      rows.push({
+        kind: 'folder',
+        trackId: 'bili_error_' + sid,
+        title: '加载失败',
+        artist: entry.title + ' · ' + outcome.reason,
+      });
+      continue;
+    }
+    const meta = outcome.meta;
+    const mid = String(meta.mid);
+    const seasonId = String(meta.season_id || sid);
+    // The card carries name + cover only. The UP's name is a second request
+    // per card, and it is none of the shelf's business: `ruleAlbum.artist`
+    // fetches it (cached) when the playlist page actually opens.
+    rows.push({
+      kind: 'album',
+      trackId: 'bili_season_' + mid + '_' + seasonId,
+      title: meta.name || entry.title,
+      artwork: cleanPic(meta.cover || ''),
+      childUrl:
+        'https://api.bilibili.com/x/polymer/web-space/seasons_archives_list?mid=' +
+        src.url.encode(mid) +
+        '&season_id=' + src.url.encode(seasonId) +
+        '&page_num=1&page_size=100',
+    });
+  }
+  plan.ends[pageNumber] = index;
+  src.cache.put('bili_recommend_plan', JSON.stringify(plan), 6 * 3600 * 1000);
+  src.log('biliRecommendRows(page ' + pageNumber + ') → ' + rows.length + ' row(s), scanned to ' + index + ' of ' + plan.order.length);
+  return rows;
+}
+
+/** The season's UP name for `ruleAlbum.artist` — the meta's mid, cached. */
+async function biliSeasonArtist(result) {
+  const mid = result && result.data && result.data.meta && result.data.meta.mid;
+  return biliRecommendOwner(mid);
+}
+
+/** The season's own name, for `ruleAlbum` fallbacks and track rows. */
+function biliSeasonName(result) {
+  return (result && result.data && result.data.meta && result.data.meta.name) || '';
+}
+
+/**
+ * One page of a season's videos as track rows.
+ *
+ * The archives response names no owner per row — the season belongs to one
+ * UP — so the name comes from the same cached lookup the card and the album
+ * header use, and every row of the listing carries it.
+ */
+async function biliSeasonTrackRows(result) {
+  const data = (result && result.data) || {};
+  const archives = data.archives || [];
+  const owner = await biliRecommendOwner(data.meta && data.meta.mid);
+  return archives.map((a) => ({
+    kind: 'track',
+    trackId: a.bvid,
+    bvid: a.bvid,
+    title: a.title || '',
+    artist: owner,
+    album: biliSeasonName(result),
+    artwork: cleanPic(a.pic || ''),
+    durationMs: parseDuration(a.duration),
+  }));
+}
+
 /** The bvid, from wherever the row kept it. `track.id` is the URN segment, which the search rules already make the bvid. */
 function trackBvid(track) {
   return String(track.bvid || track.onlineId || track.id || '').replace(/^bili_video_/, '');

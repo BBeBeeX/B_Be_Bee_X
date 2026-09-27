@@ -38,6 +38,8 @@ export interface HttpService {
   download(req: DownloadRequest): Promise<{ bytes: number; etag?: string }>
   /** Persistent per-instance cookie jars. See §2.1. */
   readonly cookies: CookieJarService
+  /** In-memory request journal, when this build keeps one. See §2.2. */
+  readonly requestLog?: HttpRequestLog
 }
 
 export interface DownloadRequest extends HttpRequest {
@@ -55,6 +57,7 @@ export interface DownloadRequest extends HttpRequest {
 | Arbitrary headers | ✅ `Origin`, `Referer`, `User-Agent`, `Cookie` all settable | ✅ |
 | Cookie jar | Chromium `Session` per `persist:` partition | RFC 6265 jar in JS, encrypted at rest |
 | Proxy | ✅ System or configured | ⚠️ System proxy only |
+| Request journal (§2.2) | ✅ In-memory, capped, detail capture switchable | ❌ not yet implemented |
 
 `ctx.http` is the canonical `waterfall` interception point. Auth injection, retry, rate limiting,
 and response caching are all plugins hooking `http/request` rather than features baked into the
@@ -152,6 +155,53 @@ Semantics both implementations must satisfy — the shared conformance suite (§
 > manages `Cookie` / `Set-Cookie` headers itself. Verify this per RN upgrade: a change in the
 > default here silently leaks cookies between sources, which the conformance suite's
 > isolation test is there to catch.
+
+### 2.2 The request journal
+
+`ctx.http.requestLog` (optional — a transport with nothing interesting to record should not have
+to pretend) is an in-memory journal of the exchanges this service has made, for the HTTP log viewer
+in the settings' debug area. One `HttpLogEntry` per exchange:
+
+```ts
+export interface HttpLogEntry {
+  sn: number                        // monotonic within one app run
+  time: number                      // epoch ms, when the request started
+  method: string
+  url: string
+  status?: number                   // absent when the request itself threw
+  durationMs?: number
+  requestHeaders: Record<string, string>
+  requestBody?: string
+  responseHeaders: Record<string, string>
+  responseBody?: string
+  error?: string                    // the failure message on a transport throw
+  detailed: boolean                 // whether headers/bodies were recorded at all
+}
+
+export interface HttpRequestLog {
+  all(): readonly HttpLogEntry[]
+  clear(): void
+  /** Whether entries *from now on* record headers and bodies. Default on. */
+  setCapture(enabled: boolean): void
+  captureEnabled(): boolean
+}
+```
+
+Three properties are load-bearing:
+
+- **Credentials never appear.** `cookie` values are reduced to their names (`buvid3=<redacted>`),
+  `authorization`/`proxy-authorization` and `set-cookie` are `<redacted>`. A log the user can
+  expand is a log that gets pasted into threads, and the rule that governs traces and exports
+  governs it too.
+- **The body is captured through a tee**, never by reading the caller's copy — the request the
+  caller sees behaves exactly as before, and the journal drains its own branch in the background.
+  Only text-shaped bodies (JSON, HTML, plain text, XML) are taken; audio, video, images,
+  `octet-stream` and ranged requests are transfers, not documents, and are recorded as summary
+  lines. Bodies are capped (200 KB, with a truncation marker).
+- **The capture switch is temporal.** `setCapture(false)` means entries *from now on* are summary
+  lines (`detailed: false`, no headers, no bodies) and their rows render without an expand
+  affordance; entries already recorded keep what they captured. Nothing is persisted — the journal
+  is capped (400 entries) and dies with the process.
 
 ---
 

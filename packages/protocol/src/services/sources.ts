@@ -65,6 +65,8 @@ export interface Capabilities {
     fullText: boolean
   }
   browse: boolean
+  /** The backend curates a recommendation feed (`ruleRecommend`). */
+  recommend: boolean
   lyrics: boolean
   artwork: boolean
   library: {
@@ -261,6 +263,16 @@ export interface MediaProvider {
   // ══ OPTIONAL ═══════════════════════════════════════════════════════════
   search?(q: SearchQuery, page?: PageRequest): Promise<SearchResult>
   browse?(nodeId?: string, page?: PageRequest): Promise<BrowseResult>
+  /**
+   * One page of the backend's curated recommendations.
+   *
+   * Returns the same shape browse does — the rows are playlist cards
+   * (kind `album`/`playlist`, `leaf` where they open a detail, `urn` where
+   * they have an identity) — because a card and a browse row answer the same
+   * question: "what is this, and what does opening it do". A source that
+   * keeps no local playlist store still says album here.
+   */
+  recommend?(page?: PageRequest): Promise<BrowseResult>
 
   /** Batched lookup. Falls back to N× `getTrack` when absent, which is slower. */
   getTracks?(ids: string[]): Promise<Track[]>
@@ -363,6 +375,14 @@ export interface SourcesService {
    * the provider directly gets the entries and silently loses that.
    */
   browse(sourceId: string, nodeId?: string, page?: PageRequest): Promise<BrowseResult>
+
+  /**
+   * One page of a source's curated recommendations, cached the same way browse
+   * is: the cards' payloads (a playlist's document URL) go through the same
+   * writer, so opening a recommended album works on the first try and keeps
+   * working after a restart.
+   */
+  recommend(sourceId: string, page?: PageRequest): Promise<BrowseResult>
 
   /* ── sources as data (docs/06 §9, §10) ─────────────────────────────── */
 

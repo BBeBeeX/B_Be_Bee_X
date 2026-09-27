@@ -190,10 +190,20 @@ export interface SourceDocument {
   searchArtistUrl?: Rule
   /** A JSON array of `{ title, url }`, or a rule producing one. */
   exploreUrl?: Rule
+  /**
+   * The recommendation feed — a document the `ruleRecommend` list rule runs
+   * over, when the backend curates one. Absent with a present `ruleRecommend`
+   * means the rule builds its rows itself (`result` is then `null`), which is
+   * how a source whose recommendations are a curated list rather than an
+   * endpoint declares them.
+   */
+  recommendUrl?: Rule
 
   ruleSearch?: ListRule
   ruleSearchArtist?: ListRule
   ruleExplore?: ListRule
+  /** The recommendation feed's rows — playlist cards, one page of them. */
+  ruleRecommend?: ListRule
   ruleAlbum?: AlbumRule
   ruleTrackList?: ListRule
   ruleStream?: StreamRule

@@ -47,6 +47,32 @@
     "kind": "$.kind",
     "childUrl": "$.childUrl"
   },
+  "ruleRecommend": {
+    "trackList": "@js:biliRecommendRows(result, page)",
+    "trackId": "$.trackId",
+    "title": "$.title",
+    "artist": "$.artist",
+    "album": "$.album",
+    "artwork": "$.artwork",
+    "durationMs": "$.durationMs",
+    "kind": "$.kind",
+    "childUrl": "$.childUrl"
+  },
+  "ruleAlbum": {
+    "title": "$.data.meta.name",
+    "artist": "@js:biliSeasonArtist(result)",
+    "artwork": "$.data.meta.cover",
+    "trackCount": "$.data.meta.total"
+  },
+  "ruleTrackList": {
+    "trackList": "@js:biliSeasonTrackRows(result)",
+    "trackId": "$.trackId",
+    "title": "@js:cleanTitle(item.title)",
+    "artist": "$.artist",
+    "album": "$.album",
+    "artwork": "$.artwork",
+    "durationMs": "$.durationMs"
+  },
   "ruleStream": {
     "url": "={{@js:resolveBiliStream(track, prefs)}}",
     "quality": "={{@js:biliStreamQuality(track)}}",

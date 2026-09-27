@@ -17,6 +17,7 @@ import type {
   Album,
 
   Artist,
+  BrowseEntry,
   CatalogQuery,
   DebugStep,
   ImportReport,
@@ -810,4 +811,157 @@ function nameOf(value: unknown): string {
   if (typeof doc.sourceName === 'string' && doc.sourceName.trim()) return doc.sourceName
   if (typeof doc.sourceUrl === 'string' && doc.sourceUrl.trim()) return doc.sourceUrl
   return 'unnamed source'
+}
+
+/* ── recommendations ────────────────────────────────────────────────────── */
+
+/**
+ * The live providers that curate a recommendation feed, registry order.
+ *
+ * Derived from `capabilities.recommend`, which the runtime derives from the
+ * document — a source without a `ruleRecommend` block never reaches this
+ * list, so the shelf page has no "supported?" question to ask.
+ */
+export function useRecommendSources(ctx: Context): readonly MediaProvider[] {
+  return useServiceState(
+    ctx,
+    ['source/registered', 'source/unregistered', 'source/changed'],
+    () =>
+      serviceOf<SourcesService>(ctx, 'sources')?.providers?.filter((p) => p.capabilities.recommend) ?? [],
+    { isEqual: shallowArrayEqual },
+  )
+}
+
+/** One recommendation shelf — the feed's first page, as a screen renders it. */
+export interface RecommendShelfState extends AsyncState<readonly BrowseEntry[]> {
+  reload: () => void
+}
+
+/**
+ * The ten cards one source's shelf shows.
+ *
+ * The shelf never pages: "show all" is where more lives, and a shelf that
+ * silently grew would move its own tail under the user's pointer.
+ */
+export function useRecommendShelf(ctx: Context, sourceId: string | undefined): RecommendShelfState {
+  const [state, setState] = useState<AsyncState<readonly BrowseEntry[]>>({ status: 'idle' })
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    if (!sourceId) {
+      setState({ status: 'idle' })
+      return
+    }
+    let cancelled = false
+    setState({ status: 'loading' })
+    ctx.sources
+      .recommend(sourceId, { cursor: '1' })
+      .then((result) => {
+        if (!cancelled) setState({ status: 'ready', data: result.items })
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setState({ status: 'error', error: error instanceof Error ? error : new Error(String(error)) })
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ctx, sourceId, attempt])
+
+  const reload = useCallback(() => setAttempt((n) => n + 1), [])
+  return { ...state, reload }
+}
+
+/** The show-all grid's accumulating feed. */
+export interface RecommendFeedState {
+  /** Everything loaded so far, across steps. */
+  items: readonly BrowseEntry[]
+  loading: boolean
+  error?: Error
+  /** False once a short page says the curated list has run out. */
+  hasMore: boolean
+  /** Load the next step — one grid page, however many feed pages that is. */
+  loadMore: () => void
+  reload: () => void
+}
+
+/**
+ * One source's whole recommendation feed, a step at a time.
+ *
+ * The feed API hands out ten cards per call; the grid shows twenty per step,
+ * so a step fetches two pages and appends whatever came back. A short page —
+ * fewer cards than the feed's ten — is the only end marker a curated list
+ * can give, and `hasMore` reads it, not the runtime's optimistic cursor.
+ * Deduplication is by entry id, so a list edited between fetches cannot
+ * produce a card twice.
+ */
+export function useRecommendFeed(
+  ctx: Context,
+  sourceId: string | undefined,
+  cardsPerStep = 20,
+): RecommendFeedState {
+  const [items, setItems] = useState<readonly BrowseEntry[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<Error | undefined>(undefined)
+  const [exhausted, setExhausted] = useState(false)
+  const nextPageRef = useRef(1)
+  const inflightRef = useRef(false)
+  const generationRef = useRef(0)
+
+  const loadMore = useCallback(() => {
+    if (!sourceId || inflightRef.current) return
+    const generation = ++generationRef.current
+    inflightRef.current = true
+    setLoading(true)
+    setError(undefined)
+    void (async () => {
+      try {
+        const collected: BrowseEntry[] = []
+        let fetched = 0
+        while (fetched < cardsPerStep) {
+          const result = await ctx.sources.recommend(sourceId, { cursor: String(nextPageRef.current) })
+          if (generationRef.current !== generation) return
+          collected.push(...result.items)
+          fetched += result.items.length
+          nextPageRef.current += 1
+          // `hasMore` stays true on a partial page (the runtime cannot know a
+          // curated list's length) — a short page is the real end marker.
+          if (result.items.length < 10) break
+        }
+        if (generationRef.current !== generation) return
+        setItems((prev) => {
+          const seen = new Set(prev.map((entry) => entry.id))
+          return [...prev, ...collected.filter((entry) => !seen.has(entry.id))]
+        })
+        if (collected.length < cardsPerStep) setExhausted(true)
+      } catch (err) {
+        if (generationRef.current === generation) {
+          setError(err instanceof Error ? err : new Error(String(err)))
+        }
+      } finally {
+        if (generationRef.current === generation) setLoading(false)
+        inflightRef.current = false
+      }
+    })()
+  }, [ctx, sourceId, cardsPerStep])
+
+  const reload = useCallback(() => {
+    generationRef.current++
+    inflightRef.current = false
+    nextPageRef.current = 1
+    setItems([])
+    setExhausted(false)
+    setError(undefined)
+  }, [])
+
+  // A different source starts the feed over; the first step loads itself.
+  useEffect(() => {
+    reload()
+  }, [sourceId, reload])
+  useEffect(() => {
+    if (sourceId && items.length === 0 && !loading && !exhausted && !error) loadMore()
+  }, [sourceId, items.length, loading, exhausted, error, loadMore])
+
+  return { items, loading, error, hasMore: !exhausted, loadMore, reload }
 }

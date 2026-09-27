@@ -46,6 +46,9 @@ node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources
 | `ruleSearchArtist` | 用户行:`trackId=$.mid`、`title=$.uname`、`artwork=item.upic`,由运行时映射为 `Artist{urn,name,artwork}` |
 | `exploreUrl` | `{{@js:biliExploreUrl()}}` — 生成 4 个 browse 栏目(见下;bilibili.py 没有对应流程,为本源自有的浏览面) |
 | `ruleExplore` | `trackList=@js:biliExploreRows(result)` — 同一规则处理两种榜单文档(期数列表 / 歌曲列表) |
+| `ruleRecommend` | `trackList=@js:biliRecommendRows(result, page)` — 推荐歌单接口:内嵌精选合集清单先随机排序(Fisher–Yates,每 6 小时或缓存失效后重洗),再从前往后每次返回 10 个;每卡片仅 1 个请求(`seasons_archives_list` 取名称/封面/UP 主 mid 并缓存,进行中的相同查询并发去重),UP 主名推迟到点开歌单页时才请求(`ruleAlbum`);卡片即 album 行,带 `childUrl` 供 `getAlbum` 缓存 |
+| `ruleAlbum` | 合集元数据:`title/artwork/trackCount` 取 `seasons_archives_list` 的 `data.meta`,`artist=biliSeasonArtist(result)` | 
+| `ruleTrackList` | `trackList=@js:biliSeasonTrackRows(result)` — 合集内视频行(`bvid/title/pic/duration`),UP 主名取缓存 |
 | `ruleStream` | `url=resolveBiliStream(track, prefs)`;单次 playurl 取回全部音轨后按应用档位选择;`headers=biliStreamHeaders(track)`(视频页 Referer + UA,与 yt-dlp 的 `http_headers` 一致,经桌面 IPC `stream:set-headers` 注册);`seekable=true`(跳过 HEAD 探测);`expiresAt`=2 小时 |
 | `ruleLyric` | `getBiliLyrics(track)` → LRC(无签名 `x/player/wbi/v2`) |
 | `ruleArtist` | `getBiliArtist(id)` |
@@ -150,7 +153,8 @@ DASH 音频 id → 应用 `StreamQuality` 档位(对齐 B 站网页播放器给�
 - `load({strategy:'stream'})` 无移动端实现——长视频流播放目前仅桌面可用(仓库级 M2 缺口)。
 - Hi-Res/杜比实际下发取决于账号权益;未登录音质上限 132K AAC。
 - 用户搜索一次最多返回一页 20 条(接口行为);视频/用户各自分页正常。
-- 合集 id 离不开 mid:旧格式 `bili_season_<sid>` 无法换算,会报带指引的错误。
+- 合集 id 离不开 mid:旧格式 `bili_season_<sid>` 无法换算,会报带指引的错误。但 `seasons_archives_list` 实测**可以不带 mid、仅凭 `season_id` 查询**并返回 `meta`(含 mid)——推荐接口正是用它把裸 sid 解析成规范 `bili_season_<mid>_<sid>` 的。
+- 推荐里的失效合集(API 返回 -404)不跳过:占位行显示"当前资源无效"(副标题点名资源),同时 `src.log` 报错带出合集名与 sid;占位计入每页 10 个。
 - 隐藏合集(`attribute 156`)在 UP 主页作为 album 出现,专辑 id 由 `meta.id` 与 mid 拼出。
 - UP 主投稿一次物化(上限 40 页 × 30 条),yt-dlp 是懒分页;条目极多的 UP 主需要调大 `MAX_ARTIST_PAGES`。
 

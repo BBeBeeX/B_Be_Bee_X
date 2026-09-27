@@ -55,6 +55,7 @@ function localProvider(overrides: Partial<MediaProvider> = {}): MediaProvider {
   const capabilities: Capabilities = {
     search: { tracks: false, albums: false, artists: false, playlists: false, fullText: false },
     browse: false,
+    recommend: false,
     lyrics: false,
     artwork: false,
     library: { read: true, save: false, playlistWrite: false, playlistReorder: false },

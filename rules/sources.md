@@ -26,7 +26,8 @@ Rule prefixes select the execution engine:
 | `=` | String Literal | Returns constant string |
 | *(bare)* | Inferred | Inferred based on syntax |
 
-- URL template fields (`searchUrl`, `exploreUrl`) use `{{ }}` for variable substitution (path, not expression).
+- URL template fields (`searchUrl`, `exploreUrl`, `recommendUrl`) use `{{ }}` for variable substitution (path, not expression).
+- **Recommendations** (`ruleRecommend`, optional `recommendUrl`): one page of curated playlist cards per call — the recommendation shelf renders the first page ("show all" pages through the rest). Rows are browse rows (`kind: 'album'`/`'playlist'` with `childUrl`), so a recommended playlist opens through the same album-detail pipeline a browsed one does. `recommendUrl` is optional: a source whose recommendations are a curated list lets the `@js:` rule build rows from nothing (`result` is `null`).
 - Only `{{@js:...}}` reaches the QuickJS sandbox.
 - Combinators:
   - `||`: First non-empty result

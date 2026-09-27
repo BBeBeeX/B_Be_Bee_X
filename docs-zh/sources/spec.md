@@ -86,6 +86,7 @@ URN        BBeBee:music-example-org-35be9fe2:track:8f1a2c
 |---|---|
 | `searchUrl` + `ruleSearch` | `search`，以及参与 `searchAll` |
 | `exploreUrl` + `ruleExplore` | `browse` |
+| `ruleRecommend`（可选 `recommendUrl`） | `recommend` —— 推荐歌单页渲染的精选 feed |
 | `ruleAlbum` | `getAlbum`、专辑详情页 |
 | `ruleTrackList` | 专辑与播放列表的曲目列表 |
 | `ruleStream` | `resolveStream` —— **必需**；没有它的源什么都播不了，会在导入时被拒绝 |
@@ -166,6 +167,7 @@ export interface SourceDocument {
   /* ── entry points ───────────────────────────────────────────── */
   searchUrl?: string
   exploreUrl?: string                             // JSON array of { title, url }, or a rule
+  recommendUrl?: string                           // ruleRecommend 的可选种子文档
 
   /* ── stream qualities (§1.2) ────────────────────────────────── */
   qualities?: StreamQuality[]
@@ -173,6 +175,7 @@ export interface SourceDocument {
   /* ── rule blocks (§2.2) ─────────────────────────────────────── */
   ruleSearch?: ListRule
   ruleExplore?: ListRule
+  ruleRecommend?: ListRule
   ruleAlbum?: AlbumRule
   ruleTrackList?: ListRule
   ruleStream?: StreamRule                         // required in practice — see §1.3
@@ -295,6 +298,15 @@ node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources
 ```
 
 `browse` 就是 `exploreUrl` + `ruleExplore`：每个探索条目是一个带标题的 URL，而 `childUrl` 非空的条目是要深入下去的节点，而不是拿来播放的叶子。文件夹树、流派列表、排行榜、播客 feed 的单集列表，用的都是同样三个字段 —— 这正是同一个 UI 组件能渲染它们全部的原因。
+
+`recommend` 是 `ruleRecommend` 作用于可选 `recommendUrl` 文档：每次调用返回一页精选歌单卡片，
+推荐歌单页约定的页大小是 10。行就是探索行 —— `kind: 'album'` 带 `childUrl` —— 所以推荐的歌单
+和浏览到的歌单走同一条专辑详情管线，`ctx.sources.recommend` 缓存该页的方式也与 `browse` 完全
+一致。`recommendUrl` 可选：推荐内容是精选清单而非端点的源，让 `@js:` 规则自行构造行，此时
+`result` 以 `null` 传入。被推荐资源已经消失时后端如何应答，是源自己的策略 —— bilibili 源把答案
+一分为二：*gone*（API 明确 -404）渲染"当前资源无效"占位卡；*暂时被拒*（限流、风控、超时）渲染
+"加载失败"卡并写明原因，且不落任何缓存，下次读取该页时自动重试。卡片的创作者一行属于歌单页
+而非推荐页：为一行字每卡片多打一个请求不值得，UP 主名等点开歌单页时再取。
 
 **规则块内的未知字段会在导入时被拒绝。** 不是忽略 —— 是拒绝，并指明路径，因此 `{ "ruleSearch": { "titel": "$.title" } }` 会在导入界面上失败，而不是导入一个标题永远缺席的源。与顶层的非对称（[07 §4.1](../data-model/urn.md#41-音源账号与会话)，在那里未知字段被原样保留、只是根本无人去读）是刻意的：`sourceName` 旁边多出来的一个键是向前兼容，而 `title` 旁边多出来的一个键是笔误 —— 恰好是笔误只产出静默、不产出错误的唯一一处。
 

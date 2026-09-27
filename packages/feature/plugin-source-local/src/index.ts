@@ -47,6 +47,9 @@ const CAPABILITIES: Capabilities = {
   // is true here while nothing here builds an index.
   search: { tracks: true, albums: false, artists: false, playlists: false, fullText: true },
   browse: true,
+  // Files on this device are not a curated feed: the recommend shelf is for
+  // backends that publish one.
+  recommend: false,
   lyrics: false,
   artwork: true,
   library: { read: true, save: false, playlistWrite: false, playlistReorder: false },

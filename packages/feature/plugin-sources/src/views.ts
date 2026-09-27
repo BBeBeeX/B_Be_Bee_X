@@ -26,10 +26,24 @@ export const SOURCES_VIEWS = {
    * parameters, and the trace shows the output and every HTTP request whole.
    */
   sourceTest: 'sources.test',
+  /**
+   * The recommendation shelf: one horizontal card row per capable source.
+   *
+   * One page of `ruleRecommend` per shelf (ten cards), with a "show all"
+   * affordance that opens `recommendAll` for that source.
+   */
+  recommend: 'sources.recommend',
+  /**
+   * One source's whole recommendation feed as a grid, twenty cards per
+   * step, with a show-more control — the page "显示全部" lands on.
+   */
+  recommendAll: 'sources.recommend.all',
 } as const
 
 export const SOURCES_ROUTES = {
   search: 'sources.search',
   sourceImport: 'sources.import',
   sourceTest: 'sources.test',
+  recommend: 'sources.recommend',
+  recommendAll: 'sources.recommend.all',
 } as const

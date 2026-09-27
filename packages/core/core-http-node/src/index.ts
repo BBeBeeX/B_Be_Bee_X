@@ -31,8 +31,10 @@ import type {
   CookieJarService,
   DownloadRequest,
   FsService,
+  HttpLogEntry,
   HttpRequest,
   HttpResponse,
+  HttpRequestLog,
   SecretsService,
   Uri,
 } from '@BBeBee/protocol'
@@ -73,6 +75,142 @@ const MAX_REDIRECTS = 20
 /** Schemes a redirect may lead to. Anything else is refused, not followed. */
 const FOLLOWABLE_SCHEMES = new Set(['http:', 'https:'])
 
+/**
+ * How many exchanges the journal keeps, and how much of any one body. Both
+ * are ceilings, not promises: an in-memory journal that grows with the
+ * session is a leak with a friendly name, and a body copied whole would make
+ * an audio download a second download.
+ */
+const HTTP_JOURNAL_CAP = 400
+const HTTP_JOURNAL_BODY_BYTES = 200_000
+
+/** Request headers whose values are credentials, by any spelling. */
+const REDACTED_REQUEST_HEADERS = new Set(['authorization', 'proxy-authorization'])
+
+function redactRequestHeaders(headers: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(headers)) {
+    if (REDACTED_REQUEST_HEADERS.has(name.toLowerCase())) {
+      out[name] = '<redacted>'
+    } else if (name.toLowerCase() === 'cookie') {
+      // Names are what a source debugger needs ("was buvid3 sent?"); the
+      // values are session material and are never written down here.
+      const names = value
+        .split(';')
+        .map((pair) => pair.split('=')[0]?.trim())
+        .filter(Boolean)
+      out[name] = names.map((name) => `${name}=<redacted>`).join('; ')
+    } else {
+      out[name] = value
+    }
+  }
+  return out
+}
+
+function redactResponseHeaders(headers: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(headers)) {
+    out[name] = name.toLowerCase() === 'set-cookie' ? '<redacted>' : value
+  }
+  return out
+}
+
+/** `Headers` as a plain record, through `forEach` — the one iteration that is typed everywhere. */
+function headersOf(response: Response): Record<string, string> {
+  const out: Record<string, string> = {}
+  response.headers.forEach((value, key) => {
+    out[key.toLowerCase()] = value
+  })
+  return out
+}
+
+/**
+ * Whether the body is worth copying for the log.
+ *
+ * Text shapes only — JSON, HTML, plain text, XML — because those are what a
+ * log reader can read. Transfers are excluded by shape (audio, video, images,
+ * `octet-stream`) and by intent (a `Range` request is the player seeking, not
+ * a document being read), and so is anything the `Content-Length` already
+ * says is far past the cap.
+ */
+function bodyWorthCapturing(req: HttpRequest, response: Response): boolean {
+  if (!response.body) return false
+  if (response.status === 204 || response.status === 304) return false
+  const contentType = (response.headers.get('content-type') ?? '').toLowerCase()
+  if (/^(audio|video|image)\//.test(contentType)) return false
+  if (contentType.includes('octet-stream')) return false
+  const length = Number(response.headers.get('content-length') ?? '')
+  if (Number.isFinite(length) && length > HTTP_JOURNAL_BODY_BYTES * 2) return false
+  if (Object.keys(req.headers ?? {}).some((name) => name.toLowerCase() === 'range')) return false
+  return true
+}
+
+/** Drain a tee'd copy of the body into the journal's text, capped. */
+async function drainCapped(stream: ReadableStream<Uint8Array>, cap: number): Promise<string> {
+  const reader = stream.getReader()
+  const chunks: string[] = []
+  let total = 0
+  const decoder = new TextDecoder()
+  while (total <= cap) {
+    const { done, value } = await reader.read()
+    if (done) break
+    const text = decoder.decode(value, { stream: true })
+    chunks.push(text)
+    total += text.length
+  }
+  try {
+    await reader.cancel()
+  } catch {
+    // The copy's own death is not the request's problem.
+  }
+  const text = chunks.join('')
+  return total > cap ? `${text.slice(0, cap)}…[已截断，共 ${total} 字符]` : text
+}
+
+/**
+ * The in-memory journal behind `ctx.http.requestLog`.
+ *
+ * One entry per exchange, pushed the moment the response headers arrive (so
+ * an in-flight request is visible), its body filled in later by the drain.
+ * Capped oldest-first: a long session with a chatty source must not grow it.
+ *
+ * Detail capture is switchable: off, entries record the summary line only —
+ * no headers, no bodies, nothing for a detail pane to show. Entries already
+ * recorded keep whatever they captured; the switch answers "from now on".
+ */
+class HttpJournal {
+  private entries: HttpLogEntry[] = []
+  private nextSn = 1
+  private capture = true
+
+  get captureEnabled(): boolean {
+    return this.capture
+  }
+
+  setCapture(enabled: boolean): void {
+    this.capture = enabled
+  }
+
+  record(
+    entry: Omit<HttpLogEntry, 'sn'> & { responseBody?: HttpLogEntry['responseBody'] },
+  ): HttpLogEntry {
+    const full: HttpLogEntry = { ...entry, sn: this.nextSn++ }
+    this.entries.push(full)
+    if (this.entries.length > HTTP_JOURNAL_CAP) {
+      this.entries.splice(0, this.entries.length - HTTP_JOURNAL_CAP)
+    }
+    return full
+  }
+
+  all(): readonly HttpLogEntry[] {
+    return [...this.entries]
+  }
+
+  clear(): void {
+    this.entries = []
+  }
+}
+
 export class HttpNode extends Service {
   static inject = ['fs']
 
@@ -81,6 +219,13 @@ export class HttpNode extends Service {
   }
   readonly cookies: CookieJarService
   private readonly jars: MemoryJars
+  private readonly journal = new HttpJournal()
+  readonly requestLog: HttpRequestLog = {
+    all: () => this.journal.all(),
+    clear: () => this.journal.clear(),
+    setCapture: (enabled) => this.journal.setCapture(enabled),
+    captureEnabled: () => this.journal.captureEnabled,
+  }
 
   constructor(ctx: Context, config: HttpNodeConfig = {}) {
     super(ctx, 'http')
@@ -302,22 +447,68 @@ export class HttpNode extends Service {
 
       const cookieHeader = jar ? await cookieHeaderFor(jar, url) : undefined
       const startTime = Date.now()
-      const response = await this.config.fetch(url, {
-        method: req.method ?? 'GET',
-        headers: {
-          'user-agent': this.config.userAgent,
-          // Under an explicit header, so a document that sets its own Cookie
-          // wins — it knows something the jar does not.
-          ...(cookieHeader ? { cookie: cookieHeader } : {}),
-          ...req.headers,
-        },
-        ...(req.body !== undefined ? { body: req.body as BodyInit } : {}),
-        // Always manual: following internally would skip the check above.
-        redirect: 'manual',
-        signal: controller.signal,
-      })
+      const requestHeaders: Record<string, string> = {
+        'user-agent': this.config.userAgent,
+        // Under an explicit header, so a document that sets its own Cookie
+        // wins — it knows something the jar does not.
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
+        ...req.headers,
+      }
+      let response: Response
+      try {
+        response = await this.config.fetch(url, {
+          method: req.method ?? 'GET',
+          headers: requestHeaders,
+          ...(req.body !== undefined ? { body: req.body as BodyInit } : {}),
+          // Always manual: following internally would skip the check above.
+          redirect: 'manual',
+          signal: controller.signal,
+        })
+      } catch (error) {
+        // A transport failure is a log entry too — the user reading the
+        // journal should see the request that never got a response and why.
+        this.journal.record({
+          time: startTime,
+          method: req.method ?? 'GET',
+          url,
+          requestHeaders: this.journal.captureEnabled
+            ? redactRequestHeaders(requestHeaders)
+            : {},
+          ...(this.journal.captureEnabled &&
+          req.body !== undefined &&
+          typeof req.body === 'string'
+            ? { requestBody: req.body.slice(0, HTTP_JOURNAL_BODY_BYTES) }
+            : {}),
+          responseHeaders: {},
+          error: error instanceof Error ? error.message : String(error),
+          detailed: this.journal.captureEnabled,
+        })
+        throw error
+      }
       const durationMs = Date.now() - startTime
       this.ctx.logger.info(`[HTTP] ${req.method ?? 'GET'} ${url} -> ${response.status} (${durationMs}ms)`)
+
+      // The journal entry goes in with the headers; the body fills in as the
+      // tee'd copy drains, so the reader may see it arrive a beat later.
+      const entry = this.journal.record({
+        time: startTime,
+        method: req.method ?? 'GET',
+        url,
+        status: response.status,
+        durationMs,
+        requestHeaders: this.journal.captureEnabled
+          ? redactRequestHeaders(requestHeaders)
+          : {},
+        ...(this.journal.captureEnabled &&
+        req.body !== undefined &&
+        typeof req.body === 'string'
+          ? { requestBody: req.body.slice(0, HTTP_JOURNAL_BODY_BYTES) }
+          : {}),
+        responseHeaders: this.journal.captureEnabled
+          ? redactResponseHeaders(headersOf(response))
+          : {},
+        detailed: this.journal.captureEnabled,
+      })
 
       // Before the redirect branch: a login flow sets its session cookie *on*
       // the 302, and reading it only from the final response drops it.
@@ -335,6 +526,22 @@ export class HttpNode extends Service {
         throw new NetworkError(`unexpected ${status} redirect from ${url}`)
       }
       if (!isRedirectStatus || !location || mode !== 'follow') {
+        // The body is captured through a tee, not by reading the caller's
+        // copy: the request the caller sees behaves exactly as before, and
+        // the journal drains its own branch in the background. Detail
+        // capture off means no tee at all — the summary line is the entry.
+        const body = response.body
+        if (this.journal.captureEnabled && body && bodyWorthCapturing(req, response)) {
+          const [main, copy] = body.tee()
+          response = new Response(main, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          })
+          void drainCapped(copy, HTTP_JOURNAL_BODY_BYTES).then((text) => {
+            entry.responseBody = text
+          })
+        }
         return wrap(response, req.onProgress, onSettled)
       }
 

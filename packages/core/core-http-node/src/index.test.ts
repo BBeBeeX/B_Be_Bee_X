@@ -237,6 +237,97 @@ describe('requests', () => {
   })
 })
 
+describe('the request journal', () => {
+  it('records the exchange: headers both ways, status, and the body', async () => {
+    const { ctx, http } = await harness()
+    await ctx.http({ url: `${origin}/json`, headers: { 'x-echo': 'yes' } })
+    await tick()
+
+    const entry = http.requestLog.all().at(-1)!
+    expect(entry.method).toBe('GET')
+    expect(entry.url).toBe(`${origin}/json`)
+    expect(entry.status).toBe(200)
+    expect(entry.durationMs).toBeGreaterThanOrEqual(0)
+    expect(entry.requestHeaders['x-echo']).toBe('yes')
+    // The body came through the tee, not by consuming the caller's copy.
+    expect(JSON.parse(entry.responseBody!)).toEqual({ hello: 'world', echoed: 'yes' })
+  })
+
+  it('redacts credentials but keeps cookie names', async () => {
+    const { ctx, http } = await harness()
+    await ctx.http({
+      url: `${origin}/json`,
+      headers: {
+        cookie: 'buvid3=secret-buvid; SESSDATA=top-secret',
+        authorization: 'Bearer token-value',
+      },
+    })
+    await tick()
+
+    const entry = http.requestLog.all().at(-1)!
+    expect(entry.requestHeaders.cookie).toBe('buvid3=<redacted>; SESSDATA=<redacted>')
+    expect(entry.requestHeaders.cookie).not.toContain('secret-buvid')
+    expect(entry.requestHeaders.authorization).toBe('<redacted>')
+
+    await ctx.http({ url: `${origin}/set-cookie` })
+    await tick()
+    const setCookieEntry = http.requestLog.all().at(-1)!
+    expect(setCookieEntry.responseHeaders['set-cookie']).toBe('<redacted>')
+    expect(setCookieEntry.responseHeaders['set-cookie']).not.toContain('abc123')
+  })
+
+  it('records a request that never got a response, with the reason', async () => {
+    const { ctx, http } = await harness()
+    // Port 1 on loopback refuses connections — a transport failure, not an
+    // HTTP status, and exactly the case the journal must not drop.
+    await expect(ctx.http({ url: 'http://127.0.0.1:1/x' })).rejects.toThrow()
+    await tick()
+
+    const entry = http.requestLog.all().at(-1)!
+    expect(entry.status).toBeUndefined()
+    expect(entry.error).toBeTruthy()
+  })
+
+  it('records summary-only entries while capture is off, and resumes whole on', async () => {
+    const { ctx, http } = await harness()
+    http.requestLog.setCapture(false)
+    await ctx.http({ url: `${origin}/json`, headers: { 'x-echo': 'yes' } })
+    await tick()
+
+    // Summary row: the line a list needs, nothing a detail pane could show.
+    const offEntry = http.requestLog.all().at(-1)!
+    expect(offEntry.status).toBe(200)
+    expect(offEntry.detailed).toBe(false)
+    expect(Object.keys(offEntry.requestHeaders)).toHaveLength(0)
+    expect(offEntry.responseBody).toBeUndefined()
+
+    // Switched back on, the next request is recorded whole — and the entry
+    // made while capture was off stays a summary forever.
+    http.requestLog.setCapture(true)
+    await ctx.http({ url: `${origin}/json`, headers: { 'x-echo': 'yes' } })
+    await tick()
+    const onEntry = http.requestLog.all().at(-1)!
+    expect(onEntry.detailed).toBe(true)
+    expect(onEntry.requestHeaders['x-echo']).toBe('yes')
+    expect(JSON.parse(onEntry.responseBody!)).toEqual({ hello: 'world', echoed: 'yes' })
+    expect(offEntry.detailed).toBe(false)
+  })
+
+  it('skips bodies for transfers (a ranged request) and honours clear()', async () => {
+    const { ctx, http } = await harness()
+    await ctx.http({ url: `${origin}/bytes`, headers: { range: 'bytes=0-9' } })
+    await tick()
+
+    const entry = http.requestLog.all().at(-1)!
+    expect(entry.status).toBe(206)
+    expect(entry.responseBody).toBeUndefined()
+
+    expect(http.requestLog.all().length).toBeGreaterThan(0)
+    http.requestLog.clear()
+    expect(http.requestLog.all()).toHaveLength(0)
+  })
+})
+
 describe('the net:host gate', () => {
   it('refuses a host the plugin was not granted', async () => {
     // `net:host/<glob>` was a manifest string with no enforcement — the same

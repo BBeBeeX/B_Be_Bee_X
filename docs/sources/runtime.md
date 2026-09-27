@@ -157,6 +157,17 @@ no URN. An item without one gets a URN and is playable — and is cached on the 
 included, by exactly the route a searched track is. Browsing to a track and playing it a week
 later has to work, and it only works if the row was written when it was seen.
 
+`recommend` is the same pipeline wearing a different hat: `ruleRecommend` runs over the (optional)
+`recommendUrl` document, and its rows are mapped exactly as explore rows are mapped — a
+recommendation card and a browse row are one thing to every screen downstream. The service caches
+the page the way it caches browse, which is where a card's `childUrl` payload lands. That matters
+because of how an album detail is served: **the catalogue is read first, and the source is asked
+live only when the catalogue cannot answer** — an album row that exists but has no tracks, or no
+row at all, triggers a live `getAlbum` through the provider, and the answer goes through the same
+writer a search does. A recommended playlist opens on the first click and keeps opening after a
+restart, by the same mechanism a browsed album does; a source with no `ruleAlbum` has no live
+fetch to fall back to, and its rows stay what the cache made of them.
+
 ### 4.3 Pagination, rate limiting and caching
 
 **Pagination** is `{{page}}`. The runtime increments it and stops when a page yields no items or

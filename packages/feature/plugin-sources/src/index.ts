@@ -338,6 +338,26 @@ export class Sources extends Service implements SourcesService {
           placement: [],
           order: 0,
         })
+        yield scoped.ui.contribute({
+          kind: 'route',
+          id: SOURCES_ROUTES.recommend,
+          path: '/recommend',
+          title: 'Recommend',
+          icon: 'disc',
+          // A place people go on purpose: the source shelf is a browsing
+          // surface, so it earns chrome like the library does.
+          placement: ['sidebar'],
+          order: 2,
+        })
+        yield scoped.ui.contribute({
+          kind: 'route',
+          id: SOURCES_ROUTES.recommendAll,
+          path: '/recommend/all',
+          title: 'All recommendations',
+          // Reached from a shelf's "show all", never from the chrome.
+          placement: [],
+          order: 0,
+        })
       }, 'sources-ui-contributions'),
     )
 
@@ -501,6 +521,29 @@ export class Sources extends Service implements SourcesService {
     }
 
     const result = await provider.browse(nodeId, page)
+    await this.cacheBrowsed(sourceId, result)
+    return result
+  }
+
+  /**
+   * One page of a source's curated recommendations, cached like browse.
+   *
+   * The cards are browse entries — kind `album` with a `childUrl` payload —
+   * so a recommendation opened as an album detail goes through the exact
+   * cache path a browsed one does, and works after a restart for the same
+   * reason.
+   */
+  async recommend(sourceId: string, page?: PageRequest): Promise<BrowseResult> {
+    this.ctx.logger.info(`sources: recommending source ${sourceId} (page=${page?.cursor ?? 1})`)
+    const provider = this.registry.get(sourceId)
+    if (!provider) {
+      throw new ProviderError(`no source ${sourceId} is registered`, sourceId)
+    }
+    if (typeof provider.recommend !== 'function' || !provider.capabilities.recommend) {
+      throw new ProviderError(`source ${sourceId} cannot recommend`, sourceId)
+    }
+
+    const result = await provider.recommend(page)
     await this.cacheBrowsed(sourceId, result)
     return result
   }
@@ -1005,8 +1048,53 @@ export class Sources extends Service implements SourcesService {
     return this.catalog.listArtists(query)
   }
 
-  getAlbum(urn: string): Promise<AlbumDetail | undefined> {
-    return this.catalog.getAlbum(urn)
+  /**
+   * One album, from the catalogue or — on a miss — from its source.
+   *
+   * The catalogue is what everything reads, but it only knows the albums
+   * something cached: a browse/recommend page stores the album row and its
+   * payload, and *its tracks* land there only when a descent cached them. An
+   * album whose tracks were never walked is a real album the screen would
+   * render empty, so a source that can look albums up live is asked, and the
+   * answer goes through the same writer a search does. The next read is
+   * instant and offline, which is the whole point of the cache.
+   */
+  async getAlbum(urn: string): Promise<AlbumDetail | undefined> {
+    const cached = await this.catalog.getAlbum(urn)
+    if (cached && cached.tracks.length > 0) return cached
+
+    const parsed = tryParseUrn(urn)
+    if (!parsed || parsed.kind !== 'album') return cached
+
+    const provider = this.registry.get(parsed.sourceId)
+    if (!provider || typeof provider.getAlbum !== 'function') return cached
+
+    try {
+      const detail = await provider.getAlbum(parsed.id)
+      await this.cache(parsed.sourceId, {
+        albums: {
+          items: [
+            {
+              urn: detail.urn,
+              title: detail.title,
+              artists: detail.artists,
+              ...(detail.artwork ? { artwork: detail.artwork } : {}),
+              ...(detail.year !== undefined ? { year: detail.year } : {}),
+              ...(detail.trackCount !== undefined ? { trackCount: detail.trackCount } : {}),
+            },
+          ],
+          hasMore: false,
+        },
+        ...(detail.tracks.length > 0 ? { tracks: { items: detail.tracks, hasMore: false } } : {}),
+      })
+      return detail
+    } catch (error) {
+      // A source that cannot answer live is not a broken album — the payload
+      // may be missing because nothing browsed to it yet (docs/06 §4). The
+      // catalogue's answer, even an empty one, is still the honest one.
+      this.ctx.logger.warn?.(`sources: live album fetch for ${urn} failed: ${String(error)}`)
+      return cached
+    }
   }
 
   getArtist(urn: string): Promise<ArtistDetail | undefined> {

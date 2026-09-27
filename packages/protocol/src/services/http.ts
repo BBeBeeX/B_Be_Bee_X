@@ -102,6 +102,60 @@ export interface DownloadRequest extends HttpRequest {
   onResponse?: (info: { etag?: string; total?: number }) => void
 }
 
+/**
+ * One recorded HTTP exchange, for the request log a user can open and read.
+ *
+ * Credentials never appear here, per the rule that governs every other
+ * debugging surface: `cookie`/`authorization` request headers and
+ * `set-cookie` response headers are reduced to their header *names* (or a
+ * redaction marker), because a log a user can expand is a log that gets
+ * pasted into threads.
+ *
+ * `responseBody` is captured only for text-shaped bodies (JSON, HTML, plain
+ * text) and truncated at a ceiling — an audio stream is a transfer, not a
+ * document, and has nothing a log reader would want. It fills in when the
+ * body drain finishes, so a reader may see it absent on an entry that is
+ * otherwise complete.
+ */
+export interface HttpLogEntry {
+  /** Monotonic within one app run. */
+  sn: number
+  /** Epoch ms, when the request started. */
+  time: number
+  method: string
+  url: string
+  /** Absent when the request itself threw (transport failure, abort). */
+  status?: number
+  durationMs?: number
+  requestHeaders: Record<string, string>
+  requestBody?: string
+  responseHeaders: Record<string, string>
+  responseBody?: string
+  /** The failure message when the request or its handling threw. */
+  error?: string
+  /**
+   * Whether this exchange was recorded *with* its headers and bodies. A
+   * summary-only entry (detail capture switched off when it flew) carries
+   * the line a list needs and nothing a detail pane could show — which is
+   * what makes it not expandable, rather than expandable-onto-nothing.
+   */
+  detailed: boolean
+}
+
+/** The in-memory journal behind `HttpService.requestLog`. Newest last. */
+export interface HttpRequestLog {
+  all(): readonly HttpLogEntry[]
+  clear(): void
+  /**
+   * Whether new entries record headers and bodies. On (the default) every
+   * exchange is recorded whole; off, only the summary line — the switch is
+   * the user's, and it changes entries from now on, not the ones already
+   * recorded.
+   */
+  setCapture(enabled: boolean): void
+  captureEnabled(): boolean
+}
+
 export interface HttpService {
   (req: HttpRequest): Promise<HttpResponse>
   get<T>(url: string, init?: Omit<HttpRequest, 'url' | 'method'>): Promise<T>
@@ -113,6 +167,12 @@ export interface HttpService {
   /** Download to a Uri with resume support. Used by `plugin-download`. */
   download(req: DownloadRequest): Promise<{ bytes: number; etag?: string }>
   readonly cookies: CookieJarService
+  /**
+   * The request journal, when this build keeps one. Optional because a
+   * transport with nothing interesting to record (a mock, a proxy without
+   * bodies) should not have to pretend.
+   */
+  readonly requestLog?: HttpRequestLog
 }
 
 declare module 'cordis' {

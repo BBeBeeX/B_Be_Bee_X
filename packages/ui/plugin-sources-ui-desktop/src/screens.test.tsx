@@ -27,7 +27,15 @@ import type {
 import { tempDir, tick } from '@BBeBee/kernel/testing'
 import { withListLayout } from '@BBeBee/ui-kit-desktop/testing'
 import { resetSearchSourceSelection } from '@BBeBee/plugin-sources/hooks'
-import { ImportScreen, SearchScreen, SourcesListScreen, TestScreen, inject } from './index.js'
+import {
+  ImportScreen,
+  RecommendAllScreen,
+  RecommendScreen,
+  SearchScreen,
+  SourcesListScreen,
+  TestScreen,
+  inject,
+} from './index.js'
 
 // Testing Library auto-cleans only with vitest globals, which this repo does
 // not enable. Without this every render stacks up in one document and
@@ -91,7 +99,7 @@ const DOC = {
  */
 function providerWith(
   sourceId: string,
-  features: { search?: boolean; album?: boolean; lyrics?: boolean },
+  features: { search?: boolean; album?: boolean; lyrics?: boolean; recommend?: boolean },
 ): MediaProvider {
   const capabilities: Capabilities = {
     search: {
@@ -102,6 +110,7 @@ function providerWith(
       fullText: false,
     },
     browse: false,
+    recommend: features.recommend ?? false,
     lyrics: features.lyrics ?? false,
     artwork: false,
     library: { read: false, save: false, playlistWrite: false, playlistReorder: false },
@@ -133,6 +142,40 @@ function providerWith(
             id: '',
             title: '',
           }) as never,
+        }
+      : {}),
+    ...(features.recommend
+      ? {
+          recommend: async (page?: { cursor?: string }) => {
+            const n = Number(page?.cursor ?? 1)
+            // Ten cards on the first page, two on the second: a short page is
+            // how a curated feed says it has run out.
+            const count = n === 1 ? 10 : 2
+            return {
+              items: Array.from({ length: count }, (_, i) =>
+                n === 1 && i === 0
+                  ? // The shape a dead recommendation arrives in: visible and
+                    // named, but a folder with no urn — nothing to open.
+                    {
+                      id: sourceId + '-invalid-' + i,
+                      title: '当前资源无效',
+                      subtitle: '合集·失效示例 · sid 2933823',
+                      kind: 'folder' as const,
+                      leaf: true,
+                    }
+                  : {
+                      id: sourceId + '-card-' + n + '-' + i,
+                      title: '合集 ' + n + '-' + i,
+                      subtitle: 'UP 主',
+                      kind: 'album' as const,
+                      leaf: false,
+                      urn: 'BBeBee:' + sourceId + ':album:s' + n + '-' + i,
+                    },
+              ),
+              hasMore: true,
+              cursor: String(n + 1),
+            }
+          },
         }
       : {}),
   }
@@ -591,5 +634,84 @@ describe('SourcesListScreen', () => {
       await tick()
     })
     expect(calls).toEqual(['enable:dir-1:false', 'remove:dir-1'])
+  })
+})
+
+describe('RecommendScreen', () => {
+  it('shows one shelf per recommend-capable source, and only its first page', async () => {
+    const { ctx } = await harness()
+    await ctx.sources.import(JSON.stringify([DOC, { ...DOC, sourceUrl: 'https://b.example', sourceName: 'Second' }]))
+    await tick()
+    const [first, second] = ctx.sources.sources.map((r) => r.id)
+    ctx.sources.register(providerWith(first!, { recommend: true }))
+    ctx.sources.register(providerWith(second!, { search: true }))
+
+    render(h(RecommendScreen, { ctx }))
+    await act(async () => {
+      await tick()
+      await tick()
+    })
+
+    // A source with the capability gets a shelf; one without gets nothing —
+    // no shelf and no "show all" to a page that would say "cannot recommend".
+    expect(screen.getByTestId('recommend-shelf-' + first!)).toBeTruthy()
+    expect(screen.queryByTestId('recommend-shelf-' + second!)).toBeNull()
+    expect(screen.getAllByTestId('recommend-card')).toHaveLength(10)
+    expect(screen.getByTestId('recommend-show-all')).toBeTruthy()
+  })
+
+  it('renders an invalid-resource placeholder as inert, without a detail hop', async () => {
+    const { ctx } = await harness()
+    await ctx.sources.import(JSON.stringify(DOC))
+    await tick()
+    ctx.sources.register(providerWith(ctx.sources.sources[0]!.id, { recommend: true }))
+
+    render(h(RecommendScreen, { ctx }))
+    await act(async () => {
+      await tick()
+      await tick()
+    })
+
+    // The last card of the fake feed is a folder-kind placeholder: visible,
+    // named, and a click that goes nowhere — the album page is for albums.
+    const cards = screen.getAllByTestId('recommend-card')
+    expect(cards).toHaveLength(10)
+    expect(screen.getByText('当前资源无效')).toBeTruthy()
+    expect(screen.getByText(/sid 2933823/)).toBeTruthy()
+  })
+
+  it('says when nothing recommends', async () => {
+    const { ctx } = await harness()
+    await ctx.sources.import(JSON.stringify(DOC))
+    await tick()
+    ctx.sources.register(providerWith(ctx.sources.sources[0]!.id, { search: true }))
+
+    render(h(RecommendScreen, { ctx }))
+    await act(async () => {
+      await tick()
+    })
+
+    expect(screen.getByText('暂无推荐')).toBeTruthy()
+  })
+})
+
+describe('RecommendAllScreen', () => {
+  it('piles the feed into a grid and stands show-more down on a short page', async () => {
+    const { ctx } = await harness()
+    await ctx.sources.import(JSON.stringify(DOC))
+    await tick()
+    ctx.sources.register(providerWith(ctx.sources.sources[0]!.id, { recommend: true }))
+
+    render(h(RecommendAllScreen, { ctx, sourceId: ctx.sources.sources[0]!.id, name: 'Example' }))
+    await act(async () => {
+      await tick()
+      await tick()
+      await tick()
+    })
+
+    // One step = two feed pages: ten cards, then the short page that says
+    // the list is over — twelve cards, and no control left to press.
+    expect(screen.getAllByTestId('recommend-card')).toHaveLength(12)
+    expect(screen.queryByTestId('recommend-show-more')).toBeNull()
   })
 })

@@ -222,7 +222,14 @@ function Splitter({
 
 export function Shell({ ctx }: { ctx: Context }) {
   const { entries } = useEntries(ctx)
-  const defaultEntry = entries.find((e) => e.id !== 'now-playing.view') ?? entries[0]
+  // The recommend page is the home: it is where the brand logo in the
+  // top-left goes and where a fresh window opens. Sources that cannot
+  // recommend render their own empty state, so defaulting here is safe
+  // before any source is imported.
+  const defaultEntry =
+    entries.find((e) => e.id === 'sources.recommend') ??
+    entries.find((e) => e.id !== 'now-playing.view') ??
+    entries[0]
   const [isFullscreenNowPlaying, setIsFullscreenNowPlaying] = useState(false)
   const [isBottomBarHovered, setIsBottomBarHovered] = useState(false)
   const [isQueueOpen, setIsQueueOpen] = useState(false)

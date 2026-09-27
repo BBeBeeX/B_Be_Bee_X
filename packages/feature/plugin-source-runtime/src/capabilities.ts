@@ -64,6 +64,7 @@ export function isInterpretable(doc: SourceDocument): boolean {
     hasRules(doc.ruleLibrary) ||
     hasRules(doc.ruleArtist) ||
     hasRules(doc.rulePlaylist) ||
+    hasRules(doc.ruleRecommend) ||
     !!doc.searchUrl ||
     !!doc.exploreUrl
   )
@@ -76,6 +77,7 @@ export function capabilitiesFor(
     searchable?: boolean
     searchArtists?: boolean
     browsable?: boolean
+    recommendable?: boolean
     lyrics?: boolean
     library?: boolean
     qualities?: StreamQuality[]
@@ -109,6 +111,7 @@ export function capabilitiesFor(
       fullText: false,
     },
     browse: opts.browsable ?? false,
+    recommend: opts.recommendable ?? hasRules(doc.ruleRecommend),
     // No `albums` flag exists on `Capabilities`: the *presence* of `getAlbum`
     // is the signal a shell reads, and adding a second way to say the same
     // thing is how the two drift apart.

@@ -14,6 +14,7 @@ function fakeProvider(sourceId: string, overrides: Partial<MediaProvider> = {}):
   const capabilities: Capabilities = {
     search: { tracks: false, albums: false, artists: false, playlists: false, fullText: false },
     browse: false,
+    recommend: false,
     lyrics: false,
     artwork: false,
     library: { read: false, save: false, playlistWrite: false, playlistReorder: false },
@@ -49,6 +50,7 @@ function searchingProvider(
     capabilities: {
       ...base.capabilities,
       search: { tracks: true, albums: false, artists: false, playlists: false, fullText: true },
+      recommend: false,
     },
     search: whenSearched,
   }

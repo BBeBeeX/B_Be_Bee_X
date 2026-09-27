@@ -120,6 +120,7 @@ such gap: **the runtime computes `Capabilities` from which rule blocks are prese
 | `searchUrl` + `ruleSearch` | `search`, and participation in `searchAll` |
 | `searchArtistUrl` + `ruleSearchArtist` | artist results in `search` (`searchResult.artists`) |
 | `exploreUrl` + `ruleExplore` | `browse` |
+| `ruleRecommend` (with optional `recommendUrl`) | `recommend` — the curated feed the recommendation shelf renders |
 | `ruleAlbum` | `getAlbum`, album detail screens |
 | `ruleTrackList` | Album and playlist track listings |
 | `ruleStream` | `resolveStream` — **required**; a source without it cannot play anything and is rejected at import |
@@ -215,6 +216,7 @@ export interface SourceDocument {
   searchUrl?: string
   searchArtistUrl?: string                        // artist search, when the backend splits it off
   exploreUrl?: string                             // JSON array of { title, url }, or a rule
+  recommendUrl?: string                           // optional seed document for `ruleRecommend`
 
   /* ── stream qualities (§1.2) ────────────────────────────────── */
   qualities?: StreamQuality[]
@@ -223,6 +225,7 @@ export interface SourceDocument {
   ruleSearch?: ListRule
   ruleSearchArtist?: ListRule
   ruleExplore?: ListRule
+  ruleRecommend?: ListRule
   ruleAlbum?: AlbumRule
   ruleTrackList?: ListRule
   ruleStream?: StreamRule                         // required in practice — see §1.3
@@ -362,6 +365,19 @@ node --experimental-strip-types scripts/sources/cli.ts --unpack fixtures/sources
 `childUrl` is non-empty is a node to descend into rather than a leaf to play. A folder tree, a
 genre list, a chart, and a podcast feed's episode list are all the same three fields, which is why
 one UI component renders all of them.
+
+`recommend` is `ruleRecommend` over an optional `recommendUrl` document: one page of curated
+playlist cards per call, ten being the page size the recommendation shelf assumes. Rows are explore
+rows — `kind: 'album'` with a `childUrl` — so a recommended playlist opens through the same
+album-detail pipeline a browsed one does, and `ctx.sources.recommend` caches the page exactly the
+way `browse` caches. `recommendUrl` is optional: a source whose recommendations are a curated list
+rather than an endpoint lets the `@js:` rule build its rows itself, with `result` arriving as
+`null`. What a backend answers when a recommended resource has since disappeared is the source's
+own policy — the bilibili source, for one, splits the answer in two: *gone* (the API says -404)
+renders a placeholder card, "当前资源无效"; *transiently refused* (rate limiting, risk control, a
+timeout) renders a "加载失败" card naming the reason, with nothing cached so the next read of the
+page retries. A card's creator line is the playlist page's business, not the shelf's: one lookup
+per card for a name was two requests per card for one line of text.
 
 **An unknown field inside a rule block is refused at import.** Not ignored — refused, with the
 path named, so `{ "ruleSearch": { "titel": "$.title" } }` fails on the import screen rather than

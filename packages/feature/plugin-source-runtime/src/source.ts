@@ -550,6 +550,7 @@ export class DocumentSource {
       searchable: this.searchable,
       searchArtists: this.searchArtists,
       browsable: this.browsable,
+      recommendable: this.recommendable,
       lyrics: this.lyricable,
       library: this.librariable,
     })
@@ -627,6 +628,27 @@ export class DocumentSource {
         ...Object.values(doc.ruleTrackList ?? {}).filter((r): r is string => typeof r === 'string'),
       ],
       [doc.exploreUrl],
+      { js: this.deps.js !== undefined },
+    )
+  }
+
+  /**
+   * Whether this build can actually serve this document's recommendation feed.
+   *
+   * Same two-part test as `browsable`, minus the descent: the rule has to be
+   * described and runnable. `recommendUrl` is optional — a source whose
+   * recommendations are a curated list rather than an endpoint lets the rule
+   * build its rows itself, so only the rule is required here.
+   */
+  private get recommendable(): boolean {
+    const doc = this.record.doc
+    if (!doc.ruleRecommend?.trackList) return false
+    return rulesRunnable(
+      [
+        ...(doc.header ? [doc.header] : []),
+        ...Object.values(doc.ruleRecommend).filter((r): r is string => typeof r === 'string'),
+      ],
+      [...(doc.recommendUrl ? [doc.recommendUrl] : [])],
       { js: this.deps.js !== undefined },
     )
   }
@@ -723,6 +745,7 @@ export class DocumentSource {
         ? { search: (q, page) => this.search(q, page) }
         : {}),
       ...(this.browsable ? { browse: (nodeId, page) => this.browse(nodeId, page) } : {}),
+      ...(this.recommendable ? { recommend: (page?: PageRequest) => this.recommend(page) } : {}),
       ...(this.albumable ? { getAlbum: (id: string) => this.getAlbum(id) } : {}),
       ...(this.artistable ? { getArtist: (id: string) => this.getArtist(id) } : {}),
       ...(this.playlistable ? { getPlaylist: (id: string, page?: PageRequest) => this.getPlaylist(id, page) } : {}),
@@ -1090,6 +1113,79 @@ export class DocumentSource {
       items,
       hasMore: items.length > 0,
       ...(items.length > 0 ? { cursor: String(pageNumber + 1) } : {}),
+      payloads,
+    }
+  }
+
+  /**
+   * One page of the source's curated recommendations.
+   *
+   * The explore half of `browse`, standing alone: render the optional seed
+   * URL, run the `ruleRecommend` list rule over what it answered (or over
+   * nothing, when the rule builds its rows itself), and map the rows exactly
+   * as explore rows are mapped — which is what makes a recommendation card
+   * and a browse row the same thing to every screen downstream.
+   */
+  async recommend(page?: PageRequest): Promise<BrowseResult> {
+    const doc = this.record.doc
+    if (!doc.ruleRecommend?.trackList) {
+      throw new RuleError('this source has no ruleRecommend', { block: 'ruleRecommend', field: 'trackList' }, this.record.id)
+    }
+
+    const pageNumber = pageNumberOf(page)
+    const scope: TemplateScope = {
+      source: this.sourceScope(),
+      page: pageNumber,
+      baseUrl: this.record.sourceUrl,
+    }
+
+    let document: unknown = null
+    let baseUrl = this.record.sourceUrl
+    if (doc.recommendUrl) {
+      const rendered = await evaluateUrlTemplate(
+        doc.recommendUrl,
+        scope,
+        { block: 'recommendUrl', field: 'recommendUrl', sourceId: this.record.id },
+        this.js,
+      )
+      const target = parseUrlObject(rendered)
+      this.assertAllowed(target.url)
+      const fetched = await this.withReauth(() => this.fetchChecked(target, scope, 'ruleRecommend'))
+      document = fetched.value
+      baseUrl = fetched.baseUrl
+    }
+
+    const { rows, dropped, incomplete, firstError } = await evaluateListRule(doc.ruleRecommend, {
+      document,
+      scope: { ...scope, baseUrl },
+      sourceId: this.record.id,
+      block: 'ruleRecommend',
+      ...(this.js ? { js: this.js } : {}),
+    })
+    if (dropped > 0) {
+      this.deps.log?.(
+        `${this.record.id}: ruleRecommend dropped ${dropped} row(s) missing trackId or title`,
+      )
+    }
+    if (incomplete > 0) {
+      this.deps.log?.(
+        `${this.record.id}: ruleRecommend left ${incomplete} optional field(s) unset: ${String(firstError)}`,
+      )
+    }
+
+    const items = rows.map((row) => this.rowToEntry(row, 'explore'))
+
+    const payloads: Record<string, unknown> = {}
+    for (const [i, row] of rows.entries()) {
+      const entry = items[i]
+      if (!entry?.urn) continue
+      payloads[entry.urn] = payloadFor(row)
+    }
+
+    return {
+      items,
+      hasMore: rows.length > 0,
+      ...(rows.length > 0 ? { cursor: String(pageNumber + 1) } : {}),
       payloads,
     }
   }
@@ -2560,10 +2656,29 @@ const BROWSE_KINDS = ['folder', 'album', 'artist', 'playlist', 'track', 'genre']
  * security boundary — the egress allowlist is, and `browse` re-checks it on
  * every fetch — but it turns "this id came from another source" from a
  * confusing cross-source fetch into a plain refusal.
+ *
+ * The base64url runs on `btoa`/`atob` rather than Node's `Buffer`: the
+ * runtime executes in the renderer, which has no Node globals, and the
+ * encoding is byte-identical to `Buffer`'s `base64url` so ids produced
+ * either way round-trip.
  */
 function encodeNode(node: BrowseNode, sourceId: string): string {
   const json = JSON.stringify({ v: 1, s: sourceId, t: node.stage, u: node.url })
-  return `n1.${Buffer.from(json, 'utf8').toString('base64url')}`
+  return `n1.${base64UrlEncode(json)}`
+}
+
+function base64UrlEncode(text: string): string {
+  const bytes = new TextEncoder().encode(text)
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function base64UrlDecode(value: string): string {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/')
+  const binary = atob(padded)
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+  return new TextDecoder().decode(bytes)
 }
 
 function decodeNode(nodeId: string, sourceId: string): BrowseNode {
@@ -2581,7 +2696,7 @@ function decodeNode(nodeId: string, sourceId: string): BrowseNode {
   }
   let parsed: unknown
   try {
-    parsed = JSON.parse(Buffer.from(nodeId.slice(3), 'base64url').toString('utf8'))
+    parsed = JSON.parse(base64UrlDecode(nodeId.slice(3)))
   } catch {
     return bad('it is not a node id this runtime produced')
   }

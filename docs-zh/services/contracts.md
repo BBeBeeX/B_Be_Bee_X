@@ -38,6 +38,8 @@ export interface HttpService {
   download(req: HttpRequest & { to: Uri; resumeFrom?: number }): Promise<{ bytes: number; etag?: string }>
   /** Persistent per-instance cookie jars. See §2.1. */
   readonly cookies: CookieJarService
+  /** 内存中的请求日志（本构建有记录时才存在）。见 §2.2。 */
+  readonly requestLog?: HttpRequestLog
 }
 ```
 
@@ -48,6 +50,7 @@ export interface HttpService {
 | 任意请求头 | ✅ `Origin`、`Referer`、`User-Agent`、`Cookie` 均可设置 | ✅ |
 | Cookie jar | 每个 `persist:` 分区对应一个 Chromium `Session` | JS 实现的 RFC 6265 jar，静态加密 |
 | 代理 | ✅ 系统代理或配置的代理 | ⚠️ 仅系统代理 |
+| 请求日志（§2.2） | ✅ 内存环形记录，详情捕获可开关 | ❌ 尚未实现 |
 
 `ctx.http` 是标准的瀑布（waterfall）拦截点。鉴权注入、重试、限速与响应缓存，全都是挂接
 `http/request` 钩子的插件，而不是内建在客户端里的特性
@@ -129,6 +132,48 @@ export interface CookieJarService {
 > 隔离的需求恰好相反，因此 `core-http-rn` 禁用了它，自行管理 `Cookie` / `Set-Cookie` 请求头。
 > 每次 RN 升级都要复核这一点：这里的默认行为一变，cookie 就会在音源之间静默串漏，
 > 一致性测试套件中的隔离测试正是为此而设。
+
+### 2.2 请求日志（request journal）
+
+`ctx.http.requestLog`（可选 —— 没什么可记录的传输不必假装有）是本服务已发生交互的内存日志，
+供调试区里的 HTTP 日志查看器使用。每次交互一条 `HttpLogEntry`：
+
+```ts
+export interface HttpLogEntry {
+  sn: number                        // 单次应用运行内单调递增
+  time: number                      // 请求发起时的 epoch 毫秒
+  method: string
+  url: string
+  status?: number                   // 请求本身抛错时缺席
+  durationMs?: number
+  requestHeaders: Record<string, string>
+  requestBody?: string
+  responseHeaders: Record<string, string>
+  responseBody?: string
+  error?: string                    // 传输抛错时的失败信息
+  detailed: boolean                 // 这次交互是否记录了头与体
+}
+
+export interface HttpRequestLog {
+  all(): readonly HttpLogEntry[]
+  clear(): void
+  /** 之后的条目是否记录头与体。默认开。 */
+  setCapture(enabled: boolean): void
+  captureEnabled(): boolean
+}
+```
+
+三条承重性质：
+
+- **凭据绝不出现。** `cookie` 的值被缩减为名字（`buvid3=<redacted>`），`authorization`、
+  `proxy-authorization` 与 `set-cookie` 一律 `<redacted>`。一份用户能展开的日志，就是一份会被
+  截图贴到帖子里的日志 —— 管束 trace 与导出的规则同样管束它。
+- **响应体通过 tee 捕获**，绝不读调用方的那一份 —— 调用方看到的请求行为与从前完全一致，日志
+  在后台排干自己的分支。只取文本形态的体（JSON、HTML、纯文本、XML）；音频、视频、图片、
+  `octet-stream` 与带 `Range` 的请求是传输而非文档，只记摘要行。体有上限（200 KB，带截断标记）。
+- **捕获开关是时序性的。** `setCapture(false)` 意味着*之后*的条目只是摘要行（`detailed: false`，
+  无头无体），其行也不渲染展开箭头；已记录的条目保留已捕获的内容。没有任何持久化 —— 日志有
+  上限（400 条）并随进程消亡。
 
 ---
 

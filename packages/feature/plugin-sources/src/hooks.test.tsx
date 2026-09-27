@@ -248,6 +248,7 @@ describe('useSearchSourceSelection', () => {
       capabilities: {
         search: { tracks: true, albums: false, artists: false, playlists: false, fullText: false },
         browse: false,
+        recommend: false,
         lyrics: false,
         artwork: false,
         library: { read: false, save: false, playlistWrite: false, playlistReorder: false },
