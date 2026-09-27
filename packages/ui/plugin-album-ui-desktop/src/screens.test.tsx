@@ -148,7 +148,7 @@ describe('AlbumScreen', () => {
   it('draws the album and plays it from the top', async () => {
     const { ctx, player } = await harness()
     await withListLayout(async () => {
-      const { getAllByText, getByText } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
+      const { getAllByText } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
       await act(async () => {
         await tick()
         await tick()
@@ -156,7 +156,8 @@ describe('AlbumScreen', () => {
 
       expect(getAllByText('Homogenic').length).toBeGreaterThan(0)
       await act(async () => {
-        getByText('Play album').click()
+        // 页面滚动折叠后 hero 与吸顶栏各有一个 Play album，点第一个（hero）。
+        getAllByText('Play album')[0]!.click()
         await tick()
       })
     })
@@ -218,7 +219,7 @@ describe('AlbumScreen', () => {
   it('supports sorting tracks by clicking headers', async () => {
     const { ctx, player } = await harness()
     await withListLayout(async () => {
-      const { getByTestId, getByText } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
+      const { getByTestId, getAllByText } = render(h(AlbumScreen, { ctx, urn: ALBUM_URN }))
       await act(async () => {
         await tick()
       })
@@ -231,7 +232,7 @@ describe('AlbumScreen', () => {
 
       // Now "Play album" should play in reversed order [TRACK_B, TRACK_A]
       await act(async () => {
-        getByText('Play album').click()
+        getAllByText('Play album')[0]!.click()
         await tick()
       })
     })

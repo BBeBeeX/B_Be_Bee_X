@@ -7,6 +7,7 @@ import type {
   Collection,
   LibraryService,
   Playlist,
+  SourcesService,
 } from '@BBeBee/protocol'
 import { anchorOf } from '../types.js'
 
@@ -186,8 +187,17 @@ export function useSaveToPlaylistMenu(ctx: Context): SaveToPlaylistMenuControlle
     const next = !liked
     setLiked(next)
     setLikedCount((prev) => (next ? prev + 1 : Math.max(0, prev - 1)))
+    // The heart writes both stores, like every other favourite writer: the
+    // catalogue's `loved` flag is what a track row's own heart draws, and
+    // leaving it lit while un-saving is exactly the "unfavourited but still a
+    // heart" bug. Catalogue first, so the `library/changed` event the shelf
+    // write fires sees the final state when listeners re-read.
+    const sources = serviceOf<SourcesService>(ctx, 'sources')
+    if (sources?.setLoved) {
+      await sources.setLoved(active.track.urn, next).catch(() => {})
+    }
     await library.setSaved(active.track.urn, next).catch(() => {})
-  }, [active, library, liked])
+  }, [active, library, liked, ctx])
 
   const onTogglePlaylist = useCallback(
     async (playlistUrn: string, currentlyContains: boolean) => {

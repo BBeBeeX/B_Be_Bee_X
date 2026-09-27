@@ -1,12 +1,13 @@
 import { createElement as h, useMemo, useState } from 'react'
 import type { ChangeEvent, MouseEvent as ReactMouseEvent, KeyboardEvent, ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { PlaylistItem, Track } from '@BBeBee/protocol'
+import type { ArtworkRef, PlaylistItem, Track } from '@BBeBee/protocol'
 import { usePlaylist } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import type { MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { useTrackMenu } from '@BBeBee/ui-menus'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useImageColor, coverGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
 import { QuadArtworkCollage } from '../components/QuadArtworkCollage.js'
@@ -23,6 +24,7 @@ function PlaylistTrackTableRow({
   isSmart,
   playlistName,
   compact,
+  inLibrary,
   onPress,
   onRemove,
   onMore,
@@ -36,6 +38,8 @@ function PlaylistTrackTableRow({
   playlistName: string
   /** 紧凑视图：无封面，艺人独立成列。 */
   compact?: boolean
+  /** 实时收藏状态：在歌单里不等于已收藏，取消收藏要回到加号。 */
+  inLibrary: boolean
   onPress: () => void
   onRemove?: () => void
   onMore: (anchor: { x: number; y: number }) => void
@@ -235,7 +239,7 @@ function PlaylistTrackTableRow({
       h(TrackLibraryActionButton, {
         track,
         hovered,
-        inLibrary: true,
+        inLibrary,
         onOpenPlaylistMenu,
       }),
       !isSmart && onRemove
@@ -309,6 +313,9 @@ function PlaylistTrackTableRow({
 
 type PlaylistSortKey = 'custom' | 'title' | 'artist' | 'album' | 'dateAdded' | 'duration'
 
+/** The distance over which the hero folds into the sticky bar. */
+const COLLAPSE_DISTANCE = 240
+
 export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string }): ReactElement {
   const state = usePlaylist(ctx, urn)
   const detail = state.data
@@ -323,8 +330,15 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   const [viewMode, setViewMode] = useViewMode('playlist-detail', 'list', ['compact', 'list'] as const)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
+  const [scrollTop, setScrollTop] = useState(0)
   const menu = useTrackMenu(ctx, { fromPlaylistUrn: urn })
-  const { openAddToPlaylistMenu, saveToPlaylistMenuProps } = useTrackLibraryInfo(ctx)
+  const { isTrackInLibrary, openAddToPlaylistMenu, saveToPlaylistMenuProps } = useTrackLibraryInfo(ctx)
+
+  // 背景与吸顶栏的主题色：优先歌单封面，其次第一首歌的封面。
+  const coverArtwork: ArtworkRef | undefined =
+    detail?.artwork ?? tracks.get(rawItems[0]?.trackUrn ?? '')?.artwork
+  const resolvedCover = useResolvedArtwork(ctx, coverArtwork)
+  const tint = useImageColor(resolvedCover?.sourceUrl, resolvedCover?.dominantColor)
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -469,19 +483,49 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
 
   const totalDurationStr = formatTotalDuration(Array.from(tracks.values()))
 
-  return h(
-    'section',
-    {
-      'aria-label': detail.name,
-      style: {
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        background: 'linear-gradient(180deg, var(--surface-selected, rgba(95, 135, 255, 0.2)) 0%, var(--surface-1, rgba(8, 13, 26, 0.7)) 280px, var(--bg-primary, #080A10) 100%)',
-        color: '#FFFFFF',
-        overflow: 'hidden',
+  // 往下滚时整块头部随内容上移并让位给吸顶栏，与 Spotify 一致。
+  const scrollProgress = Math.min(1, scrollTop / COLLAPSE_DISTANCE)
+
+  const renderPlayButton = (size: number, iconSize: number, testID: string | undefined) =>
+    h(
+      'button',
+      {
+        type: 'button',
+        'data-testid': testID,
+        'aria-label': 'Play',
+        onClick: () => sortedUrns[0] && play(sortedUrns[0]),
+        disabled: sortedUrns.length === 0,
+        style: {
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
+          border: 'none',
+          cursor: sortedUrns.length === 0 ? 'not-allowed' : 'pointer',
+          opacity: sortedUrns.length === 0 ? 0.5 : 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: 'var(--glow-brand-md, 0 8px 16px rgba(0, 0, 0, 0.3))',
+          color: '#ffffff',
+          paddingLeft: 2,
+        },
       },
-    },
+      tablerIcon('play', { size: iconSize, color: '#ffffff' }),
+    )
+
+  // 随列表一起滚走的部分：封面 hero、操作条、胶囊按钮、表头。
+  // 吸顶栏单独走 List 的 sticky 插槽（滚动容器的直接子节点）。
+  const stickyBar = h(StickyDetailBar, {
+    title: detail.name,
+    progress: scrollProgress,
+    tint,
+    playButton: renderPlayButton(48, 24, 'playlist-play-sticky'),
+  })
+
+  const headerNode = h(
+    'div',
+    null,
     // Hero Header
     h(
       'header',
@@ -584,32 +628,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
       h(
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 24 } },
-        h(
-          'button',
-          {
-            type: 'button',
-            'data-testid': 'playlist-play',
-            'aria-label': 'Play',
-            onClick: () => sortedUrns[0] && play(sortedUrns[0]),
-            disabled: sortedUrns.length === 0,
-            style: {
-              width: 56,
-              height: 56,
-              borderRadius: '50%',
-              background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
-              border: 'none',
-              cursor: sortedUrns.length === 0 ? 'not-allowed' : 'pointer',
-              opacity: sortedUrns.length === 0 ? 0.5 : 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: 'var(--glow-brand-md, 0 8px 16px rgba(0, 0, 0, 0.3))',
-              color: '#ffffff',
-              paddingLeft: 2,
-            },
-          },
-          tablerIcon('play', { size: 28, color: '#ffffff' }),
-        ),
+        renderPlayButton(56, 28, 'playlist-play'),
         h(
           'button',
           {
@@ -892,12 +911,31 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
         renderSortIndicator('duration'),
       ),
     ),
-    // Track Rows
+  )
+
+  return h(
+    'section',
+    {
+      'aria-label': detail.name,
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: coverGradient(tint),
+        color: '#FFFFFF',
+        overflow: 'hidden',
+      },
+    },
+    // Track Rows — the header scrolls away inside the same scroller, and the
+    // sticky bar rides on top of it.
     h(
       'div',
       { style: { flex: 1, minHeight: 0 } },
       h(List<{ item: PlaylistItem; trackUrn: string; track?: Track; originalIndex: number }>, {
         testID: 'playlist-tracks',
+        header: headerNode,
+        sticky: stickyBar,
+        onScroll: setScrollTop,
         items: filteredRows,
         estimatedItemSize: tokens.size.row,
         keyExtractor: (row) => row.item.id,
@@ -920,6 +958,8 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             playlistName: detail.name,
             compact: viewMode === 'compact',
             onPress: () => play(trackUrn),
+            // 取消收藏后那一行要回到加号：心形状态跟着实时收藏集合走。
+            inLibrary: isTrackInLibrary(track),
             onRemove: () => {
               setError(undefined)
               void ctx.library.removeItems(detail.urn, [item.id]).catch((cause: unknown) =>

@@ -5,7 +5,7 @@ import type { PlayerService, Track } from '@BBeBee/protocol'
 import { useSaved } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import { serviceOf, type MenuAnchor, type MenuItemSpec } from '@BBeBee/ui-core'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, Text, tablerIcon, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, coverGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -18,6 +18,7 @@ function FavoriteTrackTableRow({
   track,
   index,
   compact,
+  inLibrary,
   onPress,
   onMore,
   onOpenPlaylistMenu,
@@ -27,6 +28,8 @@ function FavoriteTrackTableRow({
   index: number
   /** 紧凑视图：无封面，艺人独立成列。 */
   compact?: boolean
+  /** 实时收藏状态：取消收藏后这一行要回到加号。 */
+  inLibrary: boolean
   onPress: () => void
   onMore: (anchor: { x: number; y: number }) => void
   onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
@@ -188,7 +191,7 @@ function FavoriteTrackTableRow({
       h(TrackLibraryActionButton, {
         track,
         hovered,
-        inLibrary: true,
+        inLibrary,
         onOpenPlaylistMenu,
       }),
       h(
@@ -235,6 +238,12 @@ function FavoriteTrackTableRow({
 
 type FavoriteSortKey = 'default' | 'title' | 'artist' | 'album' | 'duration'
 
+/** The distance over which the hero folds into the sticky bar. */
+const COLLAPSE_DISTANCE = 240
+
+/** 收藏夹没有封面：Spotify 给“已点赞的歌曲”的固定紫色就是它的主题色。 */
+const FAVORITES_TINT = '#450af5'
+
 export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   const saved = useSaved(ctx, 'track')
   const entries = saved.data ?? []
@@ -246,10 +255,11 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   const [sortKey, setSortKey] = useState<FavoriteSortKey>('default')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
+  const [scrollTop, setScrollTop] = useState(0)
   // 视图模式：列表为默认（与历史行为一致），紧凑不显示封面并把艺人单列。
   const [viewMode, setViewMode] = useViewMode('favorites', 'list', ['compact', 'list'] as const)
   const menu = useTrackMenu(ctx)
-  const { openAddToPlaylistMenu, saveToPlaylistMenuProps } = useTrackLibraryInfo(ctx)
+  const { isTrackInLibrary, openAddToPlaylistMenu, saveToPlaylistMenuProps } = useTrackLibraryInfo(ctx)
 
   const allTracks = useMemo(() => {
     return urns.map((urn) => tracksMap.get(urn) ?? { urn, title: urn.split(':').pop() ?? urn, artists: [] })
@@ -363,19 +373,53 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
     },
   ]
 
-  return h(
-    'section',
-    {
-      'aria-label': '已点赞的歌曲',
-      style: {
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        background: 'linear-gradient(180deg, var(--surface-selected, rgba(95, 135, 255, 0.2)) 0%, var(--surface-1, rgba(8, 13, 26, 0.7)) 280px, var(--bg-primary, #080A10) 100%)',
-        color: '#FFFFFF',
-        overflow: 'hidden',
+  // 往下滚时整块头部随内容上移并让位给吸顶栏，与 Spotify 一致。
+  const scrollProgress = Math.min(1, scrollTop / COLLAPSE_DISTANCE)
+
+  const renderPlayButton = (size: number, iconSize: number, testID: string | undefined) =>
+    h(
+      'button',
+      {
+        type: 'button',
+        'data-testid': testID,
+        'aria-label': '播放全部',
+        onClick: () =>
+          sortedUrns[0] &&
+          player?.playFromContext(sortedUrns[0], sortedUrns, {
+            context: { kind: 'favorites', label: '收藏夹' },
+          }),
+        disabled: sortedUrns.length === 0,
+        style: {
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
+          border: 'none',
+          cursor: sortedUrns.length === 0 ? 'not-allowed' : 'pointer',
+          opacity: sortedUrns.length === 0 ? 0.5 : 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: 'var(--glow-brand-md, 0 8px 16px rgba(0, 0, 0, 0.3))',
+          color: '#ffffff',
+          paddingLeft: 2,
+        },
       },
-    },
+      tablerIcon('play', { size: iconSize, color: '#ffffff' }),
+    )
+
+  // 随列表一起滚走的部分：hero、操作条、表头。
+  // 吸顶栏单独走 List 的 sticky 插槽（滚动容器的直接子节点）。
+  const stickyBar = h(StickyDetailBar, {
+    title: '已点赞的歌曲',
+    progress: scrollProgress,
+    tint: FAVORITES_TINT,
+    playButton: renderPlayButton(48, 24, 'favorites-play-sticky'),
+  })
+
+  const headerNode = h(
+    'div',
+    null,
     // Hero Header (No Cover, exactly matching LocalMusicScreen)
     h(
       'header',
@@ -436,36 +480,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
       h(
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 24 } },
-        h(
-          'button',
-          {
-            type: 'button',
-            'data-testid': 'favorites-play',
-            'aria-label': '播放全部',
-            onClick: () =>
-              sortedUrns[0] &&
-              player?.playFromContext(sortedUrns[0], sortedUrns, {
-                context: { kind: 'favorites', label: '收藏夹' },
-              }),
-            disabled: sortedUrns.length === 0,
-            style: {
-              width: 56,
-              height: 56,
-              borderRadius: '50%',
-              background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
-              border: 'none',
-              cursor: sortedUrns.length === 0 ? 'not-allowed' : 'pointer',
-              opacity: sortedUrns.length === 0 ? 0.5 : 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: 'var(--glow-brand-md, 0 8px 16px rgba(0, 0, 0, 0.3))',
-              color: '#ffffff',
-              paddingLeft: 2,
-            },
-          },
-          tablerIcon('play', { size: 28, color: '#ffffff' }),
-        ),
+        renderPlayButton(56, 28, 'favorites-play'),
         h(
           'button',
           {
@@ -681,38 +696,58 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
         renderSortIndicator('duration'),
       ),
     ),
-    // Content / List
-    saved.status === 'loading'
-      ? h(EmptyState, { title: '加载中…' })
-      : sortedTracks.length === 0
-      ? h(EmptyState, {
-          icon: 'heart',
-          title: '暂无已点赞歌曲',
-          description: '在曲库中收藏歌曲后，歌曲将在此显示。',
-        })
-      : h(
-          'div',
-          { style: { flex: 1, minHeight: 0 } },
-          h(List<Track>, {
-            testID: 'favorites-list',
-            items: sortedTracks,
-            estimatedItemSize: tokens.size.row,
-            keyExtractor: (t) => t.urn,
-            renderItem: (t, index) =>
-              h(FavoriteTrackTableRow, {
-                ctx,
-                track: t,
-                index,
-                compact: viewMode === 'compact',
-                onPress: () =>
-                  player?.playFromContext(t.urn, sortedUrns, {
-                    context: { kind: 'favorites', label: '收藏夹' },
-                  }),
-                onMore: (anchor) => menu.open({ track: t }, anchor),
-                onOpenPlaylistMenu: openAddToPlaylistMenu,
+  )
+
+  return h(
+    'section',
+    {
+      'aria-label': '已点赞的歌曲',
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: coverGradient(FAVORITES_TINT),
+        color: '#FFFFFF',
+        overflow: 'hidden',
+      },
+    },
+    // Content / List — the header scrolls away inside the same scroller.
+    h(
+      'div',
+      { style: { flex: 1, minHeight: 0 } },
+      h(List<Track>, {
+        testID: 'favorites-list',
+        header: headerNode,
+        sticky: stickyBar,
+        onScroll: setScrollTop,
+        items: sortedTracks,
+        estimatedItemSize: tokens.size.row,
+        keyExtractor: (t) => t.urn,
+        empty:
+          saved.status === 'loading'
+            ? h(EmptyState, { title: '加载中…' })
+            : h(EmptyState, {
+                icon: 'heart',
+                title: '暂无已点赞歌曲',
+                description: '在曲库中收藏歌曲后，歌曲将在此显示。',
               }),
+        renderItem: (t, index) =>
+          h(FavoriteTrackTableRow, {
+            ctx,
+            track: t,
+            index,
+            compact: viewMode === 'compact',
+            onPress: () =>
+              player?.playFromContext(t.urn, sortedUrns, {
+                context: { kind: 'favorites', label: '收藏夹' },
+              }),
+            onMore: (anchor) => menu.open({ track: t }, anchor),
+            onOpenPlaylistMenu: openAddToPlaylistMenu,
+            // 取消收藏后那一行要回到加号：心形状态跟着实时收藏集合走。
+            inLibrary: isTrackInLibrary(t),
           }),
-        ),
+      }),
+    ),
     h(ContextMenu, menu.menuProps),
     h(SaveToPlaylistPopover, saveToPlaylistMenuProps),
     h(ContextMenu, {

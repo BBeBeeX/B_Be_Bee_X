@@ -10,6 +10,11 @@ const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffec
 
 const POPOVER_WIDTH = 280
 const SUBMENU_WIDTH = 260
+// Spotify's add-to-playlist menu stays tall even with two playlists in it —
+// a popover that collapses to three rows reads as broken, and the extra room
+// is where the search and the folder flyout live comfortably.
+const POPOVER_MIN_HEIGHT = 480
+const SUBMENU_MIN_HEIGHT = 320
 
 export interface PlaylistSaveOption {
   urn: string
@@ -82,12 +87,13 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
 
   const width = POPOVER_WIDTH
   const left = Math.max(8, Math.min(props.x, viewportWidth - width - 8))
-  const estimatedHeight = 440
+  const estimatedHeight = POPOVER_MIN_HEIGHT
   const top =
     props.y + estimatedHeight + 8 <= viewportHeight
       ? Math.max(8, props.y)
       : Math.max(8, viewportHeight - estimatedHeight - 8)
   const maxHeight = Math.max(200, viewportHeight - top - 16)
+  const minHeight = Math.min(POPOVER_MIN_HEIGHT, maxHeight)
 
   // Submenu positioning
   let flyoutLeft = left + width + 2
@@ -101,7 +107,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
       flyoutLeft = Math.max(8, viewportWidth - SUBMENU_WIDTH - 8)
     }
 
-    const subEstHeight = 240
+    const subEstHeight = Math.max(SUBMENU_MIN_HEIGHT, 240)
     if (folderRect.top + subEstHeight + 8 <= viewportHeight) {
       flyoutTop = folderRect.top
     } else if (folderRect.bottom - subEstHeight >= 8) {
@@ -121,8 +127,10 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
     if (adjTop + rect.height + 8 > viewportHeight) {
       adjTop = Math.max(8, viewportHeight - rect.height - 8)
     }
+    const maxH = Math.max(200, viewportHeight - adjTop - 16)
     el.style.top = `${adjTop}px`
-    el.style.maxHeight = `${Math.max(200, viewportHeight - adjTop - 16)}px`
+    el.style.maxHeight = `${maxH}px`
+    el.style.minHeight = `${Math.min(POPOVER_MIN_HEIGHT, maxH)}px`
   }, [props.open, props.playlists.length, props.collections?.length, filter])
 
   useIsomorphicLayoutEffect(() => {
@@ -135,8 +143,10 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
     if (adjTop + rect.height + 8 > viewportHeight) {
       adjTop = Math.max(8, viewportHeight - rect.height - 8)
     }
+    const subMax = Math.max(160, viewportHeight - adjTop - 16)
     el.style.top = `${adjTop}px`
-    el.style.maxHeight = `${Math.max(160, viewportHeight - adjTop - 16)}px`
+    el.style.maxHeight = `${subMax}px`
+    el.style.minHeight = `${Math.min(SUBMENU_MIN_HEIGHT, subMax)}px`
   }, [props.open, hoveredFolderId, folderRect])
 
   if (!props.open) return null
@@ -197,6 +207,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
           top,
           width,
           maxHeight,
+          minHeight,
           background: '#282828',
           color: '#ffffff',
           borderRadius: 8,

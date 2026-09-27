@@ -19,6 +19,7 @@ import {
   playlistMenuItems,
   sleepTimerSubmenu,
   trackMenuItems,
+  useSaveToPlaylistMenu,
   useTrackMenu,
 } from './index.js'
 
@@ -276,6 +277,24 @@ describe('trackMenuItems', () => {
     const timerItem = items.find((i) => i.id === 'sleep-timer')
     expect(timerItem).toBeTruthy()
     expect(timerItem?.label).toBe('睡眠定时器 (已开启)')
+  })
+})
+
+describe('useSaveToPlaylistMenu', () => {
+  it('toggles liked through both stores, so the row heart and the shelf agree', async () => {
+    const h = await harness({ player: false, downloads: false, ui: false })
+    const { result } = renderHook(() => useSaveToPlaylistMenu(h.ctx))
+    act(() => {
+      result.current.open({ urn: URN, title: 'Jóga', loved: true }, { x: 0, y: 0 })
+    })
+    await act(async () => {
+      await result.current.menuProps.onToggleLiked()
+    })
+    // Catalogue's loved flag first, then the shelf write — the order every
+    // favourite writer uses, because the `library/changed` event the shelf
+    // write fires is when listeners re-read.
+    expect(h.sources.calls).toEqual([`loved:${URN}:false`])
+    expect(h.library.calls).toEqual([`save:${URN}:false`])
   })
 })
 

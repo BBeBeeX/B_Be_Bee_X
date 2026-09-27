@@ -182,6 +182,25 @@ export interface ListProps<T> extends CommonProps {
   onEndReached?: () => void
   /** What to show instead of nothing. */
   empty?: unknown
+  /**
+   * Desktop only. Content scrolled inside the scroller above the rows — a
+   * detail page's hero and toolbar scroll away with the list (the Spotify
+   * layout). The virtualiser is offset by the header's measured height
+   * automatically.
+   */
+  header?: ReactNode
+  /**
+   * Desktop only. The bar that stays while the header scrolls away — a
+   * `position: sticky` element the scroller owns directly, because a sticky
+   * element only sticks within its parent's box. Net-zero flow height
+   * (`marginBottom: -height`) keeps it out of the virtualiser's offset.
+   */
+  sticky?: ReactNode
+  /**
+   * Desktop only. The scroller's scroll position, on every scroll event.
+   * Drives collapsing headers: the bar's opacity is a function of this.
+   */
+  onScroll?: (scrollTop: number) => void
 }
 
 export interface EmptyStateProps extends CommonProps {

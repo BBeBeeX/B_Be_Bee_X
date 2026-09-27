@@ -27,7 +27,7 @@ import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { formatDuration, formatTotalDuration } from '@BBeBee/toolkit'
 import { addToCollectionSubmenu, sleepTimerSubmenu, useSaveToPlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
-import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, tablerIcon, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, tablerIcon, useImageColor, coverGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -57,7 +57,13 @@ function TrackLibraryActionButton({
   onAddToFavorites?: () => void
   onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
 }): ReactElement {
+  // Optimistic until the truth catches up — and reset whenever it does: an
+  // unfavourite from any surface flips the prop, drops the optimism, and the
+  // row is a plus again.
   const [optimisticInLibrary, setOptimisticInLibrary] = useState(false)
+  useEffect(() => {
+    setOptimisticInLibrary(false)
+  }, [initialInLibrary])
   const inLibrary = initialInLibrary || optimisticInLibrary
 
   return h(
@@ -359,6 +365,15 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const [collections, setCollections] = useState<readonly Collection[]>([])
   const [isSaved, setIsSaved] = useState(false)
   const [savedTrackUrns, setSavedTrackUrns] = useState<Set<string>>(new Set())
+  const [scrollTop, setScrollTop] = useState(0)
+  // A row's `track.loved` is the value at the album's last fetch, which can be
+  // hours old. When a favourite write fires `library/changed`, re-read the
+  // changed URNs so the heart follows the truth and not the fetch snapshot.
+  const [lovedOverrides, setLovedOverrides] = useState<Map<string, boolean>>(new Map())
+
+  // 背景与吸顶栏的主题色来自专辑封面（dominantColor，缺失时画布提取）。
+  const resolvedCover = useResolvedArtwork(ctx, album.data?.artwork)
+  const tint = useImageColor(resolvedCover?.sourceUrl, resolvedCover?.dominantColor)
 
   useEffect(() => {
     const albumUrn = album.data?.urn
@@ -387,7 +402,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
         .catch(() => {})
     }
 
-    const off = ctx.on('library/changed', (kind) => {
+    const off = ctx.on('library/changed', (kind, urns) => {
       if (!kind || kind === 'album') {
         library
           .isSaved(albumUrn)
@@ -409,22 +424,40 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             }
           })
           .catch(() => {})
+        const list = (urns ?? []).filter(Boolean)
+        if (list.length > 0 && sources?.getTracks) {
+          void sources
+            .getTracks(list)
+            .then((tracks) => {
+              if (cancelled) return
+              const loved = new Map(tracks.map((t) => [t.urn, t.loved === true]))
+              setLovedOverrides((prev) => {
+                const next = new Map(prev)
+                for (const urn of list) next.set(urn, loved.get(urn) ?? false)
+                return next
+              })
+            })
+            .catch(() => {})
+        }
       }
     })
     return () => {
       cancelled = true
       off()
     }
-  }, [ctx, album.data?.urn])
+  }, [ctx, album.data?.urn, library, sources])
 
   const handleTrackAddToFavorites = useCallback(
     async (track: Track) => {
       if (!library) return
       setSavedTrackUrns((prev) => new Set([...prev, track.urn]))
-      await library.setSaved(track.urn, true)
+      setLovedOverrides((prev) => new Map(prev).set(track.urn, true))
+      // Catalogue first: the `library/changed` event the shelf write fires
+      // must already see the loved flag, or listeners re-read stale state.
       if (sources?.setLoved) {
         await sources.setLoved(track.urn, true).catch(() => {})
       }
+      await library.setSaved(track.urn, true)
     },
     [library, sources],
   )
@@ -598,18 +631,69 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const yearText = detail.year || (detail.releaseDate ? detail.releaseDate.slice(0, 4) : '')
   const totalDurationStr = formatTotalDuration(detail.tracks)
 
-  return h(
-    'div',
-    {
-      style: {
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        background: 'linear-gradient(180deg, var(--surface-hover, rgba(95, 135, 255, 0.15)) 0%, var(--surface-1, rgba(8, 13, 26, 0.7)) 280px, var(--bg-primary, #080A10) 100%)',
-        color: '#FFFFFF',
-        overflow: 'hidden',
+  // 往下滚时整块头部随内容上移并让位给吸顶栏，与 Spotify 一致。
+  const scrollProgress = Math.min(1, scrollTop / 240)
+
+  const renderPlayButton = (size: number, iconSize: number, testID: string | undefined) =>
+    h(
+      'button',
+      {
+        type: 'button',
+        'data-testid': testID,
+        'aria-label': 'Play album',
+        onClick: () =>
+          void player?.playNow(sortedUrns, {
+            context: { kind: 'album', urn: detail.urn, label: detail.title },
+          }),
+        disabled: detail.tracks.length === 0,
+        style: {
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
+          border: 'none',
+          cursor: detail.tracks.length === 0 ? 'not-allowed' : 'pointer',
+          opacity: detail.tracks.length === 0 ? 0.5 : 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: 'var(--glow-brand-md, 0 8px 16px rgba(0, 0, 0, 0.3))',
+          color: '#ffffff',
+          paddingLeft: 2,
+        },
       },
-    },
+      tablerIcon('play', { size: iconSize, color: '#ffffff' }),
+      h(
+        'span',
+        {
+          style: {
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: 'hidden',
+            clip: 'rect(0, 0, 0, 0)',
+            whiteSpace: 'nowrap',
+            border: 0,
+          },
+        },
+        'Play album',
+      ),
+    )
+
+  // 随列表一起滚走的部分：封面 hero、操作条、表头。
+  // 吸顶栏单独走 List 的 sticky 插槽（滚动容器的直接子节点）。
+  const stickyBar = h(StickyDetailBar, {
+    title: detail.title,
+    progress: scrollProgress,
+    tint,
+    playButton: renderPlayButton(48, 24, 'album-play-sticky'),
+  })
+
+  const headerNode = h(
+    'div',
+    null,
     // Hero Header
     h(
       'header',
@@ -715,51 +799,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       h(
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 24 } },
-        h(
-          'button',
-          {
-            type: 'button',
-            'aria-label': 'Play album',
-            onClick: () =>
-              void player?.playNow(sortedUrns, {
-                context: { kind: 'album', urn: detail.urn, label: detail.title },
-              }),
-            disabled: detail.tracks.length === 0,
-            style: {
-              width: 56,
-              height: 56,
-              borderRadius: '50%',
-              background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
-              border: 'none',
-              cursor: detail.tracks.length === 0 ? 'not-allowed' : 'pointer',
-              opacity: detail.tracks.length === 0 ? 0.5 : 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: 'var(--glow-brand-md, 0 8px 16px rgba(0, 0, 0, 0.3))',
-              color: '#ffffff',
-              paddingLeft: 2,
-            },
-          },
-          tablerIcon('play', { size: 28, color: '#ffffff' }),
-          h(
-            'span',
-            {
-              style: {
-                position: 'absolute',
-                width: 1,
-                height: 1,
-                padding: 0,
-                margin: -1,
-                overflow: 'hidden',
-                clip: 'rect(0, 0, 0, 0)',
-                whiteSpace: 'nowrap',
-                border: 0,
-              },
-            },
-            'Play album',
-          ),
-        ),
+        renderPlayButton(56, 28, undefined),
         h(
           'button',
           {
@@ -1003,11 +1043,29 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
         renderSortIndicator('duration'),
       ),
     ),
-    // Track list
+  )
+
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background: coverGradient(tint),
+        color: '#FFFFFF',
+        overflow: 'hidden',
+      },
+    },
+    // Track list — the header scrolls away inside the same scroller, and the
+    // sticky bar rides on top of it.
     h(
       'div',
       { style: { flex: 1, minHeight: 0 } },
       h(List<Track>, {
+        header: headerNode,
+        sticky: stickyBar,
+        onScroll: setScrollTop,
         items: sortedTracks,
         accessibilityLabel: `Tracks on ${detail.title}`,
         estimatedItemSize: tokens.size.row,
@@ -1018,7 +1076,11 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             track,
             index,
             albumTitle: detail.title,
-            inLibrary: track.loved === true || savedTrackUrns.has(track.urn),
+            // Live saved set first; the row's snapshot `loved` only fills in
+            // what the live data has not answered yet.
+            inLibrary:
+              savedTrackUrns.has(track.urn) ||
+              (lovedOverrides.get(track.urn) ?? track.loved === true),
             compact: viewMode === 'compact',
             onAddToFavorites: handleTrackAddToFavorites,
             onOpenPlaylistMenu: (t, anchor) => saveToPlaylistMenu.open(t, anchor),

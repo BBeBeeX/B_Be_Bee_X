@@ -971,6 +971,11 @@ describe('FavoritesScreen', () => {
       expect(container.textContent).toContain('已收藏的音乐 • 1 首歌曲')
       expect(container.textContent).toContain('歌单')
 
+      // 滚动折叠后的吸顶栏：吸附在滚动容器顶部，随滚动淡入。
+      const sticky = getByTestId('sticky-detail-bar')
+      expect(sticky.style.position).toBe('sticky')
+      expect(getByTestId('favorites-play-sticky')).toBeTruthy()
+
       expect(getByTestId('favorites-play')).toBeTruthy()
       expect(getByPlaceholderText('在已点赞歌曲中搜索')).toBeTruthy()
       expect(getByTestId('favorites-sort-default')).toBeTruthy()
