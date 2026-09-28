@@ -27,6 +27,7 @@ import {
   List,
   Sheet,
   Slider,
+  StickyDetailBar,
   Text,
   TextField,
   Toast,
@@ -238,6 +239,33 @@ describe('Toast', () => {
 
   it('offers a dismiss control with a name', () => {
     expect(html(h(Toast, { message: 'x', onDismiss: () => {} }))).toContain('aria-label="Dismiss"')
+  })
+})
+
+describe('StickyDetailBar', () => {
+  const bar = (props: { progress: number; docked?: boolean }) =>
+    html(h(StickyDetailBar, { title: 'Homogenic', ...props, playButton: h('button', null, '▶') }))
+
+  it('rides above the viewport at progress 0, with the play button un-docked', () => {
+    const out = bar({ progress: 0 })
+    expect(out).toContain('translateY(-64px)')
+    expect(out).toContain('scale(0.4)')
+    expect(out).toContain('pointer-events:none')
+  })
+
+  it('is docked at progress 1: slid in, play button absorbed with a scale-in', () => {
+    const out = bar({ progress: 1, docked: true })
+    expect(out).toContain('translateY(0px)')
+    expect(out).toContain('scale(1)')
+    // the absorb action is a transition, not a snap cut
+    expect(out).toContain('transition:transform')
+  })
+
+  it('always carries the title and the sticky contract', () => {
+    const out = bar({ progress: 0.5 })
+    expect(out).toContain('Homogenic')
+    expect(out).toContain('position:sticky')
+    expect(out).toContain('data-testid="sticky-detail-bar"')
   })
 })
 

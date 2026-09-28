@@ -285,13 +285,16 @@ which events invalidate which state — are written once. Only the JSX is writte
 - **Lists virtualise.** `FlashList` on mobile, `@tanstack/react-virtual` on desktop. A library can
   hold 100k tracks; neither platform survives rendering that.
 - **A detail page's header scrolls away with its list.** The desktop `List` owns a `header` slot
-  (hero, action bar, table header — whatever scrolls off) and a `sticky` slot (the
-  `StickyDetailBar` that fades in over ~240px of scroll, leaving title + play button, the Spotify
-  layout). The virtualiser is offset by the header's *measured* height (`scrollMargin`, measured at
-  mount and watched by `ResizeObserver` — a wrapped title makes it unknowable from props). The
-  sticky bar must be the scroller's **direct child**: `position: sticky` only sticks within its
-  parent's box, so nesting it in the header would scroll it away exactly when it finishes arriving.
-  `onScroll` reports `scrollTop` so the bar's fades are a pure function of scroll position.
+  (hero, action bar — whatever scrolls off), a `sticky` slot (the `StickyDetailBar` that slides in
+  from above the viewport as the header's play button approaches, leaving title + play button +
+  the pinned table header — the Spotify layout), and `onScroll`. The choreography is measured,
+  not assumed (`useDetailBarCollapse` reads the play button's distance to the scrollport top per
+  scroll event): the bar docks — its compact play button scales in — when its edge has covered
+  half the button. The virtualiser is offset by the header's *measured* height (`scrollMargin`,
+  measured at mount and watched by `ResizeObserver` — a wrapped title makes it unknowable from
+  props). The sticky bar must be the scroller's **direct child**: `position: sticky` only sticks
+  within its parent's box, so nesting it in the header would scroll it away exactly when it
+  finishes arriving.
 - **`player/position` is interpolated, never polled.** The event fires at 1 Hz
   ([07 §5](../data-model/events.md#5-the-event-map)); a progress bar animates between ticks with
   `requestAnimationFrame` and re-syncs on each event.

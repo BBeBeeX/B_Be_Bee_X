@@ -4,7 +4,7 @@ import type { Context } from 'cordis'
 import type { Album, PlayerService, Track } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { serviceOf, type MenuAnchor, type MenuItemSpec } from '@BBeBee/ui-core'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, viewModeMenuItems, useViewMode, coverGradient } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useDetailBarCollapse, viewModeMenuItems, useViewMode, coverGradient } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -484,8 +484,10 @@ function LocalAlbumRow({
   )
 }
 
-/** The distance over which the hero folds into the sticky bar. */
-const COLLAPSE_DISTANCE = 240
+/** 表头吸顶时停在吸顶栏正下方。 */
+const BAR_HEIGHT = 64
+/** 表头悬停时列间的发丝分隔线。 */
+const HOVER_DIVIDER = 'inset 1px 0 0 rgba(255, 255, 255, 0.08)'
 
 export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   const [tracks, setTracks] = useState<readonly Track[]>([])
@@ -499,7 +501,9 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   const [albumSortKey, setAlbumSortKey] = useState<LocalAlbumSortKey>('default')
   const [albumSortOrder, setAlbumSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
-  const [scrollTop, setScrollTop] = useState(0)
+  const [headerHovered, setHeaderHovered] = useState(false)
+  // 滚动折叠：吸顶栏在播放按钮靠近时滑入，滚过按钮一半高度时吸附（docked）。
+  const collapse = useDetailBarCollapse({ barHeight: BAR_HEIGHT, anchorHeight: 56 })
   // 视图模式：歌曲页默认列表，专辑页默认平铺（卡片网格），选择按页记忆。
   const [trackViewMode, setTrackViewMode] = useViewMode('local-tracks', 'list', ['compact', 'list'] as const)
   const [albumViewMode, setAlbumViewMode] = useViewMode('local-albums', 'tiled', ['compact', 'list', 'tiled'] as const)
@@ -664,10 +668,16 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   }
 
   const renderTrackSortIndicator = (key: LocalTrackSortKey) => {
-    if (trackSortKey !== key) return null
-    return trackSortOrder === 'asc'
-      ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
-      : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
+    if (trackSortKey === key) {
+      return trackSortOrder === 'asc'
+        ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
+        : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
+    }
+    // 悬停表头时，未排序的列给出“可排序”的浅色箭头提示。
+    if (headerHovered) {
+      return tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4, opacity: 0.35 } })
+    }
+    return null
   }
 
   const trackSortLabelMap: Record<LocalTrackSortKey, string> = {
@@ -778,9 +788,6 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
     },
   ]
 
-  // 往下滚时整块头部随内容上移并让位给吸顶栏，与 Spotify 一致。
-  const scrollProgress = Math.min(1, scrollTop / COLLAPSE_DISTANCE)
-
   const renderPlayButton = (size: number, iconSize: number, testID: string | undefined) =>
     h(
       'button',
@@ -815,7 +822,8 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   // 吸顶栏单独走 sticky 插槽/滚动容器的直接子节点。
   const stickyBar = h(StickyDetailBar, {
     title: '本地音乐',
-    progress: scrollProgress,
+    progress: collapse.slide,
+    docked: collapse.docked,
     playButton: renderPlayButton(48, 24, 'local-music-play-sticky'),
   })
 
@@ -929,7 +937,8 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
       h(
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 24 } },
-        renderPlayButton(56, 28, 'local-music-play'),
+        // 折叠锚点：吸顶栏按这只大按钮的位置决定滑入与吸附时机。
+        h('div', { ref: collapse.anchorRef, style: { display: 'flex' } }, renderPlayButton(56, 28, 'local-music-play')),
         h(
           'button',
           {
@@ -1034,12 +1043,14 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
       ),
     ),
     error ? h('div', { style: { padding: '0 32px 8px 32px' } }, h(Text, { variant: 'sm', tone: 'error' }, error)) : null,
-    // Table Header (歌曲模式)
+    // Table Header (歌曲模式) — 吸附在吸顶栏正下方；悬停时显示列分隔线与排序箭头。
     viewMode === 'tracks'
       ? h(
           'div',
           {
             key: 'track-table-header',
+            onMouseEnter: () => setHeaderHovered(true),
+            onMouseLeave: () => setHeaderHovered(false),
             style: {
               display: 'flex',
               alignItems: 'center',
@@ -1049,6 +1060,10 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
               fontSize: 13,
               fontWeight: 500,
               flexShrink: 0,
+              position: 'sticky',
+              top: BAR_HEIGHT,
+              zIndex: 15,
+              background: collapse.docked ? 'var(--bg-primary, #080A10)' : 'transparent',
             },
           },
           h(
@@ -1068,6 +1083,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                 padding: 0,
                 fontSize: 13,
                 fontWeight: 500,
+                boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
               },
             },
             '#',
@@ -1089,6 +1105,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                 cursor: 'pointer',
                 fontSize: 13,
                 fontWeight: 500,
+                boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
               },
             },
             '标题',
@@ -1106,6 +1123,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                     color: '#b3b3b3',
                     fontSize: 13,
                     fontWeight: 500,
+                    boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
                   },
                 },
                 '艺人',
@@ -1127,6 +1145,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                 cursor: 'pointer',
                 fontSize: 13,
                 fontWeight: 500,
+                boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
               },
             },
             '专辑',
@@ -1153,6 +1172,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                 alignItems: 'center',
                 justifyContent: 'flex-end',
                 gap: 4,
+                boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
               },
             },
             tablerIcon('clock', { size: 18 }),
@@ -1254,14 +1274,14 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
       ? // 歌曲模式：头部随虚拟列表一起滚动，吸顶栏浮在其上。
         h(
           'div',
-          { key: 'track-list-container', style: { flex: 1, minHeight: 0 } },
+          { key: 'track-list-container', ref: collapse.scrollerRef, style: { flex: 1, minHeight: 0 } },
           loading
             ? h('div', { style: { overflowY: 'auto', height: '100%' } }, stickyBar, headerNode, h(EmptyState, { title: '加载中…' }))
             : h(List<Track>, {
                 testID: 'local-tracks-list',
                 header: headerNode,
                 sticky: stickyBar,
-                onScroll: setScrollTop,
+                onScroll: collapse.handleScroll,
                 items: sortedTracks,
                 estimatedItemSize: tokens.size.row,
                 keyExtractor: (t) => t.urn,
@@ -1293,8 +1313,9 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
           'div',
           {
             key: 'album-scroll-container',
+            ref: collapse.scrollerRef,
             style: { flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' },
-            onScroll: (e: { currentTarget: { scrollTop: number } }) => setScrollTop(e.currentTarget.scrollTop),
+            onScroll: collapse.handleScroll,
           },
           stickyBar,
           headerNode,

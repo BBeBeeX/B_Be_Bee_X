@@ -27,7 +27,7 @@ import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { formatDuration, formatTotalDuration } from '@BBeBee/toolkit'
 import { addToCollectionSubmenu, sleepTimerSubmenu, useSaveToPlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
-import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, tablerIcon, useImageColor, coverGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, tablerIcon, useDetailBarCollapse, useImageColor, coverGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -365,7 +365,9 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const [collections, setCollections] = useState<readonly Collection[]>([])
   const [isSaved, setIsSaved] = useState(false)
   const [savedTrackUrns, setSavedTrackUrns] = useState<Set<string>>(new Set())
-  const [scrollTop, setScrollTop] = useState(0)
+  const [headerHovered, setHeaderHovered] = useState(false)
+  // 滚动折叠：吸顶栏在播放按钮靠近时滑入，滚过按钮一半高度时吸附（docked）。
+  const collapse = useDetailBarCollapse({ barHeight: 64, anchorHeight: 56 })
   // A row's `track.loved` is the value at the album's last fetch, which can be
   // hours old. When a favourite write fires `library/changed`, re-read the
   // changed URNs so the heart follows the truth and not the fetch snapshot.
@@ -575,10 +577,16 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   }
 
   const renderSortIndicator = (key: AlbumSortKey) => {
-    if (sortKey !== key) return null
-    return sortOrder === 'asc'
-      ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
-      : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
+    if (sortKey === key) {
+      return sortOrder === 'asc'
+        ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
+        : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
+    }
+    // 悬停表头时，未排序的列给出“可排序”的浅色箭头提示。
+    if (headerHovered) {
+      return tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4, opacity: 0.35 } })
+    }
+    return null
   }
 
   const sortLabelMap: Record<AlbumSortKey, string> = {
@@ -630,9 +638,6 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
 
   const yearText = detail.year || (detail.releaseDate ? detail.releaseDate.slice(0, 4) : '')
   const totalDurationStr = formatTotalDuration(detail.tracks)
-
-  // 往下滚时整块头部随内容上移并让位给吸顶栏，与 Spotify 一致。
-  const scrollProgress = Math.min(1, scrollTop / 240)
 
   const renderPlayButton = (size: number, iconSize: number, testID: string | undefined) =>
     h(
@@ -686,7 +691,8 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   // 吸顶栏单独走 List 的 sticky 插槽（滚动容器的直接子节点）。
   const stickyBar = h(StickyDetailBar, {
     title: detail.title,
-    progress: scrollProgress,
+    progress: collapse.slide,
+    docked: collapse.docked,
     tint,
     playButton: renderPlayButton(48, 24, 'album-play-sticky'),
   })
@@ -739,6 +745,11 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
               color: '#FFFFFF',
               letterSpacing: '-0.03em',
               wordBreak: 'break-word',
+              // 超长标题最多两行，超出省略——不撑破布局。
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              overflow: 'hidden',
             },
           },
           detail.title,
@@ -799,7 +810,8 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       h(
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 24 } },
-        renderPlayButton(56, 28, undefined),
+        // 折叠锚点：吸顶栏按这只大按钮的位置决定滑入与吸附时机。
+        h('div', { ref: collapse.anchorRef, style: { display: 'flex' } }, renderPlayButton(56, 28, undefined)),
         h(
           'button',
           {
@@ -917,10 +929,12 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
         ),
       ),
     ),
-    // Table Header
+    // Table Header — 吸附在吸顶栏正下方；悬停时显示列分隔线与排序箭头。
     h(
       'div',
       {
+        onMouseEnter: () => setHeaderHovered(true),
+        onMouseLeave: () => setHeaderHovered(false),
         style: {
           display: 'flex',
           alignItems: 'center',
@@ -930,6 +944,10 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
           fontSize: 13,
           fontWeight: 500,
           flexShrink: 0,
+          position: 'sticky',
+          top: 64,
+          zIndex: 15,
+          background: collapse.docked ? 'var(--bg-primary, #080A10)' : 'transparent',
         },
       },
       h(
@@ -949,6 +967,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             padding: 0,
             fontSize: 13,
             fontWeight: 500,
+            boxShadow: headerHovered ? 'inset 1px 0 0 rgba(255, 255, 255, 0.08)' : undefined,
           },
         },
         '#',
@@ -971,6 +990,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             padding: 0,
             fontSize: 13,
             fontWeight: 500,
+            boxShadow: headerHovered ? 'inset 1px 0 0 rgba(255, 255, 255, 0.08)' : undefined,
           },
         },
         '标题',
@@ -988,6 +1008,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
                 color: '#b3b3b3',
                 fontSize: 13,
                 fontWeight: 500,
+                boxShadow: headerHovered ? 'inset 1px 0 0 rgba(255, 255, 255, 0.08)' : undefined,
               },
             },
             '艺人',
@@ -1010,6 +1031,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             padding: 0,
             fontSize: 13,
             fontWeight: 500,
+            boxShadow: headerHovered ? 'inset 1px 0 0 rgba(255, 255, 255, 0.08)' : undefined,
           },
         },
         '专辑',
@@ -1037,6 +1059,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
             alignItems: 'center',
             justifyContent: 'flex-end',
             gap: 4,
+            boxShadow: headerHovered ? 'inset 1px 0 0 rgba(255, 255, 255, 0.08)' : undefined,
           },
         },
         tablerIcon('clock', { size: 18 }),
@@ -1061,11 +1084,11 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
     // sticky bar rides on top of it.
     h(
       'div',
-      { style: { flex: 1, minHeight: 0 } },
+      { ref: collapse.scrollerRef, style: { flex: 1, minHeight: 0 } },
       h(List<Track>, {
         header: headerNode,
         sticky: stickyBar,
-        onScroll: setScrollTop,
+        onScroll: collapse.handleScroll,
         items: sortedTracks,
         accessibilityLabel: `Tracks on ${detail.title}`,
         estimatedItemSize: tokens.size.row,

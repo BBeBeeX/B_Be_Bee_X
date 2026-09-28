@@ -6,7 +6,7 @@ import { usePlaylist } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import type { MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { useTrackMenu } from '@BBeBee/ui-menus'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useImageColor, coverGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useDetailBarCollapse, useImageColor, coverGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -313,8 +313,10 @@ function PlaylistTrackTableRow({
 
 type PlaylistSortKey = 'custom' | 'title' | 'artist' | 'album' | 'dateAdded' | 'duration'
 
-/** The distance over which the hero folds into the sticky bar. */
-const COLLAPSE_DISTANCE = 240
+/** 表头吸顶时停在吸顶栏正下方。 */
+const BAR_HEIGHT = 64
+/** 表头悬停时列间的发丝分隔线。 */
+const HOVER_DIVIDER = 'inset 1px 0 0 rgba(255, 255, 255, 0.08)'
 
 export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string }): ReactElement {
   const state = usePlaylist(ctx, urn)
@@ -330,7 +332,10 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   const [viewMode, setViewMode] = useViewMode('playlist-detail', 'list', ['compact', 'list'] as const)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
-  const [scrollTop, setScrollTop] = useState(0)
+  const [headerHovered, setHeaderHovered] = useState(false)
+  // 滚动折叠：吸顶栏在播放按钮靠近时从视口上方滑入，滚过按钮一半高度时
+  // 把按钮“吸”进吸顶栏（docked），表头吸附在吸顶栏正下方。
+  const collapse = useDetailBarCollapse({ barHeight: BAR_HEIGHT, anchorHeight: 56 })
   const menu = useTrackMenu(ctx, { fromPlaylistUrn: urn })
   const { isTrackInLibrary, openAddToPlaylistMenu, saveToPlaylistMenuProps } = useTrackLibraryInfo(ctx)
 
@@ -414,10 +419,16 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   }
 
   const renderSortIndicator = (key: PlaylistSortKey) => {
-    if (sortKey !== key) return null
-    return sortOrder === 'asc'
-      ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
-      : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
+    if (sortKey === key) {
+      return sortOrder === 'asc'
+        ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
+        : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
+    }
+    // 悬停表头时，未排序的列给出“可排序”的浅色箭头提示。
+    if (headerHovered) {
+      return tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4, opacity: 0.35 } })
+    }
+    return null
   }
 
   const sortLabelMap: Record<PlaylistSortKey, string> = {
@@ -483,9 +494,6 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
 
   const totalDurationStr = formatTotalDuration(Array.from(tracks.values()))
 
-  // 往下滚时整块头部随内容上移并让位给吸顶栏，与 Spotify 一致。
-  const scrollProgress = Math.min(1, scrollTop / COLLAPSE_DISTANCE)
-
   const renderPlayButton = (size: number, iconSize: number, testID: string | undefined) =>
     h(
       'button',
@@ -518,7 +526,8 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
   // 吸顶栏单独走 List 的 sticky 插槽（滚动容器的直接子节点）。
   const stickyBar = h(StickyDetailBar, {
     title: detail.name,
-    progress: scrollProgress,
+    progress: collapse.slide,
+    docked: collapse.docked,
     tint,
     playButton: renderPlayButton(48, 24, 'playlist-play-sticky'),
   })
@@ -568,6 +577,11 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
               letterSpacing: '-0.03em',
               cursor: 'pointer',
               wordBreak: 'break-word',
+              // 超长标题最多两行，超出省略——不撑破布局。
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              overflow: 'hidden',
             },
           },
           detail.name,
@@ -628,7 +642,8 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
       h(
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 24 } },
-        renderPlayButton(56, 28, 'playlist-play'),
+        // 折叠锚点：吸顶栏按这只大按钮的位置决定滑入与吸附时机。
+        h('div', { ref: collapse.anchorRef, style: { display: 'flex' } }, renderPlayButton(56, 28, 'playlist-play')),
         h(
           'button',
           {
@@ -767,10 +782,12 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
       ),
     ),
     error ? h('div', { style: { padding: '0 32px 8px 32px' } }, h(Text, { variant: 'sm', tone: 'error' }, error)) : null,
-    // Table Header
+    // Table Header — 吸附在吸顶栏正下方；悬停时显示列分隔线与排序箭头。
     h(
       'div',
       {
+        onMouseEnter: () => setHeaderHovered(true),
+        onMouseLeave: () => setHeaderHovered(false),
         style: {
           display: 'flex',
           alignItems: 'center',
@@ -780,6 +797,10 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
           fontSize: 13,
           fontWeight: 500,
           flexShrink: 0,
+          position: 'sticky',
+          top: BAR_HEIGHT,
+          zIndex: 15,
+          background: collapse.docked ? 'var(--bg-primary, #080A10)' : 'transparent',
         },
       },
       h(
@@ -799,6 +820,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             padding: 0,
             fontSize: 13,
             fontWeight: 500,
+            boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
           },
         },
         '#',
@@ -820,6 +842,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             cursor: 'pointer',
             fontSize: 13,
             fontWeight: 500,
+            boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
           },
         },
         '标题',
@@ -837,6 +860,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
                 color: '#b3b3b3',
                 fontSize: 13,
                 fontWeight: 500,
+                boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
               },
             },
             '艺人',
@@ -858,6 +882,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             cursor: 'pointer',
             fontSize: 13,
             fontWeight: 500,
+            boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
           },
         },
         '专辑',
@@ -879,6 +904,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             cursor: 'pointer',
             fontSize: 13,
             fontWeight: 500,
+            boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
           },
         },
         '添加日期',
@@ -905,6 +931,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             alignItems: 'center',
             justifyContent: 'flex-end',
             gap: 4,
+            boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
           },
         },
         tablerIcon('clock', { size: 18 }),
@@ -930,12 +957,12 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
     // sticky bar rides on top of it.
     h(
       'div',
-      { style: { flex: 1, minHeight: 0 } },
+      { ref: collapse.scrollerRef, style: { flex: 1, minHeight: 0 } },
       h(List<{ item: PlaylistItem; trackUrn: string; track?: Track; originalIndex: number }>, {
         testID: 'playlist-tracks',
         header: headerNode,
         sticky: stickyBar,
-        onScroll: setScrollTop,
+        onScroll: collapse.handleScroll,
         items: filteredRows,
         estimatedItemSize: tokens.size.row,
         keyExtractor: (row) => row.item.id,

@@ -37,6 +37,7 @@ export {
 } from './components/SaveToPlaylistPopover.js'
 export { useImageColor, coverGradient, tintRgba, extractVibrantColor } from './components/coverTheme.js'
 export { StickyDetailBar, type StickyDetailBarProps } from './components/StickyDetailBar.js'
+export { useDetailBarCollapse, type DetailBarCollapse } from './components/useDetailBarCollapse.js'
 export { viewModeMenuItems, useViewMode, type TrackViewMode, type AlbumViewMode } from './components/ViewMode.js'
 export { tablerIcon } from './icons/index.js'
 

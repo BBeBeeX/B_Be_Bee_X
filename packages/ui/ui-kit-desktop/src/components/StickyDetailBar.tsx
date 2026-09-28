@@ -5,28 +5,39 @@ import { tintRgba } from './coverTheme.js'
 export interface StickyDetailBarProps {
   /** The page title, shown once the bar has taken over for the hero. */
   title: string
-  /** The page's primary action, riding along with the bar. */
+  /** The page's primary action, absorbed into the bar when it docks. */
   playButton?: ReactNode
-  /** 0 — page top, 1 — fully scrolled. Every fade on the bar is a function of this. */
+  /** 0 — bar fully above the viewport, 1 — fully slid in. Drives the slide and the title fade. */
   progress: number
+  /**
+   * The dock moment: the bar's edge has scrolled past half the header play
+   * button, so the bar's own play button is absorbed in with a scale-in.
+   */
+  docked?: boolean
   /** The cover's dominant colour; the bar washes towards it as it lands. */
   tint?: string
   /** Right-aligned extras (shuffle, heart, …) next to the title. */
   trailing?: ReactNode
+  /** Bar height in px; the slide travel and the negative flow margin derive from it. */
+  barHeight?: number
 }
 
 /**
  * The bar a detail page collapses into.
  *
- * In flow it costs nothing — `marginBottom: -64` overlays it on the hero's
- * first 64 pixels, where a transparent bar hides nothing. As the page scrolls
- * it sticks, gains an (almost opaque) background the rows slide under, and
- * the title crossfades in; `pointerEvents` follows the fade so the ghost of
+ * In flow it costs nothing — `marginBottom: -height` overlays it on the top
+ * of the scroll content, where a translated-away bar hides nothing. It slides
+ * down from above the viewport (`translateY`) as the header's play button
+ * approaches, and when its edge has covered half the button, `docked` flips:
+ * the bar's own play button scales in — the absorb action — and the title
+ * has finished fading in. `pointerEvents` follows the slide so the ghost of
  * the bar never eats a click meant for the hero.
  */
 export function StickyDetailBar(props: StickyDetailBarProps): ReactElement {
+  const barHeight = props.barHeight ?? 64
   const p = Math.max(0, Math.min(1, props.progress))
-  const titleOpacity = Math.max(0, (p - 0.55) / 0.45)
+  const docked = props.docked ?? p >= 1
+  const titleOpacity = p
   const bg = props.tint
     ? `linear-gradient(${tintRgba(props.tint, 0.5)}, ${tintRgba(props.tint, 0.5)}), var(--bg-primary, #080A10)`
     : 'var(--bg-primary, #080A10)'
@@ -38,19 +49,34 @@ export function StickyDetailBar(props: StickyDetailBarProps): ReactElement {
         position: 'sticky',
         top: 0,
         zIndex: 20,
-        height: 64,
-        marginBottom: -64,
+        height: barHeight,
+        marginBottom: -barHeight,
         display: 'flex',
         alignItems: 'center',
         gap: 16,
         padding: '0 32px',
         background: bg,
         opacity: p,
-        pointerEvents: p > 0.1 ? 'auto' : 'none',
-        borderBottom: p > 0.9 ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid transparent',
+        transform: `translateY(${-barHeight * (1 - p)}px)`,
+        pointerEvents: p > 0.5 ? 'auto' : 'none',
+        borderBottom: docked ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid transparent',
       },
     },
-    props.playButton ? h('div', { style: { flexShrink: 0, display: 'flex' } }, props.playButton) : null,
+    props.playButton
+      ? h(
+          'div',
+          {
+            style: {
+              flexShrink: 0,
+              display: 'flex',
+              transform: docked ? 'scale(1)' : 'scale(0.4)',
+              opacity: docked ? 1 : 0,
+              transition: 'transform 0.25s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease',
+            },
+          },
+          props.playButton,
+        )
+      : null,
     h(
       'span',
       {

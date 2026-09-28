@@ -263,17 +263,12 @@
         background-color: transparent !important;
       }
 
-      /* Global sleek auto-hiding scrollbars: hidden by default, visible on hover or during scroll */
-      * {
-        scrollbar-width: thin;
-        scrollbar-color: transparent transparent;
-        transition: scrollbar-color 0.3s ease;
-      }
-      *:hover,
-      *.is-scrolling,
-      html.is-scrolling * {
-        scrollbar-color: rgba(145, 176, 255, 0.25) transparent;
-      }
+      /* Global sleek auto-hiding scrollbars: hidden by default, visible on hover or during scroll.
+         ⚠️ Do NOT add standard `scrollbar-width` / `scrollbar-color` here: Chromium 121+ honors
+         them and disables every `::-webkit-scrollbar` rule below, falling back to the native thin
+         scrollbar — a strip with its own track that neither spans the scrollport cleanly nor goes
+         fully transparent. The webkit rules keep the track invisible at all times and show only
+         the 4px thumb on hover/scroll. */
       *::-webkit-scrollbar {
         width: 4px;
         height: 4px;
