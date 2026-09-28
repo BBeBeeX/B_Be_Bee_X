@@ -29,6 +29,11 @@ export class NowPlayingPlugin extends Service implements NowPlayingService {
 
   private currentStyle: NowPlayingStyleId = DEFAULT_NOW_PLAYING_STYLE
   private readonly styles = new Map<string, NowPlayingStyleMeta>()
+  private cachedStyles: readonly NowPlayingStyleMeta[] = []
+
+  private refreshCachedStyles(): void {
+    this.cachedStyles = Object.freeze(Array.from(this.styles.values()))
+  }
 
   constructor(ctx: Context) {
     super(ctx, 'nowPlaying')
@@ -37,6 +42,7 @@ export class NowPlayingPlugin extends Service implements NowPlayingService {
     for (const style of NOW_PLAYING_STYLES) {
       this.styles.set(style.id, { ...style, type: 'builtin' })
     }
+    this.refreshCachedStyles()
 
     // 1. Restore persisted custom styles & preferred style via store
     this.ctx.inject(['store'], (scoped) => {
@@ -47,6 +53,7 @@ export class NowPlayingPlugin extends Service implements NowPlayingService {
               this.styles.set(item.id, { ...item, type: item.type ?? 'sandboxed' })
             }
           }
+          this.refreshCachedStyles()
           this.ctx.emit('now-playing/registry-changed', this.getStyles())
         }
       }).catch(() => {})
@@ -80,7 +87,7 @@ export class NowPlayingPlugin extends Service implements NowPlayingService {
   }
 
   getStyles(): readonly NowPlayingStyleMeta[] {
-    return Array.from(this.styles.values())
+    return this.cachedStyles
   }
 
   setStyle(id: NowPlayingStyleId): void {
@@ -118,6 +125,7 @@ export class NowPlayingPlugin extends Service implements NowPlayingService {
       type: meta.type ?? 'sandboxed',
     }
     this.styles.set(meta.id, finalMeta)
+    this.refreshCachedStyles()
     this.persistCustomStyles()
     this.ctx.emit('now-playing/registry-changed', this.getStyles())
 
@@ -135,6 +143,7 @@ export class NowPlayingPlugin extends Service implements NowPlayingService {
     }
 
     this.styles.delete(id)
+    this.refreshCachedStyles()
     this.persistCustomStyles()
 
     // If active style was deleted, reset to default style

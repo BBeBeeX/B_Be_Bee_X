@@ -354,8 +354,12 @@ export class LyricSourcesPlugin extends Service implements LyricSourcesService {
   }
 }
 
-export function apply(ctx: Context) {
-  ctx.plugin(LyricSourcesPlugin)
+export const name = 'plugin-lyric-sources'
+
+export async function apply(ctx: Context) {
+  ctx.logger.info('plugin-lyric-sources: loaded')
+  await ctx.plugin(LyricSourcesPlugin)
 }
 
 export default LyricSourcesPlugin
+

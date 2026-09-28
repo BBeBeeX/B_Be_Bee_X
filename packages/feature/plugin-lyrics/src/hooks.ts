@@ -34,6 +34,17 @@ const EMPTY_PARSED: ParsedLyrics = {
   synced: false,
 }
 
+const IDLE_LYRICS_STATE: LyricsState = {
+  status: 'idle',
+  offsetMs: 0,
+}
+
+const IDLE_TRANSPORT_STATE: TransportState = {
+  status: 'idle',
+  positionMs: 0,
+  durationMs: 0,
+} as TransportState
+
 /**
  * Returns current lyrics state and parsed lines.
  * Updates when the track changes or lyrics state updates.
@@ -44,7 +55,7 @@ export function useLyrics(ctx: Context): UseLyricsResult {
   const state = useServiceState<LyricsState>(
     ctx,
     ['lyrics/changed'],
-    () => getLyrics()?.state ?? { status: 'idle', offsetMs: 0 },
+    () => getLyrics()?.state ?? IDLE_LYRICS_STATE,
   )
 
   const parsed = useMemo(() => {
@@ -202,7 +213,7 @@ export function useCurrentLyric(ctx: Context): CurrentLyricInfo {
   const transport = useServiceState<TransportState>(
     ctx,
     ['player/state-changed', 'player/track-changed'],
-    () => getPlayer()?.state ?? ({ status: 'idle', positionMs: 0, durationMs: 0 } as TransportState),
+    () => getPlayer()?.state ?? IDLE_TRANSPORT_STATE,
   )
 
   const currentLine = activeIndex >= 0 ? parsed.lines[activeIndex] : undefined

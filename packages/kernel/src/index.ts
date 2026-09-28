@@ -26,6 +26,23 @@
  * call it; put it below and only Layer 2 may.
  */
 
+import { Context } from 'cordis'
+
+// React checks `$$typeof` on objects during rendering, reconciliation,
+// and DevTools inspection. On a scoped Cordis Context, accessing an un-injected
+// property throws `cannot get property "$$typeof" without inject`.
+// Defining `$$typeof: undefined` on `Context.prototype` ensures `Reflect.has(target, '$$typeof')`
+// is true, answering `undefined` rather than throwing when React inspects a context.
+try {
+  Object.defineProperty(Context.prototype, '$$typeof', {
+    value: undefined,
+    configurable: true,
+    writable: true,
+  })
+} catch {
+  // Ignore in environments where prototype is immutable
+}
+
 // ── The pinned Cordis surface — open to every layer ───────────────────────
 // Deliberately narrow: this is the entire API the project uses, which bounds
 // the blast radius of an upstream change and makes it auditable.

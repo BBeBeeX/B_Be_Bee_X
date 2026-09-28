@@ -9,9 +9,9 @@
 import { createElement as h, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { NowPlayingStyleId } from '@BBeBee/protocol'
+import type { NowPlayingService, NowPlayingStyleId } from '@BBeBee/protocol'
 import { NOW_PLAYING_STYLES } from '@BBeBee/protocol'
-import { useServiceState } from '@BBeBee/ui-core'
+import { serviceOf, shallowArrayEqual, useServiceState } from '@BBeBee/ui-core'
 import { Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
 
@@ -28,7 +28,8 @@ export function StyleSwitcher({ ctx, styleId, onStyleChange }: StyleSwitcherProp
   const styles = useServiceState(
     ctx,
     ['now-playing/registry-changed'],
-    () => ctx.nowPlaying?.getStyles?.() ?? NOW_PLAYING_STYLES,
+    () => serviceOf<NowPlayingService>(ctx, 'nowPlaying')?.getStyles?.() ?? NOW_PLAYING_STYLES,
+    { isEqual: shallowArrayEqual },
   )
 
   useEffect(() => {

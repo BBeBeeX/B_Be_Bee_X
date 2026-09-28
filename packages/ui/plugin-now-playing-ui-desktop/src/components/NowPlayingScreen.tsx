@@ -18,8 +18,9 @@ import {
   useTransportAvailability,
 } from '@BBeBee/plugin-player/hooks'
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
-import { useServiceState } from '@BBeBee/ui-core'
+import { useServiceState, serviceOf, shallowArrayEqual } from '@BBeBee/ui-core'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
+import type { NowPlayingService, UiService } from '@BBeBee/protocol'
 import { NOW_PLAYING_STYLES } from '@BBeBee/protocol'
 import { useNowPlayingStyle } from '@BBeBee/plugin-now-playing/hooks'
 import { NOW_PLAYING_LAYOUT_MAP, SandboxedLayout } from '../styles/index.js'
@@ -45,25 +46,28 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
   const allStyles = useServiceState(
     ctx,
     ['now-playing/registry-changed'],
-    () => ctx.nowPlaying?.getStyles?.() ?? NOW_PLAYING_STYLES,
+    () => serviceOf<NowPlayingService>(ctx, 'nowPlaying')?.getStyles?.() ?? NOW_PLAYING_STYLES,
+    { isEqual: shallowArrayEqual },
   )
   const currentMeta = allStyles.find((s) => s.id === styleId)
   const isSandboxed = currentMeta?.type === 'sandboxed'
 
   const PanelComponent = useServiceState(ctx, ['ui/changed'], () => {
-    const panelSlots = ctx.ui?.slotsFor?.('now-playing.panel') ?? []
+    const ui = serviceOf<UiService>(ctx, 'ui')
+    const panelSlots = ui?.slotsFor?.('now-playing.panel') ?? []
     if (panelSlots[0]) {
-      return (ctx.ui?.viewFor?.(panelSlots[0].id) as React.ComponentType<{ ctx: Context }> | undefined) ?? null
+      return (ui?.viewFor?.(panelSlots[0].id) as React.ComponentType<{ ctx: Context }> | undefined) ?? null
     }
-    return (ctx.ui?.viewFor?.('lyrics.panel') as React.ComponentType<{ ctx: Context }> | undefined) ?? null
+    return (ui?.viewFor?.('lyrics.panel') as React.ComponentType<{ ctx: Context }> | undefined) ?? null
   })
 
   const VisualizerComponent = useServiceState(ctx, ['ui/changed'], () => {
-    const visualizerSlots = ctx.ui?.slotsFor?.('now-playing.visualizer') ?? []
+    const ui = serviceOf<UiService>(ctx, 'ui')
+    const visualizerSlots = ui?.slotsFor?.('now-playing.visualizer') ?? []
     if (visualizerSlots[0]) {
-      return (ctx.ui?.viewFor?.(visualizerSlots[0].id) as React.ComponentType<{ ctx: Context }> | undefined) ?? null
+      return (ui?.viewFor?.(visualizerSlots[0].id) as React.ComponentType<{ ctx: Context }> | undefined) ?? null
     }
-    return (ctx.ui?.viewFor?.('visualizer.canvas') as React.ComponentType<{ ctx: Context }> | undefined) ?? null
+    return (ui?.viewFor?.('visualizer.canvas') as React.ComponentType<{ ctx: Context }> | undefined) ?? null
   })
 
   const BuiltinLayout = NOW_PLAYING_LAYOUT_MAP[styleId as keyof typeof NOW_PLAYING_LAYOUT_MAP] ?? NOW_PLAYING_LAYOUT_MAP.classic

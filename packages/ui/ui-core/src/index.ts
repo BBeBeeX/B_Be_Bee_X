@@ -11,9 +11,24 @@
  */
 
 import { useCallback, useDebugValue, useMemo, useSyncExternalStore } from 'react'
-import type { Context } from 'cordis'
+import { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import { createServiceStore, type StoreOptions } from './store.js'
+
+// React checks `$$typeof` on objects during rendering, reconciliation,
+// and DevTools inspection. On a scoped Cordis Context, accessing an un-injected
+// property throws `cannot get property "$$typeof" without inject`.
+// Defining `$$typeof: undefined` on `Context.prototype` ensures `Reflect.has(target, '$$typeof')`
+// is true, answering `undefined` rather than throwing when React inspects a context.
+try {
+  Object.defineProperty(Context.prototype, '$$typeof', {
+    value: undefined,
+    configurable: true,
+    writable: true,
+  })
+} catch {
+  // Ignore in environments where prototype is immutable
+}
 
 export * from './props.js'
 export * from './store.js'

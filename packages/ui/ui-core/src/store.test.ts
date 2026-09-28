@@ -38,6 +38,24 @@ describe('snapshot stability', () => {
     expect(store.getSnapshot()).toBe(first)
   })
 
+  it('keeps snapshot reference stable while subscribed even if selector returns fresh objects without isEqual', () => {
+    const h = harness({ a: 1 })
+    // No isEqual provided; selector always produces a fresh object
+    const store = createServiceStore(h.ctx, ['thing/changed'], () => ({ ...h.read() }))
+    const off = store.subscribe(() => {})
+    const first = store.getSnapshot()
+    expect(store.getSnapshot()).toBe(first)
+    expect(store.getSnapshot()).toBe(first)
+
+    // After change event, updates to a new snapshot and stays stable again
+    h.set({ a: 2 })
+    const second = store.getSnapshot()
+    expect(second).not.toBe(first)
+    expect(second).toEqual({ a: 2 })
+    expect(store.getSnapshot()).toBe(second)
+    off()
+  })
+
   it('returns a new value once the selection actually changes', () => {
     const h = harness({ a: 1 })
     const store = createServiceStore(h.ctx, ['thing/changed'], () => ({ ...h.read() }), {

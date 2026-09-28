@@ -46,6 +46,7 @@ export function createServiceStore<T>(
 ): ServiceStore<T> {
   const isEqual = options.isEqual ?? Object.is
   let cached: { value: T } | undefined
+  let isSubscribed = false
 
   const read = (): T => {
     const next = select()
@@ -56,6 +57,7 @@ export function createServiceStore<T>(
 
   return {
     subscribe(onChange) {
+      isSubscribed = true
       const offs: Disposable[] = []
       for (const event of events) {
         // Recompute eagerly so the cache is warm before React asks: React
@@ -69,10 +71,16 @@ export function createServiceStore<T>(
         )
       }
       return () => {
+        isSubscribed = false
         for (const off of offs) off()
       }
     },
-    getSnapshot: read,
+    getSnapshot() {
+      if (isSubscribed && cached) {
+        return cached.value
+      }
+      return read()
+    },
   }
 }
 
