@@ -24,6 +24,10 @@ export interface LyricsState {
   lyrics?: Lyrics
   error?: string
   offsetMs: number
+  /** Whether the current audio source supports third-party lyric sources. */
+  supportsLyricSource?: boolean
+  /** Source where the current lyrics were resolved from. */
+  sourceType?: 'lyric-source' | 'audio-provider' | 'cache'
 }
 
 export interface LyricsService {

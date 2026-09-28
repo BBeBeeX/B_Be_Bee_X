@@ -2,20 +2,21 @@
  * Cinematic layout — 16:9 minimal anime / music video (AMV) aesthetic.
  *
  * Redesigned to match the reference style (映画歌词):
- * - Background tinted by cover's theme color (slightly brighter), with a large blurred
- *   cover backdrop (opacity ~0.20, blur 36px) revealing the artwork's silhouette
- * - Left section (~38%): square album artwork with crisp white border & deep shadow
+ * - Large blurred cover backdrop (opacity 0.50, blur 2.5px) revealing the artwork's
+ *   silhouette and contours for a cinematic film-reel atmosphere
+ * - Left section (~38%): square album artwork with crisp white border & pronounced
+ *   bottom-right shadow
  * - Right section: cursive/handwriting title, muted artist, cinematic subtitle-style
- *   synchronized lyrics (focused current line + italic translation)
- * - Bottom: gentle organic waveform, thin progress bar, timestamps below, minimal controls
+ *   synchronized lyrics, then waveform + progress bar below lyrics
+ * - No playback control buttons — pure cinematic immersion
  */
 import { createElement as h, useEffect, useMemo, useRef, type ReactElement } from 'react'
 import { formatDuration, parseLrc, type LyricLine, findActiveLyricIndex } from '@BBeBee/toolkit'
-import { IconButton, Slider } from '@BBeBee/ui-kit-desktop'
+import { Slider } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
 import { serviceOf, useServiceState } from '@BBeBee/ui-core'
 import type { LyricsService, LyricsState } from '@BBeBee/protocol'
-import { CachedArtwork, PlayModeButton, VolumeControl } from '../components/NowPlayingBar.js'
+import { CachedArtwork } from '../components/NowPlayingBar.js'
 import type { NowPlayingLayoutProps } from './index.js'
 
 /* ── Cursive / handwriting font stack ───────────────────────────────────── */
@@ -132,7 +133,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
     return findActiveLyricIndex(parsedLines, displayPosition * 1000, lyricsState?.offsetMs ?? 0)
   }, [parsedLines, displayPosition, lyricsState?.offsetMs])
 
-  // Cinematic subtitle focus: show current line + one following line
+  // Cinematic subtitle focus: show current line + surrounding lines
   const visibleLyricSlots = useMemo(() => {
     if (parsedLines.length === 0) return []
     const slots: Array<{ line: LyricLine | null; offset: number }> = [
@@ -170,7 +171,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
       },
     },
 
-    /* ── Layer 1: Blurred Cover Backdrop (cover theme color, slightly brighter) ── */
+    /* ── Layer 1: Large Cover Backdrop — visible silhouette (opacity 0.50, blur 2.5px) ── */
     h(
       'div',
       {
@@ -182,11 +183,10 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
           overflow: 'hidden',
           zIndex: 0,
           pointerEvents: 'none',
-          // Higher opacity (0.20) + lower blur (36px) + brightness boost to let
-          // the cover's natural theme color dominate the background atmosphere
-          opacity: 0.20,
-          filter: 'blur(36px) saturate(1.5) brightness(1.3)',
-          transform: 'scale(1.3)',
+          // High opacity + minimal blur to reveal cover artwork contours
+          opacity: 0.50,
+          filter: 'blur(2.5px) saturate(1.2) brightness(0.85)',
+          transform: 'scale(1.05)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -214,20 +214,21 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
           maxHeight: '86vh',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
+          justifyContent: 'center',
           boxSizing: 'border-box',
           padding: '28px 48px',
+          gap: 24,
         },
       },
 
-      /* ── Top / Middle Area: Left Artwork + Right Info/Lyrics ── */
+      /* ── Top / Middle Area: Left Artwork + Right Info/Lyrics/Progress ── */
       h(
         'div',
         {
           style: {
             display: 'flex',
             flexDirection: 'row',
-            alignItems: 'center',
+            alignItems: 'stretch',
             justifyContent: 'space-between',
             flex: 1,
             gap: 56,
@@ -257,9 +258,10 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                 maxHeight: 380,
                 maxWidth: 380,
                 borderRadius: 2,
-                // Crisp white border + deep dark soft shadow
+                // Crisp white border
                 border: '2px solid rgba(255, 255, 255, 0.85)',
-                boxShadow: '16px 20px 40px rgba(0, 0, 0, 0.65)',
+                // Pronounced bottom-right shadow
+                boxShadow: '12px 16px 32px rgba(0, 0, 0, 0.75), 20px 28px 56px rgba(0, 0, 0, 0.50)',
                 overflow: 'hidden',
                 backgroundColor: 'rgba(255, 255, 255, 0.04)',
               },
@@ -274,7 +276,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
           ),
         ),
 
-        /* RIGHT SECTION: Track Title, Artist & Synced Lyrics */
+        /* RIGHT SECTION: Title, Artist, Lyrics, then Waveform + Progress below */
         h(
           'div',
           {
@@ -287,7 +289,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
               textAlign: 'center',
               minWidth: 0,
               height: '100%',
-              gap: 32,
+              gap: 24,
             },
           },
 
@@ -351,7 +353,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                 justifyContent: 'center',
                 gap: 10,
                 width: '100%',
-                minHeight: 120,
+                minHeight: 100,
               },
             },
             visibleLyricSlots.length > 0
@@ -414,124 +416,81 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                   state.status === 'playing' ? '♪ 愿音乐治愈所有的伤痕 ♪' : 'No Surprises',
                 ),
           ),
-        ),
-      ),
 
-      /* ── Bottom Area: Waveform, Progress Bar & Minimal Controls ── */
-      h(
-        'div',
-        {
-          style: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-            width: '100%',
-            marginTop: 16,
-          },
-        },
-
-        /* 1. Gentle Organic Waveform */
-        h(WaveformCanvas, { isPlaying }),
-
-        /* 2. Progress Slider (thin line) */
-        h(
-          'div',
-          { style: { width: '100%' } },
-          h(Slider, {
-            value: duration ? Math.min(displayPosition, duration) : displayPosition,
-            max: duration ?? 0,
-            disabled: !can.canSeek,
-            accessibilityLabel: 'Seek',
-            onChange: onSeekChange,
-            onCommit: onSeekCommit,
-          }),
-        ),
-
-        /* 3. Timestamps below progress bar */
-        h(
-          'div',
-          {
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              width: '100%',
-            },
-          },
+          /* Waveform + Progress Bar — below lyrics, inside right section */
           h(
-            'span',
+            'div',
             {
-              'data-testid': 'cinematic-current-time',
               style: {
-                fontSize: 13,
-                fontFamily: CURSIVE_FONT,
-                fontStyle: 'italic',
-                color: 'rgba(255, 255, 255, 0.65)',
-                minWidth: 42,
-                textAlign: 'left',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                width: '100%',
+                marginTop: 'auto',
+                paddingTop: 16,
               },
             },
-            formatDuration(displayPosition),
-          ),
-          h(
-            'span',
-            {
-              'data-testid': 'cinematic-total-duration',
-              style: {
-                fontSize: 13,
-                fontFamily: CURSIVE_FONT,
-                fontStyle: 'italic',
-                color: 'rgba(255, 255, 255, 0.65)',
-                minWidth: 42,
-                textAlign: 'right',
-              },
-            },
-            formatDuration(duration),
-          ),
-        ),
 
-        /* 4. Minimal Semi-Transparent Playback Controls */
-        h(
-          'div',
-          {
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 20,
-              marginTop: 2,
-              opacity: 0.7,
-              transition: 'opacity 0.3s ease',
-            },
-            onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.opacity = '1'
-            },
-            onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-              e.currentTarget.style.opacity = '0.7'
-            },
-          },
-          h(PlayModeButton, { ctx, mode: state.playMode }),
-          h(IconButton, {
-            icon: 'skip-back',
-            accessibilityLabel: 'Previous track',
-            disabled: !can.canPrevious,
-            onPress: () => void ctx.player.previous(),
-          }),
-          h(IconButton, {
-            icon: can.canPause ? 'pause-filled' : 'play-filled',
-            accessibilityLabel: can.canPause ? 'Pause' : 'Play',
-            variant: 'primary',
-            size: tokens.size.iconLarge,
-            disabled: !can.canPlay && !can.canPause,
-            onPress: () => ctx.player.togglePlay(),
-          }),
-          h(IconButton, {
-            icon: 'skip-forward',
-            accessibilityLabel: 'Next track',
-            disabled: !can.canNext,
-            onPress: () => void ctx.player.next(),
-          }),
-          h(VolumeControl, { ctx, volume: state.volume, muted: state.muted }),
+            /* Gentle Organic Waveform */
+            h(WaveformCanvas, { isPlaying }),
+
+            /* Progress Slider (thin line) */
+            h(
+              'div',
+              { style: { width: '100%' } },
+              h(Slider, {
+                value: duration ? Math.min(displayPosition, duration) : displayPosition,
+                max: duration ?? 0,
+                disabled: !can.canSeek,
+                accessibilityLabel: 'Seek',
+                onChange: onSeekChange,
+                onCommit: onSeekCommit,
+              }),
+            ),
+
+            /* Timestamps below progress bar */
+            h(
+              'div',
+              {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                },
+              },
+              h(
+                'span',
+                {
+                  'data-testid': 'cinematic-current-time',
+                  style: {
+                    fontSize: 13,
+                    fontFamily: CURSIVE_FONT,
+                    fontStyle: 'italic',
+                    color: 'rgba(255, 255, 255, 0.65)',
+                    minWidth: 42,
+                    textAlign: 'left',
+                  },
+                },
+                formatDuration(displayPosition),
+              ),
+              h(
+                'span',
+                {
+                  'data-testid': 'cinematic-total-duration',
+                  style: {
+                    fontSize: 13,
+                    fontFamily: CURSIVE_FONT,
+                    fontStyle: 'italic',
+                    color: 'rgba(255, 255, 255, 0.65)',
+                    minWidth: 42,
+                    textAlign: 'right',
+                  },
+                },
+                formatDuration(duration),
+              ),
+            ),
+          ),
         ),
       ),
     ),

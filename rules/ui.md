@@ -339,10 +339,10 @@ The app provides 5 built-in layout styles managed by `ctx.nowPlaying`:
 1. **`classic`** (Default): Centered artwork, song title and artist below, transport controls at bottom, collapsible lyrics panel on the right.
 2. **`cinematic`** (16:9 映画歌词):
    - 16:9 centered stage (`aspectRatio: '16 / 9'`), maximum width 1240px.
-   - Neutral dark base (`#0D1118`) with cover-tinted blurred backdrop (`opacity: 0.20`, `blur: 36px`, `brightness: 1.3`, `saturate: 1.5`) — the cover's natural theme color dominates the atmosphere, slightly brighter.
-   - Left section (~38% width): square album artwork with crisp white border (`2px solid rgba(255, 255, 255, 0.85)`), sharp corners (`borderRadius: 2`), and deep shadow (`16px 20px 40px rgba(0, 0, 0, 0.65)`).
-   - Right section: cursive/handwriting title (`Caveat` → `Segoe Print` → `cursive`, 48px), muted artist, and cinematic subtitle-style synchronized lyrics (current line 24px with 1.5px letter-spacing, italic cursive translation below, previous/following lines fading 0.32/0.40/0.18).
-   - Bottom section: gentle organic `WaveformCanvas` (single-stroke, low amplitude), thin progress slider, timestamps in cursive italic placed **below** the progress bar at left/right ends, semi-transparent playback controls (opacity 0.7 → 1.0 on hover).
+   - Neutral dark base (`#0D1118`) with large cover backdrop revealing artwork silhouette (`opacity: 0.50`, `blur: 2.5px`, `brightness: 0.85`, `saturate: 1.2`) — cinematic film-reel atmosphere.
+   - Left section (~38% width): square album artwork with crisp white border (`2px solid rgba(255, 255, 255, 0.85)`), sharp corners (`borderRadius: 2`), and pronounced bottom-right shadow (`12px 16px 32px` + `20px 28px 56px`).
+   - Right section: cursive/handwriting title (`Caveat` → `Segoe Print` → `cursive`, 48px), muted artist, cinematic subtitle-style synchronized lyrics, then waveform + progress bar + cursive italic timestamps **below lyrics** within the right section.
+   - **No playback control buttons** — pure cinematic immersion (transport controls are in the NowPlayingBar).
 3. **`full-cover`**: Fullscreen blurred cover background, glassmorphism overlay, floating translucent transport controls.
 4. **`vinyl`**: Circular spinning vinyl record animation with concentric groove sheen and center album label.
 5. **`compact`**: Side-by-side widescreen layout with large artwork on the left and vertical metadata/controls/lyrics stream on the right.
