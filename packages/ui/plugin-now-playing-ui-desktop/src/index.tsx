@@ -34,6 +34,11 @@ export {
   NowPlayingScreen,
   type NowPlayingScreenProps,
 } from './components/NowPlayingScreen.js'
+export {
+  StyleSwitcher,
+  type StyleSwitcherProps,
+} from './components/StyleSwitcher.js'
+export { type NowPlayingLayoutProps, NOW_PLAYING_LAYOUT_MAP } from './styles/index.js'
 
 /* ── the plugin entry ──────────────────────────────────────────────────── */
 

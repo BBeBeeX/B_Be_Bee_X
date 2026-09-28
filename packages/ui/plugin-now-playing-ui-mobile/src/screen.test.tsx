@@ -11,7 +11,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import { createElement as h, type ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from 'cordis'
-import type { QueueItem, Track, TransportState } from '@BBeBee/protocol'
+import type { NowPlayingStyleId, QueueItem, Track, TransportState } from '@BBeBee/protocol'
 import { configureNative } from '@BBeBee/ui-kit-mobile'
 import { NowPlayingBar, NowPlayingScreen } from './index.js'
 
@@ -121,10 +121,24 @@ async function harness(
     navigate = (routeId: string) => void calls.push(`navigate:${routeId}`)
   }
 
+  class NowPlayingStub extends Service {
+    style: NowPlayingStyleId = 'classic'
+    constructor(ctx: Context) {
+      super(ctx, 'nowPlaying')
+    }
+    getStyle = () => this.style
+    setStyle = (s: NowPlayingStyleId) => {
+      this.style = s
+      calls.push(`setStyle:${s}`)
+      this.ctx.emit('now-playing/style-changed', s)
+    }
+  }
+
   const ctx = new Context()
   await ctx.plugin(PlayerStub)
   if (Object.keys(catalogue).length > 0) await ctx.plugin(SourcesStub)
   await ctx.plugin(UiStub)
+  await ctx.plugin(NowPlayingStub)
   return { ctx, calls }
 }
 
@@ -217,5 +231,40 @@ describe('NowPlayingScreen on mobile', () => {
       nextBtn.click()
     })
     expect(calls).toContain('next')
+  })
+
+  it('renders style switcher button and cycles to next style on click', async () => {
+    const { ctx, calls } = await harness({ status: 'playing' })
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+
+    const switchBtn = container.querySelector('[data-role="button"][data-label^="切换播放页样式"]') as HTMLElement
+    expect(switchBtn).toBeTruthy()
+    expect(switchBtn.getAttribute('data-label')).toContain('切换播放页样式')
+
+    await act(async () => {
+      switchBtn.click()
+    })
+    expect(calls).toContain('setStyle:full-cover')
+  })
+
+  it('renders vinyl disc when style is vinyl', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    ctx.nowPlaying.setStyle('vinyl')
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+    expect(container.querySelector('[data-label="Vinyl disc"]')).toBeTruthy()
+  })
+
+  it('renders compact layout without crashing', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    ctx.nowPlaying.setStyle('compact')
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+    expect(container.textContent).toContain('Nothing playing')
+  })
+
+  it('renders full-cover layout without crashing', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    ctx.nowPlaying.setStyle('full-cover')
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+    expect(container.textContent).toContain('Nothing playing')
   })
 })

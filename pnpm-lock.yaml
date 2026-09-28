@@ -1176,6 +1176,13 @@ importers:
       cordis:
         specifier: 4.0.0-rc.9
         version: 4.0.0-rc.9
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
 
   packages/feature/plugin-player:
     dependencies:

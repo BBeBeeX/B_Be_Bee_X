@@ -1,6 +1,7 @@
 /**
  * `plugin-now-playing` as a plugin: it contributes the route that opens the
- * player, and it unloads the contribution with itself.
+ * player, provides the nowPlaying service for style preferences, and unloads
+ * cleanly.
  *
  * The route id is the contract the shells navigate to and the bar calls, so it
  * is pinned here rather than only exercised through a screen.
@@ -44,6 +45,62 @@ describe('plugin-now-playing', () => {
     // plugin: the contribution waits in a child fiber that never activates.
     const ctx = new Context()
     await expect(ctx.plugin(plugin)).resolves.toBeDefined()
+  })
+})
+
+describe('plugin-now-playing style preference', () => {
+  it('defaults to classic style and allows changing style with event emission', async () => {
+    const ctx = new Context()
+    const emitted: string[] = []
+    ctx.on('now-playing/style-changed', (id) => {
+      emitted.push(id)
+    })
+
+    await ctx.plugin(plugin)
+    await tick()
+
+    expect(ctx.nowPlaying).toBeDefined()
+    expect(ctx.nowPlaying.getStyle()).toBe('classic')
+
+    ctx.nowPlaying.setStyle('vinyl')
+    expect(ctx.nowPlaying.getStyle()).toBe('vinyl')
+    expect(emitted).toEqual(['vinyl'])
+
+    // Setting same style is a no-op
+    ctx.nowPlaying.setStyle('vinyl')
+    expect(emitted).toEqual(['vinyl'])
+
+    // Setting invalid style is ignored
+    ctx.nowPlaying.setStyle('invalid-style' as any)
+    expect(ctx.nowPlaying.getStyle()).toBe('vinyl')
+    expect(emitted).toEqual(['vinyl'])
+  })
+
+  it('restores stored style and persists changes', async () => {
+    const ctx = new Context()
+    class SeededStore extends Service {
+      data = new Map<string, unknown>([['now-playing.style', 'compact']])
+      constructor(c: Context) {
+        super(c, 'store')
+      }
+      async get<T>(key: string): Promise<T | undefined> {
+        return this.data.get(key) as T | undefined
+      }
+      async set(key: string, value: unknown): Promise<void> {
+        this.data.set(key, value)
+      }
+    }
+    await ctx.plugin(SeededStore)
+    await ctx.plugin(plugin)
+    await tick()
+
+    expect(ctx.nowPlaying.getStyle()).toBe('compact')
+
+    ctx.nowPlaying.setStyle('full-cover')
+    await tick()
+
+    const store = (ctx as unknown as { store: SeededStore }).store
+    expect(await store.get('now-playing.style')).toBe('full-cover')
   })
 })
 

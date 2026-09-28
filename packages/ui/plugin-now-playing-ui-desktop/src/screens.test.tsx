@@ -15,7 +15,7 @@ import { createElement as h } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { Context, Service } from 'cordis'
-import type { QueueItem, Track, TransportState } from '@BBeBee/protocol'
+import type { NowPlayingStyleId, QueueItem, Track, TransportState } from '@BBeBee/protocol'
 import { NowPlayingBar, NowPlayingScreen } from './index.js'
 
 afterEach(() => {
@@ -130,10 +130,24 @@ async function harness(
     }
   }
 
+  class NowPlayingStub extends Service {
+    style: NowPlayingStyleId = 'classic'
+    constructor(ctx: Context) {
+      super(ctx, 'nowPlaying')
+    }
+    getStyle = () => this.style
+    setStyle = (s: NowPlayingStyleId) => {
+      this.style = s
+      calls.push(`setStyle:${s}`)
+      this.ctx.emit('now-playing/style-changed', s)
+    }
+  }
+
   const ctx = new Context()
   await ctx.plugin(PlayerStub)
   await ctx.plugin(LibraryStub)
   await ctx.plugin(UiStub)
+  await ctx.plugin(NowPlayingStub)
   if (Object.keys(catalogue).length > 0) await ctx.plugin(SourcesStub)
   return { ctx, calls }
 }
@@ -450,5 +464,68 @@ describe('NowPlayingScreen', () => {
     const out = html(h(NowPlayingScreen, { ctx }))
     expect(out).toContain('data-testid="mock-visualizer"')
     expect(out).toContain('Mock Visualizer')
+  })
+
+  it('renders style switcher button and opens dropdown menu', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+    const switcherBtn = container.querySelector('[data-testid="style-switcher-button"]') as HTMLButtonElement
+    expect(switcherBtn).toBeTruthy()
+    expect(switcherBtn.getAttribute('aria-label')).toBe('切换播放页样式')
+
+    // Popover is initially closed
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+
+    // Click to open popover
+    fireEvent.click(switcherBtn)
+    const menu = container.querySelector('[role="menu"]')
+    expect(menu).toBeTruthy()
+    expect(menu?.getAttribute('aria-label')).toBe('播放页样式')
+
+    // Options for all 4 templates exist
+    for (const styleId of ['classic', 'full-cover', 'vinyl', 'compact']) {
+      expect(container.querySelector(`[data-testid="style-option-${styleId}"]`)).toBeTruthy()
+    }
+  })
+
+  it('renders full-cover layout when style is full-cover', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    ctx.nowPlaying.setStyle('full-cover')
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+    expect(container.querySelector('[data-testid="layout-full-cover"]')).toBeTruthy()
+  })
+
+  it('renders vinyl layout with spinning record when style is vinyl', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    ctx.nowPlaying.setStyle('vinyl')
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+    expect(container.querySelector('[data-testid="layout-vinyl"]')).toBeTruthy()
+    expect(container.querySelector('[aria-label="Vinyl disc"]')).toBeTruthy()
+  })
+
+  it('renders compact layout when style is compact', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    ctx.nowPlaying.setStyle('compact')
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+    expect(container.querySelector('[data-testid="layout-compact"]')).toBeTruthy()
+  })
+
+  it('switches layout dynamically when selecting an option from style switcher', async () => {
+    const { ctx, calls } = await harness({ status: 'playing' })
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+
+    // Initially classic layout (no special data-testid)
+    expect(container.querySelector('[data-testid="layout-vinyl"]')).toBeNull()
+
+    // Open style switcher
+    const switcherBtn = container.querySelector('[data-testid="style-switcher-button"]') as HTMLButtonElement
+    fireEvent.click(switcherBtn)
+
+    // Select vinyl layout
+    const vinylOption = container.querySelector('[data-testid="style-option-vinyl"]') as HTMLButtonElement
+    fireEvent.click(vinylOption)
+
+    expect(calls).toContain('setStyle:vinyl')
+    expect(container.querySelector('[data-testid="layout-vinyl"]')).toBeTruthy()
   })
 })
