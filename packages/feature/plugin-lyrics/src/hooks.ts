@@ -127,6 +127,14 @@ export function useActiveLyricIndex(
       }
     }
 
+    // Immediately compute activeIndex when lines arrive or offset changes
+    const currentPos = currentPlayer?.state?.positionMs ?? 0
+    const initialIndex = findActiveLyricIndex(lines, currentPos, offsetMs)
+    if (initialIndex !== lastIndexRef.current) {
+      lastIndexRef.current = initialIndex
+      setActiveIndex(initialIndex)
+    }
+
     const offPosition = ctx.on('player/position', (positionMs: number) => {
       anchor.current.positionMs = positionMs
       anchor.current.at = performance.now()

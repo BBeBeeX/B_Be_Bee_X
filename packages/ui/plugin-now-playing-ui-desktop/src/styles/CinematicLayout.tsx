@@ -137,7 +137,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
 
   const activeIndex = useMemo(() => {
     if (parsedLines.length === 0) return -1
-    return findActiveLyricIndex(parsedLines, displayPosition * 1000, lyricsState?.offsetMs ?? 0)
+    return findActiveLyricIndex(parsedLines, displayPosition, lyricsState?.offsetMs ?? 0)
   }, [parsedLines, displayPosition, lyricsState?.offsetMs])
 
   // Cinematic subtitle focus: show current line + surrounding lines

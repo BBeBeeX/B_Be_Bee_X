@@ -26,7 +26,7 @@ export const BUILTIN_LRCLIB_SOURCE: LyricSourceDefinition = {
   id: 'builtin-lrclib',
   name: 'LRCLIB (默认歌词源)',
   description: '基于公开开放的 LRCLIB 歌词数据库，支持全球海量百万同步 LRC 歌词搜索',
-  version: '1.2.0',
+  version: '1.3.0',
   author: 'LRCLIB Community / BBeBee',
   enabled: true,
   sortOrder: 0,
@@ -52,6 +52,14 @@ async function searchLyrics(query) {
       .join('&');
   }
 
+  function cleanTitle(t) {
+    if (!t) return '';
+    return t
+      .replace(/\\s*[\\(\\[](?:(?:19|20)\\d\\d\\s+)?(?:remaster(?:ed)?|live|explicit|deluxe|bonus(?:\\s+track)?|anniversary|edit|mix|version|feat\\.?.*)(?:\\s+(?:19|20)\\d\\d)?[\\)\\]]\\s*$/i, '')
+      .replace(/\\s*-\\s*(?:(?:19|20)\\d\\d\\s+)?(?:remaster(?:ed)?|live|deluxe|bonus(?:\\s+track)?|anniversary|edit|mix|version)(?:\\s+(?:19|20)\\d\\d)?\\s*$/i, '')
+      .trim();
+  }
+
   async function parseBody(res) {
     if (!res) return null;
     try {
@@ -65,41 +73,50 @@ async function searchLyrics(query) {
 
   // 1. Try exact match get endpoint
   if (trimmedTitle && trimmedArtist) {
-    try {
-      const getParams = {
-        track_name: trimmedTitle,
-        artist_name: trimmedArtist,
-      };
-      if (durationSec > 0) {
-        getParams.duration = String(durationSec);
-      }
+    const titlesToTry = [trimmedTitle];
+    const cleaned = cleanTitle(trimmedTitle);
+    if (cleaned && cleaned !== trimmedTitle) {
+      titlesToTry.push(cleaned);
+    }
 
-      const res = await httpFetch('https://lrclib.net/api/get?' + toQueryString(getParams), {
-        headers,
-      });
+    for (const curTitle of titlesToTry) {
+      try {
+        const getParams = {
+          track_name: curTitle,
+          artist_name: trimmedArtist,
+        };
+        if (durationSec > 0) {
+          getParams.duration = String(durationSec);
+        }
 
-      if (res && res.status === 200) {
-        const data = await parseBody(res);
-        if (data) {
-          if (data.syncedLyrics && data.syncedLyrics.trim()) {
-            return data.syncedLyrics;
-          }
-          if (data.plainLyrics && data.plainLyrics.trim()) {
-            return data.plainLyrics;
-          }
-          if (data.instrumental) {
-            return '[00:00.00]纯音乐，请欣赏';
+        const res = await httpFetch('https://lrclib.net/api/get?' + toQueryString(getParams), {
+          headers,
+        });
+
+        if (res && res.status === 200) {
+          const data = await parseBody(res);
+          if (data) {
+            if (data.syncedLyrics && data.syncedLyrics.trim()) {
+              return data.syncedLyrics;
+            }
+            if (data.plainLyrics && data.plainLyrics.trim()) {
+              return data.plainLyrics;
+            }
+            if (data.instrumental) {
+              return '[00:00.00]纯音乐，请欣赏';
+            }
           }
         }
+      } catch (err) {
+        lastNetworkError = err;
       }
-    } catch (err) {
-      lastNetworkError = err;
     }
   }
 
   // 2. Try keyword search endpoint
   try {
-    const q = trimmedArtist ? (trimmedArtist + ' ' + trimmedTitle) : trimmedTitle;
+    const searchTitle = cleanTitle(trimmedTitle) || trimmedTitle;
+    const q = trimmedArtist ? (trimmedArtist + ' ' + searchTitle) : searchTitle;
     const searchUrl = 'https://lrclib.net/api/search?' + toQueryString({ q });
 
     const res = await httpFetch(searchUrl, { headers });

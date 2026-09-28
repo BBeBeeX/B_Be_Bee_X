@@ -63,7 +63,7 @@ const SAMPLE_LRCLIB_JSON = JSON.stringify(
   {
     id: 'lrclib-net',
     name: 'LRCLIB (lrclib.net)',
-    version: '1.2.0',
+    version: '1.3.0',
     author: 'LRCLIB Community / BBeBee',
     description: '基于 lrclib.net 开放 API 的全球高质量歌词源，支持根据歌名、歌手与时长精准匹配百万级逐行同步 LRC 歌词与纯文本歌词。',
     allowedHosts: ['lrclib.net'],
@@ -88,6 +88,14 @@ async function searchLyrics(query) {
       .join('&');
   }
 
+  function cleanTitle(t) {
+    if (!t) return '';
+    return t
+      .replace(/\\s*[\\(\\[](?:(?:19|20)\\d\\d\\s+)?(?:remaster(?:ed)?|live|explicit|deluxe|bonus(?:\\s+track)?|anniversary|edit|mix|version|feat\\.?.*)(?:\\s+(?:19|20)\\d\\d)?[\\)\\]]\\s*$/i, '')
+      .replace(/\\s*-\\s*(?:(?:19|20)\\d\\d\\s+)?(?:remaster(?:ed)?|live|deluxe|bonus(?:\\s+track)?|anniversary|edit|mix|version)(?:\\s+(?:19|20)\\d\\d)?\\s*$/i, '')
+      .trim();
+  }
+
   async function parseBody(res) {
     if (!res) return null;
     try {
@@ -101,32 +109,41 @@ async function searchLyrics(query) {
 
   // 1. Try exact match via /api/get
   if (trimmedTitle && trimmedArtist) {
-    try {
-      const getParams = {
-        track_name: trimmedTitle,
-        artist_name: trimmedArtist,
-      };
-      if (durationSec > 0) {
-        getParams.duration = String(durationSec);
-      }
+    const titlesToTry = [trimmedTitle];
+    const cleaned = cleanTitle(trimmedTitle);
+    if (cleaned && cleaned !== trimmedTitle) {
+      titlesToTry.push(cleaned);
+    }
 
-      const res = await httpFetch('https://lrclib.net/api/get?' + toQueryString(getParams), { headers });
-      if (res && res.status === 200) {
-        const data = await parseBody(res);
-        if (data) {
-          if (data.syncedLyrics && data.syncedLyrics.trim()) return data.syncedLyrics;
-          if (data.plainLyrics && data.plainLyrics.trim()) return data.plainLyrics;
-          if (data.instrumental) return '[00:00.00]纯音乐，请欣赏';
+    for (const curTitle of titlesToTry) {
+      try {
+        const getParams = {
+          track_name: curTitle,
+          artist_name: trimmedArtist,
+        };
+        if (durationSec > 0) {
+          getParams.duration = String(durationSec);
         }
+
+        const res = await httpFetch('https://lrclib.net/api/get?' + toQueryString(getParams), { headers });
+        if (res && res.status === 200) {
+          const data = await parseBody(res);
+          if (data) {
+            if (data.syncedLyrics && data.syncedLyrics.trim()) return data.syncedLyrics;
+            if (data.plainLyrics && data.plainLyrics.trim()) return data.plainLyrics;
+            if (data.instrumental) return '[00:00.00]纯音乐，请欣赏';
+          }
+        }
+      } catch (err) {
+        lastNetworkError = err;
       }
-    } catch (err) {
-      lastNetworkError = err;
     }
   }
 
   // 2. Fallback to /api/search (fuzzy query)
   try {
-    const q = trimmedArtist ? (trimmedArtist + ' ' + trimmedTitle) : trimmedTitle;
+    const searchTitle = cleanTitle(trimmedTitle) || trimmedTitle;
+    const q = trimmedArtist ? (trimmedArtist + ' ' + searchTitle) : searchTitle;
     const searchUrl = 'https://lrclib.net/api/search?' + toQueryString({ q });
 
     const res = await httpFetch(searchUrl, { headers });

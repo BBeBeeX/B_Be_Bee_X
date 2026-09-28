@@ -29,6 +29,24 @@ export interface LyricsConfig {
 const DEFAULT_CACHE_SIZE = 100
 const DEFAULT_NEGATIVE_CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 1 day
 
+/**
+ * Clean track title noise (such as "(2021 Remastered)", "[Live]", "(feat. ...)", etc.)
+ * to maximize match probability on external lyric databases.
+ */
+export function cleanTrackTitle(title: string): string {
+  if (!title) return ''
+  return title
+    .replace(
+      /\s*(?:\(|\[)(?:(?:19|20)\d\d\s+)?(?:remaster(?:ed)?.*|live.*|explicit.*|deluxe.*|bonus(?:\s+track)?.*|anniversary.*|edit.*|mix.*|version.*|feat\.?.*)(?:\s+(?:19|20)\d\d)?(?:\)|\])\s*$/gi,
+      '',
+    )
+    .replace(
+      /\s*-\s*(?:(?:19|20)\d\d\s+)?(?:remaster(?:ed)?.*|live.*|deluxe.*|bonus(?:\s+track)?.*|anniversary.*|edit.*|mix.*|version.*)(?:\s+(?:19|20)\d\d)?\s*$/gi,
+      '',
+    )
+    .trim()
+}
+
 export class LyricsPlugin extends Service implements LyricsService {
   static inject = ['player', 'db', 'sources']
 
@@ -36,6 +54,8 @@ export class LyricsPlugin extends Service implements LyricsService {
   private readonly memoryCache = new Map<string, Lyrics>()
   private readonly parsedCache = new Map<string, ParsedLyrics>()
   private readonly negativeCache = new Map<string, number>()
+  private readonly inFlightFetches = new Map<string, Promise<Lyrics | undefined>>()
+  private readonly lastSearchedMeta = new Map<string, { title?: string; artist?: string }>()
   private readonly cacheSize: number
   private readonly negativeCacheTtlMs: number
   private currentGeneration = 0
@@ -146,13 +166,25 @@ export class LyricsPlugin extends Service implements LyricsService {
         transport.trackUrn &&
         transport.trackUrn === this.currentState.trackUrn &&
         transport.nowPlaying?.title &&
-        (this.currentState.status === 'no-lyrics' ||
-          this.currentState.status === 'loading-lyrics' ||
-          !this.currentState.lyrics)
+        !this.currentState.lyrics &&
+        this.currentState.status !== 'loading-lyrics' &&
+        !this.inFlightFetches.has(transport.trackUrn)
       ) {
-        // When nowPlaying metadata arrives asynchronously, clear negative cache and re-fetch with accurate song info
-        const gen = ++this.currentGeneration
-        void this.fetchAndApplyLyrics(transport.trackUrn, gen, transport.nowPlaying)
+        // Only trigger if title/artist has genuinely changed from what was already searched
+        const lastMeta = this.lastSearchedMeta.get(transport.trackUrn)
+        const isNewMetadata =
+          !lastMeta ||
+          lastMeta.title !== transport.nowPlaying.title ||
+          (transport.nowPlaying.artist && lastMeta.artist !== transport.nowPlaying.artist)
+
+        if (isNewMetadata) {
+          this.lastSearchedMeta.set(transport.trackUrn, {
+            title: transport.nowPlaying.title,
+            artist: transport.nowPlaying.artist,
+          })
+          const gen = ++this.currentGeneration
+          void this.fetchAndApplyLyrics(transport.trackUrn, gen, transport.nowPlaying)
+        }
       }
     })
 
@@ -224,6 +256,15 @@ export class LyricsPlugin extends Service implements LyricsService {
       return
     }
 
+    if (presetMetadata?.title) {
+      this.lastSearchedMeta.set(trackUrn, {
+        title: presetMetadata.title,
+        artist: presetMetadata.artist,
+      })
+    } else {
+      this.lastSearchedMeta.delete(trackUrn)
+    }
+
     const supportsLyricSource = this.doesTrackSourceSupportLyricSources(trackUrn)
 
     this.updateState({
@@ -272,6 +313,10 @@ export class LyricsPlugin extends Service implements LyricsService {
         error: undefined,
         offsetMs: lyrics.offsetMs ?? 0,
       })
+
+      // Immediately calculate and emit active lyric index for current playback position
+      const currentPos = this.ownCtx.player?.state?.positionMs ?? 0
+      this.syncActiveIndex(currentPos)
     } catch (err) {
       if (gen !== this.currentGeneration) return
 
@@ -289,6 +334,24 @@ export class LyricsPlugin extends Service implements LyricsService {
   }
 
   async getLyricsForTrack(
+    trackUrn: string,
+    presetMetadata?: { title?: string; artist?: string; durationMs?: number },
+  ): Promise<Lyrics | undefined> {
+    const existing = this.inFlightFetches.get(trackUrn)
+    if (existing) {
+      return existing
+    }
+
+    const fetchPromise = this.executeFetchLyrics(trackUrn, presetMetadata)
+    this.inFlightFetches.set(trackUrn, fetchPromise)
+    try {
+      return await fetchPromise
+    } finally {
+      this.inFlightFetches.delete(trackUrn)
+    }
+  }
+
+  private async executeFetchLyrics(
     trackUrn: string,
     presetMetadata?: { title?: string; artist?: string; durationMs?: number },
   ): Promise<Lyrics | undefined> {
@@ -495,6 +558,7 @@ export class LyricsPlugin extends Service implements LyricsService {
           title = parts.slice(1).join(' - ').trim()
         }
       }
+      title = cleanTrackTitle(title) || title
     }
 
     return {

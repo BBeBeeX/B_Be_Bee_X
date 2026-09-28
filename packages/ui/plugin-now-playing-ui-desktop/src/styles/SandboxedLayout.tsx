@@ -131,7 +131,7 @@ export function SandboxedLayout({
 
   const activeIndex = useMemo(() => {
     if (parsedLyrics.lines.length === 0) return -1
-    return findActiveLyricIndex(parsedLyrics.lines, displayPosition * 1000, lyricsState?.offsetMs ?? 0)
+    return findActiveLyricIndex(parsedLyrics.lines, displayPosition, lyricsState?.offsetMs ?? 0)
   }, [parsedLyrics.lines, displayPosition, lyricsState?.offsetMs])
 
   const lyricLines: SandboxPlayerLyricLine[] = useMemo(() => {
@@ -185,8 +185,8 @@ export function SandboxedLayout({
         lines: lyricLines,
         activeIndex,
       },
-      positionMs: Math.round(displayPosition * 1000),
-      durationMs: Math.round((duration ?? 0) * 1000),
+      positionMs: Math.round(displayPosition),
+      durationMs: Math.round(duration ?? 0),
       isPlaying,
       isLoved,
     }

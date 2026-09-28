@@ -30,10 +30,15 @@ const p = () => palettes.dark
 export interface NowPlayingScreenProps {
   ctx: Context
   onClose?: () => void
+  showCloseButton?: boolean
 }
 
 /** The full-pane player view on desktop. */
-export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): ReactElement {
+export function NowPlayingScreen({
+  ctx,
+  onClose,
+  showCloseButton = true,
+}: NowPlayingScreenProps): ReactElement {
   const [seekingPosition, setSeekingPosition] = useState<number | undefined>(undefined)
   const [isTopHovered, setIsTopHovered] = useState(false)
   const state = useTransport(ctx)
@@ -77,11 +82,13 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
     {
       role: 'region',
       'aria-label': 'Now playing',
-      onMouseMove: (e: React.MouseEvent) => {
-        const isTop = e.clientY < 64
-        if (isTop !== isTopHovered) setIsTopHovered(isTop)
-      },
-      onMouseLeave: () => setIsTopHovered(false),
+      onMouseMove: showCloseButton
+        ? (e: React.MouseEvent) => {
+            const isTop = e.clientY < 80
+            if (isTop !== isTopHovered) setIsTopHovered(isTop)
+          }
+        : undefined,
+      onMouseLeave: showCloseButton ? () => setIsTopHovered(false) : undefined,
       style: {
         position: 'relative',
         display: 'flex',
@@ -99,39 +106,41 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
         borderBottom: 'none',
       },
     },
-    /* ── close button (top-left, auto-hides when mouse is not in top bar) ── */
-    h(
-      'button',
-      {
-        type: 'button',
-        'aria-label': 'Close now playing',
-        onClick: onClose,
-        onMouseEnter: () => setIsTopHovered(true),
-        style: {
-          position: 'absolute',
-          top: tokens.space[4],
-          left: tokens.space[4],
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: 40,
-          height: 40,
-          borderRadius: tokens.radius.pill,
-          border: '1px solid rgba(255, 255, 255, 0.12)',
-          background: 'rgba(255, 255, 255, 0.08)',
-          color: p().text.primary,
-          cursor: 'pointer',
-          transform: isTopHovered ? 'translateY(0)' : 'translateY(-120%)',
-          opacity: isTopHovered ? 1 : 0,
-          visibility: isTopHovered ? 'visible' : 'hidden',
-          transition: `background-color ${tokens.duration.fast}ms, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease, visibility 0.3s ease`,
-          zIndex: 110,
-          pointerEvents: isTopHovered ? 'auto' : 'none',
-          WebkitAppRegion: 'no-drag' as unknown as undefined,
-        },
-      },
-      tablerIcon('chevron-down', { size: 26 }),
-    ),
+    /* ── close button (top-left, only rendered when not in shell) ── */
+    showCloseButton
+      ? h(
+          'button',
+          {
+            type: 'button',
+            'aria-label': 'Close now playing',
+            onClick: onClose,
+            onMouseEnter: () => setIsTopHovered(true),
+            style: {
+              position: 'absolute',
+              top: tokens.space[4],
+              left: tokens.space[4],
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 40,
+              height: 40,
+              borderRadius: tokens.radius.pill,
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              background: 'rgba(255, 255, 255, 0.08)',
+              color: p().text.primary,
+              cursor: 'pointer',
+              transform: isTopHovered ? 'translateY(0)' : 'translateY(-120%)',
+              opacity: isTopHovered ? 1 : 0,
+              visibility: isTopHovered ? 'visible' : 'hidden',
+              transition: `background-color ${tokens.duration.fast}ms, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease, visibility 0.35s ease`,
+              zIndex: 110,
+              pointerEvents: isTopHovered ? 'auto' : 'none',
+              WebkitAppRegion: 'no-drag' as unknown as undefined,
+            },
+          },
+          tablerIcon('chevron-down', { size: 26 }),
+        )
+      : null,
     /* ── layout body ──────────────────────────────────────────────── */
     isSandboxed && currentMeta
       ? h(SandboxedLayout, {

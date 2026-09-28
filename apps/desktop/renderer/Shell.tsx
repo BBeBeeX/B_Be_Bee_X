@@ -242,6 +242,47 @@ export function Shell({ ctx }: { ctx: Context }) {
     entries[0]
   const [isFullscreenNowPlaying, setIsFullscreenNowPlaying] = useState(false)
   const [isTopBarHovered, setIsTopBarHovered] = useState(false)
+  const topBarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isDirectlyHoveringTopBarRef = useRef(false)
+
+  const clearTopBarTimeout = useCallback(() => {
+    if (topBarTimeoutRef.current) {
+      clearTimeout(topBarTimeoutRef.current)
+      topBarTimeoutRef.current = null
+    }
+  }, [])
+
+  const scheduleTopBarHide = useCallback((delay = 2000) => {
+    clearTopBarTimeout()
+    topBarTimeoutRef.current = setTimeout(() => {
+      if (!isDirectlyHoveringTopBarRef.current) {
+        setIsTopBarHovered(false)
+      }
+    }, delay)
+  }, [clearTopBarTimeout])
+
+  const handleFullscreenMouseMove = useCallback((e: React.MouseEvent) => {
+    if (e.clientY < 80) {
+      clearTopBarTimeout()
+      setIsTopBarHovered(true)
+    } else {
+      if (!topBarTimeoutRef.current && !isDirectlyHoveringTopBarRef.current) {
+        scheduleTopBarHide(2000)
+      }
+    }
+  }, [clearTopBarTimeout, scheduleTopBarHide])
+
+  const handleTopBarMouseEnter = useCallback(() => {
+    isDirectlyHoveringTopBarRef.current = true
+    clearTopBarTimeout()
+    setIsTopBarHovered(true)
+  }, [clearTopBarTimeout])
+
+  const handleTopBarMouseLeave = useCallback(() => {
+    isDirectlyHoveringTopBarRef.current = false
+    scheduleTopBarHide(2000)
+  }, [scheduleTopBarHide])
+
   const [isBottomBarHovered, setIsBottomBarHovered] = useState(false)
   const [isQueueOpen, setIsQueueOpen] = useState(false)
   const [libraryMode, setLibraryMode] = useState<'collapsed' | 'sidebar' | 'expanded'>('sidebar')
@@ -503,11 +544,11 @@ export function Shell({ ctx }: { ctx: Context }) {
       'div',
       {
         'data-testid': 'fullscreen-now-playing',
-        onMouseMove: (e: React.MouseEvent) => {
-          const isTop = e.clientY < 64
-          if (isTop !== isTopBarHovered) setIsTopBarHovered(isTop)
+        onMouseMove: handleFullscreenMouseMove,
+        onMouseLeave: () => {
+          isDirectlyHoveringTopBarRef.current = false
+          scheduleTopBarHide(1000)
         },
-        onMouseLeave: () => setIsTopBarHovered(false),
         style: {
           position: 'fixed',
           inset: 0,
@@ -525,36 +566,89 @@ export function Shell({ ctx }: { ctx: Context }) {
           padding: 0,
         },
       },
-      // Fullscreen top bar for dragging and window controls (auto-hides when mouse is away)
+      // Unified fullscreen top bar: left close button + right window controls (auto-hides together)
       h(
-        'div',
+        'header',
         {
           'data-testid': 'fullscreen-top-bar',
+          onMouseEnter: handleTopBarMouseEnter,
+          onMouseLeave: handleTopBarMouseLeave,
           style: {
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'flex-end',
-            gap: 12,
-            height: 48,
-            minHeight: 48,
-            paddingRight: 0,
-            background: 'transparent',
+            justifyContent: 'space-between',
+            height: 52,
+            minHeight: 52,
+            padding: '0 16px',
+            background: 'linear-gradient(to bottom, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.15) 70%, transparent 100%)',
             WebkitAppRegion: 'drag',
             position: 'absolute',
             top: 0,
-            left: 88,
+            left: 0,
             right: 0,
             zIndex: 150,
             userSelect: 'none',
             transform: isTopBarHovered ? 'translateY(0)' : 'translateY(-100%)',
             opacity: isTopBarHovered ? 1 : 0,
             visibility: isTopBarHovered ? 'visible' : 'hidden',
-            transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease, visibility 0.3s ease',
+            transition: 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease, visibility 0.35s ease',
             pointerEvents: isTopBarHovered ? 'auto' : 'none',
           } as ElectronCSSProperties,
         },
-        h(SleepTimerIndicator, { ctx }),
-        h(WindowControls, null),
+        // Left: Close / Return button
+        h(
+          'button',
+          {
+            type: 'button',
+            'aria-label': 'Close now playing',
+            onClick: () => setIsFullscreenNowPlaying(false),
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 36,
+              height: 36,
+              borderRadius: '9999px',
+              border: '1px solid rgba(255, 255, 255, 0.14)',
+              background: 'rgba(255, 255, 255, 0.1)',
+              color: '#FFFFFF',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s, transform 0.2s',
+              WebkitAppRegion: 'no-drag' as unknown as undefined,
+            },
+            onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'
+              e.currentTarget.style.transform = 'scale(1.06)'
+            },
+            onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+              e.currentTarget.style.transform = 'scale(1)'
+            },
+          },
+          tablerIcon('chevron-down', { size: 24 }),
+        ),
+        // Center: Drag spacer
+        h('div', {
+          style: {
+            flex: 1,
+            height: '100%',
+            WebkitAppRegion: 'drag',
+          } as ElectronCSSProperties,
+        }),
+        // Right: SleepTimer + WindowControls
+        h(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              WebkitAppRegion: 'no-drag' as unknown as undefined,
+            },
+          },
+          h(SleepTimerIndicator, { ctx }),
+          h(WindowControls, null),
+        ),
       ),
       h(
         'div',
@@ -573,7 +667,8 @@ export function Shell({ ctx }: { ctx: Context }) {
               h(NowPlayingView, {
                 ctx,
                 onClose: () => setIsFullscreenNowPlaying(false),
-              }),
+                showCloseButton: false,
+              } as never),
             )
           : h(
               'div',

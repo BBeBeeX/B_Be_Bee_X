@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context, Service } from 'cordis'
 import type { Lyrics, MediaProvider, TransportState } from '@BBeBee/protocol'
-import pluginLyrics, { apply, LyricsPlugin, type LyricsConfig } from './index.js'
+import pluginLyrics, { apply, cleanTrackTitle, LyricsPlugin, type LyricsConfig } from './index.js'
 
 class PlayerStub extends Service {
   public transport: TransportState = {
@@ -40,6 +40,7 @@ class SourcesStub extends Service {
   lyricsMap = new Map<string, Lyrics>()
   sourceRecords = new Map<string, any>()
   getLyricsCallCount = 0
+  customGetLyrics?: (id: string) => Promise<Lyrics | undefined>
 
   constructor(ctx: Context) {
     super(ctx, 'sources')
@@ -56,6 +57,7 @@ class SourcesStub extends Service {
       capabilities: { lyrics: true } as any,
       getLyrics: async (id: string) => {
         this.getLyricsCallCount++
+        if (this.customGetLyrics) return await this.customGetLyrics(id)
         if (id === 'error-track') throw new Error('Network timeout')
         return this.lyricsMap.get(id)
       },
@@ -585,5 +587,90 @@ describe('plugin-lyrics', () => {
     expect(sharedDbRows.size).toBe(1)
     await ctx.lyrics.clearCache('BBeBee:mock:track:clear-test')
     expect(sharedDbRows.size).toBe(0)
+  })
+
+  it('cleanTrackTitle normalizes remastered and version noise from track titles', () => {
+    expect(cleanTrackTitle('桜流し (2021 Remastered)')).toBe('桜流し')
+    expect(cleanTrackTitle('Hotel California - 2013 Remaster')).toBe('Hotel California')
+    expect(cleanTrackTitle('Let It Be (Remastered 2009)')).toBe('Let It Be')
+    expect(cleanTrackTitle('Creep (Live at the Astoria)')).toBe('Creep')
+    expect(cleanTrackTitle('One Last Kiss')).toBe('One Last Kiss')
+    expect(cleanTrackTitle('Song (feat. Artist)')).toBe('Song')
+  })
+
+  it('deduplicates concurrent in-flight getLyricsForTrack calls into a single fetch', async () => {
+    const { ctx, sources } = await createHarness()
+
+    let resolveLyrics: (l: Lyrics) => void
+    const slowFetchPromise = new Promise<Lyrics>((resolve) => {
+      resolveLyrics = resolve
+    })
+
+    // Mock a slow provider that takes some time to resolve
+    sources.customGetLyrics = async () => {
+      return await slowFetchPromise
+    }
+
+    // Fire 3 concurrent calls for the exact same track
+    const p1 = ctx.lyrics.getLyricsForTrack('BBeBee:mock:track:concurrent-test')
+    const p2 = ctx.lyrics.getLyricsForTrack('BBeBee:mock:track:concurrent-test')
+    const p3 = ctx.lyrics.getLyricsForTrack('BBeBee:mock:track:concurrent-test')
+
+    // Resolve the promise
+    resolveLyrics!({
+      format: 'lrc',
+      content: '[00:01.00]Concurrent Result',
+      synced: true,
+    })
+
+    const [r1, r2, r3] = await Promise.all([p1, p2, p3])
+    expect(r1?.content).toBe('[00:01.00]Concurrent Result')
+    expect(r2?.content).toBe('[00:01.00]Concurrent Result')
+    expect(r3?.content).toBe('[00:01.00]Concurrent Result')
+
+    // Only 1 underlying fetch occurred, not 3!
+    expect(sources.getLyricsCallCount).toBe(1)
+  })
+
+  it('does NOT re-trigger fetch on player/state-changed if already loading or metadata is unchanged', async () => {
+    class CountingLyricSourcesStub extends Service {
+      callCount = 0
+      constructor(c: Context) {
+        super(c, 'lyricSources')
+      }
+      async searchLyrics() {
+        this.callCount++
+        return {
+          format: 'lrc' as const,
+          content: '[00:01.00]Synced Lyrics',
+          synced: true,
+        }
+      }
+    }
+
+    const ctx = new Context()
+    await ctx.plugin(PlayerStub)
+    await ctx.plugin(SourcesStub)
+    await ctx.plugin(DbStub)
+    await ctx.plugin(CountingLyricSourcesStub)
+    await ctx.plugin(LyricsPlugin)
+
+    const player = (ctx as any).player as PlayerStub
+    const lyricSources = (ctx as any).lyricSources as CountingLyricSourcesStub
+
+    player.transport.nowPlaying = { title: 'First Song', artist: 'Artist' }
+    player.setTrack('BBeBee:mock:track:state-dup-test')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(lyricSources.callCount).toBe(1)
+    expect(ctx.lyrics.state.status).toBe('ready')
+
+    // Emit state-changed with same title & artist (e.g. buffer update or volume change)
+    ctx.emit('player/state-changed', player.transport)
+    ctx.emit('player/state-changed', player.transport)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    // Still only called once!
+    expect(lyricSources.callCount).toBe(1)
   })
 })

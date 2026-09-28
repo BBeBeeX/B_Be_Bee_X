@@ -389,7 +389,7 @@ describe('LyricSourcesPlugin Service', () => {
     const sources = plugin.getSources()
     const builtin = sources.find((s) => s.id === 'builtin-lrclib')
     expect(builtin).toBeDefined()
-    expect(builtin?.version).toBe('1.2.0')
+    expect(builtin?.version).toBe(BUILTIN_LRCLIB_SOURCE.version)
     expect(builtin?.enabled).toBe(false)
     expect(builtin?.sortOrder).toBe(5)
     expect(builtin?.script).toContain('toQueryString')
