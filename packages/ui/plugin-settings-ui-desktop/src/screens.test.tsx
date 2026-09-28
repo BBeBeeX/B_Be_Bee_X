@@ -7,7 +7,7 @@ import { describe, expect, it, afterEach, vi } from 'vitest'
 import { createElement as h } from 'react'
 import { fireEvent, render, cleanup, waitFor } from '@testing-library/react'
 import { Context, Service } from 'cordis'
-import type { AppSettings, SettingsService, CacheClass, CacheStats, ThemeDefinition, NowPlayingStyleMeta } from '@BBeBee/protocol'
+import type { AppSettings, SettingsService, CacheClass, CacheStats, ThemeDefinition, NowPlayingStyleMeta, LyricSourceDefinition, SourceRecord } from '@BBeBee/protocol'
 import { DEFAULT_APP_SETTINGS, NOW_PLAYING_STYLES } from '@BBeBee/protocol'
 import { midnightPurpleTheme, spotifyTheme } from '@BBeBee/ui-tokens'
 import { SettingsScreen } from './SettingsScreen.js'
@@ -246,6 +246,85 @@ async function harness(initialSettings: Partial<AppSettings> = {}) {
     }
   }
 
+  class SourcesStub extends Service {
+    static override readonly name = 'sources'
+    public sources: SourceRecord[] = [
+      {
+        id: 'mock-bili',
+        name: 'Bilibili Music',
+        sourceUrl: 'https://bilibili.com',
+        type: 'music',
+        doc: {} as any,
+        docJson: '{}',
+        docHash: 'hash',
+        enabled: true,
+        sortOrder: 0,
+        allowedHosts: [],
+        locallyModified: false,
+        importedAt: 0,
+        updatedAt: 0,
+        failCount: 0,
+        needsLyricSource: false,
+      },
+    ]
+
+    constructor(ctx: Context) {
+      super(ctx, 'sources')
+    }
+
+    setNeedsLyricSource = async (id: string, needed: boolean) => {
+      calls.push(`sources:setNeedsLyricSource:${id}:${needed}`)
+      const s = this.sources.find((item) => item.id === id)
+      if (s) {
+        ;(s as any).needsLyricSource = needed
+        this.ctx.emit('source/changed', id, ['needsLyricSource'])
+      }
+    }
+  }
+
+  class LyricSourcesStub extends Service {
+    static override readonly name = 'lyricSources'
+    public lyricSources: LyricSourceDefinition[] = [
+      {
+        id: 'builtin-lrclib',
+        name: 'LRCLIB (默认歌词源)',
+        enabled: true,
+        sortOrder: 0,
+        script: 'async function searchLyrics() {}',
+      },
+    ]
+
+    constructor(ctx: Context) {
+      super(ctx, 'lyricSources')
+    }
+
+    getSources = () => this.lyricSources
+    registerSource = async (def: LyricSourceDefinition) => {
+      calls.push(`lyricSources:register:${def.id}`)
+      this.lyricSources.push(def)
+      this.ctx.emit('lyric-sources/changed', this.lyricSources)
+    }
+    removeSource = async (id: string) => {
+      calls.push(`lyricSources:remove:${id}`)
+      this.lyricSources = this.lyricSources.filter((s) => s.id !== id)
+      this.ctx.emit('lyric-sources/changed', this.lyricSources)
+      return true
+    }
+    setEnabled = async (id: string, enabled: boolean) => {
+      calls.push(`lyricSources:setEnabled:${id}:${enabled}`)
+      const found = this.lyricSources.find((s) => s.id === id)
+      if (found) found.enabled = enabled
+      this.ctx.emit('lyric-sources/changed', this.lyricSources)
+    }
+    reorder = async (ids: string[]) => {
+      calls.push(`lyricSources:reorder:${ids.join(',')}`)
+    }
+    testSource = async (id: string) => {
+      calls.push(`lyricSources:test:${id}`)
+      return { ok: true, durationMs: 42 }
+    }
+  }
+
   const root = new Context()
   await root.plugin(SettingsStub)
   await root.plugin(CacheStub)
@@ -254,6 +333,8 @@ async function harness(initialSettings: Partial<AppSettings> = {}) {
   await root.plugin(LogBufferStub)
   await root.plugin(ThemeStub)
   await root.plugin(NowPlayingStub)
+  await root.plugin(SourcesStub)
+  await root.plugin(LyricSourcesStub)
 
   let scoped: Context | undefined
   root.inject(['ui', 'settings'], (s) => void (scoped = s))
@@ -842,6 +923,44 @@ describe('SettingsScreen', () => {
 
     await waitFor(() => {
       expect(calls.includes('nowPlaying:remove:sample-neon-player')).toBe(true)
+    })
+  })
+
+  it('manages third-party lyric sources and audio source policy in LyricsSection', async () => {
+    const { ctx, calls } = await harness()
+    const { getByText, findByText } = render(h(SettingsScreen, { ctx }))
+
+    // LyricSourcesSection is mounted in LyricsSection
+    expect(await findByText('第三方歌词源管理 (Lyric Sources)')).toBeTruthy()
+    expect(getByText('LRCLIB (默认歌词源)')).toBeTruthy()
+    expect(getByText('内置源')).toBeTruthy()
+
+    // Test audio sources policy section
+    expect(getByText('音频源歌词策略 (Audio Source Policy)')).toBeTruthy()
+    expect(getByText('Bilibili Music')).toBeTruthy()
+
+    // Toggle audio source needsLyricSource
+    const audioSwitch = document.querySelector('button[aria-label*="Bilibili Music"]') as HTMLElement
+    expect(audioSwitch).toBeTruthy()
+    fireEvent.click(audioSwitch)
+    expect(calls).toContain('sources:setNeedsLyricSource:mock-bili:true')
+
+    // Open import modal
+    const importBtn = getByText('导入歌词源')
+    fireEvent.click(importBtn)
+    expect(getByText('导入第三方歌词源')).toBeTruthy()
+    expect(getByText('严格沙箱隔离保护：')).toBeTruthy()
+
+    // Click load sample template
+    const sampleBtn = getByText('载入示例源模板')
+    fireEvent.click(sampleBtn)
+
+    // Submit import
+    const confirmBtn = getByText('确认导入')
+    fireEvent.click(confirmBtn)
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.startsWith('lyricSources:register:sample-netease-lrc'))).toBe(true)
     })
   })
 })

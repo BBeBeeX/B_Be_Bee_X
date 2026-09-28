@@ -13,5 +13,10 @@
       "mobile": "./dist/index.js"
     }
   },
-  "capabilities": []
+  "capabilities": [],
+  "contributes": {
+    "services": [
+      "nowPlaying"
+    ]
+  }
 }

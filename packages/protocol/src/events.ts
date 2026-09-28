@@ -48,6 +48,7 @@ import type { DesktopLyricsState, LyricsState } from './services/lyrics.js'
 import type { MiniPlayerServiceState } from './services/mini-player.js'
 import type { ThemeDefinition } from './services/theme.js'
 import type { NowPlayingStyleId, NowPlayingStyleMeta } from './services/now-playing.js'
+import type { LyricSourceDefinition } from './services/lyric-sources.js'
 import type { UrnKind } from './urn.js'
 
 declare module 'cordis' {
@@ -189,6 +190,9 @@ declare module 'cordis' {
     /* ── now-playing ─────────────────────────────────── emit ── */
     'now-playing/style-changed'(styleId: NowPlayingStyleId): void
     'now-playing/registry-changed'(styles: readonly NowPlayingStyleMeta[]): void
+
+    /* ── lyric-sources ───────────────────────────────── emit ── */
+    'lyric-sources/changed'(sources: readonly LyricSourceDefinition[]): void
   }
 }
 
@@ -244,6 +248,7 @@ export const DISPATCH_MODES = {
   'mini-player/changed': 'emit',
   'now-playing/style-changed': 'emit',
   'now-playing/registry-changed': 'emit',
+  'lyric-sources/changed': 'emit',
 } as const satisfies Record<string, DispatchMode>
 
 export type BBeBeeEventName = keyof typeof DISPATCH_MODES

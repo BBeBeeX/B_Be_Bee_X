@@ -8,6 +8,7 @@ import { LyricsPreview } from '../LyricsPreview.js'
 import { Select } from '../Select.js'
 import { SettingsRow } from '../SettingsRow.js'
 import { SettingsSection } from '../SettingsSection.js'
+import { LyricSourcesSection } from './LyricSourcesSection.js'
 import { Switch } from '../Switch.js'
 
 export function LyricsSection({
@@ -23,7 +24,7 @@ export function LyricsSection({
 }): ReactElement {
   return h(
     'div',
-    { id: 'section-lyrics' },
+    { id: 'section-lyrics', style: { display: 'flex', flexDirection: 'column', gap: 24 } },
     h(
       SettingsSection,
       {
@@ -160,5 +161,6 @@ export function LyricsSection({
       }),
       h(LyricsPreview, { settings: desktopLyrics }),
     ),
+    h(LyricSourcesSection, { ctx }),
   )
 }

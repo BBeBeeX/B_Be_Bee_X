@@ -295,4 +295,47 @@ describe('plugin-lyrics', () => {
     expect(ctx.lyrics.state.lyrics?.content).toBe('[00:01.00]Now available')
     expect(db.lyricsRows.get('BBeBee:mock:track:retry-track')?.format).toBe('lrc')
   })
+
+  it('queries ctx.lyricSources when audio source lacks lyrics or needs external lyric source', async () => {
+    class LyricSourcesStub extends Service {
+      lastQuery?: any
+      constructor(c: Context) {
+        super(c, 'lyricSources')
+      }
+      async searchLyrics(query: any) {
+        this.lastQuery = query
+        return {
+          format: 'lrc' as const,
+          content: '[00:02.00]External Lyric',
+          synced: true,
+        }
+      }
+    }
+
+    const ctx = new Context()
+    await ctx.plugin(PlayerStub)
+    await ctx.plugin(SourcesStub)
+    await ctx.plugin(DbStub)
+    await ctx.plugin(LyricSourcesStub)
+    await ctx.plugin(LyricsPlugin)
+
+    const player = (ctx as any).player as PlayerStub
+    const lyricSources = (ctx as any).lyricSources as LyricSourcesStub
+
+    player.transport.trackUrn = 'BBeBee:mock:track:external-needed'
+    player.transport.durationMs = 200000
+    player.transport.nowPlaying = {
+      title: 'External Song',
+      artist: 'External Artist',
+    }
+
+    player.setTrack('BBeBee:mock:track:external-needed')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    expect(ctx.lyrics.state.status).toBe('ready')
+    expect(ctx.lyrics.state.lyrics?.content).toBe('[00:02.00]External Lyric')
+    expect(lyricSources.lastQuery).toBeDefined()
+    expect(lyricSources.lastQuery.title).toBe('External Song')
+    expect(lyricSources.lastQuery.artist).toBe('External Artist')
+  })
 })

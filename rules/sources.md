@@ -55,3 +55,11 @@ Rule prefixes select the execution engine:
   - `pnpm build:sources`: Compiles all `sources/` into single-file JSONs in `fixtures/sources/`.
   - `pnpm watch:sources`: Watch mode for live re-compilation.
   - `node --experimental-strip-types scripts/sources/cli.ts --unpack <file> [dest]`: Unpacks a single-file JSON back into `source.json` and `source.js`.
+
+---
+
+## 5. Third-Party Lyric Sources & Sandbox
+
+- **Audio Source Attribute**: Each audio source supports `needsLyricSource?: boolean` (defaults to `!ruleLyric`). If enabled, the player queries external lyric sources (`ctx.lyricSources`) with higher priority.
+- **Strict Data Sandbox**: External lyric sources execute in an isolated QuickJS realm or shadowed JS sandbox. They are passed **ONLY** `{ title, artist, duration }` and an egress-checked `httpFetch` bridge.
+- **Unified Normalization**: All external outputs (standard LRC strings, TTML, LRCLIB JSON, translated dual-line LRCs, line arrays) are parsed and converted into the application standard `Lyrics` contract.

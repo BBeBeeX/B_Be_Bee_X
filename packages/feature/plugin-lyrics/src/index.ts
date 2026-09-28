@@ -9,6 +9,8 @@ import { Service } from 'cordis'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import type {
+  LyricSearchQuery,
+  LyricSourcesService,
   Lyrics,
   LyricsService,
   LyricsState,
@@ -44,12 +46,20 @@ export class LyricsPlugin extends Service implements LyricsService {
     status: 'idle',
     offsetMs: 0,
   }
+  private lyricSourcesService?: LyricSourcesService
 
   constructor(ctx: Context, config: LyricsConfig = {}) {
     super(ctx, 'lyrics')
     this.ownCtx = ctx
     this.cacheSize = config.cacheSize ?? DEFAULT_CACHE_SIZE
     this.negativeCacheTtlMs = config.negativeCacheTtlMs ?? DEFAULT_NEGATIVE_CACHE_TTL_MS
+
+    this.ownCtx.inject(['lyricSources'], (scoped: Context) => {
+      this.lyricSourcesService = scoped.lyricSources
+      return () => {
+        this.lyricSourcesService = undefined
+      }
+    })
   }
 
   async [Service.init]() {
@@ -239,19 +249,44 @@ export class LyricsPlugin extends Service implements LyricsService {
       }
     }
 
-    // 3. Online media provider resolution via ctx.sources
-    if (this.ownCtx.sources) {
-      const parsedUrn = tryParseUrn(trackUrn)
-      if (parsedUrn) {
-        const provider = this.ownCtx.sources.forUrn(trackUrn)
-        if (provider?.getLyrics) {
-          const fetched = await provider.getLyrics(parsedUrn.id)
-          if (fetched && fetched.content) {
-            this.remember(trackUrn, fetched)
-            await this.persistLyrics(trackUrn, fetched)
-            return fetched
-          }
+    // 3. Online media provider resolution & third-party lyric sources
+    const parsedUrn = tryParseUrn(trackUrn)
+    const sourceRecord =
+      parsedUrn && this.ownCtx.sources?.source ? this.ownCtx.sources.source(parsedUrn.sourceId) : undefined
+    const needsLyricSource = sourceRecord?.needsLyricSource ?? false
+
+    // Priority 1: If audio source explicitly requested external lyric source, query lyricSources first
+    if (needsLyricSource && this.lyricSourcesService) {
+      const query = await this.resolveTrackQuery(trackUrn)
+      const fetched = await this.lyricSourcesService.searchLyrics(query)
+      if (fetched && fetched.content) {
+        this.remember(trackUrn, fetched)
+        await this.persistLyrics(trackUrn, fetched)
+        return fetched
+      }
+    }
+
+    // Priority 2: Online media provider from audio source
+    if (this.ownCtx.sources && parsedUrn) {
+      const provider = this.ownCtx.sources.forUrn(trackUrn)
+      if (provider?.getLyrics) {
+        const fetched = await provider.getLyrics(parsedUrn.id)
+        if (fetched && fetched.content) {
+          this.remember(trackUrn, fetched)
+          await this.persistLyrics(trackUrn, fetched)
+          return fetched
         }
+      }
+    }
+
+    // Priority 3: Fallback to external lyric sources if audio source lacked lyrics
+    if (!needsLyricSource && this.lyricSourcesService) {
+      const query = await this.resolveTrackQuery(trackUrn)
+      const fetched = await this.lyricSourcesService.searchLyrics(query)
+      if (fetched && fetched.content) {
+        this.remember(trackUrn, fetched)
+        await this.persistLyrics(trackUrn, fetched)
+        return fetched
       }
     }
 
@@ -261,6 +296,41 @@ export class LyricsPlugin extends Service implements LyricsService {
     await this.persistNegativeCache(trackUrn)
 
     return undefined
+  }
+
+  private async resolveTrackQuery(trackUrn: string): Promise<LyricSearchQuery> {
+    let title: string | undefined
+    let artist: string | undefined
+    let duration = 0
+
+    const playerState = this.ownCtx.player?.state
+    if (playerState?.trackUrn === trackUrn && playerState.nowPlaying) {
+      title = playerState.nowPlaying.title
+      artist = playerState.nowPlaying.artist ?? ''
+      duration = playerState.durationMs ?? 0
+    } else if (this.ownCtx.sources) {
+      try {
+        const tracks = await this.ownCtx.sources.getTracks([trackUrn])
+        if (tracks[0]) {
+          title = tracks[0].title
+          artist = tracks[0].artists?.map((a) => a.name).join(', ') ?? ''
+          duration = tracks[0].durationMs ?? 0
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!title) {
+      const parsed = tryParseUrn(trackUrn)
+      title = parsed?.id ?? trackUrn
+    }
+
+    return {
+      title,
+      artist: artist ?? '',
+      duration,
+    }
   }
 
   private remember(urn: string, lyrics: Lyrics): void {

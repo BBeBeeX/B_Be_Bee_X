@@ -18,4 +18,5 @@ export * from './visualizer.js'
 export * from './mini-player.js'
 export * from './theme.js'
 export * from './now-playing.js'
+export * from './lyric-sources.js'
 

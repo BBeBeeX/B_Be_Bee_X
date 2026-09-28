@@ -775,6 +775,13 @@ export class Sources extends Service implements SourcesService {
     this.safeEmit(() => this.ctx.emit('source/changed', id, ['enabled']))
   }
 
+  async setNeedsLyricSource(id: string, needed: boolean): Promise<void> {
+    this.ctx.logger.info(`sources: set source "${id}" needsLyricSource=${needed}`)
+    await this.store.setNeedsLyricSource(id, needed, Date.now())
+    await this.refresh()
+    this.safeEmit(() => this.ctx.emit('source/changed', id, ['needsLyricSource']))
+  }
+
   async remove(id: string, opts: { forgetCatalogue?: boolean } = {}): Promise<void> {
     this.ctx.logger.info(`sources: removing source "${id}" (forgetCatalogue=${opts.forgetCatalogue ?? false})`)
     await this.store.remove(id, opts)

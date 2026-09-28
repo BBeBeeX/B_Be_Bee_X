@@ -213,6 +213,11 @@ export interface SourceDocument {
   rulePlaylist?: PlaylistRule
   /** Supported stream qualities. Can also be declared inside `ruleStream.qualities`. */
   qualities?: StreamQuality[]
+  /**
+   * Whether this audio source requires an external lyric source.
+   * If true, lyrics resolution queries active third-party lyric sources.
+   */
+  needsLyricSource?: boolean
 
   /*
    * Maintained by the app, not the author. Stripped on export, so sharing a
@@ -245,6 +250,8 @@ export interface SourceRecord {
   readonly docHash: string
   readonly enabled: boolean
   readonly sortOrder: number
+  /** Whether this audio source requires an external lyric source. */
+  readonly needsLyricSource?: boolean
   /** The egress allowlist, resolved: `sourceUrl`'s host plus `allowedHosts`. */
   readonly allowedHosts: readonly string[]
   /** Edited in the app since import; re-importing over it needs confirmation. */

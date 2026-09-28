@@ -138,6 +138,9 @@ importers:
       '@BBeBee/plugin-log-file':
         specifier: workspace:*
         version: link:../../packages/logs/plugin-log-file
+      '@BBeBee/plugin-lyric-sources':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-lyric-sources
       '@BBeBee/plugin-lyrics':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-lyrics
@@ -328,6 +331,9 @@ importers:
       '@BBeBee/plugin-log-file':
         specifier: workspace:*
         version: link:../../packages/logs/plugin-log-file
+      '@BBeBee/plugin-lyric-sources':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-lyric-sources
       '@BBeBee/plugin-lyrics':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-lyrics
@@ -1117,6 +1123,21 @@ importers:
       '@types/react':
         specifier: ^19.2.0
         version: 19.2.18
+
+  packages/feature/plugin-lyric-sources:
+    dependencies:
+      '@BBeBee/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@BBeBee/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      '@BBeBee/toolkit':
+        specifier: workspace:*
+        version: link:../toolkit
+      cordis:
+        specifier: 4.0.0-rc.9
+        version: 4.0.0-rc.9
 
   packages/feature/plugin-lyrics:
     dependencies:

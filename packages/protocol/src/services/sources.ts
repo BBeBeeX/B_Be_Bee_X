@@ -449,6 +449,8 @@ export interface SourcesService {
   unlink(a: string, b: string): Promise<void>
 
   setEnabled(id: string, on: boolean): Promise<void>
+  /** Toggle whether an audio source requires an external lyric source. */
+  setNeedsLyricSource(id: string, needed: boolean): Promise<void>
   /** `forgetCatalogue` also drops the rows this source produced. */
   remove(id: string, opts?: { forgetCatalogue?: boolean }): Promise<void>
 

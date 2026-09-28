@@ -132,6 +132,26 @@ export class SourceStore {
     ])
   }
 
+  async setNeedsLyricSource(id: string, needed: boolean, now: number): Promise<void> {
+    const row = await this.db.get<{ doc_json: string }>(
+      `SELECT doc_json FROM sources WHERE id = ?`,
+      [id],
+    )
+    if (!row) return
+    let doc: Record<string, unknown> = {}
+    try {
+      doc = JSON.parse(row.doc_json) as Record<string, unknown>
+    } catch {
+      // ignore
+    }
+    doc.needsLyricSource = needed
+    const updatedDocJson = JSON.stringify(doc)
+    await this.db.exec(
+      `UPDATE sources SET doc_json = ?, locally_modified = 1, updated_at = ? WHERE id = ?`,
+      [updatedDocJson, now, id],
+    )
+  }
+
   /**
    * Remove a source.
    *
@@ -256,6 +276,7 @@ function toRecord(row: SourceRow): SourceRecord | undefined {
     ...(row.last_error ? { lastError: row.last_error } : {}),
     failCount: row.fail_count,
     ...(row.respond_time_ms ? { respondTimeMs: row.respond_time_ms } : {}),
+    needsLyricSource: doc.needsLyricSource ?? !doc.ruleLyric,
   }
 }
 

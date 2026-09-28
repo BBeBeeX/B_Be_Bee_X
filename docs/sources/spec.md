@@ -234,6 +234,9 @@ export interface SourceDocument {
   ruleArtist?: ArtistRule
   rulePlaylist?: PlaylistRule
 
+  /** Whether this audio source requests external lyric sources (ctx.lyricSources). Defaults to !ruleLyric. */
+  needsLyricSource?: boolean
+
   /* ── maintained by the app, not the author ──────────────────── */
   lastUpdated?: number
   respondTime?: number

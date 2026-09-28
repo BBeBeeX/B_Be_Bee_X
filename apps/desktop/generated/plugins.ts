@@ -139,6 +139,11 @@ export const bundled: PluginRegistry = {
     manifest: {"id":"@BBeBee/plugin-local-scanner-ui-desktop","version":"0.0.0","displayName":"Local Scanner (desktop views)","description":"ctx.scanner — the local filesystem walk.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["fs:read:media","fs:read:all","fs:read:cache","fs:write:cache","db:read:core","db:write:core","background"],"contributes":{"services":["scanner"]}},
     builtin: true,
   },
+  "@BBeBee/plugin-lyric-sources": {
+    load: () => import('@BBeBee/plugin-lyric-sources'),
+    manifest: {"id":"@BBeBee/plugin-lyric-sources","version":"0.0.0","displayName":"Lyric Sources","description":"ctx.lyricSources — third-party lyric source provider management and sandboxed execution.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":["net:host/*","js"],"contributes":{"services":["lyricSources"]}},
+    builtin: true,
+  },
   "@BBeBee/plugin-lyrics": {
     load: () => import('@BBeBee/plugin-lyrics'),
     manifest: {"id":"@BBeBee/plugin-lyrics","version":"0.0.0","displayName":"Lyrics","description":"ctx.lyrics — lyric retrieval, caching, synchronization and unified state.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":["db:read:core","db:write:core"],"contributes":{"services":["lyrics"]}},
@@ -161,12 +166,12 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-now-playing": {
     load: () => import('@BBeBee/plugin-now-playing'),
-    manifest: {"id":"@BBeBee/plugin-now-playing","version":"0.0.0","displayName":"Now playing","description":"The full-screen player and the persistent bar that opens it.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[]},
+    manifest: {"id":"@BBeBee/plugin-now-playing","version":"0.0.0","displayName":"Now playing","description":"The full-screen player and the persistent bar that opens it.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["nowPlaying"]}},
     builtin: true,
   },
   "@BBeBee/plugin-now-playing-ui-desktop": {
     load: () => import('@BBeBee/plugin-now-playing-ui-desktop'),
-    manifest: {"id":"@BBeBee/plugin-now-playing-ui-desktop","version":"0.0.0","displayName":"Now playing (desktop views)","description":"The full-screen player and the persistent bar that opens it.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[]},
+    manifest: {"id":"@BBeBee/plugin-now-playing-ui-desktop","version":"0.0.0","displayName":"Now playing (desktop views)","description":"The full-screen player and the persistent bar that opens it.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["nowPlaying"]}},
     builtin: true,
   },
   "@BBeBee/plugin-player": {
