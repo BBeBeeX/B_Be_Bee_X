@@ -1,14 +1,13 @@
 /**
  * Cinematic layout — 16:9 minimal anime / music video (AMV) aesthetic.
  *
- * Inspired by high-end editorial and cinematic lyric players:
- * - 16:9 aspect ratio centered layout on a deep cover-toned background
- * - Faint blurred cover backdrop (opacity ~0.12, blur 80px)
- * - Left section (~38% width): large square album artwork with white border & deep shadow
- * - Right section: actual song title, artist, and 3-5 line synchronized lyrics with
- *   bright high-contrast active line (and bilingual translation) and fading neighbors
- * - Bottom area: delicate real-time audio waveform canvas, thin progress bar with
- *   actual current time / total duration, and minimal playback controls
+ * Redesigned to match the reference style (映画歌词):
+ * - Background tinted by cover's theme color (slightly brighter), with a large blurred
+ *   cover backdrop (opacity ~0.20, blur 36px) revealing the artwork's silhouette
+ * - Left section (~38%): square album artwork with crisp white border & deep shadow
+ * - Right section: cursive/handwriting title, muted artist, cinematic subtitle-style
+ *   synchronized lyrics (focused current line + italic translation)
+ * - Bottom: gentle organic waveform, thin progress bar, timestamps below, minimal controls
  */
 import { createElement as h, useEffect, useMemo, useRef, type ReactElement } from 'react'
 import { formatDuration, parseLrc, type LyricLine, findActiveLyricIndex } from '@BBeBee/toolkit'
@@ -19,14 +18,22 @@ import type { LyricsService, LyricsState } from '@BBeBee/protocol'
 import { CachedArtwork, PlayModeButton, VolumeControl } from '../components/NowPlayingBar.js'
 import type { NowPlayingLayoutProps } from './index.js'
 
-/* ── Delicate Reactive Audio Waveform ───────────────────────────────────── */
+/* ── Cursive / handwriting font stack ───────────────────────────────────── */
+
+const CURSIVE_FONT = "'Caveat', 'Segoe Print', 'Bradley Hand', 'Chalkboard SE', cursive, sans-serif"
+
+/* ── Gentle Organic Waveform ────────────────────────────────────────────── */
 
 interface WaveformCanvasProps {
   isPlaying: boolean
   color?: string
 }
 
-function WaveformCanvas({ isPlaying, color = '#7bb4e3' }: WaveformCanvasProps): ReactElement {
+/**
+ * A delicate, organic single-stroke waveform that breathes gently when
+ * playing and rests as a subtle hand-drawn line when paused.
+ */
+function WaveformCanvas({ isPlaying, color = 'rgba(255, 255, 255, 0.55)' }: WaveformCanvasProps): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const animRef = useRef<number | null>(null)
   const phaseRef = useRef<number>(0)
@@ -45,27 +52,28 @@ function WaveformCanvas({ isPlaying, color = '#7bb4e3' }: WaveformCanvasProps): 
       const height = canvas.height
       ctx.clearRect(0, 0, width, height)
 
-      // Advance phase when playing, slow crawl when paused
-      phaseRef.current += isPlaying ? 0.045 : 0.008
+      // Gentle phase advance
+      phaseRef.current += isPlaying ? 0.025 : 0.004
       const phase = phaseRef.current
 
       ctx.beginPath()
       ctx.strokeStyle = color
-      ctx.lineWidth = 1.75
+      ctx.lineWidth = 1.2
       ctx.shadowColor = color
-      ctx.shadowBlur = isPlaying ? 8 : 3
+      ctx.shadowBlur = isPlaying ? 4 : 1
 
       const midY = height / 2
-      const baseAmp = isPlaying ? height * 0.38 : height * 0.1
+      // Subtle amplitude — gentle breathing, not aggressive multi-frequency
+      const baseAmp = isPlaying ? height * 0.22 : height * 0.06
 
       ctx.moveTo(0, midY)
-      for (let x = 0; x <= width; x += 4) {
+      for (let x = 0; x <= width; x += 3) {
         const progress = x / width
-        // Window function (hanning) to taper the wave at edges
+        // Hanning window envelope for organic tapering at edges
         const envelope = Math.sin(progress * Math.PI)
-        const wave1 = Math.sin(progress * 12 + phase) * baseAmp * 0.6
-        const wave2 = Math.sin(progress * 22 - phase * 1.5) * baseAmp * 0.3
-        const wave3 = Math.cos(progress * 6 + phase * 0.5) * baseAmp * 0.2
+        const wave1 = Math.sin(progress * 8 + phase) * baseAmp * 0.65
+        const wave2 = Math.sin(progress * 14 - phase * 0.8) * baseAmp * 0.25
+        const wave3 = Math.cos(progress * 4 + phase * 0.3) * baseAmp * 0.15
         const y = midY + (wave1 + wave2 + wave3) * envelope
         ctx.lineTo(x, y)
       }
@@ -85,14 +93,14 @@ function WaveformCanvas({ isPlaying, color = '#7bb4e3' }: WaveformCanvasProps): 
   return h('canvas', {
     ref: canvasRef,
     width: 680,
-    height: 38,
+    height: 28,
     'data-testid': 'cinematic-waveform',
     style: {
       width: '100%',
-      height: 38,
+      height: 28,
       display: 'block',
-      opacity: isPlaying ? 0.88 : 0.4,
-      transition: 'opacity 0.4s ease',
+      opacity: isPlaying ? 0.75 : 0.35,
+      transition: 'opacity 0.5s ease',
     },
   })
 }
@@ -124,7 +132,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
     return findActiveLyricIndex(parsedLines, displayPosition * 1000, lyricsState?.offsetMs ?? 0)
   }, [parsedLines, displayPosition, lyricsState?.offsetMs])
 
-  // Extract 3-5 lyric lines centered on active index
+  // Cinematic subtitle focus: show current line + one following line
   const visibleLyricSlots = useMemo(() => {
     if (parsedLines.length === 0) return []
     const slots: Array<{ line: LyricLine | null; offset: number }> = [
@@ -153,8 +161,8 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden',
-        // Deep cover-toned navy background
-        background: 'radial-gradient(ellipse at 35% 45%, #182236 0%, #111724 65%, #0B0F18 100%)',
+        // Neutral dark base — the blurred cover backdrop provides the actual color
+        background: '#0D1118',
         color: '#FFFFFF',
         fontFamily: tokens.font.family,
         boxSizing: 'border-box',
@@ -162,7 +170,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
       },
     },
 
-    /* ── Layer 1: Ambient Faint Blurred Artwork Backdrop (opacity ~0.12, blur 80px) ── */
+    /* ── Layer 1: Blurred Cover Backdrop (cover theme color, slightly brighter) ── */
     h(
       'div',
       {
@@ -174,9 +182,11 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
           overflow: 'hidden',
           zIndex: 0,
           pointerEvents: 'none',
-          opacity: 0.14,
-          filter: 'blur(80px) saturate(1.4)',
-          transform: 'scale(1.25)',
+          // Higher opacity (0.20) + lower blur (36px) + brightness boost to let
+          // the cover's natural theme color dominate the background atmosphere
+          opacity: 0.20,
+          filter: 'blur(36px) saturate(1.5) brightness(1.3)',
+          transform: 'scale(1.3)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -246,10 +256,10 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                 aspectRatio: '1 / 1',
                 maxHeight: 380,
                 maxWidth: 380,
-                borderRadius: tokens.radius.md,
-                // Ref image signature: crisp white border + deep dark soft shadow
+                borderRadius: 2,
+                // Crisp white border + deep dark soft shadow
                 border: '2px solid rgba(255, 255, 255, 0.85)',
-                boxShadow: '16px 24px 50px rgba(0, 0, 0, 0.65)',
+                boxShadow: '16px 20px 40px rgba(0, 0, 0, 0.65)',
                 overflow: 'hidden',
                 backgroundColor: 'rgba(255, 255, 255, 0.04)',
               },
@@ -277,11 +287,11 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
               textAlign: 'center',
               minWidth: 0,
               height: '100%',
-              gap: 28,
+              gap: 32,
             },
           },
 
-          /* Track Title & Artist (using actual playback data) */
+          /* Track Title (cursive/handwriting font) & Artist */
           h(
             'div',
             {
@@ -289,7 +299,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: 6,
+                gap: 8,
                 maxWidth: '90%',
               },
             },
@@ -298,12 +308,12 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
               {
                 style: {
                   margin: 0,
-                  fontSize: 38,
-                  fontWeight: 500,
-                  letterSpacing: '0.2px',
+                  fontSize: 48,
+                  fontWeight: 400,
+                  letterSpacing: '0.5px',
                   color: '#FFFFFF',
-                  fontFamily: 'system-ui, -apple-system, sans-serif',
-                  textShadow: '0 2px 16px rgba(0, 0, 0, 0.4)',
+                  fontFamily: CURSIVE_FONT,
+                  textShadow: '0 2px 18px rgba(0, 0, 0, 0.45)',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -317,9 +327,9 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
               {
                 style: {
                   margin: 0,
-                  fontSize: 16,
-                  color: 'rgba(255, 255, 255, 0.65)',
-                  letterSpacing: '0.4px',
+                  fontSize: 15,
+                  color: 'rgba(255, 255, 255, 0.55)',
+                  letterSpacing: '0.5px',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -329,7 +339,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
             ),
           ),
 
-          /* Synced Lyrics Container */
+          /* Synced Lyrics — Cinematic Subtitle Focus */
           h(
             'div',
             {
@@ -339,9 +349,9 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 14,
+                gap: 10,
                 width: '100%',
-                minHeight: 140,
+                minHeight: 120,
               },
             },
             visibleLyricSlots.length > 0
@@ -349,9 +359,9 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                   if (!slot.line) return null
                   const isCurrent = slot.offset === 0
                   const isPrev = slot.offset === -1
-                  const opacity = isCurrent ? 1 : isPrev ? 0.35 : slot.offset === 1 ? 0.45 : 0.2
-                  const fontSize = isCurrent ? 24 : isPrev ? 16 : 17
-                  const fontWeight = isCurrent ? 600 : 400
+                  const opacity = isCurrent ? 1 : isPrev ? 0.32 : slot.offset === 1 ? 0.40 : 0.18
+                  const fontSize = isCurrent ? 24 : 16
+                  const fontWeight = isCurrent ? 500 : 400
 
                   return h(
                     'div',
@@ -362,11 +372,12 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                         opacity,
                         fontSize,
                         fontWeight,
-                        color: isCurrent ? '#FFFFFF' : 'rgba(255, 255, 255, 0.85)',
-                        lineHeight: 1.45,
+                        color: '#FFFFFF',
+                        letterSpacing: isCurrent ? '1.5px' : '0.5px',
+                        lineHeight: 1.5,
                         textAlign: 'center',
-                        textShadow: isCurrent ? '0 2px 14px rgba(0, 0, 0, 0.6)' : 'none',
-                        transition: 'all 0.38s cubic-bezier(0.2, 0, 0, 1)',
+                        textShadow: isCurrent ? '0 2px 12px rgba(0, 0, 0, 0.5)' : 'none',
+                        transition: 'all 0.4s cubic-bezier(0.2, 0, 0, 1)',
                         maxWidth: '90%',
                       },
                     },
@@ -376,10 +387,12 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                           'div',
                           {
                             style: {
-                              fontSize: fontSize * 0.78,
+                              fontSize: isCurrent ? 18 : 14,
                               fontStyle: 'italic',
-                              opacity: 0.88,
-                              marginTop: 2,
+                              fontFamily: CURSIVE_FONT,
+                              opacity: 0.85,
+                              marginTop: 3,
+                              letterSpacing: '0.3px',
                             },
                           },
                           slot.line.translation,
@@ -392,8 +405,9 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                   {
                     style: {
                       fontSize: 20,
-                      opacity: 0.45,
+                      opacity: 0.40,
                       fontStyle: 'italic',
+                      fontFamily: CURSIVE_FONT,
                       color: 'rgba(255, 255, 255, 0.7)',
                     },
                   },
@@ -403,81 +417,80 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
         ),
       ),
 
-      /* ── Bottom Area: Audio Waveform, Progress Bar & Minimal Controls ── */
+      /* ── Bottom Area: Waveform, Progress Bar & Minimal Controls ── */
       h(
         'div',
         {
           style: {
             display: 'flex',
             flexDirection: 'column',
-            gap: 6,
+            gap: 4,
             width: '100%',
-            marginTop: 18,
+            marginTop: 16,
           },
         },
 
-        /* 1. Thin Audio Waveform Visualization */
-        h(WaveformCanvas, { isPlaying, color: '#7bb4e3' }),
+        /* 1. Gentle Organic Waveform */
+        h(WaveformCanvas, { isPlaying }),
 
-        /* 2. Playback Progress Slider + Actual Timestamps */
+        /* 2. Progress Slider (thin line) */
+        h(
+          'div',
+          { style: { width: '100%' } },
+          h(Slider, {
+            value: duration ? Math.min(displayPosition, duration) : displayPosition,
+            max: duration ?? 0,
+            disabled: !can.canSeek,
+            accessibilityLabel: 'Seek',
+            onChange: onSeekChange,
+            onCommit: onSeekCommit,
+          }),
+        ),
+
+        /* 3. Timestamps below progress bar */
         h(
           'div',
           {
             style: {
               display: 'flex',
               alignItems: 'center',
-              gap: 16,
+              justifyContent: 'space-between',
               width: '100%',
             },
           },
-          /* Current Playback Time */
           h(
             'span',
             {
               'data-testid': 'cinematic-current-time',
               style: {
-                fontSize: 14,
-                fontFamily: 'monospace, sans-serif',
-                color: 'rgba(255, 255, 255, 0.75)',
+                fontSize: 13,
+                fontFamily: CURSIVE_FONT,
+                fontStyle: 'italic',
+                color: 'rgba(255, 255, 255, 0.65)',
                 minWidth: 42,
-                textAlign: 'right',
+                textAlign: 'left',
               },
             },
             formatDuration(displayPosition),
           ),
-
-          /* Sleek Progress Slider */
-          h(
-            'div',
-            { style: { flex: 1 } },
-            h(Slider, {
-              value: duration ? Math.min(displayPosition, duration) : displayPosition,
-              max: duration ?? 0,
-              disabled: !can.canSeek,
-              accessibilityLabel: 'Seek',
-              onChange: onSeekChange,
-              onCommit: onSeekCommit,
-            }),
-          ),
-
-          /* Total Duration */
           h(
             'span',
             {
               'data-testid': 'cinematic-total-duration',
               style: {
-                fontSize: 14,
-                fontFamily: 'monospace, sans-serif',
-                color: 'rgba(255, 255, 255, 0.75)',
+                fontSize: 13,
+                fontFamily: CURSIVE_FONT,
+                fontStyle: 'italic',
+                color: 'rgba(255, 255, 255, 0.65)',
                 minWidth: 42,
-                textAlign: 'left',
+                textAlign: 'right',
               },
             },
             formatDuration(duration),
           ),
         ),
 
-        /* 3. Minimal Playback Controls */
+        /* 4. Minimal Semi-Transparent Playback Controls */
         h(
           'div',
           {
@@ -486,7 +499,15 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
               alignItems: 'center',
               justifyContent: 'center',
               gap: 20,
-              marginTop: 4,
+              marginTop: 2,
+              opacity: 0.7,
+              transition: 'opacity 0.3s ease',
+            },
+            onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+              e.currentTarget.style.opacity = '1'
+            },
+            onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+              e.currentTarget.style.opacity = '0.7'
             },
           },
           h(PlayModeButton, { ctx, mode: state.playMode }),

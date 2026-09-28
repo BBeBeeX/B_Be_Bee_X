@@ -320,10 +320,11 @@ function CinematicMobileLayout({ ctx, state, position, duration, can, onClose }:
         justifyContent: 'center',
         gap: tokens.space[4],
         padding: tokens.space[5],
-        backgroundColor: '#0F1522',
+        // Neutral dark base — blurred cover backdrop provides the theme color
+        backgroundColor: '#0D1118',
       },
     },
-    /* Faint blurred cover backdrop (~0.12 opacity) */
+    /* Blurred cover backdrop (cover theme color, slightly brighter) */
     h(
       native.View as never,
       {
@@ -333,7 +334,7 @@ function CinematicMobileLayout({ ctx, state, position, duration, can, onClose }:
           left: 0,
           right: 0,
           bottom: 0,
-          opacity: 0.12,
+          opacity: 0.20,
           alignItems: 'center',
           justifyContent: 'center',
         },
@@ -354,7 +355,7 @@ function CinematicMobileLayout({ ctx, state, position, duration, can, onClose }:
         style: {
           borderWidth: 2,
           borderColor: 'rgba(255, 255, 255, 0.85)',
-          borderRadius: tokens.radius.md,
+          borderRadius: 2,
           overflow: 'hidden',
           backgroundColor: 'rgba(255, 255, 255, 0.04)',
         },

@@ -430,4 +430,53 @@ describe('LyricSourcesPlugin Service', () => {
     expect(res.ok).toBe(false)
     expect(res.error).toContain('未检索到匹配歌词')
   })
+
+  it('preserves lyricSources capability context when called from another scoped plugin context', async () => {
+    let seenConfig: unknown
+    class DummyHttp extends Service {
+      static override readonly name = 'http'
+      constructor(c: Context) {
+        super(c, 'http')
+      }
+      async [Service.invoke](_req: HttpRequest) {
+        seenConfig = this[Service.resolveConfig]()
+        return {
+          status: 200,
+          headers: {},
+          text: async () => JSON.stringify({ syncedLyrics: '[00:01.00]Scoped Lyric' }),
+          json: async () => ({ syncedLyrics: '[00:01.00]Scoped Lyric' }),
+          arrayBuffer: async () => new ArrayBuffer(0),
+          stream: () => ({} as any),
+        }
+      }
+    }
+
+    const root = new Context()
+    await root.plugin(DummyHttp)
+
+    // plugin-lyric-sources has net:host/*
+    const scopedSources = root.intercept('http', {
+      pluginId: '@BBeBee/plugin-lyric-sources',
+      granted: ['net:host/*'],
+    })
+    await scopedSources.plugin(LyricSourcesPlugin)
+
+    // settings-ui-desktop has no net:host/*
+    const scopedSettings = root.intercept('http', {
+      pluginId: '@BBeBee/plugin-settings-ui-desktop',
+      granted: [],
+    })
+
+    const svcFromSettings = scopedSettings.reflect.get('lyricSources', false) as LyricSourcesPlugin
+    const res = await svcFromSettings.testSource('builtin-lrclib', {
+      title: 'Yellow',
+      artist: 'Coldplay',
+      duration: 269000,
+    })
+
+    expect(res.ok).toBe(true)
+    expect(seenConfig).toMatchObject({
+      pluginId: '@BBeBee/plugin-lyric-sources',
+    })
+  })
 })

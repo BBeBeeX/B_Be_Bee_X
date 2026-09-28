@@ -1,6 +1,7 @@
 import { Service } from 'cordis'
 import type { Context } from 'cordis'
 import type {
+  HttpRequest,
   HttpService,
   JsService,
   Lyrics,
@@ -192,17 +193,28 @@ export class LyricSourcesPlugin extends Service implements LyricSourcesService {
       }
     })
 
-    // Optional injection of js sandbox
+    // Optional injection of js sandbox — wrap so Cordis proxy does not re-bind to the caller's context
     this.ownCtx.inject(['js'], (scoped: Context) => {
-      this.jsService = scoped.js
+      const boundJs = scoped.js
+      this.jsService = boundJs
+        ? {
+            get engine() {
+              return boundJs.engine
+            },
+            createRealm: (limits) => boundJs.createRealm(limits),
+          }
+        : undefined
       return () => {
         this.jsService = undefined
       }
     })
 
-    // Optional injection of http
+    // Optional injection of http — wrap in a plain function so Cordis proxy does not re-bind to the caller's context
     this.ownCtx.inject(['http'], (scoped: Context) => {
-      this.httpService = scoped.http
+      const boundHttp = scoped.http
+      this.httpService = boundHttp
+        ? (((req: HttpRequest) => boundHttp(req)) as unknown as HttpService)
+        : undefined
       return () => {
         this.httpService = undefined
       }
