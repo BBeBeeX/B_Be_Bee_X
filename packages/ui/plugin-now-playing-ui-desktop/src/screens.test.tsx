@@ -16,7 +16,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { Context, Service } from 'cordis'
 import { NOW_PLAYING_STYLES, type NowPlayingStyleId, type NowPlayingStyleMeta, type QueueItem, type Track, type TransportState } from '@BBeBee/protocol'
-import { NowPlayingBar, NowPlayingScreen } from './index.js'
+import { NowPlayingBar, NowPlayingScreen, StyleSwitcher } from './index.js'
 
 afterEach(() => {
   cleanup()
@@ -485,7 +485,16 @@ describe('NowPlayingScreen', () => {
 
   it('renders style switcher button and opens dropdown menu', async () => {
     const { ctx } = await harness({ status: 'playing' })
-    const { container } = render(h(NowPlayingScreen, { ctx }))
+    let currentStyle = 'classic'
+    const { container } = render(
+      h(StyleSwitcher, {
+        ctx,
+        styleId: currentStyle,
+        onStyleChange: (next) => {
+          currentStyle = next
+        },
+      }),
+    )
     const switcherBtn = container.querySelector('[data-testid="style-switcher-button"]') as HTMLButtonElement
     expect(switcherBtn).toBeTruthy()
     expect(switcherBtn.getAttribute('aria-label')).toBe('切换播放页样式')
@@ -503,6 +512,10 @@ describe('NowPlayingScreen', () => {
     for (const styleId of ['classic', 'full-cover', 'vinyl', 'compact', 'cinematic']) {
       expect(container.querySelector(`[data-testid="style-option-${styleId}"]`)).toBeTruthy()
     }
+
+    // NowPlayingScreen does not render style switcher button anymore
+    const screenRender = render(h(NowPlayingScreen, { ctx }))
+    expect(screenRender.container.querySelector('[data-testid="style-switcher-button"]')).toBeNull()
   })
 
   it('renders full-cover layout when style is full-cover', async () => {
@@ -551,10 +564,17 @@ describe('NowPlayingScreen', () => {
 
   it('switches layout dynamically when selecting an option from style switcher', async () => {
     const { ctx, calls } = await harness({ status: 'playing' })
-    const { container } = render(h(NowPlayingScreen, { ctx }))
-
-    // Initially classic layout (no special data-testid)
-    expect(container.querySelector('[data-testid="layout-vinyl"]')).toBeNull()
+    let currentStyle = 'classic'
+    const { container } = render(
+      h(StyleSwitcher, {
+        ctx,
+        styleId: currentStyle,
+        onStyleChange: (next) => {
+          currentStyle = next
+          ctx.nowPlaying.setStyle(next)
+        },
+      }),
+    )
 
     // Open style switcher
     const switcherBtn = container.querySelector('[data-testid="style-switcher-button"]') as HTMLButtonElement
@@ -565,7 +585,7 @@ describe('NowPlayingScreen', () => {
     fireEvent.click(vinylOption)
 
     expect(calls).toContain('setStyle:vinyl')
-    expect(container.querySelector('[data-testid="layout-vinyl"]')).toBeTruthy()
+    expect(currentStyle).toBe('vinyl')
   })
 
   it('renders sandboxed layout iframe when style is sandboxed plugin', async () => {

@@ -2,9 +2,9 @@
  * The full-pane now-playing screen — desktop.
  *
  * Delegates layout to one of four style components (classic, full-cover,
- * vinyl, compact) selected by `useNowPlayingStyle`.  This file owns the
- * outer chrome (background, close button, style switcher) and the data
- * hooks; the style components own only spatial arrangement.
+ * vinyl, compact, cinematic) selected by `useNowPlayingStyle`. This file owns the
+ * outer chrome (background, close button) and the data hooks;
+ * the style components own spatial arrangement.
  */
 
 import { createElement as h, useState } from 'react'
@@ -24,7 +24,6 @@ import type { NowPlayingService, UiService } from '@BBeBee/protocol'
 import { NOW_PLAYING_STYLES } from '@BBeBee/protocol'
 import { useNowPlayingStyle } from '@BBeBee/plugin-now-playing/hooks'
 import { NOW_PLAYING_LAYOUT_MAP, SandboxedLayout } from '../styles/index.js'
-import { StyleSwitcher } from './StyleSwitcher.js'
 
 const p = () => palettes.dark
 
@@ -36,12 +35,13 @@ export interface NowPlayingScreenProps {
 /** The full-pane player view on desktop. */
 export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): ReactElement {
   const [seekingPosition, setSeekingPosition] = useState<number | undefined>(undefined)
+  const [isTopHovered, setIsTopHovered] = useState(false)
   const state = useTransport(ctx)
   const position = usePosition(ctx)
   const duration = useDuration(ctx)
   const can = useTransportAvailability(ctx)
   const displayPosition = seekingPosition ?? position
-  const { styleId, setStyle } = useNowPlayingStyle(ctx)
+  const { styleId } = useNowPlayingStyle(ctx)
 
   const allStyles = useServiceState(
     ctx,
@@ -77,6 +77,11 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
     {
       role: 'region',
       'aria-label': 'Now playing',
+      onMouseMove: (e: React.MouseEvent) => {
+        const isTop = e.clientY < 64
+        if (isTop !== isTopHovered) setIsTopHovered(isTop)
+      },
+      onMouseLeave: () => setIsTopHovered(false),
       style: {
         position: 'relative',
         display: 'flex',
@@ -84,25 +89,28 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
         alignItems: 'center',
         justifyContent: 'center',
         boxSizing: 'border-box',
+        width: '100%',
+        height: '100%',
         minHeight: '100%',
-        padding: `${tokens.space[6]}px ${tokens.space[4]}px`,
-        gap: tokens.space[5],
+        padding: 0,
+        gap: 0,
         background: 'var(--bg-app, #05060B)',
-        overflowX: 'hidden',
+        overflow: 'hidden',
         borderBottom: 'none',
       },
     },
-    /* ── close button (top-left) ──────────────────────────────────── */
+    /* ── close button (top-left, auto-hides when mouse is not in top bar) ── */
     h(
       'button',
       {
         type: 'button',
         'aria-label': 'Close now playing',
         onClick: onClose,
+        onMouseEnter: () => setIsTopHovered(true),
         style: {
           position: 'absolute',
-          top: tokens.space[5],
-          left: tokens.space[5],
+          top: tokens.space[4],
+          left: tokens.space[4],
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -113,23 +121,17 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
           background: 'rgba(255, 255, 255, 0.08)',
           color: p().text.primary,
           cursor: 'pointer',
-          transition: `background-color ${tokens.duration.fast}ms, transform ${tokens.duration.fast}ms`,
-          zIndex: 10,
+          transform: isTopHovered ? 'translateY(0)' : 'translateY(-120%)',
+          opacity: isTopHovered ? 1 : 0,
+          visibility: isTopHovered ? 'visible' : 'hidden',
+          transition: `background-color ${tokens.duration.fast}ms, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease, visibility 0.3s ease`,
+          zIndex: 110,
+          pointerEvents: isTopHovered ? 'auto' : 'none',
           WebkitAppRegion: 'no-drag' as unknown as undefined,
-        },
-        onMouseEnter: (e: { currentTarget: HTMLElement }) => {
-          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.16)'
-          e.currentTarget.style.transform = 'scale(1.06)'
-        },
-        onMouseLeave: (e: { currentTarget: HTMLElement }) => {
-          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'
-          e.currentTarget.style.transform = 'scale(1)'
         },
       },
       tablerIcon('chevron-down', { size: 26 }),
     ),
-    /* ── style switcher (top-right) ───────────────────────────────── */
-    h(StyleSwitcher, { ctx, styleId, onStyleChange: setStyle }),
     /* ── layout body ──────────────────────────────────────────────── */
     isSandboxed && currentMeta
       ? h(SandboxedLayout, {

@@ -241,6 +241,7 @@ export function Shell({ ctx }: { ctx: Context }) {
     entries.find((e) => e.id !== 'now-playing.view') ??
     entries[0]
   const [isFullscreenNowPlaying, setIsFullscreenNowPlaying] = useState(false)
+  const [isTopBarHovered, setIsTopBarHovered] = useState(false)
   const [isBottomBarHovered, setIsBottomBarHovered] = useState(false)
   const [isQueueOpen, setIsQueueOpen] = useState(false)
   const [libraryMode, setLibraryMode] = useState<'collapsed' | 'sidebar' | 'expanded'>('sidebar')
@@ -502,6 +503,11 @@ export function Shell({ ctx }: { ctx: Context }) {
       'div',
       {
         'data-testid': 'fullscreen-now-playing',
+        onMouseMove: (e: React.MouseEvent) => {
+          const isTop = e.clientY < 64
+          if (isTop !== isTopBarHovered) setIsTopBarHovered(isTop)
+        },
+        onMouseLeave: () => setIsTopBarHovered(false),
         style: {
           position: 'fixed',
           inset: 0,
@@ -519,7 +525,7 @@ export function Shell({ ctx }: { ctx: Context }) {
           padding: 0,
         },
       },
-      // Fullscreen top bar for dragging and window controls
+      // Fullscreen top bar for dragging and window controls (auto-hides when mouse is away)
       h(
         'div',
         {
@@ -540,6 +546,11 @@ export function Shell({ ctx }: { ctx: Context }) {
             right: 0,
             zIndex: 150,
             userSelect: 'none',
+            transform: isTopBarHovered ? 'translateY(0)' : 'translateY(-100%)',
+            opacity: isTopBarHovered ? 1 : 0,
+            visibility: isTopBarHovered ? 'visible' : 'hidden',
+            transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease, visibility 0.3s ease',
+            pointerEvents: isTopBarHovered ? 'auto' : 'none',
           } as ElectronCSSProperties,
         },
         h(SleepTimerIndicator, { ctx }),
