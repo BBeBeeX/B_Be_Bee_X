@@ -25,7 +25,7 @@ export const BUILTIN_LRCLIB_SOURCE: LyricSourceDefinition = {
   id: 'builtin-lrclib',
   name: 'LRCLIB (默认歌词源)',
   description: '基于公开开放的 LRCLIB 歌词数据库，支持全球海量百万同步 LRC 歌词搜索',
-  version: '1.1.0',
+  version: '1.2.0',
   author: 'LRCLIB Community / BBeBee',
   enabled: true,
   sortOrder: 0,
@@ -44,6 +44,13 @@ async function searchLyrics(query) {
     'Lrclib-Client': 'BBeBee-MusicPlayer/1.0.0',
   };
 
+  function toQueryString(params) {
+    return Object.entries(params)
+      .filter(([_, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
+      .join('&');
+  }
+
   async function parseBody(res) {
     if (!res) return null;
     try {
@@ -53,18 +60,20 @@ async function searchLyrics(query) {
     return null;
   }
 
+  let lastNetworkError = null;
+
   // 1. Try exact match get endpoint
   if (trimmedTitle && trimmedArtist) {
     try {
-      const getParams = new URLSearchParams({
+      const getParams = {
         track_name: trimmedTitle,
         artist_name: trimmedArtist,
-      });
+      };
       if (durationSec > 0) {
-        getParams.set('duration', String(durationSec));
+        getParams.duration = String(durationSec);
       }
 
-      const res = await httpFetch('https://lrclib.net/api/get?' + getParams.toString(), {
+      const res = await httpFetch('https://lrclib.net/api/get?' + toQueryString(getParams), {
         headers,
       });
 
@@ -82,16 +91,15 @@ async function searchLyrics(query) {
           }
         }
       }
-    } catch (_) {
-      // Continue to search endpoint on failure
+    } catch (err) {
+      lastNetworkError = err;
     }
   }
 
   // 2. Try keyword search endpoint
   try {
-    const searchUrl = 'https://lrclib.net/api/search?' + new URLSearchParams({
-      q: trimmedArtist ? (trimmedArtist + ' ' + trimmedTitle) : trimmedTitle,
-    }).toString();
+    const q = trimmedArtist ? (trimmedArtist + ' ' + trimmedTitle) : trimmedTitle;
+    const searchUrl = 'https://lrclib.net/api/search?' + toQueryString({ q });
 
     const res = await httpFetch(searchUrl, { headers });
     if (res && res.status === 200) {
@@ -129,8 +137,31 @@ async function searchLyrics(query) {
         }
       }
     }
-  } catch (_) {
-    return null;
+  } catch (err) {
+    lastNetworkError = err;
+  }
+
+  // 3. Fallback to title-only search if artist+title search returned nothing
+  if (trimmedArtist && trimmedTitle) {
+    try {
+      const res = await httpFetch('https://lrclib.net/api/search?' + toQueryString({ q: trimmedTitle }), { headers });
+      if (res && res.status === 200) {
+        const list = await parseBody(res);
+        if (Array.isArray(list) && list.length > 0) {
+          const match = list.find((it) => it && (it.syncedLyrics || it.plainLyrics));
+          if (match) {
+            return match.syncedLyrics || match.plainLyrics || null;
+          }
+        }
+      }
+    } catch (err) {
+      lastNetworkError = err;
+    }
+  }
+
+  // If endpoints failed due to network/host exception, bubble up the error
+  if (lastNetworkError) {
+    throw lastNetworkError;
   }
 
   return null;
@@ -187,9 +218,22 @@ export class LyricSourcesPlugin extends Service implements LyricSourcesService {
     try {
       const saved = await this.storeService.get<LyricSourceDefinition[]>(STORE_LYRIC_SOURCES_KEY)
       if (Array.isArray(saved) && saved.length > 0) {
-        // Merge or replace; ensure builtin exists if not explicitly removed
-        const hasBuiltin = saved.some((s) => s.id === BUILTIN_LRCLIB_SOURCE.id)
-        this.sources = hasBuiltin ? saved : [BUILTIN_LRCLIB_SOURCE, ...saved]
+        // Merge or replace; ensure builtin exists and is updated to latest script/version
+        this.sources = saved.map((s) => {
+          if (s.id === BUILTIN_LRCLIB_SOURCE.id) {
+            if (s.version !== BUILTIN_LRCLIB_SOURCE.version || !s.script.includes('toQueryString')) {
+              return {
+                ...BUILTIN_LRCLIB_SOURCE,
+                enabled: s.enabled ?? true,
+                sortOrder: s.sortOrder ?? 0,
+              }
+            }
+          }
+          return s
+        })
+        if (!this.sources.some((s) => s.id === BUILTIN_LRCLIB_SOURCE.id)) {
+          this.sources.unshift(BUILTIN_LRCLIB_SOURCE)
+        }
       } else {
         this.sources = [BUILTIN_LRCLIB_SOURCE]
       }
@@ -338,10 +382,13 @@ export class LyricSourcesPlugin extends Service implements LyricSourcesService {
         }
       }
 
+      const isRawEmpty = raw === null || raw === undefined || raw === ''
       return {
         ok: false,
         durationMs,
-        error: 'Lyric source executed successfully but returned empty or unrecognized lyrics format',
+        error: isRawEmpty
+          ? '未检索到匹配歌词 (该歌词源暂未收录该歌曲或搜索条件未命中)'
+          : '歌词源已返回数据，但无法识别为有效歌词格式',
       }
     } catch (err) {
       const durationMs = Date.now() - start

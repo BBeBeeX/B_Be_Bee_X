@@ -156,10 +156,135 @@ export async function executeLyricSource(
         }
       })
 
-      // Script runner wrapper
+      // Script runner wrapper with standard Web API polyfills for QuickJS realm
       const runner = `
       (async () => {
+        // Polyfill URLSearchParams if missing
+        if (typeof URLSearchParams === 'undefined') {
+          globalThis.URLSearchParams = class URLSearchParams {
+            constructor(init) {
+              this._entries = [];
+              if (typeof init === 'string') {
+                const s = init.startsWith('?') ? init.slice(1) : init;
+                if (s) {
+                  for (const pair of s.split('&')) {
+                    const idx = pair.indexOf('=');
+                    if (idx !== -1) {
+                      this._entries.push([decodeURIComponent(pair.slice(0, idx)), decodeURIComponent(pair.slice(idx + 1))]);
+                    } else {
+                      this._entries.push([decodeURIComponent(pair), '']);
+                    }
+                  }
+                }
+              } else if (Array.isArray(init)) {
+                this._entries = init.map(([k, v]) => [String(k), String(v)]);
+              } else if (init && typeof init === 'object') {
+                for (const [k, v] of Object.entries(init)) {
+                  if (v !== undefined && v !== null) {
+                    this._entries.push([String(k), String(v)]);
+                  }
+                }
+              }
+            }
+            append(k, v) { this._entries.push([String(k), String(v)]); }
+            set(k, v) {
+              const key = String(k);
+              const val = String(v);
+              let replaced = false;
+              this._entries = this._entries.filter(([ek]) => {
+                if (ek === key) {
+                  if (!replaced) { replaced = true; return true; }
+                  return false;
+                }
+                return true;
+              });
+              if (replaced) {
+                const idx = this._entries.findIndex(([ek]) => ek === key);
+                this._entries[idx] = [key, val];
+              } else {
+                this._entries.push([key, val]);
+              }
+            }
+            get(k) {
+              const item = this._entries.find(([ek]) => ek === String(k));
+              return item ? item[1] : null;
+            }
+            getAll(k) {
+              return this._entries.filter(([ek]) => ek === String(k)).map(([, v]) => v);
+            }
+            has(k) {
+              return this._entries.some(([ek]) => ek === String(k));
+            }
+            delete(k) {
+              this._entries = this._entries.filter(([ek]) => ek !== String(k));
+            }
+            toString() {
+              return this._entries
+                .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
+                .join('&');
+            }
+          };
+        }
+
+        // Polyfill basic URL if missing
+        if (typeof URL === 'undefined') {
+          globalThis.URL = class URL {
+            constructor(urlStr, base) {
+              let full = String(urlStr);
+              if (base) {
+                full = String(base).replace(/\\/+$/, '') + '/' + full.replace(/^\\/+/, '');
+              }
+              this.href = full;
+              const qIdx = full.indexOf('?');
+              const hashIdx = full.indexOf('#');
+              let pathAndQuery = full;
+              if (hashIdx !== -1) {
+                this.hash = full.slice(hashIdx);
+                pathAndQuery = full.slice(0, hashIdx);
+              } else {
+                this.hash = '';
+              }
+              if (qIdx !== -1) {
+                this.search = pathAndQuery.slice(qIdx);
+                this.searchParams = new URLSearchParams(this.search);
+                this.pathname = pathAndQuery.slice(0, qIdx);
+              } else {
+                this.search = '';
+                this.searchParams = new URLSearchParams();
+                this.pathname = pathAndQuery;
+              }
+            }
+            toString() { return this.href; }
+          };
+        }
+
+        // Wrap httpFetch with .json() and .text() convenience methods
+        const __rawHttpFetch__ = typeof httpFetch === 'function' ? httpFetch : undefined;
+        if (__rawHttpFetch__) {
+          httpFetch = async function(url, options) {
+            const rawRes = await __rawHttpFetch__(url, options);
+            if (!rawRes) return rawRes;
+            const bodyStr = typeof rawRes.body === 'string' ? rawRes.body : '';
+            return {
+              status: rawRes.status,
+              statusText: rawRes.status === 200 ? 'OK' : 'Status ' + rawRes.status,
+              ok: rawRes.status >= 200 && rawRes.status < 300,
+              body: bodyStr,
+              text: async () => bodyStr,
+              json: async () => {
+                try {
+                  return JSON.parse(bodyStr);
+                } catch (_) {
+                  return null;
+                }
+              },
+            };
+          };
+        }
+
+        // User script
         ${source.script}
+
         if (typeof searchLyrics === 'function') {
           return await searchLyrics(__query__);
         }

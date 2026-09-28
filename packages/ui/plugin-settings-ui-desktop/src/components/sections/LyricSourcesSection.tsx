@@ -11,6 +11,7 @@ import type {
   LyricSourcesService,
   LyricSourceTestResult,
   LyricsService,
+  PlayerService,
   SourceRecord,
   SourcesService,
 } from '@BBeBee/protocol'
@@ -62,9 +63,9 @@ const SAMPLE_LRCLIB_JSON = JSON.stringify(
   {
     id: 'lrclib-net',
     name: 'LRCLIB (lrclib.net)',
-    version: '1.1.0',
+    version: '1.2.0',
     author: 'LRCLIB Community / BBeBee',
-    description: '基于 lrclib.net 开放 API 的全球高质量歌词源，支持精确匹配与模糊搜索',
+    description: '基于 lrclib.net 开放 API 的全球高质量歌词源，支持根据歌名、歌手与时长精准匹配百万级逐行同步 LRC 歌词与纯文本歌词。',
     allowedHosts: ['lrclib.net'],
     script: `// query: { title: string, artist: string, duration: number }
 async function searchLyrics(query) {
@@ -80,6 +81,13 @@ async function searchLyrics(query) {
     'Lrclib-Client': 'BBeBee-MusicPlayer/1.0.0',
   };
 
+  function toQueryString(params) {
+    return Object.entries(params)
+      .filter(([_, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
+      .join('&');
+  }
+
   async function parseBody(res) {
     if (!res) return null;
     try {
@@ -89,18 +97,20 @@ async function searchLyrics(query) {
     return null;
   }
 
+  let lastNetworkError = null;
+
   // 1. Try exact match via /api/get
   if (trimmedTitle && trimmedArtist) {
     try {
-      const getParams = new URLSearchParams({
+      const getParams = {
         track_name: trimmedTitle,
         artist_name: trimmedArtist,
-      });
+      };
       if (durationSec > 0) {
-        getParams.set('duration', String(durationSec));
+        getParams.duration = String(durationSec);
       }
 
-      const res = await httpFetch('https://lrclib.net/api/get?' + getParams.toString(), { headers });
+      const res = await httpFetch('https://lrclib.net/api/get?' + toQueryString(getParams), { headers });
       if (res && res.status === 200) {
         const data = await parseBody(res);
         if (data) {
@@ -109,14 +119,15 @@ async function searchLyrics(query) {
           if (data.instrumental) return '[00:00.00]纯音乐，请欣赏';
         }
       }
-    } catch (_) {}
+    } catch (err) {
+      lastNetworkError = err;
+    }
   }
 
   // 2. Fallback to /api/search (fuzzy query)
   try {
-    const searchUrl = 'https://lrclib.net/api/search?' + new URLSearchParams({
-      q: trimmedArtist ? (trimmedArtist + ' ' + trimmedTitle) : trimmedTitle,
-    }).toString();
+    const q = trimmedArtist ? (trimmedArtist + ' ' + trimmedTitle) : trimmedTitle;
+    const searchUrl = 'https://lrclib.net/api/search?' + toQueryString({ q });
 
     const res = await httpFetch(searchUrl, { headers });
     if (res && res.status === 200) {
@@ -137,7 +148,29 @@ async function searchLyrics(query) {
         }
       }
     }
-  } catch (_) {}
+  } catch (err) {
+    lastNetworkError = err;
+  }
+
+  // 3. Fallback to title-only search
+  if (trimmedArtist && trimmedTitle) {
+    try {
+      const res = await httpFetch('https://lrclib.net/api/search?' + toQueryString({ q: trimmedTitle }), { headers });
+      if (res && res.status === 200) {
+        const list = await parseBody(res);
+        if (Array.isArray(list) && list.length > 0) {
+          const match = list.find((it) => it && (it.syncedLyrics || it.plainLyrics));
+          if (match) return match.syncedLyrics || match.plainLyrics || null;
+        }
+      }
+    } catch (err) {
+      lastNetworkError = err;
+    }
+  }
+
+  if (lastNetworkError) {
+    throw lastNetworkError;
+  }
 
   return null;
 }`,
@@ -222,11 +255,20 @@ export function LyricSourcesSection({ ctx }: LyricSourcesSectionProps): ReactEle
     setTestingId(id)
     setTestResult(null)
     try {
-      const res = await svc.testSource(id, {
-        title: '晴天',
-        artist: '周杰伦',
-        duration: 269000,
-      })
+      const player = ctx ? serviceOf<PlayerService>(ctx, 'player') : undefined
+      const nowPlaying = player?.state?.nowPlaying
+      const testQuery = nowPlaying?.title
+        ? {
+            title: nowPlaying.title,
+            artist: nowPlaying.artist ?? '',
+            duration: player?.state?.durationMs ?? 0,
+          }
+        : {
+            title: '晴天',
+            artist: '周杰伦',
+            duration: 269000,
+          }
+      const res = await svc.testSource(id, testQuery)
       setTestResult({ id, result: res })
     } finally {
       setTestingId(null)

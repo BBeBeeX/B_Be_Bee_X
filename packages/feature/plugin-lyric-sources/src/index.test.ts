@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { Context } from 'cordis'
+import { Context, Service } from 'cordis'
 import {
   formatLrcTimestamp,
   normalizeToLyrics,
 } from './normalizer.js'
 import { checkAllowedHost, executeLyricSource } from './sandbox.js'
-import { BUILTIN_LRCLIB_SOURCE, LyricSourcesPlugin } from './index.js'
+import { BUILTIN_LRCLIB_SOURCE, LyricSourcesPlugin, STORE_LYRIC_SOURCES_KEY } from './index.js'
 import type { HttpRequest, HttpService, LyricSourceDefinition } from '@BBeBee/protocol'
 
 describe('Lyrics Normalizer', () => {
@@ -324,5 +324,110 @@ describe('LyricSourcesPlugin Service', () => {
     const normalized = normalizeToLyrics(raw)
     expect(normalized).toBeDefined()
     expect(normalized?.content).toBe('[00:15.00]Studio matched by duration')
+  })
+
+  it('propagates network error when all endpoints throw', async () => {
+    const failingHttp: HttpService = (async () => {
+      throw new Error('Network request failed: getaddrinfo EAI_AGAIN')
+    }) as unknown as HttpService
+
+    await expect(
+      executeLyricSource(
+        BUILTIN_LRCLIB_SOURCE,
+        { title: 'Any Song', artist: 'Any Artist', duration: 180000 },
+        { http: failingHttp },
+      ),
+    ).rejects.toThrow('Network request failed: getaddrinfo EAI_AGAIN')
+  })
+
+  it('supports URLSearchParams in sandbox script', async () => {
+    const source: LyricSourceDefinition = {
+      id: 'test-url-params',
+      name: 'URLSearchParams Test',
+      enabled: true,
+      sortOrder: 0,
+      script: `
+        async function searchLyrics(query) {
+          const params = new URLSearchParams({ track: query.title, artist: query.artist });
+          params.append('duration', String(query.duration));
+          return '[00:00.00]' + params.toString();
+        }
+      `,
+    }
+
+    const raw = await executeLyricSource(source, { title: 'Hello', artist: 'Adele', duration: 240000 })
+    expect(raw).toBe('[00:00.00]track=Hello&artist=Adele&duration=240000')
+  })
+
+  it('upgrades outdated stored builtin source on init', async () => {
+    const ctx = new Context()
+    const fakeStore: Record<string, unknown> = {
+      [STORE_LYRIC_SOURCES_KEY]: [
+        {
+          id: 'builtin-lrclib',
+          name: 'Old LRCLIB',
+          version: '1.0.0',
+          author: 'Old',
+          enabled: false,
+          sortOrder: 5,
+          allowedHosts: ['lrclib.net'],
+          script: 'old script without toQueryString',
+        },
+      ],
+    }
+
+    ctx.provide('store', {
+      get: async (k: string) => fakeStore[k],
+      set: async (k: string, v: unknown) => {
+        fakeStore[k] = v
+      },
+    })
+
+    const plugin = new LyricSourcesPlugin(ctx)
+    await plugin[Service.init]()
+
+    const sources = plugin.getSources()
+    const builtin = sources.find((s) => s.id === 'builtin-lrclib')
+    expect(builtin).toBeDefined()
+    expect(builtin?.version).toBe('1.2.0')
+    expect(builtin?.enabled).toBe(false)
+    expect(builtin?.sortOrder).toBe(5)
+    expect(builtin?.script).toContain('toQueryString')
+  })
+
+  it('testSource reports clean error when no lyrics found', async () => {
+    const emptyHttp: HttpService = (async (req: HttpRequest) => {
+      if (req.url.includes('/api/get')) {
+        return {
+          status: 404,
+          headers: {},
+          text: async () => JSON.stringify({ error: 'Not found' }),
+          json: async () => ({ error: 'Not found' }),
+          arrayBuffer: async () => new ArrayBuffer(0),
+          stream: () => ({} as any),
+        }
+      }
+      return {
+        status: 200,
+        headers: {},
+        text: async () => JSON.stringify([]),
+        json: async () => [],
+        arrayBuffer: async () => new ArrayBuffer(0),
+        stream: () => ({} as any),
+      }
+    }) as unknown as HttpService
+
+    const ctx = new Context()
+    ctx.provide('http', emptyHttp)
+    await ctx.plugin(LyricSourcesPlugin)
+
+    const res = await ctx.lyricSources.testSource('builtin-lrclib', {
+      title: 'Nonexistent Song',
+      artist: 'Unknown Artist',
+      duration: 100000,
+    })
+
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('未检索到匹配歌词')
   })
 })
