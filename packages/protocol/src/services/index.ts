@@ -19,4 +19,4 @@ export * from './mini-player.js'
 export * from './theme.js'
 export * from './now-playing.js'
 export * from './lyric-sources.js'
-
+export * from './share.js'

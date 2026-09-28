@@ -12,7 +12,7 @@
 
 import { createElement as h, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { SleepTimerMode, SleepTimerService } from '@BBeBee/protocol'
+import type { ShareService, SleepTimerMode, SleepTimerService } from '@BBeBee/protocol'
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useSearchSourceSelection, type SearchInterfaceKind } from '@BBeBee/plugin-sources/hooks'
 import { useSleepTimer } from '@BBeBee/plugin-sleep-timer/hooks'
@@ -1241,6 +1241,44 @@ export function TopBar({
       },
       // Sleep Timer Indicator
       h(SleepTimerIndicator, { ctx }),
+      // Import Share Button
+      serviceOf<ShareService>(ctx, 'share')
+        ? h(
+            'button',
+            {
+              type: 'button',
+              'aria-label': '导入分享',
+              title: '导入分享 (解析图片隐写或 Base64)',
+              'data-testid': 'topbar-import-share-button',
+              onClick: () => {
+                serviceOf<ShareService>(ctx, 'share')?.openImport?.()
+              },
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.15))',
+                background: 'rgba(255, 255, 255, 0.06)',
+                color: 'var(--text-primary, #F5F7FF)',
+                cursor: 'pointer',
+                padding: 0,
+                transition: 'transform 0.15s ease, background 0.15s ease',
+              },
+              onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.transform = 'scale(1.06)'
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)'
+              },
+              onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.transform = 'scale(1)'
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'
+              },
+            },
+            tablerIcon('share-box', { size: 18 }),
+          )
+        : null,
       // Avatar
       h(
         'button',

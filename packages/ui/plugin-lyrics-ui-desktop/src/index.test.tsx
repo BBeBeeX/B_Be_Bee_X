@@ -147,4 +147,10 @@ describe('LyricsPanel', () => {
     const html = renderToStaticMarkup(h(LyricsPanel, { ctx }))
     expect(html).toContain('Retry')
   })
+
+  it('renders share lyrics button when lyrics and track are present', async () => {
+    const { ctx } = await createHarness()
+    const html = renderToStaticMarkup(h(LyricsPanel, { ctx }))
+    expect(html).toContain('分享歌词')
+  })
 })

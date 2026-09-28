@@ -169,6 +169,11 @@ export const bundled: PluginRegistry = {
     manifest: {"id":"@BBeBee/plugin-settings-ui-mobile","version":"0.0.0","displayName":"Settings (mobile views)","description":"Global application preferences, settings service, and settings views.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["settings"]}},
     builtin: true,
   },
+  "@BBeBee/plugin-share": {
+    load: () => import('@BBeBee/plugin-share'),
+    manifest: {"id":"@BBeBee/plugin-share","version":"0.0.0","displayName":"Share","description":"ctx.share — Song, playlist, and lyrics sharing with image steganography.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["share"]}},
+    builtin: true,
+  },
   "@BBeBee/plugin-sleep-timer": {
     load: () => import('@BBeBee/plugin-sleep-timer'),
     manifest: {"id":"@BBeBee/plugin-sleep-timer","version":"0.0.0","displayName":"Sleep Timer","description":"ctx.sleepTimer — stops playback after a duration, at a specific time, or at track end.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js"},"capabilities":[],"contributes":{"services":["sleepTimer"]}},

@@ -154,7 +154,20 @@ class SleepTimerStub extends Service {
   }
 }
 
-async function harness(opts: { downloads?: boolean; player?: boolean; ui?: boolean; sleepTimer?: boolean } = {}) {
+class ShareStub extends Service {
+  readonly calls: string[] = []
+  constructor(ctx: Context) {
+    super(ctx, 'share')
+  }
+  shareTrack(t: Track) {
+    this.calls.push(`shareTrack:${t.urn}`)
+  }
+  sharePlaylist(p: { urn: string }, tracks?: readonly any[]) {
+    this.calls.push(`sharePlaylist:${p.urn}:${tracks?.length ?? 0}`)
+  }
+}
+
+async function harness(opts: { downloads?: boolean; player?: boolean; ui?: boolean; sleepTimer?: boolean; share?: boolean } = {}) {
   const ctx = new Context()
   await ctx.plugin(LibraryStub)
   await ctx.plugin(SourcesStub)
@@ -162,6 +175,7 @@ async function harness(opts: { downloads?: boolean; player?: boolean; ui?: boole
   if (opts.downloads !== false) await ctx.plugin(DownloadsStub)
   if (opts.ui !== false) await ctx.plugin(UiStub)
   if (opts.sleepTimer === true) await ctx.plugin(SleepTimerStub)
+  if (opts.share === true) await ctx.plugin(ShareStub)
   return {
     ctx,
     library: ctx.library as unknown as LibraryStub,
@@ -170,6 +184,7 @@ async function harness(opts: { downloads?: boolean; player?: boolean; ui?: boole
     downloads: ctx.downloads as unknown as DownloadsStub,
     ui: ctx.ui as unknown as UiStub,
     sleepTimer: ctx.sleepTimer as unknown as SleepTimerStub,
+    share: (ctx as any).share as ShareStub,
   }
 }
 
@@ -277,6 +292,16 @@ describe('trackMenuItems', () => {
     const timerItem = items.find((i) => i.id === 'sleep-timer')
     expect(timerItem).toBeTruthy()
     expect(timerItem?.label).toBe('睡眠定时器 (已开启)')
+  })
+
+  it('offers share-track when share service is present and triggers shareTrack on press', async () => {
+    const h = await harness({ share: true })
+    const items = trackMenuItems(h.ctx, { track }, { playlists })
+    const shareItem = items.find((i) => i.id === 'share-track')
+    expect(shareItem).toBeTruthy()
+    expect(shareItem?.label).toBe('分享歌曲')
+    await press(items, 'share-track')
+    expect(h.share.calls).toContain(`shareTrack:${URN}`)
   })
 })
 
@@ -570,6 +595,22 @@ describe('playlistMenuItems', () => {
 
     await press(items, 'delete-playlist')
     expect(onDelete).toHaveBeenCalledOnce()
+  })
+
+  it('offers share-playlist when share service is present and triggers sharePlaylist on press', async () => {
+    const h = await harness({ share: true })
+    const items = playlistMenuItems(
+      h.ctx,
+      { urn: 'BBeBee:local:playlist:1', name: 'Road trip' },
+      [URN],
+      playlists,
+      h.library.collections,
+    )
+    const shareItem = items.find((i) => i.id === 'share-playlist')
+    expect(shareItem).toBeTruthy()
+    expect(shareItem?.label).toBe('分享歌单')
+    await press(items, 'share-playlist')
+    expect(h.share.calls).toContain('sharePlaylist:BBeBee:local:playlist:1:1')
   })
 })
 

@@ -407,6 +407,27 @@ export const TABLER_DEFINITIONS: Record<string, IconSvgDefinition> = {
       { tag: 'path', attrs: { d: 'M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0' } },
     ],
   },
+  share: {
+    elements: [
+      { tag: 'circle', attrs: { cx: 6, cy: 12, r: 3 } },
+      { tag: 'circle', attrs: { cx: 18, cy: 6, r: 3 } },
+      { tag: 'circle', attrs: { cx: 18, cy: 18, r: 3 } },
+      { tag: 'path', attrs: { d: 'M8.7 10.7l6.6 -3.4' } },
+      { tag: 'path', attrs: { d: 'M8.7 13.3l6.6 3.4' } },
+    ],
+  },
+  'share-box': {
+    elements: [
+      {
+        tag: 'path',
+        attrs: {
+          d: 'M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6',
+        },
+      },
+      { tag: 'path', attrs: { d: 'M11 13l9 -9' } },
+      { tag: 'path', attrs: { d: 'M15 4h5v5' } },
+    ],
+  },
   alert: {
     elements: [
       { tag: 'path', attrs: { d: 'M12 9v4' } },

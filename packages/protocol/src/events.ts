@@ -49,6 +49,7 @@ import type { MiniPlayerServiceState } from './services/mini-player.js'
 import type { ThemeDefinition } from './services/theme.js'
 import type { NowPlayingStyleId, NowPlayingStyleMeta } from './services/now-playing.js'
 import type { LyricSourceDefinition } from './services/lyric-sources.js'
+import type { ShareTarget } from './services/share.js'
 import type { UrnKind } from './urn.js'
 
 declare module 'cordis' {
@@ -61,6 +62,9 @@ declare module 'cordis' {
     'lyrics/changed'(state: LyricsState): void
     'lyrics/active-changed'(activeIndex: number): void
     'desktop-lyrics/changed'(state: DesktopLyricsState): void
+    /* ── share ───────────────────────────────────────── emit ── */
+    'share/open'(target: ShareTarget): void
+    'share/import'(): void
     /* ── player ─────────────────────────────────────── emit ── */
     'player/state-changed'(state: TransportState): void
     'player/track-changed'(trackUrn: string | undefined, previous?: string): void
@@ -249,6 +253,8 @@ export const DISPATCH_MODES = {
   'now-playing/style-changed': 'emit',
   'now-playing/registry-changed': 'emit',
   'lyric-sources/changed': 'emit',
+  'share/open': 'emit',
+  'share/import': 'emit',
 } as const satisfies Record<string, DispatchMode>
 
 export type BBeBeeEventName = keyof typeof DISPATCH_MODES

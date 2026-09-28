@@ -1,0 +1,21 @@
+{
+  "id": "@BBeBee/plugin-share",
+  "version": "0.0.0",
+  "displayName": "Share",
+  "description": "ctx.share — Song, playlist, and lyrics sharing with image steganography.",
+  "engines": {
+    "BBeBee": "^0.1.0"
+  },
+  "entry": {
+    "main": "./dist/index.js",
+    "ui": {
+      "desktop": "./dist/index.js"
+    }
+  },
+  "capabilities": [],
+  "contributes": {
+    "services": [
+      "share"
+    ]
+  }
+}

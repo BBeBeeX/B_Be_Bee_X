@@ -8,6 +8,9 @@ import type {
   LibraryService,
   PlayerService,
   Playlist,
+  ShareService,
+  ShareTrackData,
+  Track,
 } from '@BBeBee/protocol'
 import { addToPlaylistSubmenu } from '../submenus/playlistSubmenu.js'
 import { addToCollectionSubmenu } from '../submenus/collectionSubmenu.js'
@@ -98,6 +101,37 @@ export function playlistMenuItems(
       label: '下载',
       icon: 'download',
       onSelect: () => void downloads.enqueue([...tracks]),
+    })
+  }
+
+  // 6.5. 分享歌单
+  const share = serviceOf<ShareService>(ctx, 'share')
+  if (share) {
+    items.push({
+      id: 'share-playlist',
+      label: '分享歌单',
+      icon: 'share',
+      onSelect: async () => {
+        let resolvedTracks: (Track | ShareTrackData)[] | undefined
+        if (library) {
+          try {
+            const detail = await library.getPlaylist(playlist.urn)
+            if (detail?.tracks && detail.tracks.length > 0) {
+              resolvedTracks = detail.tracks
+            }
+          } catch {
+            // fallback
+          }
+        }
+        if (!resolvedTracks && tracks.length > 0) {
+          resolvedTracks = tracks.map((urn) => ({
+            urn,
+            title: urn,
+            artist: 'Unknown Artist',
+          }))
+        }
+        share.sharePlaylist(playlist, resolvedTracks)
+      },
     })
   }
 

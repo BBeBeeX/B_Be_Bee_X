@@ -224,6 +224,8 @@ export const ICON_ALIASES: Record<string, string> = {
   restore: 'copy',
   'wave-sine': 'wave-sine',
   equalizer: 'wave-sine',
+  share: 'share',
+  'share-box': 'share-box',
 }
 
 /**

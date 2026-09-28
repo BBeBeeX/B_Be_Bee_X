@@ -524,6 +524,9 @@ export function Shell({ ctx }: { ctx: Context }) {
   const DesktopLyrics = ctx.ui.viewFor('desktop-lyrics.floating') as
     | ComponentType<{ ctx: Context }>
     | undefined
+  const ShareHost = ctx.ui.viewFor('share.host') as
+    | ComponentType<{ ctx: Context }>
+    | undefined
   const LibraryView = ctx.ui.viewFor('library.home') as
     | ComponentType<{
         ctx: Context
@@ -738,6 +741,7 @@ export function Shell({ ctx }: { ctx: Context }) {
           )
         : null,
       DesktopLyrics ? h(DesktopLyrics, { ctx }) : null,
+      ShareHost ? h(ShareHost, { ctx }) : null,
     )
   }
 
@@ -1147,5 +1151,6 @@ export function Shell({ ctx }: { ctx: Context }) {
         )
       : null,
     DesktopLyrics ? h(DesktopLyrics, { ctx }) : null,
+    ShareHost ? h(ShareHost, { ctx }) : null,
   )
 }

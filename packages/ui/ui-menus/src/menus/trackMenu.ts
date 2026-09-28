@@ -8,6 +8,7 @@ import type {
   LibraryService,
   PlayerService,
   Playlist,
+  ShareService,
   SleepTimerService,
   SourcesService,
   Track,
@@ -142,6 +143,16 @@ export function trackMenuItems(
       label: '下载',
       icon: 'download',
       onSelect: () => void downloads.enqueue([track.urn]),
+    })
+  }
+
+  const share = serviceOf<ShareService>(ctx, 'share')
+  if (share) {
+    items.push({
+      id: 'share-track',
+      label: '分享歌曲',
+      icon: 'share',
+      onSelect: () => share.shareTrack(track),
     })
   }
 

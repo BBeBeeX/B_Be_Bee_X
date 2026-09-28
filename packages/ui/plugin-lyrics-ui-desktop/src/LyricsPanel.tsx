@@ -13,6 +13,8 @@
 import { createElement as h, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
+import type { ShareService } from '@BBeBee/protocol'
+import { serviceOf } from '@BBeBee/ui-core'
 import { formatDuration, type LyricLine } from '@BBeBee/toolkit'
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useNowPlaying } from '@BBeBee/plugin-player/hooks'
@@ -126,8 +128,9 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
       {
         style: {
           display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
           paddingBottom: tokens.space[4],
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           flexShrink: 0,
@@ -137,52 +140,109 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
         'div',
         {
           style: {
-            fontSize: 20,
-            fontWeight: 700,
-            color: '#FFFFFF',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
             display: 'flex',
-            alignItems: 'center',
-            gap: 8,
+            flexDirection: 'column',
+            gap: 4,
+            minWidth: 0,
+            flex: 1,
           },
         },
-        h('span', null, nowPlaying?.title ?? (status === 'loading-song' ? 'Loading song…' : 'BBeBee Music')),
-        sourceType === 'lyric-source'
-          ? h(
-              'span',
-              {
-                style: {
-                  fontSize: 11,
-                  fontWeight: 500,
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  backgroundColor: 'rgba(95, 135, 255, 0.2)',
-                  color: '#93B4FF',
-                  border: '1px solid rgba(95, 135, 255, 0.35)',
+        h(
+          'div',
+          {
+            style: {
+              fontSize: 20,
+              fontWeight: 700,
+              color: '#FFFFFF',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            },
+          },
+          h('span', null, nowPlaying?.title ?? (status === 'loading-song' ? 'Loading song…' : 'BBeBee Music')),
+          sourceType === 'lyric-source'
+            ? h(
+                'span',
+                {
+                  style: {
+                    fontSize: 11,
+                    fontWeight: 500,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    backgroundColor: 'rgba(95, 135, 255, 0.2)',
+                    color: '#93B4FF',
+                    border: '1px solid rgba(95, 135, 255, 0.35)',
+                  },
                 },
-              },
-              '歌词源',
-            )
-          : null,
-      ),
-      h(
-        'div',
-        {
-          style: {
-            fontSize: 14,
-            color: 'rgba(255, 255, 255, 0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
+                '歌词源',
+              )
+            : null,
+        ),
+        h(
+          'div',
+          {
+            style: {
+              fontSize: 14,
+              color: 'rgba(255, 255, 255, 0.6)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            },
           },
-        },
-        nowPlaying?.artist ? h('span', null, nowPlaying.artist) : null,
-        nowPlaying?.album
-          ? h('span', { style: { opacity: 0.7 } }, `• ${nowPlaying.album}`)
-          : null,
+          nowPlaying?.artist ? h('span', null, nowPlaying.artist) : null,
+          nowPlaying?.album
+            ? h('span', { style: { opacity: 0.7 } }, `• ${nowPlaying.album}`)
+            : null,
+        ),
       ),
+      parsed.lines.length > 0 && nowPlaying
+        ? h(
+            'button',
+            {
+              type: 'button',
+              title: '分享歌词',
+              'aria-label': '分享歌词',
+              onClick: () => {
+                const share = serviceOf<ShareService>(ctx, 'share')
+                if (share) {
+                  share.shareLyrics(nowPlaying, parsed.lines.map((l: LyricLine) => l.text))
+                }
+              },
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: tokens.radius.sm,
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                color: 'rgba(255, 255, 255, 0.85)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
+                transition: 'background-color 0.2s, color 0.2s',
+                flexShrink: 0,
+              },
+              onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.16)'
+                e.currentTarget.style.color = '#FFFFFF'
+              },
+              onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)'
+                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.85)'
+              },
+            },
+            tablerIcon('share', { size: 16 }),
+            h('span', null, '分享歌词'),
+          )
+        : null,
     ),
 
     // Lyrics Content Area
