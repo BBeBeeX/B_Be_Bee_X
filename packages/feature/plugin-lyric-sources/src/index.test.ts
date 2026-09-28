@@ -5,8 +5,8 @@ import {
   normalizeToLyrics,
 } from './normalizer.js'
 import { checkAllowedHost, executeLyricSource } from './sandbox.js'
-import { LyricSourcesPlugin } from './index.js'
-import type { LyricSourceDefinition } from '@BBeBee/protocol'
+import { BUILTIN_LRCLIB_SOURCE, LyricSourcesPlugin } from './index.js'
+import type { HttpRequest, HttpService, LyricSourceDefinition } from '@BBeBee/protocol'
 
 describe('Lyrics Normalizer', () => {
   it('formats milliseconds into standard LRC timestamp', () => {
@@ -225,5 +225,104 @@ describe('LyricSourcesPlugin Service', () => {
     expect(removed).toBe(true)
     const afterRemove = await ctx.lyricSources.getSources()
     expect(afterRemove.some((s) => s.id === 'custom-priority')).toBe(false)
+  })
+
+  it('executes LRCLIB source with exact match /api/get', async () => {
+    const mockHttp: HttpService = (async (req: HttpRequest) => {
+      expect(req.url).toContain('https://lrclib.net/api/get')
+      expect(req.url).toContain('track_name=Yellow')
+      expect(req.url).toContain('artist_name=Coldplay')
+      expect(req.url).toContain('duration=269')
+      expect(req.headers?.['Lrclib-Client']).toBe('BBeBee-MusicPlayer/1.0.0')
+
+      const responseBody = JSON.stringify({
+        id: 999,
+        trackName: 'Yellow',
+        artistName: 'Coldplay',
+        duration: 269,
+        syncedLyrics: '[00:15.00]Look at the stars\n[00:20.00]Look how they shine for you',
+        plainLyrics: 'Look at the stars\nLook how they shine for you',
+      })
+
+      return {
+        status: 200,
+        headers: {},
+        text: async () => responseBody,
+        json: async () => JSON.parse(responseBody),
+        arrayBuffer: async () => new ArrayBuffer(0),
+        stream: () => ({} as any),
+      }
+    }) as unknown as HttpService
+
+    const raw = await executeLyricSource(
+      BUILTIN_LRCLIB_SOURCE,
+      { title: 'Yellow', artist: 'Coldplay', duration: 269000 },
+      { http: mockHttp },
+    )
+
+    const normalized = normalizeToLyrics(raw)
+    expect(normalized).toBeDefined()
+    expect(normalized?.format).toBe('lrc')
+    expect(normalized?.synced).toBe(true)
+    expect(normalized?.content).toContain('[00:15.00]Look at the stars')
+  })
+
+  it('executes LRCLIB source with fallback /api/search when /api/get returns 404', async () => {
+    let searchCalled = false
+    const mockHttp: HttpService = (async (req: HttpRequest) => {
+      if (req.url.includes('/api/get')) {
+        return {
+          status: 404,
+          headers: {},
+          text: async () => JSON.stringify({ error: 'Not found' }),
+          json: async () => ({ error: 'Not found' }),
+          arrayBuffer: async () => new ArrayBuffer(0),
+          stream: () => ({} as any),
+        }
+      }
+
+      if (req.url.includes('/api/search')) {
+        searchCalled = true
+        expect(req.url).toContain('Coldplay')
+        const responseBody = JSON.stringify([
+          {
+            id: 1001,
+            trackName: 'Yellow (Live)',
+            artistName: 'Coldplay',
+            duration: 320,
+            syncedLyrics: '[00:10.00]Live version',
+          },
+          {
+            id: 1002,
+            trackName: 'Yellow',
+            artistName: 'Coldplay',
+            duration: 269,
+            syncedLyrics: '[00:15.00]Studio matched by duration',
+          },
+        ])
+
+        return {
+          status: 200,
+          headers: {},
+          text: async () => responseBody,
+          json: async () => JSON.parse(responseBody),
+          arrayBuffer: async () => new ArrayBuffer(0),
+          stream: () => ({} as any),
+        }
+      }
+
+      throw new Error(`Unexpected url: ${req.url}`)
+    }) as unknown as HttpService
+
+    const raw = await executeLyricSource(
+      BUILTIN_LRCLIB_SOURCE,
+      { title: 'Yellow', artist: 'Coldplay', duration: 269000 },
+      { http: mockHttp },
+    )
+
+    expect(searchCalled).toBe(true)
+    const normalized = normalizeToLyrics(raw)
+    expect(normalized).toBeDefined()
+    expect(normalized?.content).toBe('[00:15.00]Studio matched by duration')
   })
 })

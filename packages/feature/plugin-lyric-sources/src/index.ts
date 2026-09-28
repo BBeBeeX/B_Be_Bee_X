@@ -25,51 +25,111 @@ export const BUILTIN_LRCLIB_SOURCE: LyricSourceDefinition = {
   id: 'builtin-lrclib',
   name: 'LRCLIB (默认歌词源)',
   description: '基于公开开放的 LRCLIB 歌词数据库，支持全球海量百万同步 LRC 歌词搜索',
-  version: '1.0.0',
-  author: 'BBeBee',
+  version: '1.1.0',
+  author: 'LRCLIB Community / BBeBee',
   enabled: true,
   sortOrder: 0,
   allowedHosts: ['lrclib.net'],
   script: `
 async function searchLyrics(query) {
   const { title, artist, duration } = query;
-  if (!title) return null;
+  if (!title || typeof title !== 'string') return null;
 
-  const params = new URLSearchParams({
-    track_name: title,
-    artist_name: artist || '',
-    duration: duration ? String(Math.round(duration / 1000)) : '0',
-  });
+  const trimmedTitle = title.trim();
+  const trimmedArtist = (artist || '').trim();
+  const durationSec = duration && duration > 0 ? Math.round(duration / 1000) : 0;
+
+  const headers = {
+    'User-Agent': 'BBeBee-MusicPlayer/1.0.0 (https://github.com/BBeBee)',
+    'Lrclib-Client': 'BBeBee-MusicPlayer/1.0.0',
+  };
+
+  async function parseBody(res) {
+    if (!res) return null;
+    try {
+      if (typeof res.json === 'function') return await res.json();
+      if (typeof res.body === 'string' && res.body) return JSON.parse(res.body);
+    } catch (_) {}
+    return null;
+  }
 
   // 1. Try exact match get endpoint
-  try {
-    const res = await httpFetch('https://lrclib.net/api/get?' + params.toString());
-    if (res.status === 200) {
-      const data = typeof res.json === 'function' ? await res.json() : (typeof res.body === 'string' ? JSON.parse(res.body) : res);
-      if (data && (data.syncedLyrics || data.plainLyrics)) {
-        return data.syncedLyrics || data.plainLyrics;
+  if (trimmedTitle && trimmedArtist) {
+    try {
+      const getParams = new URLSearchParams({
+        track_name: trimmedTitle,
+        artist_name: trimmedArtist,
+      });
+      if (durationSec > 0) {
+        getParams.set('duration', String(durationSec));
       }
+
+      const res = await httpFetch('https://lrclib.net/api/get?' + getParams.toString(), {
+        headers,
+      });
+
+      if (res && res.status === 200) {
+        const data = await parseBody(res);
+        if (data) {
+          if (data.syncedLyrics && data.syncedLyrics.trim()) {
+            return data.syncedLyrics;
+          }
+          if (data.plainLyrics && data.plainLyrics.trim()) {
+            return data.plainLyrics;
+          }
+          if (data.instrumental) {
+            return '[00:00.00]纯音乐，请欣赏';
+          }
+        }
+      }
+    } catch (_) {
+      // Continue to search endpoint on failure
     }
-  } catch (err) {
-    // Continue to search endpoint on failure
   }
 
   // 2. Try keyword search endpoint
   try {
-    const searchParams = new URLSearchParams({
-      q: (artist ? artist + ' ' : '') + title,
-    });
-    const res = await httpFetch('https://lrclib.net/api/search?' + searchParams.toString());
-    if (res.status === 200) {
-      const list = typeof res.json === 'function' ? await res.json() : (typeof res.body === 'string' ? JSON.parse(res.body) : res);
+    const searchUrl = 'https://lrclib.net/api/search?' + new URLSearchParams({
+      q: trimmedArtist ? (trimmedArtist + ' ' + trimmedTitle) : trimmedTitle,
+    }).toString();
+
+    const res = await httpFetch(searchUrl, { headers });
+    if (res && res.status === 200) {
+      const list = await parseBody(res);
       if (Array.isArray(list) && list.length > 0) {
-        const best = list.find((item) => item && item.syncedLyrics) || list[0];
-        if (best && (best.syncedLyrics || best.plainLyrics)) {
-          return best.syncedLyrics || best.plainLyrics;
+        let match = null;
+
+        if (durationSec > 0) {
+          match = list.find((it) => it && it.syncedLyrics && Math.abs((it.duration || 0) - durationSec) <= 3);
+          if (!match) {
+            match = list.find((it) => it && it.syncedLyrics && Math.abs((it.duration || 0) - durationSec) <= 6);
+          }
+          if (!match) {
+            match = list.find((it) => it && it.plainLyrics && Math.abs((it.duration || 0) - durationSec) <= 4);
+          }
+        }
+
+        if (!match) {
+          match = list.find((it) => it && it.syncedLyrics);
+        }
+        if (!match) {
+          match = list.find((it) => it && it.plainLyrics);
+        }
+
+        if (match) {
+          if (match.syncedLyrics && match.syncedLyrics.trim()) {
+            return match.syncedLyrics;
+          }
+          if (match.plainLyrics && match.plainLyrics.trim()) {
+            return match.plainLyrics;
+          }
+          if (match.instrumental) {
+            return '[00:00.00]纯音乐，请欣赏';
+          }
         }
       }
     }
-  } catch (err) {
+  } catch (_) {
     return null;
   }
 

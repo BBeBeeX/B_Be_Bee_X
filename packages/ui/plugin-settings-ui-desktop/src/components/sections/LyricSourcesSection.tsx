@@ -57,6 +57,94 @@ async function searchLyrics(query) {
   2,
 )
 
+const SAMPLE_LRCLIB_JSON = JSON.stringify(
+  {
+    id: 'lrclib-net',
+    name: 'LRCLIB (lrclib.net)',
+    version: '1.1.0',
+    author: 'LRCLIB Community / BBeBee',
+    description: '基于 lrclib.net 开放 API 的全球高质量歌词源，支持精确匹配与模糊搜索',
+    allowedHosts: ['lrclib.net'],
+    script: `// query: { title: string, artist: string, duration: number }
+async function searchLyrics(query) {
+  const { title, artist, duration } = query;
+  if (!title || typeof title !== 'string') return null;
+
+  const trimmedTitle = title.trim();
+  const trimmedArtist = (artist || '').trim();
+  const durationSec = duration && duration > 0 ? Math.round(duration / 1000) : 0;
+
+  const headers = {
+    'User-Agent': 'BBeBee-MusicPlayer/1.0.0 (https://github.com/BBeBee)',
+    'Lrclib-Client': 'BBeBee-MusicPlayer/1.0.0',
+  };
+
+  async function parseBody(res) {
+    if (!res) return null;
+    try {
+      if (typeof res.json === 'function') return await res.json();
+      if (typeof res.body === 'string' && res.body) return JSON.parse(res.body);
+    } catch (_) {}
+    return null;
+  }
+
+  // 1. Try exact match via /api/get
+  if (trimmedTitle && trimmedArtist) {
+    try {
+      const getParams = new URLSearchParams({
+        track_name: trimmedTitle,
+        artist_name: trimmedArtist,
+      });
+      if (durationSec > 0) {
+        getParams.set('duration', String(durationSec));
+      }
+
+      const res = await httpFetch('https://lrclib.net/api/get?' + getParams.toString(), { headers });
+      if (res && res.status === 200) {
+        const data = await parseBody(res);
+        if (data) {
+          if (data.syncedLyrics && data.syncedLyrics.trim()) return data.syncedLyrics;
+          if (data.plainLyrics && data.plainLyrics.trim()) return data.plainLyrics;
+          if (data.instrumental) return '[00:00.00]纯音乐，请欣赏';
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. Fallback to /api/search (fuzzy query)
+  try {
+    const searchUrl = 'https://lrclib.net/api/search?' + new URLSearchParams({
+      q: trimmedArtist ? (trimmedArtist + ' ' + trimmedTitle) : trimmedTitle,
+    }).toString();
+
+    const res = await httpFetch(searchUrl, { headers });
+    if (res && res.status === 200) {
+      const list = await parseBody(res);
+      if (Array.isArray(list) && list.length > 0) {
+        let match = null;
+        if (durationSec > 0) {
+          match = list.find((it) => it && it.syncedLyrics && Math.abs((it.duration || 0) - durationSec) <= 3) ||
+                  list.find((it) => it && it.syncedLyrics && Math.abs((it.duration || 0) - durationSec) <= 6) ||
+                  list.find((it) => it && it.plainLyrics && Math.abs((it.duration || 0) - durationSec) <= 4);
+        }
+        if (!match) match = list.find((it) => it && it.syncedLyrics) || list.find((it) => it && it.plainLyrics);
+
+        if (match) {
+          if (match.syncedLyrics && match.syncedLyrics.trim()) return match.syncedLyrics;
+          if (match.plainLyrics && match.plainLyrics.trim()) return match.plainLyrics;
+          if (match.instrumental) return '[00:00.00]纯音乐，请欣赏';
+        }
+      }
+    }
+  } catch (_) {}
+
+  return null;
+}`,
+  },
+  null,
+  2,
+)
+
 export function LyricSourcesSection({ ctx }: LyricSourcesSectionProps): ReactElement {
   const [lyricSources, setLyricSources] = useState<LyricSourceDefinition[]>([])
   const [audioSources, setAudioSources] = useState<readonly SourceRecord[]>([])
@@ -551,6 +639,14 @@ export function LyricSourcesSection({ ctx }: LyricSourcesSectionProps): ReactEle
           h(
             'div',
             { style: { display: 'flex', gap: 8 } },
+            h(Button, {
+              variant: 'secondary',
+              onPress: () => {
+                setImportText(SAMPLE_LRCLIB_JSON)
+                setImportError(null)
+              },
+              children: '载入 LRCLIB 模板',
+            }),
             h(Button, {
               variant: 'secondary',
               onPress: () => {
