@@ -485,7 +485,7 @@ export function NowPlayingBar({ ctx, onOpenNowPlaying }: NowPlayingBarProps): Re
 
 export const name = 'plugin-now-playing-ui-mobile'
 
-export const inject = ['ui', 'player']
+export const inject = ['ui', 'player', 'nowPlaying']
 
 /**
  * Register a component bound to **this** context, not the shell's — the same

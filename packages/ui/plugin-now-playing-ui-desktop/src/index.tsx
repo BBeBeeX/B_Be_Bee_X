@@ -44,7 +44,7 @@ export { type NowPlayingLayoutProps, NOW_PLAYING_LAYOUT_MAP } from './styles/ind
 
 export const name = 'plugin-now-playing-ui-desktop'
 
-export const inject = ['ui', 'player']
+export const inject = ['ui', 'player', 'nowPlaying']
 
 /**
  * Register a component bound to **this** context, not the shell's.
