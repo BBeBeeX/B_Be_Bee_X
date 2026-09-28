@@ -494,9 +494,13 @@ describe('the desktop shell', () => {
       ctx.emit('ui/navigate', 'queue.view')
     })
 
-    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr minmax(260px, 28%)')
+    // The queue is a right-side drawer: it takes no grid column, so the main
+    // view keeps its width.
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr')
     const aside = container.querySelector('[data-testid="queue-sidebar-panel"]') as HTMLElement
     expect(aside).not.toBeNull()
+    expect(aside.style.position).toBe('absolute')
+    expect(aside.style.right).toBe('8px')
     expect(aside.textContent).toContain('Queue Aside Content')
     // Main view is still mounted!
     expect(container.querySelector('[data-testid="main-library"]')).not.toBeNull()
@@ -527,7 +531,7 @@ describe('the desktop shell', () => {
     expect(workspace.style.gridTemplateColumns).toBe('280px 1fr')
   })
 
-  it('mounts the top bar above the workspace grid so the queue panel matches the main height', async () => {
+  it('keeps the top bar above the main view while the library column runs full height', async () => {
     const { container, ctx } = await mount((ui) => {
       ui.routes = [route('home', 'Home')]
       ui.views.set('home', () => h('p', null, 'home page'))
@@ -537,25 +541,26 @@ describe('the desktop shell', () => {
 
     const header = container.querySelector('header[aria-label="Application Header"]') as HTMLElement
     const main = container.querySelector('main') as HTMLElement
-    const workspace = container.querySelector('nav')?.parentElement as HTMLElement
+    const nav = container.querySelector('nav') as HTMLElement
     expect(header).not.toBeNull()
 
-    // The top bar is a window-level row: its slot is a sibling of the
-    // workspace grid, not a child of the main card whose width the queue
-    // panel squeezes.
-    const topBarSlot = header.parentElement as HTMLElement
-    expect(topBarSlot.parentElement).toBe(workspace.parentElement)
-    expect(topBarSlot.nextElementSibling).toBe(workspace)
-    expect(main.contains(header)).toBe(false)
+    // The top bar sits directly above the main view — inside the main card,
+    // not stretched across the whole window — while the library nav column
+    // runs from the top of the window (it wraps no header of its own).
+    expect(main.contains(header)).toBe(true)
+    expect(nav.contains(header)).toBe(false)
 
-    // Opened, the queue panel is a column of the same grid as the main card,
-    // so both start beneath the shared top bar at the same height.
+    // Opened, the queue drawer overlays the content: absolute within the
+    // workspace grid, starting below the top bar so window controls stay
+    // reachable, and never resizing the grid.
     await act(async () => {
       ctx.emit('ui/navigate', 'queue.view')
     })
     const aside = container.querySelector('[data-testid="queue-sidebar-panel"]') as HTMLElement
     expect(aside).not.toBeNull()
-    expect(aside.parentElement).toBe(main.parentElement)
+    expect(aside.style.position).toBe('absolute')
+    expect(aside.style.top).toBe('64px')
+    expect(aside.style.width).toBe('340px')
   })
 
   it('navigates to settings.view when profile avatar is clicked', async () => {
@@ -861,18 +866,23 @@ describe('the desktop shell', () => {
 
     const queueSplitter = container.querySelector('[data-testid="queue-splitter"]') as HTMLElement
     expect(queueSplitter).not.toBeNull()
-    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr minmax(260px, 28%)')
+    // The drawer takes no grid column, so opening it changes nothing here.
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr')
+
+    const aside = () => container.querySelector('[data-testid="queue-sidebar-panel"]') as HTMLElement
+    expect(aside().style.width).toBe('340px')
 
     // Drag queue splitter to 320px
     fireEvent.mouseDown(queueSplitter, { clientX: 700 })
     fireEvent(window, new MouseEvent('mousemove', { clientX: 672 })) // 1000 - 8 - 672 = 320
     fireEvent(window, new MouseEvent('mouseup', {}))
 
-    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr 320px')
+    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr')
+    expect(aside().style.width).toBe('320px')
 
-    // Double click resets queue width to null (default minmax)
+    // Double click resets queue width to the drawer default
     fireEvent.doubleClick(queueSplitter)
-    expect(workspace.style.gridTemplateColumns).toBe('280px 1fr minmax(260px, 28%)')
+    expect(aside().style.width).toBe('340px')
   })
 })
 

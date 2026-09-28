@@ -131,10 +131,11 @@ The default visual identity is extracted directly from the character visual refe
 - Sidebar & Navigation Exclusions:
   - Left navigation rail strictly hosts content and library browsing (`library.view`, `history.view`, playlists).
   - `settings.view` and `sources.search` are explicitly excluded from sidebar rendering. Settings is opened via the TopBar user avatar; Search is driven by the TopBar search bar.
-- Window-level TopBar & queue panel:
-  - The TopBar is a full-width row above the workspace grid (a direct child of the shell root), never inside the main card: opening the right-side queue panel narrows the main card only, and the queue panel shares the main view's height beneath the same header.
+- TopBar placement & queue drawer:
+  - The TopBar sits directly above the main view — inside the main card normally, inside the expanded library pane when that takes over — while the library column runs the full window height (its top edge is the window's top edge).
+  - The queue opens as a right-side drawer that overlays the content (`position: absolute` within the workspace grid, below the 48px top bar so the window controls stay reachable). It takes no grid column, so opening it resizes nothing; the queue splitter adjusts its width and double-click resets it to the default (340px).
   - The library sidebar's quick entries (喜欢 / 本地和下载) highlight from the shell's real current route (`activeViewId` prop), never from `ui/navigate` events — shell-internal navigation (album detail, back/forward, home) emits none.
-  - Queue rows in the desktop queue panel drag to reorder (native HTML5 DnD, no dependency) and accept Alt+↑/↓. The drop gap in the visible play order is translated to a queue row index by `upcomingDropToQueueIndex` (`plugin-queue-ui-desktop/src/reorder.ts`); dragging is disabled while shuffle is on because the visible order is then a permutation, not the rows.
+  - Queue rows in the desktop queue drawer drag to reorder (native HTML5 DnD, no dependency) and accept Alt+↑/↓. The drop gap in the visible play order is translated to a queue row index by `upcomingDropToQueueIndex` (`plugin-queue-ui-desktop/src/reorder.ts`); dragging is disabled while shuffle is on because the visible order is then a permutation, not the rows.
 - Bottom player bar: Solid black (`#000000`), border-free (`borderTop: none`). Center cluster order is `[PlayMode] [Previous] [Play/Pause] [Next] [Volume]`. Play mode cycles sequence/single-loop/list-loop/shuffle. Volume icon indicates sound state (muted `volume-off` or loudness wave tiers `volume-3` / `volume-2` / `volume`) and clicks to pop up a vertical volume bar with a bottom mute toggle.
 
 ### 4.1 Tabler Icons & Stroke Standard (`stroke = 1.25`)
@@ -146,7 +147,7 @@ All visual icons across desktop UI components are standardized on **Tabler Icons
    - Playback & volume: `play-filled`, `pause-filled`, `skip-back`, `skip-forward`, `volume`, `volume-2`, `volume-3`, `volume-off`
    - Modes: `shuffle`, `repeat`, `repeat-once`, `list-numbers`
    - Curation & actions: `heart`, `heart-filled`, `plus`, `minus`, `trash`, `x`, `pin`, `pencil`, `download`, `clock`, `history`, `playlist`, `list`, `arrows-sort`, `dots`, `folder`, `music`, `disc`, `playlist-add`
-   - **Add-to-list semantics**: every "加入歌单 / 加入播放列表 / 添加至其他歌单" action (menu items and buttons alike) uses `playlist-add` (list + plus), never a bare `plus` — `plus` is reserved for generic creation and the save-to-library toggle.
+   - **Add-to-list semantics**: "加入歌单 / 添加至其他歌单 / 添加（歌单详情）" actions use a bare `plus`; "加入播放列表" (enqueue to the play queue) uses `playlist-add` (list + plus) to keep the two apart.
    - Direction & UI: `chevron-left`, `chevron-right`, `chevron-down`, `chevron-up`, `check`, `alert`, `settings`, `adjustments`
 4. **Standard Sizing & Scale**: Default icon size is `28px` (`DEFAULT_ICON_SIZE = 28` in `tabler.ts`). Tokens standard: `tokens.size.icon: 24`, `tokens.size.iconLarge: 32`. Sizing scale:
    - `sm`: 16–20px (table row actions, column headers, metadata badges)

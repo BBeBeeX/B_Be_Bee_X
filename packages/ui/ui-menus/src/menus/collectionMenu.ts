@@ -269,7 +269,7 @@ export function collectionMenuItems(
     items.push({
       id: 'add-to-playlist',
       label: '添加至其他歌单',
-      icon: 'playlist-add',
+      icon: 'plus',
       submenu,
     })
   }

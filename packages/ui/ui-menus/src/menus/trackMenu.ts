@@ -68,7 +68,7 @@ export function trackMenuItems(
   const items: MenuItemSpec[] = []
 
   const submenu = addToPlaylistSubmenu(library, [track.urn], opts.playlists ?? [])
-  if (submenu) items.push({ id: 'add-to-playlist', label: '加入歌单', icon: 'playlist-add', submenu })
+  if (submenu) items.push({ id: 'add-to-playlist', label: '加入歌单', icon: 'plus', submenu })
 
   if (library && opts.fromPlaylistUrn && target.playlistItemId) {
     const playlistUrn = opts.fromPlaylistUrn

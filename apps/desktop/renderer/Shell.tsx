@@ -171,12 +171,15 @@ function Splitter({
   isDragging,
   onMouseDown,
   onDoubleClick,
+  top = 8,
   'data-testid': testId,
 }: {
   position: { left?: number | string; right?: number | string }
   isDragging: boolean
   onMouseDown: (e: React.MouseEvent) => void
   onDoubleClick?: () => void
+  /** Vertical start; the queue splitter stops at the drawer's top edge. */
+  top?: number
   'data-testid'?: string
 }): ReactElement {
   const [hovered, setHovered] = useState(false)
@@ -193,7 +196,7 @@ function Splitter({
       onDoubleClick,
       style: {
         position: 'absolute',
-        top: 8,
+        top,
         bottom: 8,
         ...position,
         width: 8,
@@ -220,6 +223,13 @@ function Splitter({
   )
 }
 
+/** Default drawer width; the queue splitter overrides it and double-click resets to it. */
+const QUEUE_DRAWER_WIDTH = 340
+
+/** Slide-in for the queue drawer. Inline because the CSP allows styles but the renderer ships no stylesheet. */
+const QUEUE_DRAWER_KEYFRAMES =
+  '@keyframes queueDrawerIn { from { transform: translateX(32px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }'
+
 export function Shell({ ctx }: { ctx: Context }) {
   const { entries } = useEntries(ctx)
   // The recommend page is the home: it is where the brand logo in the
@@ -236,7 +246,6 @@ export function Shell({ ctx }: { ctx: Context }) {
   const [libraryMode, setLibraryMode] = useState<'collapsed' | 'sidebar' | 'expanded'>('sidebar')
   const [sidebarWidth, setSidebarWidth] = useState<number>(280)
   const [queueWidth, setQueueWidth] = useState<number | null>(null)
-  const [measuredAsideWidth, setMeasuredAsideWidth] = useState<number>(300)
   const [isDragging, setIsDragging] = useState<'sidebar' | 'queue' | null>(null)
   const workspaceRef = useRef<HTMLDivElement | null>(null)
 
@@ -614,7 +623,6 @@ export function Shell({ ctx }: { ctx: Context }) {
     )
   }
 
-  const queueCol = queueWidth !== null ? `${queueWidth}px` : 'minmax(260px, 28%)'
   const sidebarCol =
     libraryMode === 'expanded'
       ? '1fr'
@@ -622,22 +630,18 @@ export function Shell({ ctx }: { ctx: Context }) {
         ? '72px'
         : `${sidebarWidth}px`
 
-  const gridColumns =
-    libraryMode === 'expanded'
-      ? isQueueOpen
-        ? `1fr ${queueCol}`
-        : '1fr'
-      : isQueueOpen
-        ? `${sidebarCol} 1fr ${queueCol}`
-        : `${sidebarCol} 1fr`
+  // The queue never takes a grid column: it is a right-side drawer overlaying
+  // the content, so opening it resizes nothing — least of all the top bar.
+  const gridColumns = libraryMode === 'expanded' ? '1fr' : `${sidebarCol} 1fr`
 
-  // The top bar is a window-level row above the workspace grid: the sidebar,
-  // the main card and the queue panel all start beneath the same 48px header.
-  // Opening the queue narrows only the main card — never the top bar — and
-  // the queue panel matches the main view's height.
+  // The top bar sits directly above the main view — inside the main card
+  // normally, inside the expanded library pane when the library takes over —
+  // so the library column runs the full window height, and the queue drawer
+  // slides over the content without ever resizing this header. Sticky keeps
+  // the window controls reachable when the expanded library scrolls.
   const topBar = h(
     'div',
-    { style: { flexShrink: 0, position: 'relative', zIndex: 60 } },
+    { style: { flexShrink: 0, position: 'sticky', top: 0, zIndex: 60 } },
     h(TopBar, {
       ctx,
       canGoBack,
@@ -670,7 +674,6 @@ export function Shell({ ctx }: { ctx: Context }) {
         background: 'var(--bg-app, #05060B)',
       },
     },
-    topBar,
     h(
       'div',
       {
@@ -730,6 +733,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                     ? { flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column' }
                     : { height: '100%', width: '100%', display: 'flex', flexDirection: 'column' },
               },
+              libraryMode === 'expanded' ? topBar : null,
               h('span', { style: { display: 'none' } }, 'Library'),
               h(LibraryView, {
                 ctx,
@@ -837,6 +841,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                 flexDirection: 'column',
               },
             },
+            topBar,
             h(
               'div',
               { style: { flex: 1, minHeight: 0, position: 'relative' } },
@@ -931,21 +936,27 @@ export function Shell({ ctx }: { ctx: Context }) {
             'aside',
             {
               'data-testid': 'queue-sidebar-panel',
-              ref: (el: HTMLElement | null) => {
-                if (el && queueWidth === null && el.offsetWidth > 0) {
-                  setMeasuredAsideWidth(el.offsetWidth)
-                }
-              },
               style: {
+                // A drawer overlaying the content, not a grid column: below
+                // the 48px top bar so the window controls stay reachable.
+                position: 'absolute',
+                top: 64,
+                right: 8,
+                bottom: 8,
+                width: queueWidth ?? QUEUE_DRAWER_WIDTH,
+                zIndex: 40,
                 borderRadius: 8,
                 background: 'var(--bg-primary, #080A12)',
                 border: '1px solid var(--border-subtle, rgba(148,163,184,0.08))',
+                boxShadow: '0 16px 40px rgba(0, 0, 0, 0.45)',
                 overflow: 'hidden',
                 minHeight: 0,
                 display: 'flex',
                 flexDirection: 'column',
+                animation: isDragging ? 'none' : 'queueDrawerIn 0.28s cubic-bezier(0.2, 0, 0, 1)',
               },
             },
+            h('style', null, QUEUE_DRAWER_KEYFRAMES),
             h(
               ViewBoundary,
               {
@@ -983,8 +994,9 @@ export function Shell({ ctx }: { ctx: Context }) {
       isQueueOpen && QueueView
         ? h(Splitter, {
             'data-testid': 'queue-splitter',
+            top: 64,
             position: {
-              right: 8 + (queueWidth ?? measuredAsideWidth),
+              right: 8 + (queueWidth ?? QUEUE_DRAWER_WIDTH),
             },
             isDragging: isDragging === 'queue',
             onMouseDown: handleQueueMouseDown,
