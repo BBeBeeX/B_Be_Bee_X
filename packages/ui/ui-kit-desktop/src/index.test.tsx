@@ -27,6 +27,9 @@ import {
   List,
   Sheet,
   Slider,
+  DetailHero,
+  DetailPlayButton,
+  DetailTableHeader,
   StickyDetailBar,
   Text,
   TextField,
@@ -266,6 +269,62 @@ describe('StickyDetailBar', () => {
     expect(out).toContain('Homogenic')
     expect(out).toContain('position:sticky')
     expect(out).toContain('data-testid="sticky-detail-bar"')
+  })
+})
+
+describe('DetailTableHeader', () => {
+  const columns = [
+    { key: 'default', label: '#', testID: 'c-#', width: 40, align: 'center' as const },
+    { key: 'title', label: '标题', testID: 'c-title', flex: 2, paddingLeft: 12 },
+    { key: 'artist', label: '艺人', plain: true, flex: 1, visible: false },
+    { key: 'duration', label: '', testID: 'c-duration', width: 120, align: 'right' as const },
+  ]
+
+  it('pins below the sticky bar and is transparent until it docks', () => {
+    const out = html(h(DetailTableHeader, { columns, top: 64 }))
+    expect(out).toContain('position:sticky')
+    expect(out).toContain('top:64px')
+    expect(out).toContain('background:transparent')
+    const solid = html(h(DetailTableHeader, { columns, top: 64, solid: true }))
+    expect(solid).toContain('background:var(--bg-primary')
+  })
+
+  it('hides the invisible column and shows no arrows before hover', () => {
+    const out = html(h(DetailTableHeader, { columns, sortKey: 'title', sortDirection: 'asc' }))
+    expect(out).not.toContain('>艺人<')
+    expect(out).not.toContain('chevron-up')
+  })
+})
+
+describe('DetailPlayButton', () => {
+  it('is a named circular button, disabled rather than hidden', () => {
+    const out = html(h(DetailPlayButton, { onPress: () => {}, testID: 'play', ariaLabel: '播放全部', disabled: true }))
+    expect(out).toContain('aria-label="播放全部"')
+    expect(out).toContain('data-testid="play"')
+    expect(out).toContain('disabled')
+    expect(out).toContain('not-allowed')
+  })
+
+  it('renders the visually-hidden text when asked', () => {
+    const out = html(h(DetailPlayButton, { onPress: () => {}, srText: 'Play album' }))
+    expect(out).toContain('Play album')
+    expect(out).toContain('clip:rect(0, 0, 0, 0)')
+  })
+})
+
+describe('DetailHero', () => {
+  it('stacks eyebrow / title / subtitle without a cover', () => {
+    const out = html(h(DetailHero, { eyebrow: '歌单', title: '已点赞的歌曲', subtitle: '已收藏的音乐 • 3 首歌曲' }))
+    expect(out).toContain('已点赞的歌曲')
+    expect(out).toContain('已收藏的音乐 • 3 首歌曲')
+    expect(out).toContain('flex-direction:column')
+  })
+
+  it('clamps the title at two lines and switches to a row with a cover', () => {
+    const out = html(h(DetailHero, { eyebrow: '专辑', title: 'Homogenic', titleSize: 40, cover: h('div', null, 'cover') }))
+    expect(out).toContain('-webkit-line-clamp:2')
+    expect(out).toContain('flex-direction:row')
+    expect(out).toContain('cover')
   })
 })
 

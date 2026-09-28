@@ -26,8 +26,8 @@ import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { formatDuration, formatTotalDuration } from '@BBeBee/toolkit'
-import { addToCollectionSubmenu, sleepTimerSubmenu, useSaveToPlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
-import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, tablerIcon, useDetailBarCollapse, useImageColor, headerGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { addToCollectionSubmenu, sleepTimerSubmenu, sortMenuItems, useSaveToPlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
+import { Artwork, ContextMenu, DetailHero, DetailPlayButton, DetailTableHeader, type DetailColumnSpec, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, tablerIcon, useDetailBarCollapse, useImageColor, headerGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -365,7 +365,6 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const [collections, setCollections] = useState<readonly Collection[]>([])
   const [isSaved, setIsSaved] = useState(false)
   const [savedTrackUrns, setSavedTrackUrns] = useState<Set<string>>(new Set())
-  const [headerHovered, setHeaderHovered] = useState(false)
   // 滚动折叠：吸顶栏在播放按钮靠近时滑入，滚过按钮一半高度时吸附（docked）。
   const collapse = useDetailBarCollapse({ barHeight: 64, anchorHeight: 56 })
   // A row's `track.loved` is the value at the album's last fetch, which can be
@@ -576,17 +575,6 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
     }
   }
 
-  const renderSortIndicator = (key: AlbumSortKey) => {
-    // 表头默认不带箭头；悬停时当前排序列显示方向箭头，其余列显示浅色提示。
-    if (!headerHovered) return null
-    if (sortKey === key) {
-      return sortOrder === 'asc'
-        ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
-        : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
-    }
-    return tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4, opacity: 0.35 } })
-  }
-
   const sortLabelMap: Record<AlbumSortKey, string> = {
     trackNo: '默认顺序',
     title: '标题',
@@ -595,95 +583,34 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
     duration: '时长',
   }
 
-  const sortMenuItems: MenuItemSpec[] = [
-    {
-      id: 'sort-trackNo',
-      label: '默认顺序',
-      icon: sortKey === 'trackNo' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortKey('trackNo'),
-    },
-    {
-      id: 'sort-title',
-      label: '标题',
-      icon: sortKey === 'title' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortKey('title'),
-    },
-    {
-      id: 'sort-album',
-      label: '专辑',
-      icon: (sortKey === 'album' || sortKey === 'plays') ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortKey('album'),
-    },
-    {
-      id: 'sort-duration',
-      label: '时长',
-      icon: sortKey === 'duration' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortKey('duration'),
-    },
-    {
-      id: 'order-asc',
-      label: '升序',
-      icon: sortOrder === 'asc' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortOrder('asc'),
-    },
-    {
-      id: 'order-desc',
-      label: '降序',
-      icon: sortOrder === 'desc' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortOrder('desc'),
-    },
-  ]
+  const sortItems = sortMenuItems(
+    [
+      { id: 'trackNo', label: '默认顺序' },
+      { id: 'title', label: '标题' },
+      { id: 'album', label: '专辑' },
+      { id: 'duration', label: '时长' },
+    ],
+    sortKey,
+    (id) => setSortKey(id as AlbumSortKey),
+    { value: sortOrder, onChange: setSortOrder },
+  )
 
   const yearText = detail.year || (detail.releaseDate ? detail.releaseDate.slice(0, 4) : '')
   const totalDurationStr = formatTotalDuration(detail.tracks)
 
   const renderPlayButton = (size: number, iconSize: number, testID: string | undefined) =>
-    h(
-      'button',
-      {
-        type: 'button',
-        'data-testid': testID,
-        'aria-label': 'Play album',
-        onClick: () =>
-          void player?.playNow(sortedUrns, {
-            context: { kind: 'album', urn: detail.urn, label: detail.title },
-          }),
-        disabled: detail.tracks.length === 0,
-        style: {
-          width: size,
-          height: size,
-          borderRadius: '50%',
-          background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
-          border: 'none',
-          cursor: detail.tracks.length === 0 ? 'not-allowed' : 'pointer',
-          opacity: detail.tracks.length === 0 ? 0.5 : 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: 'var(--glow-brand-md, 0 8px 16px rgba(0, 0, 0, 0.3))',
-          color: '#ffffff',
-          paddingLeft: 2,
-        },
-      },
-      tablerIcon('play', { size: iconSize, color: '#ffffff' }),
-      h(
-        'span',
-        {
-          style: {
-            position: 'absolute',
-            width: 1,
-            height: 1,
-            padding: 0,
-            margin: -1,
-            overflow: 'hidden',
-            clip: 'rect(0, 0, 0, 0)',
-            whiteSpace: 'nowrap',
-            border: 0,
-          },
-        },
-        'Play album',
-      ),
-    )
+    h(DetailPlayButton, {
+      size,
+      iconSize,
+      testID,
+      ariaLabel: 'Play album',
+      srText: 'Play album',
+      onPress: () =>
+        void player?.playNow(sortedUrns, {
+          context: { kind: 'album', urn: detail.urn, label: detail.title },
+        }),
+      disabled: detail.tracks.length === 0,
+    })
 
   // 随列表一起滚走的部分：封面 hero、操作条、表头。
   // 吸顶栏单独走 List 的 sticky 插槽（滚动容器的直接子节点）。
@@ -700,19 +627,11 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
   const headerNode = h(
     'div',
     { style: { background: headerGradient(tint) } },
-    // Hero Header
-    h(
-      'header',
-      {
-        style: {
-          display: 'flex',
-          gap: 24,
-          padding: '36px 32px 24px 32px',
-          alignItems: 'flex-end',
-          flexShrink: 0,
-        },
-      },
-      h(
+    h(DetailHero, {
+      eyebrow: '专辑',
+      title: detail.title,
+      titleSize: detail.title.length > 25 ? 40 : 54,
+      cover: h(
         'div',
         {
           style: {
@@ -726,75 +645,46 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
         },
         h(CachedArtwork, { ctx, artwork: detail.artwork, seed: detail.urn, size: 232, radius: 6 }),
       ),
-      h(
+      meta: h(
         'div',
-        { style: { display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1 } },
-        h(
-          'span',
-          { style: { fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#FFFFFF' } },
-          '专辑',
-        ),
-        h(
-          'h1',
-          {
-            style: {
-              fontSize: detail.title.length > 25 ? 40 : 54,
-              fontWeight: 900,
-              margin: '2px 0 6px 0',
-              lineHeight: 1.1,
-              color: '#FFFFFF',
-              letterSpacing: '-0.03em',
-              wordBreak: 'break-word',
-              // 超长标题最多两行，超出省略——不撑破布局。
-              display: '-webkit-box',
-              WebkitBoxOrient: 'vertical',
-              WebkitLineClamp: 2,
-              overflow: 'hidden',
-            },
+        {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 6,
+            fontSize: 14,
+            color: '#b3b3b3',
+            marginTop: 4,
           },
-          detail.title,
-        ),
+        },
         h(
           'div',
           {
             style: {
+              width: 24,
+              height: 24,
+              borderRadius: '50%',
+              backgroundColor: '#404040',
               display: 'flex',
               alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 6,
-              fontSize: 14,
-              color: '#b3b3b3',
-              marginTop: 4,
+              justifyContent: 'center',
+              color: '#FFFFFF',
+              fontSize: 12,
+              fontWeight: 700,
+              flexShrink: 0,
             },
           },
-          h(
-            'div',
-            {
-              style: {
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                backgroundColor: '#404040',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#FFFFFF',
-                fontSize: 12,
-                fontWeight: 700,
-                flexShrink: 0,
-              },
-            },
-            detail.artists?.[0]?.name?.[0]
-              ? detail.artists[0].name[0].toUpperCase()
-              : tablerIcon('music', { size: 18 }),
-          ),
-          h('span', { style: { fontWeight: 700, color: '#FFFFFF' } }, detail.artists?.map((a) => a.name).join(', ') || '未知艺人'),
-          yearText ? h('span', null, ` • ${yearText}`) : null,
-          h('span', null, ` • ${detail.tracks.length} 首歌曲`),
-          totalDurationStr ? h('span', null, `, ${totalDurationStr}`) : null,
+          detail.artists?.[0]?.name?.[0]
+            ? detail.artists[0].name[0].toUpperCase()
+            : tablerIcon('music', { size: 18 }),
         ),
+        h('span', { style: { fontWeight: 700, color: '#FFFFFF' } }, detail.artists?.map((a) => a.name).join(', ') || '未知艺人'),
+        yearText ? h('span', null, ` • ${yearText}`) : null,
+        h('span', null, ` • ${detail.tracks.length} 首歌曲`),
+        totalDurationStr ? h('span', null, `, ${totalDurationStr}`) : null,
       ),
-    ),
+    }),
     // Action Bar
     h(
       'div',
@@ -933,142 +823,21 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
 
   // 表头走 stickyHeader 插槽（滚动容器的直接子节点）——嵌在 header 盒内时
   // sticky 只在父盒范围吸附，作为父盒最后一个子元素等于完全吸不住。
-  const tableHeaderNode = h(
-    'div',
-    {
-      onMouseEnter: () => setHeaderHovered(true),
-        onMouseLeave: () => setHeaderHovered(false),
-        style: {
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 32px 8px 32px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          color: '#b3b3b3',
-          fontSize: 13,
-          fontWeight: 500,
-          flexShrink: 0,
-          position: 'sticky',
-          top: 64,
-          zIndex: 15,
-          background: collapse.docked ? 'var(--bg-primary, #080A10)' : 'transparent',
-        },
-      },
-      h(
-        'button',
-        {
-          type: 'button',
-          'data-testid': 'album-sort-trackNo',
-          onClick: () => handleHeaderClick('trackNo'),
-          style: {
-            width: 40,
-            textAlign: 'center',
-            flexShrink: 0,
-            background: 'none',
-            border: 'none',
-            color: sortKey === 'trackNo' ? '#FFFFFF' : '#b3b3b3',
-            cursor: 'pointer',
-            padding: 0,
-            fontSize: 13,
-            fontWeight: 500,
-            boxShadow: headerHovered ? 'inset 1px 0 0 rgba(255, 255, 255, 0.08)' : undefined,
-          },
-        },
-        '#',
-        renderSortIndicator('trackNo'),
-      ),
-      h(
-        'button',
-        {
-          type: 'button',
-          'data-testid': 'album-sort-title',
-          onClick: () => handleHeaderClick('title'),
-          style: {
-            flex: 2,
-            paddingLeft: 12,
-            textAlign: 'left',
-            background: 'none',
-            border: 'none',
-            color: sortKey === 'title' ? '#FFFFFF' : '#b3b3b3',
-            cursor: 'pointer',
-            padding: 0,
-            fontSize: 13,
-            fontWeight: 500,
-            boxShadow: headerHovered ? 'inset 1px 0 0 rgba(255, 255, 255, 0.08)' : undefined,
-          },
-        },
-        '标题',
-        renderSortIndicator('title'),
-      ),
-      viewMode === 'compact'
-        ? h(
-            'div',
-            {
-              key: 'album-header-artist',
-              style: {
-                flex: 1,
-                minWidth: 0,
-                textAlign: 'left',
-                color: '#b3b3b3',
-                fontSize: 13,
-                fontWeight: 500,
-                boxShadow: headerHovered ? 'inset 1px 0 0 rgba(255, 255, 255, 0.08)' : undefined,
-              },
-            },
-            '艺人',
-          )
-        : null,
-      h(
-        'button',
-        {
-          type: 'button',
-          'data-testid': 'album-sort-album',
-          onClick: () => handleHeaderClick('album'),
-          style: {
-            flex: 1.5,
-            textAlign: 'left',
-            flexShrink: 0,
-            background: 'none',
-            border: 'none',
-            color: sortKey === 'album' || sortKey === 'plays' ? '#FFFFFF' : '#b3b3b3',
-            cursor: 'pointer',
-            padding: 0,
-            fontSize: 13,
-            fontWeight: 500,
-            boxShadow: headerHovered ? 'inset 1px 0 0 rgba(255, 255, 255, 0.08)' : undefined,
-          },
-        },
-        '专辑',
-        renderSortIndicator('album') || renderSortIndicator('plays'),
-      ),
-      h(
-        'button',
-        {
-          type: 'button',
-          'data-testid': 'album-sort-duration',
-          onClick: () => handleHeaderClick('duration'),
-          style: {
-            width: 130,
-            textAlign: 'right',
-            paddingRight: 40,
-            flexShrink: 0,
-            background: 'none',
-            border: 'none',
-            color: sortKey === 'duration' ? '#FFFFFF' : '#b3b3b3',
-            cursor: 'pointer',
-            padding: 0,
-            fontSize: 13,
-            fontWeight: 500,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            gap: 4,
-            boxShadow: headerHovered ? 'inset 1px 0 0 rgba(255, 255, 255, 0.08)' : undefined,
-          },
-        },
-        tablerIcon('clock', { size: 18 }),
-        renderSortIndicator('duration'),
-      ),
-    )
+  const tableHeaderNode = h(DetailTableHeader, {
+    testID: 'album-table-header',
+    accessibilityLabel: detail.title,
+    columns: [
+      { key: 'trackNo', label: '#', testID: 'album-sort-trackNo', width: 40, align: 'center' },
+      { key: 'title', label: '标题', testID: 'album-sort-title', flex: 2, paddingLeft: 12 },
+      { key: 'artist', label: '艺人', plain: true, flex: 1, visible: viewMode === 'compact' },
+      { key: 'album', label: '专辑', testID: 'album-sort-album', flex: 1.5, fixed: true, sortKeys: ['album', 'plays'] },
+      { key: 'duration', label: '', icon: tablerIcon('clock', { size: 18 }), testID: 'album-sort-duration', width: 130, align: 'right', paddingRight: 40 },
+    ] satisfies DetailColumnSpec[],
+    sortKey,
+    sortDirection: sortOrder,
+    onSort: (key) => handleHeaderClick(key as AlbumSortKey),
+    solid: collapse.docked,
+  })
 
   return h(
     'div',
@@ -1134,7 +903,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
       onClose: () => setSortMenuAnchor(null),
       x: sortMenuAnchor?.x ?? 0,
       y: sortMenuAnchor?.y ?? 0,
-      items: viewModeMenuItems(sortMenuItems, viewMode, setViewMode),
+      items: viewModeMenuItems(sortItems, viewMode, setViewMode),
       title: '排序方式',
     }),
     h(SaveToPlaylistPopover, saveToPlaylistMenu.menuProps),

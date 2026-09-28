@@ -1,247 +1,17 @@
 import { createElement as h, useMemo, useState } from 'react'
-import type { ChangeEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
+import type { ChangeEvent, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { PlayerService, Track } from '@BBeBee/protocol'
 import { useSaved } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
-import { serviceOf, type MenuAnchor, type MenuItemSpec } from '@BBeBee/ui-core'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useDetailBarCollapse, headerGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
-import { useTrackMenu } from '@BBeBee/ui-menus'
+import { serviceOf, type MenuAnchor } from '@BBeBee/ui-core'
+import { sortMenuItems, useTrackMenu } from '@BBeBee/ui-menus'
+import { ContextMenu, DetailHero, DetailPlayButton, DetailTableHeader, type DetailColumnSpec, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useDetailBarCollapse, headerGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
-import { CachedArtwork } from '../components/CachedArtwork.js'
-import { TrackLibraryActionButton } from '../components/TrackLibraryActionButton.js'
+import { LibraryTrackRow } from '../components/LibraryTrackRow.js'
 import { useTrackLibraryInfo } from '../hooks/useTrackLibraryInfo.js'
-import { formatDuration } from '../utils/data-helpers.js'
-
-function FavoriteTrackTableRow({
-  ctx,
-  track,
-  index,
-  compact,
-  inLibrary,
-  onPress,
-  onMore,
-  onOpenPlaylistMenu,
-}: {
-  ctx: Context
-  track: Track
-  index: number
-  /** 紧凑视图：无封面，艺人独立成列。 */
-  compact?: boolean
-  /** 实时收藏状态：取消收藏后这一行要回到加号。 */
-  inLibrary: boolean
-  onPress: () => void
-  onMore: (anchor: { x: number; y: number }) => void
-  onOpenPlaylistMenu: (track: Track, anchor: MenuAnchor) => void
-}): ReactElement {
-  const [hovered, setHovered] = useState(false)
-  const artists = track.artists?.map((a) => a.name).join(', ')
-
-  return h(
-    'div',
-    {
-      role: 'row',
-      tabIndex: 0,
-      onMouseEnter: () => setHovered(true),
-      onMouseLeave: () => setHovered(false),
-      onClick: onPress,
-      onContextMenu: (e: ReactMouseEvent) => {
-        e.preventDefault()
-        onMore({ x: e.clientX, y: e.clientY })
-      },
-      onKeyDown: (e: KeyboardEvent) => {
-        if (e.key === 'Enter' || e.key === ' ') onPress()
-      },
-      style: {
-        display: 'flex',
-        alignItems: 'center',
-        height: 56,
-        padding: '0 32px',
-        borderRadius: 4,
-        cursor: 'pointer',
-        background: hovered ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-        transition: 'background-color 0.15s ease',
-        boxSizing: 'border-box',
-      },
-    },
-    // Col 1: # or Play icon
-    h(
-      'div',
-      {
-        style: {
-          width: 40,
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 14,
-          color: hovered ? '#FFFFFF' : '#b3b3b3',
-        },
-      },
-      hovered ? tablerIcon('play', { size: 18, color: '#FFFFFF' }) : String(index + 1),
-    ),
-    // Col 2: Artwork + Title + Artist
-    h(
-      'div',
-      {
-        style: {
-          flex: 2,
-          minWidth: 0,
-          paddingLeft: 12,
-          paddingRight: 16,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-        },
-      },
-      compact ? null : h(CachedArtwork, { ctx, artwork: track.artwork, seed: track.urn, size: 40, radius: 4 }),
-      h(
-        'div',
-        {
-          style: {
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            minWidth: 0,
-            overflow: 'hidden',
-          },
-        },
-        h(
-          'span',
-          {
-            style: {
-              color: '#FFFFFF',
-              fontSize: 15,
-              fontWeight: 500,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            },
-          },
-          track.title,
-        ),
-        !compact && artists
-          ? h(
-              'span',
-              {
-                style: {
-                  color: '#b3b3b3',
-                  fontSize: 13,
-                  marginTop: 2,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                },
-              },
-              artists,
-            )
-          : null,
-      ),
-    ),
-    // Col 3 (compact only): Artist as its own column
-    compact
-      ? h(
-          'div',
-          {
-            style: {
-              flex: 1,
-              minWidth: 0,
-              paddingRight: 16,
-              fontSize: 13,
-              color: '#b3b3b3',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            },
-          },
-          artists || '-',
-        )
-      : null,
-    // Col 3: Album
-    h(
-      'div',
-      {
-        style: {
-          flex: 1.5,
-          minWidth: 0,
-          paddingRight: 16,
-          fontSize: 14,
-          color: '#b3b3b3',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        },
-      },
-      track.albumTitle || '-',
-    ),
-    // Col 4: Action icon + Duration & More
-    h(
-      'div',
-      {
-        style: {
-          width: 120,
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          gap: 6,
-          paddingRight: 16,
-        },
-      },
-      h(TrackLibraryActionButton, {
-        track,
-        hovered,
-        inLibrary,
-        onOpenPlaylistMenu,
-      }),
-      h(
-        'span',
-        {
-          style: {
-            fontSize: 14,
-            color: '#b3b3b3',
-            width: 45,
-            textAlign: 'right',
-          },
-        },
-        formatDuration(track.durationMs),
-      ),
-      h(
-        'button',
-        {
-          type: 'button',
-          'aria-label': 'More',
-          title: '更多',
-          onClick: (e: ReactMouseEvent) => {
-            e.stopPropagation()
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-            onMore({ x: rect.left, y: rect.bottom + 4 })
-          },
-          style: {
-            background: 'none',
-            border: 'none',
-            color: '#b3b3b3',
-            cursor: 'pointer',
-            padding: 4,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: hovered ? 1 : 0,
-            transition: 'opacity 0.15s ease',
-          },
-        },
-        tablerIcon('dots', { size: 20 }),
-      ),
-    ),
-  )
-}
 
 type FavoriteSortKey = 'default' | 'title' | 'artist' | 'album' | 'duration'
-
-/** 表头吸顶时停在吸顶栏正下方。 */
-const BAR_HEIGHT = 64
-/** 表头悬停时列间的发丝分隔线。 */
-const HOVER_DIVIDER = 'inset 1px 0 0 rgba(255, 255, 255, 0.08)'
 
 /** 收藏夹没有封面：Spotify 给“已点赞的歌曲”的固定紫色就是它的主题色。 */
 const FAVORITES_TINT = '#450af5'
@@ -257,13 +27,12 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   const [sortKey, setSortKey] = useState<FavoriteSortKey>('default')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sortMenuAnchor, setSortMenuAnchor] = useState<MenuAnchor | null>(null)
-  const [headerHovered, setHeaderHovered] = useState(false)
   // 滚动折叠：吸顶栏在播放按钮靠近时滑入，滚过按钮一半高度时吸附（docked）。
-  const collapse = useDetailBarCollapse({ barHeight: BAR_HEIGHT, anchorHeight: 56 })
+  const collapse = useDetailBarCollapse({ barHeight: 64, anchorHeight: 56 })
   // 视图模式：列表为默认（与历史行为一致），紧凑不显示封面并把艺人单列。
   const [viewMode, setViewMode] = useViewMode('favorites', 'list', ['compact', 'list'] as const)
   const menu = useTrackMenu(ctx)
-  const { isTrackInLibrary, openAddToPlaylistMenu, saveToPlaylistMenuProps } = useTrackLibraryInfo(ctx)
+  const { isTrackInLibrary, handleAddToFavorites, openAddToPlaylistMenu, saveToPlaylistMenuProps } = useTrackLibraryInfo(ctx)
 
   const allTracks = useMemo(() => {
     return urns.map((urn) => tracksMap.get(urn) ?? { urn, title: urn.split(':').pop() ?? urn, artists: [] })
@@ -307,6 +76,27 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
 
   const sortedUrns = useMemo(() => sortedTracks.map((t) => t.urn), [sortedTracks])
 
+  const sortLabelMap: Record<FavoriteSortKey, string> = {
+    default: '默认顺序',
+    title: '标题',
+    artist: '艺人',
+    album: '专辑',
+    duration: '时长',
+  }
+
+  const sortItems = sortMenuItems(
+    [
+      { id: 'default', label: '默认顺序' },
+      { id: 'title', label: '标题' },
+      { id: 'artist', label: '艺人' },
+      { id: 'album', label: '专辑' },
+      { id: 'duration', label: '时长' },
+    ],
+    sortKey,
+    (id) => setSortKey(id as FavoriteSortKey),
+    { value: sortOrder, onChange: setSortOrder },
+  )
+
   const handleHeaderClick = (key: FavoriteSortKey) => {
     if (sortKey === key) {
       setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
@@ -316,106 +106,20 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
     }
   }
 
-  const renderSortIndicator = (key: FavoriteSortKey) => {
-    // 表头默认不带箭头；悬停时当前排序列显示方向箭头，其余列显示浅色提示。
-    if (!headerHovered) return null
-    if (sortKey === key) {
-      return sortOrder === 'asc'
-        ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
-        : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
-    }
-    return tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4, opacity: 0.35 } })
-  }
-
-  const sortLabelMap: Record<FavoriteSortKey, string> = {
-    default: '默认顺序',
-    title: '标题',
-    artist: '艺人',
-    album: '专辑',
-    duration: '时长',
-  }
-
-  const sortMenuItems: MenuItemSpec[] = [
-    {
-      id: 'sort-default',
-      label: '默认顺序',
-      icon: sortKey === 'default' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortKey('default'),
-    },
-    {
-      id: 'sort-title',
-      label: '标题',
-      icon: sortKey === 'title' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortKey('title'),
-    },
-    {
-      id: 'sort-artist',
-      label: '艺人',
-      icon: sortKey === 'artist' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortKey('artist'),
-    },
-    {
-      id: 'sort-album',
-      label: '专辑',
-      icon: sortKey === 'album' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortKey('album'),
-    },
-    {
-      id: 'sort-duration',
-      label: '时长',
-      icon: sortKey === 'duration' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortKey('duration'),
-      divider: true,
-    },
-    {
-      id: 'order-asc',
-      label: '升序',
-      icon: sortOrder === 'asc' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortOrder('asc'),
-    },
-    {
-      id: 'order-desc',
-      label: '降序',
-      icon: sortOrder === 'desc' ? tablerIcon('check', { size: 18 }) : undefined,
-      onSelect: () => setSortOrder('desc'),
-    },
-  ]
-
-  // 往下滚时 hero 随内容滚走；播放按钮靠近顶部时吸顶栏滑入，滚过按钮
-  // 一半高度时按钮被吸进吸顶栏（带缩放动作），表头吸附在其正下方。
   const renderPlayButton = (size: number, iconSize: number, testID: string | undefined) =>
-    h(
-      'button',
-      {
-        type: 'button',
-        'data-testid': testID,
-        'aria-label': '播放全部',
-        onClick: () =>
-          sortedUrns[0] &&
-          player?.playFromContext(sortedUrns[0], sortedUrns, {
-            context: { kind: 'favorites', label: '收藏夹' },
-          }),
-        disabled: sortedUrns.length === 0,
-        style: {
-          width: size,
-          height: size,
-          borderRadius: '50%',
-          background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
-          border: 'none',
-          cursor: sortedUrns.length === 0 ? 'not-allowed' : 'pointer',
-          opacity: sortedUrns.length === 0 ? 0.5 : 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: 'var(--glow-brand-md, 0 8px 16px rgba(0, 0, 0, 0.3))',
-          color: '#ffffff',
-          paddingLeft: 2,
-        },
-      },
-      tablerIcon('play', { size: iconSize, color: '#ffffff' }),
-    )
+    h(DetailPlayButton, {
+      size,
+      iconSize,
+      testID,
+      ariaLabel: '播放全部',
+      onPress: () =>
+        sortedUrns[0] &&
+        player?.playFromContext(sortedUrns[0], sortedUrns, {
+          context: { kind: 'favorites', label: '收藏夹' },
+        }),
+      disabled: sortedUrns.length === 0,
+    })
 
-  // 随列表一起滚走的部分：hero、操作条、表头。
   // 吸顶栏单独走 List 的 sticky 插槽（滚动容器的直接子节点）。
   const stickyBar = h(StickyDetailBar, {
     title: '已点赞的歌曲',
@@ -429,51 +133,11 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   const headerNode = h(
     'div',
     { style: { background: headerGradient(FAVORITES_TINT) } },
-    // Hero Header (No Cover, exactly matching LocalMusicScreen)
-    h(
-      'header',
-      {
-        style: {
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-          padding: '36px 32px 18px 32px',
-          flexShrink: 0,
-        },
-      },
-      h(
-        'span',
-        {
-          style: {
-            fontSize: 13,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            color: '#FFFFFF',
-          },
-        },
-        '歌单',
-      ),
-      h(
-        'h1',
-        {
-          style: {
-            fontSize: 56,
-            fontWeight: 900,
-            margin: '2px 0 6px 0',
-            lineHeight: 1.1,
-            color: '#FFFFFF',
-            letterSpacing: '-0.03em',
-          },
-        },
-        '已点赞的歌曲',
-      ),
-      h(
-        'p',
-        { style: { margin: 0, fontSize: 14, color: '#b3b3b3' } },
-        `已收藏的音乐 • ${urns.length} 首歌曲`,
-      ),
-    ),
+    h(DetailHero, {
+      eyebrow: '歌单',
+      title: '已点赞的歌曲',
+      subtitle: `已收藏的音乐 • ${urns.length} 首歌曲`,
+    }),
     // Action Bar
     h(
       'div',
@@ -490,7 +154,11 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
         'div',
         { style: { display: 'flex', alignItems: 'center', gap: 24 } },
         // 折叠锚点：吸顶栏按这只大按钮的位置决定滑入与吸附时机。
-        h('div', { ref: collapse.anchorRef, style: { display: 'flex' } }, renderPlayButton(56, 28, 'favorites-play')),
+        h(
+          'div',
+          { ref: collapse.anchorRef, style: { display: 'flex' } },
+          renderPlayButton(56, 28, 'favorites-play'),
+        ),
         h(
           'button',
           {
@@ -585,141 +253,22 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
       : null,
   )
 
-  // 表头走 stickyHeader 插槽（滚动容器的直接子节点）——嵌在 header 盒内时
-  // sticky 只在父盒范围吸附，作为父盒最后一个子元素等于完全吸不住。
-  const tableHeaderNode = h(
-    'div',
-    {
-      onMouseEnter: () => setHeaderHovered(true),
-        onMouseLeave: () => setHeaderHovered(false),
-        style: {
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 32px 8px 32px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          color: '#b3b3b3',
-          fontSize: 13,
-          fontWeight: 500,
-          flexShrink: 0,
-          position: 'sticky',
-          top: BAR_HEIGHT,
-          zIndex: 15,
-          background: collapse.docked ? 'var(--bg-primary, #080A10)' : 'transparent',
-        },
-      },
-      h(
-        'button',
-        {
-          type: 'button',
-          'data-testid': 'favorites-sort-default',
-          onClick: () => handleHeaderClick('default'),
-          style: {
-            width: 40,
-            textAlign: 'center',
-            flexShrink: 0,
-            background: 'none',
-            border: 'none',
-            color: sortKey === 'default' ? '#FFFFFF' : '#b3b3b3',
-            cursor: 'pointer',
-            padding: 0,
-            fontSize: 13,
-            fontWeight: 500,
-            boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
-          },
-        },
-        '#',
-        renderSortIndicator('default'),
-      ),
-      h(
-        'button',
-        {
-          type: 'button',
-          'data-testid': 'favorites-sort-title',
-          onClick: () => handleHeaderClick('title'),
-          style: {
-            flex: 2,
-            paddingLeft: 12,
-            textAlign: 'left',
-            background: 'none',
-            border: 'none',
-            color: sortKey === 'title' ? '#FFFFFF' : '#b3b3b3',
-            cursor: 'pointer',
-            fontSize: 13,
-            fontWeight: 500,
-            boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
-          },
-        },
-        '标题',
-        renderSortIndicator('title'),
-      ),
-      viewMode === 'compact'
-        ? h(
-            'div',
-            {
-              key: 'favorites-header-artist',
-              style: {
-                flex: 1,
-                minWidth: 0,
-                textAlign: 'left',
-                color: '#b3b3b3',
-                fontSize: 13,
-                fontWeight: 500,
-                boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
-              },
-            },
-            '艺人',
-          )
-        : null,
-      h(
-        'button',
-        {
-          type: 'button',
-          'data-testid': 'favorites-sort-album',
-          onClick: () => handleHeaderClick('album'),
-          style: {
-            flex: 1.5,
-            paddingLeft: 8,
-            textAlign: 'left',
-            background: 'none',
-            border: 'none',
-            color: sortKey === 'album' ? '#FFFFFF' : '#b3b3b3',
-            cursor: 'pointer',
-            fontSize: 13,
-            fontWeight: 500,
-            boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
-          },
-        },
-        '专辑',
-        renderSortIndicator('album'),
-      ),
-      h(
-        'button',
-        {
-          type: 'button',
-          'data-testid': 'favorites-sort-duration',
-          onClick: () => handleHeaderClick('duration'),
-          style: {
-            width: 120,
-            textAlign: 'right',
-            paddingRight: 40,
-            flexShrink: 0,
-            background: 'none',
-            border: 'none',
-            color: sortKey === 'duration' ? '#FFFFFF' : '#b3b3b3',
-            cursor: 'pointer',
-            fontSize: 13,
-            fontWeight: 500,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            gap: 4,
-            boxShadow: headerHovered ? HOVER_DIVIDER : undefined,
-          },
-        },
-        tablerIcon('clock', { size: 18 }),
-        renderSortIndicator('duration'),
-      ),
-    )
+  // 表头走 stickyHeader 插槽（滚动容器的直接子节点）。
+  const tableHeaderNode = h(DetailTableHeader, {
+    testID: 'favorites-table-header',
+    accessibilityLabel: '已点赞的歌曲',
+    columns: [
+      { key: 'default', label: '#', testID: 'favorites-sort-default', width: 40, align: 'center' },
+      { key: 'title', label: '标题', testID: 'favorites-sort-title', flex: 2, paddingLeft: 12 },
+      { key: 'artist', label: '艺人', plain: true, flex: 1, visible: viewMode === 'compact' },
+      { key: 'album', label: '专辑', testID: 'favorites-sort-album', flex: 1.5, paddingLeft: 8 },
+      { key: 'duration', label: '', icon: tablerIcon('clock', { size: 18 }), testID: 'favorites-sort-duration', width: 120, align: 'right', paddingRight: 40 },
+    ] satisfies DetailColumnSpec[],
+    sortKey,
+    sortDirection: sortOrder,
+    onSort: (key) => handleHeaderClick(key as FavoriteSortKey),
+    solid: collapse.docked,
+  })
 
   return h(
     'section',
@@ -756,7 +305,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
                 description: '在曲库中收藏歌曲后，歌曲将在此显示。',
               }),
         renderItem: (t, index) =>
-          h(FavoriteTrackTableRow, {
+          h(LibraryTrackRow, {
             ctx,
             track: t,
             index,
@@ -769,6 +318,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
             onOpenPlaylistMenu: openAddToPlaylistMenu,
             // 取消收藏后那一行要回到加号：心形状态跟着实时收藏集合走。
             inLibrary: isTrackInLibrary(t),
+            onAddToFavorites: handleAddToFavorites,
           }),
       }),
     ),
@@ -779,7 +329,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
       onClose: () => setSortMenuAnchor(null),
       x: sortMenuAnchor?.x ?? 0,
       y: sortMenuAnchor?.y ?? 0,
-      items: viewModeMenuItems(sortMenuItems, viewMode, setViewMode),
+      items: viewModeMenuItems(sortItems, viewMode, setViewMode),
       title: '排序方式',
     }),
   )

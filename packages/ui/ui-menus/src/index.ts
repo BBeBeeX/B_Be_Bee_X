@@ -56,3 +56,9 @@ export {
   type SaveToPlaylistMenuController,
   useSaveToPlaylistMenu,
 } from './menus/saveToPlaylistMenu.js'
+
+export {
+  type SortOption,
+  type SortOrder,
+  sortMenuItems,
+} from './menus/sortMenu.js'

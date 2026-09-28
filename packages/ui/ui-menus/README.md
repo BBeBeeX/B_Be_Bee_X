@@ -52,3 +52,7 @@ useAddToCollection(ctx)                 → { open(title, itemUrns, anchor?, opt
 ## 测试（`src/index.test.tsx`）
 
 32 个用例：曲目条目的顺序、缺服务时条目消失、`remove-from-playlist` 只在歌单内出现、取消喜欢同时写 `track_stats` 与 `library_items`（右键与弹层开关两条路径都 pin 了双写与先后顺序）、入队/下载/转专辑的调用、睡眠定时器预设与自定义时间解析/取消、子菜单的创建/选择/智能歌单禁用、专辑 `delete-album` 选项触发、歌单与合集条目、文件夹间移动与移至根目录、`useTrackMenu` 的 open/close 状态。
+
+## 排序菜单构建器
+
+`sortMenuItems(options, activeId, onPick, order?)`：详情页排序下拉的条目构建器——每个 key 一条、当前项打勾、末尾发丝分隔线后跟 升序/降序（不传 `order` 则只有 key 条目）。四个详情页共用，杜绝同一菜单的四种方言。

@@ -38,6 +38,9 @@ export {
 export { useImageColor, headerGradient, tintRgba, extractVibrantColor } from './components/coverTheme.js'
 export { StickyDetailBar, type StickyDetailBarProps } from './components/StickyDetailBar.js'
 export { useDetailBarCollapse, type DetailBarCollapse } from './components/useDetailBarCollapse.js'
+export { DetailTableHeader, type DetailColumnSpec, type DetailTableHeaderProps } from './components/DetailTableHeader.js'
+export { DetailPlayButton, type DetailPlayButtonProps } from './components/DetailPlayButton.js'
+export { DetailHero, type DetailHeroProps } from './components/DetailHero.js'
 export { viewModeMenuItems, useViewMode, type TrackViewMode, type AlbumViewMode } from './components/ViewMode.js'
 export { tablerIcon } from './icons/index.js'
 
