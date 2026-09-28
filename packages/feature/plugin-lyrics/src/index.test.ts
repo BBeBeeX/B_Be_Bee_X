@@ -38,10 +38,15 @@ class PlayerStub extends Service {
 class SourcesStub extends Service {
   providers: MediaProvider[] = []
   lyricsMap = new Map<string, Lyrics>()
+  sourceRecords = new Map<string, any>()
   getLyricsCallCount = 0
 
   constructor(ctx: Context) {
     super(ctx, 'sources')
+  }
+
+  source(id: string) {
+    return this.sourceRecords.get(id)
   }
 
   forUrn(_urn: string) {
@@ -71,6 +76,11 @@ class DbStub extends Service {
       return row ? [row as T] : []
     }
     return []
+  }
+
+  async get<T>(sql: string, params: any[]): Promise<T | undefined> {
+    const rows = await this.query<T>(sql, params)
+    return rows[0]
   }
 
   async exec(sql: string, params: any[]): Promise<void> {
@@ -305,7 +315,7 @@ describe('plugin-lyrics', () => {
     expect(db.lyricsRows.get('BBeBee:mock:track:retry-track')?.format).toBe('lrc')
   })
 
-  it('queries ctx.lyricSources when audio source lacks lyrics or needs external lyric source', async () => {
+  it('queries ctx.lyricSources when audio source supports external lyric source', async () => {
     class LyricSourcesStub extends Service {
       lastQuery?: any
       constructor(c: Context) {
@@ -329,7 +339,15 @@ describe('plugin-lyrics', () => {
     await ctx.plugin(LyricsPlugin)
 
     const player = (ctx as any).player as PlayerStub
+    const sources = (ctx as any).sources as SourcesStub
     const lyricSources = (ctx as any).lyricSources as LyricSourcesStub
+
+    sources.sourceRecords.set('mock', {
+      id: 'mock',
+      name: 'Mock Source',
+      needsLyricSource: true,
+      doc: {},
+    })
 
     player.transport.trackUrn = 'BBeBee:mock:track:external-needed'
     player.transport.durationMs = 200000
@@ -343,9 +361,160 @@ describe('plugin-lyrics', () => {
 
     expect(ctx.lyrics.state.status).toBe('ready')
     expect(ctx.lyrics.state.lyrics?.content).toBe('[00:02.00]External Lyric')
+    expect(ctx.lyrics.state.supportsLyricSource).toBe(true)
+    expect(ctx.lyrics.state.sourceType).toBe('lyric-source')
     expect(lyricSources.lastQuery).toBeDefined()
     expect(lyricSources.lastQuery.title).toBe('External Song')
     expect(lyricSources.lastQuery.artist).toBe('External Artist')
+  })
+
+  it('does NOT query lyricSources when audio source has needsLyricSource set to false', async () => {
+    class LyricSourcesStub extends Service {
+      searchCount = 0
+      constructor(c: Context) {
+        super(c, 'lyricSources')
+      }
+      async searchLyrics() {
+        this.searchCount++
+        return {
+          format: 'lrc' as const,
+          content: '[00:01.00]Should Not Be Called',
+          synced: true,
+        }
+      }
+    }
+
+    const ctx = new Context()
+    await ctx.plugin(PlayerStub)
+    await ctx.plugin(SourcesStub)
+    await ctx.plugin(DbStub)
+    await ctx.plugin(LyricSourcesStub)
+    await ctx.plugin(LyricsPlugin)
+
+    const player = (ctx as any).player as PlayerStub
+    const sources = (ctx as any).sources as SourcesStub
+    const lyricSources = (ctx as any).lyricSources as LyricSourcesStub
+
+    sources.sourceRecords.set('disabled-src', {
+      id: 'disabled-src',
+      name: 'Disabled Lyric Source',
+      needsLyricSource: false,
+      doc: { ruleLyric: { url: 'https://example.com/lrc' } },
+    })
+
+    sources.lyricsMap.set('local-only-track', {
+      format: 'lrc',
+      content: '[00:03.00]Source Provider Builtin Lyric',
+      synced: true,
+      offsetMs: 0,
+    })
+
+    player.transport.trackUrn = 'BBeBee:disabled-src:track:local-only-track'
+    player.transport.nowPlaying = {
+      title: 'Builtin Song',
+      artist: 'Builtin Artist',
+    }
+
+    player.setTrack('BBeBee:disabled-src:track:local-only-track')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    expect(ctx.lyrics.state.status).toBe('ready')
+    expect(ctx.lyrics.state.lyrics?.content).toBe('[00:03.00]Source Provider Builtin Lyric')
+    expect(ctx.lyrics.state.supportsLyricSource).toBe(false)
+    expect(lyricSources.searchCount).toBe(0) // LyricSources was NOT called!
+  })
+
+  it('supports lyricSources for local files by default', async () => {
+    class LyricSourcesStub extends Service {
+      lastQuery?: any
+      constructor(c: Context) {
+        super(c, 'lyricSources')
+      }
+      async searchLyrics(query: any) {
+        this.lastQuery = query
+        return {
+          format: 'lrc' as const,
+          content: '[00:04.00]Local File Lyric from LRCLIB',
+          synced: true,
+        }
+      }
+    }
+
+    const ctx = new Context()
+    await ctx.plugin(PlayerStub)
+    await ctx.plugin(SourcesStub)
+    await ctx.plugin(DbStub)
+    await ctx.plugin(LyricSourcesStub)
+    await ctx.plugin(LyricsPlugin)
+
+    const player = (ctx as any).player as PlayerStub
+    const lyricSources = (ctx as any).lyricSources as LyricSourcesStub
+
+    player.transport.trackUrn = 'BBeBee:local:track:hash123'
+    player.transport.nowPlaying = {
+      title: 'Jay Chou - Sunny Day',
+      artist: 'Jay Chou',
+    }
+
+    player.setTrack('BBeBee:local:track:hash123')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    expect(ctx.lyrics.state.status).toBe('ready')
+    expect(ctx.lyrics.state.lyrics?.content).toBe('[00:04.00]Local File Lyric from LRCLIB')
+    expect(ctx.lyrics.state.supportsLyricSource).toBe(true)
+    expect(lyricSources.lastQuery).toBeDefined()
+  })
+
+  it('re-fetches lyrics when nowPlaying metadata arrives asynchronously on player/state-changed', async () => {
+    class LyricSourcesStub extends Service {
+      queries: any[] = []
+      constructor(c: Context) {
+        super(c, 'lyricSources')
+      }
+      async searchLyrics(query: any) {
+        this.queries.push(query)
+        if (query.title === 'Sunny Day') {
+          return {
+            format: 'lrc' as const,
+            content: '[00:01.00]Sunny Day Lyrics',
+            synced: true,
+          }
+        }
+        return undefined
+      }
+    }
+
+    const ctx = new Context()
+    await ctx.plugin(PlayerStub)
+    await ctx.plugin(SourcesStub)
+    await ctx.plugin(DbStub)
+    await ctx.plugin(LyricSourcesStub)
+    await ctx.plugin(LyricsPlugin)
+
+    const player = (ctx as any).player as PlayerStub
+
+    // Start with NO nowPlaying metadata (simulating async DB lookup in player)
+    player.transport.trackUrn = 'BBeBee:mock:track:async-track'
+    player.transport.nowPlaying = undefined
+
+    player.setTrack('BBeBee:mock:track:async-track')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    // At first, no lyrics were found because title was not ready
+    expect(ctx.lyrics.state.status).toBe('no-lyrics')
+
+    // Now player resolves nowPlaying asynchronously and emits player/state-changed
+    player.transport.nowPlaying = {
+      title: 'Sunny Day',
+      artist: 'Jay Chou',
+    }
+    ctx.emit('player/state-changed', player.transport)
+
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    // Now lyrics are fetched and ready!
+    expect(ctx.lyrics.state.status).toBe('ready')
+    expect(ctx.lyrics.state.lyrics?.content).toBe('[00:01.00]Sunny Day Lyrics')
   })
 
   it('persists fetched lyrics to SQLite and reuses DB cache on subsequent queries', async () => {

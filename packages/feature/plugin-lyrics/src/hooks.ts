@@ -25,6 +25,8 @@ export interface UseLyricsResult {
   parsed: ParsedLyrics
   error?: string
   offsetMs: number
+  supportsLyricSource?: boolean
+  sourceType?: 'lyric-source' | 'audio-provider' | 'cache'
   retry: () => Promise<void>
   setOffset: (offsetMs: number) => void
 }
@@ -81,6 +83,8 @@ export function useLyrics(ctx: Context): UseLyricsResult {
     parsed,
     error: state.error,
     offsetMs: state.offsetMs,
+    supportsLyricSource: state.supportsLyricSource,
+    sourceType: state.sourceType,
     retry,
     setOffset,
   }
@@ -200,13 +204,15 @@ export interface CurrentLyricInfo {
   durationMs: number
   positionMs: number
   isPlaying: boolean
+  supportsLyricSource?: boolean
+  sourceType?: 'lyric-source' | 'audio-provider' | 'cache'
 }
 
 /**
  * High-level hook returning the current and next line for desktop lyrics.
  */
 export function useCurrentLyric(ctx: Context): CurrentLyricInfo {
-  const { status, parsed, offsetMs } = useLyrics(ctx)
+  const { status, parsed, offsetMs, supportsLyricSource, sourceType } = useLyrics(ctx)
   const activeIndex = useActiveLyricIndex(ctx, parsed.lines, offsetMs)
 
   const getPlayer = () => serviceOf<PlayerService>(ctx, 'player')
@@ -233,5 +239,7 @@ export function useCurrentLyric(ctx: Context): CurrentLyricInfo {
     durationMs: transport.durationMs,
     positionMs: transport.positionMs,
     isPlaying: transport.status === 'playing',
+    supportsLyricSource,
+    sourceType,
   }
 }

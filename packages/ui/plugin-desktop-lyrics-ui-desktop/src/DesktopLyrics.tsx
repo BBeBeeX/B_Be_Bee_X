@@ -320,7 +320,7 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
   let displayText = currentLine?.text
   if (!displayText) {
     if (status === 'loading-song' || status === 'loading-lyrics') {
-      displayText = 'Loading lyrics…'
+      displayText = '歌词加载中…'
     } else if (title) {
       displayText = `${title}${artist ? ` - ${artist}` : ''}`
     } else {

@@ -56,10 +56,54 @@ export class LyricsPlugin extends Service implements LyricsService {
 
     this.ownCtx.inject(['lyricSources'], (scoped: Context) => {
       this.lyricSourcesService = scoped.lyricSources
+      if (
+        this.currentState.trackUrn &&
+        (this.currentState.status === 'no-lyrics' ||
+          this.currentState.status === 'error' ||
+          !this.currentState.lyrics)
+      ) {
+        void this.retry()
+      }
       return () => {
         this.lyricSourcesService = undefined
       }
     })
+  }
+
+  private getLyricSourcesService(): LyricSourcesService | undefined {
+    return (
+      this.lyricSourcesService ??
+      ((this.ownCtx as unknown as { reflect?: { get(key: string, required?: boolean): unknown } })
+        .reflect?.get?.('lyricSources', false) as LyricSourcesService | undefined)
+    )
+  }
+
+  /**
+   * Determine whether the given track's audio source supports third-party lyric sources.
+   * - Local files: true (no built-in online lyrics, supports external lyric sources).
+   * - Audio source documents: respects `needsLyricSource` if set, otherwise defaults to `!ruleLyric`.
+   * - Unregistered/unknown: true.
+   */
+  doesTrackSourceSupportLyricSources(trackUrn: string): boolean {
+    const parsedUrn = tryParseUrn(trackUrn)
+    if (!parsedUrn) return true
+
+    if (parsedUrn.sourceId === 'local') {
+      return true
+    }
+
+    const sourceRecord = this.ownCtx.sources?.source
+      ? this.ownCtx.sources.source(parsedUrn.sourceId)
+      : undefined
+
+    if (sourceRecord) {
+      if (sourceRecord.needsLyricSource !== undefined) {
+        return Boolean(sourceRecord.needsLyricSource)
+      }
+      return !sourceRecord.doc?.ruleLyric
+    }
+
+    return true
   }
 
   async [Service.init]() {
@@ -92,12 +136,45 @@ export class LyricsPlugin extends Service implements LyricsService {
       },
     )
 
-    // Listen to player transport state changes (loading, stopped, etc.)
+    // Listen to player transport state changes (loading, stopped, metadata updates, etc.)
     const offStateChanged = this.ownCtx.on('player/state-changed', (transport: TransportState) => {
       if (transport.status === 'loading' && !this.currentState.trackUrn) {
         this.updateState({ status: 'loading-song' })
       } else if (transport.status === 'idle' && !transport.trackUrn) {
         this.updateState({ status: 'idle', trackUrn: undefined, lyrics: undefined, error: undefined })
+      } else if (
+        transport.trackUrn &&
+        transport.trackUrn === this.currentState.trackUrn &&
+        transport.nowPlaying?.title &&
+        (this.currentState.status === 'no-lyrics' ||
+          this.currentState.status === 'loading-lyrics' ||
+          !this.currentState.lyrics)
+      ) {
+        // When nowPlaying metadata arrives asynchronously, clear negative cache and re-fetch with accurate song info
+        const gen = ++this.currentGeneration
+        void this.fetchAndApplyLyrics(transport.trackUrn, gen, transport.nowPlaying)
+      }
+    })
+
+    // Listen to audio source policy changes (needsLyricSource toggled in settings)
+    const offSourceChanged = this.ownCtx.on('source/changed', (sourceId: string, fields: string[]) => {
+      if (fields?.includes('needsLyricSource') && this.currentState.trackUrn) {
+        const parsed = tryParseUrn(this.currentState.trackUrn)
+        if (parsed?.sourceId === sourceId) {
+          void this.retry()
+        }
+      }
+    })
+
+    // Listen to third-party lyric sources list changes (added, removed, toggled in settings)
+    const offLyricSourcesChanged = this.ownCtx.on('lyric-sources/changed', () => {
+      if (
+        this.currentState.trackUrn &&
+        (this.currentState.status === 'no-lyrics' ||
+          this.currentState.status === 'error' ||
+          !this.currentState.lyrics)
+      ) {
+        void this.retry()
       }
     })
 
@@ -111,6 +188,8 @@ export class LyricsPlugin extends Service implements LyricsService {
       if (this.ticker) clearInterval(this.ticker)
       offTrackChanged()
       offStateChanged()
+      offSourceChanged()
+      offLyricSourcesChanged()
       offPosition()
     }
   }
@@ -124,7 +203,10 @@ export class LyricsPlugin extends Service implements LyricsService {
     this.ownCtx.emit('lyrics/changed', this.currentState)
   }
 
-  private async handleTrackChanged(trackUrn: string | undefined): Promise<void> {
+  private async handleTrackChanged(
+    trackUrn: string | undefined,
+    presetMetadata?: { title?: string; artist?: string; durationMs?: number },
+  ): Promise<void> {
     const gen = ++this.currentGeneration
     this.lastActiveIndex = -1
     this.ownCtx.emit('lyrics/active-changed', -1)
@@ -135,25 +217,36 @@ export class LyricsPlugin extends Service implements LyricsService {
         trackUrn: undefined,
         lyrics: undefined,
         error: undefined,
+        supportsLyricSource: undefined,
+        sourceType: undefined,
         offsetMs: 0,
       })
       return
     }
 
+    const supportsLyricSource = this.doesTrackSourceSupportLyricSources(trackUrn)
+
     this.updateState({
       status: 'loading-lyrics',
       trackUrn,
       lyrics: undefined,
+      supportsLyricSource,
+      sourceType: undefined,
       error: undefined,
       offsetMs: 0,
     })
 
-    await this.fetchAndApplyLyrics(trackUrn, gen)
+    await this.fetchAndApplyLyrics(trackUrn, gen, presetMetadata)
   }
 
-  private async fetchAndApplyLyrics(trackUrn: string, gen: number): Promise<void> {
+  private async fetchAndApplyLyrics(
+    trackUrn: string,
+    gen: number,
+    presetMetadata?: { title?: string; artist?: string; durationMs?: number },
+  ): Promise<void> {
+    const supportsLyricSource = this.doesTrackSourceSupportLyricSources(trackUrn)
     try {
-      const lyrics = await this.getLyricsForTrack(trackUrn)
+      const lyrics = await this.getLyricsForTrack(trackUrn, presetMetadata)
 
       // Guard against race conditions if track has changed while fetching
       if (gen !== this.currentGeneration) return
@@ -163,6 +256,8 @@ export class LyricsPlugin extends Service implements LyricsService {
           status: 'no-lyrics',
           trackUrn,
           lyrics: undefined,
+          supportsLyricSource,
+          sourceType: undefined,
           error: undefined,
         })
         return
@@ -172,6 +267,8 @@ export class LyricsPlugin extends Service implements LyricsService {
         status: 'ready',
         trackUrn,
         lyrics,
+        supportsLyricSource,
+        sourceType: supportsLyricSource && this.getLyricSourcesService() ? 'lyric-source' : 'audio-provider',
         error: undefined,
         offsetMs: lyrics.offsetMs ?? 0,
       })
@@ -184,12 +281,27 @@ export class LyricsPlugin extends Service implements LyricsService {
         status: 'error',
         trackUrn,
         lyrics: undefined,
+        supportsLyricSource,
+        sourceType: undefined,
         error: message,
       })
     }
   }
 
-  async getLyricsForTrack(trackUrn: string): Promise<Lyrics | undefined> {
+  async getLyricsForTrack(
+    trackUrn: string,
+    presetMetadata?: { title?: string; artist?: string; durationMs?: number },
+  ): Promise<Lyrics | undefined> {
+    // If new metadata is supplied, invalidate any stale negative cache
+    if (presetMetadata?.title) {
+      this.negativeCache.delete(trackUrn)
+      if (this.ownCtx.db) {
+        void this.ownCtx.db
+          .exec('DELETE FROM lyrics WHERE track_urn = ? AND format = ?', [trackUrn, 'none'])
+          .catch(() => undefined)
+      }
+    }
+
     // 1. In-memory positive cache
     if (this.memoryCache.has(trackUrn)) {
       return this.memoryCache.get(trackUrn)
@@ -251,18 +363,27 @@ export class LyricsPlugin extends Service implements LyricsService {
 
     // 3. Online media provider resolution & third-party lyric sources
     const parsedUrn = tryParseUrn(trackUrn)
-    const sourceRecord =
-      parsedUrn && this.ownCtx.sources?.source ? this.ownCtx.sources.source(parsedUrn.sourceId) : undefined
-    const needsLyricSource = sourceRecord?.needsLyricSource ?? false
+    const supportsLyricSource = this.doesTrackSourceSupportLyricSources(trackUrn)
+    const lyricSourcesSvc = this.getLyricSourcesService()
 
-    // Priority 1: If audio source explicitly requested external lyric source, query lyricSources first
-    if (needsLyricSource && this.lyricSourcesService) {
-      const query = await this.resolveTrackQuery(trackUrn)
-      const fetched = await this.lyricSourcesService.searchLyrics(query)
-      if (fetched && fetched.content) {
-        this.remember(trackUrn, fetched)
-        await this.persistLyrics(trackUrn, fetched)
-        return fetched
+    let genuineSearchPerformed = false
+
+    // Priority 1: If audio source supports external lyric sources, query lyricSources first
+    if (supportsLyricSource && lyricSourcesSvc) {
+      const query = await this.resolveTrackQuery(trackUrn, presetMetadata)
+      const isGenuineTitle = Boolean(query.title && query.title !== trackUrn && query.title !== parsedUrn?.id)
+      if (isGenuineTitle) {
+        genuineSearchPerformed = true
+      }
+      try {
+        const fetched = await lyricSourcesSvc.searchLyrics(query)
+        if (fetched && fetched.content) {
+          this.remember(trackUrn, fetched)
+          await this.persistLyrics(trackUrn, fetched)
+          return fetched
+        }
+      } catch (err) {
+        this.ownCtx.logger.warn(`lyrics: lyricSources.searchLyrics failed for ${trackUrn}: ${String(err)}`)
       }
     }
 
@@ -270,6 +391,7 @@ export class LyricsPlugin extends Service implements LyricsService {
     if (this.ownCtx.sources && parsedUrn) {
       const provider = this.ownCtx.sources.forUrn(trackUrn)
       if (provider?.getLyrics) {
+        genuineSearchPerformed = true
         const fetched = await provider.getLyrics(parsedUrn.id)
         if (fetched && fetched.content) {
           this.remember(trackUrn, fetched)
@@ -279,42 +401,79 @@ export class LyricsPlugin extends Service implements LyricsService {
       }
     }
 
-    // Priority 3: Fallback to external lyric sources if audio source lacked lyrics
-    if (!needsLyricSource && this.lyricSourcesService) {
-      const query = await this.resolveTrackQuery(trackUrn)
-      const fetched = await this.lyricSourcesService.searchLyrics(query)
-      if (fetched && fetched.content) {
-        this.remember(trackUrn, fetched)
-        await this.persistLyrics(trackUrn, fetched)
-        return fetched
-      }
+    // Only persist negative cache if we actually had genuine track metadata to search with.
+    // If title was unresolved or a raw ID, do not poison negative cache so later metadata updates can succeed.
+    if (genuineSearchPerformed) {
+      this.rememberNegative(trackUrn, Date.now() + this.negativeCacheTtlMs)
+      await this.persistNegativeCache(trackUrn)
     }
-
-    // Online provider returned nothing (or has no lyrics).
-    // Store in negative cache for 1 day to prevent repeated network requests on loop/replay.
-    this.rememberNegative(trackUrn, Date.now() + this.negativeCacheTtlMs)
-    await this.persistNegativeCache(trackUrn)
 
     return undefined
   }
 
-  private async resolveTrackQuery(trackUrn: string): Promise<LyricSearchQuery> {
-    let title: string | undefined
-    let artist: string | undefined
-    let duration = 0
+  private async resolveTrackQuery(
+    trackUrn: string,
+    presetMetadata?: { title?: string; artist?: string; durationMs?: number },
+  ): Promise<LyricSearchQuery> {
+    let title: string | undefined = presetMetadata?.title
+    let artist: string | undefined = presetMetadata?.artist
+    let duration = presetMetadata?.durationMs ?? 0
 
     const playerState = this.ownCtx.player?.state
-    if (playerState?.trackUrn === trackUrn && playerState.nowPlaying) {
+    if (!title && playerState?.trackUrn === trackUrn && playerState.nowPlaying?.title) {
       title = playerState.nowPlaying.title
       artist = playerState.nowPlaying.artist ?? ''
-      duration = playerState.durationMs ?? 0
-    } else if (this.ownCtx.sources) {
+      duration = playerState.durationMs || 0
+    }
+
+    // Direct SQLite lookup from tracks table (fastest & most reliable)
+    if ((!title || !artist) && this.ownCtx.db) {
+      try {
+        const rows =
+          typeof this.ownCtx.db.get === 'function'
+            ? [
+                await this.ownCtx.db.get<{
+                  title: string
+                  artist?: string
+                  duration_ms?: number
+                }>(
+                  `SELECT t.title, t.duration_ms,
+                          (SELECT a.name FROM track_artists ta JOIN artists a ON a.urn = ta.artist_urn
+                            WHERE ta.track_urn = t.urn ORDER BY ta.ordinal ASC LIMIT 1) AS artist
+                     FROM tracks t WHERE t.urn = ?`,
+                  [trackUrn],
+                ),
+              ].filter(Boolean)
+            : await this.ownCtx.db.query<{
+                title: string
+                artist?: string
+                duration_ms?: number
+              }>(
+                `SELECT t.title, t.duration_ms,
+                        (SELECT a.name FROM track_artists ta JOIN artists a ON a.urn = ta.artist_urn
+                          WHERE ta.track_urn = t.urn ORDER BY ta.ordinal ASC LIMIT 1) AS artist
+                   FROM tracks t WHERE t.urn = ?`,
+                [trackUrn],
+              )
+        const row = rows[0] as { title?: string; artist?: string; duration_ms?: number } | undefined
+        if (row?.title) {
+          if (!title) title = row.title
+          if (!artist) artist = row.artist ?? ''
+          if (!duration && row.duration_ms) duration = row.duration_ms
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Fallback: sources catalog query
+    if ((!title || !artist) && this.ownCtx.sources) {
       try {
         const tracks = await this.ownCtx.sources.getTracks([trackUrn])
-        if (tracks[0]) {
-          title = tracks[0].title
-          artist = tracks[0].artists?.map((a) => a.name).join(', ') ?? ''
-          duration = tracks[0].durationMs ?? 0
+        if (tracks[0]?.title) {
+          if (!title) title = tracks[0].title
+          if (!artist) artist = tracks[0].artists?.map((a) => a.name).join(', ') ?? ''
+          if (!duration && tracks[0].durationMs) duration = tracks[0].durationMs
         }
       } catch {
         // ignore
@@ -326,9 +485,21 @@ export class LyricsPlugin extends Service implements LyricsService {
       title = parsed?.id ?? trackUrn
     }
 
+    // Clean up filename patterns like "Artist - Title.mp3" or "Title.flac"
+    if (title) {
+      title = title.replace(/\.(mp3|flac|wav|m4a|ogg|aac|opus)$/i, '')
+      if (!artist && title.includes(' - ')) {
+        const parts = title.split(' - ')
+        if (parts.length >= 2 && parts[0] && parts[1]) {
+          artist = parts[0].trim()
+          title = parts.slice(1).join(' - ').trim()
+        }
+      }
+    }
+
     return {
-      title,
-      artist: artist ?? '',
+      title: title.trim(),
+      artist: (artist ?? '').trim(),
       duration,
     }
   }

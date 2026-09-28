@@ -413,7 +413,13 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                       color: 'rgba(255, 255, 255, 0.7)',
                     },
                   },
-                  state.status === 'playing' ? '♪ 愿音乐治愈所有的伤痕 ♪' : 'No Surprises',
+                  lyricsState?.status === 'loading-lyrics'
+                    ? '♪ 歌词检索中… ♪'
+                    : lyricsState?.supportsLyricSource === false
+                      ? '♪ 当前音源未启用外部歌词源 ♪'
+                      : state.status === 'playing'
+                        ? '♪ 愿音乐治愈所有的伤痕 ♪'
+                        : 'No Surprises',
                 ),
           ),
 

@@ -26,7 +26,7 @@ export interface LyricsPanelProps {
 }
 
 export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
-  const { status, parsed, error, offsetMs, retry } = useLyrics(ctx)
+  const { status, parsed, error, offsetMs, supportsLyricSource, sourceType, retry } = useLyrics(ctx)
   const nowPlaying = useNowPlaying(ctx)
   const activeIndex = useActiveLyricIndex(ctx, parsed.lines, offsetMs)
 
@@ -143,9 +143,29 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
           },
         },
-        nowPlaying?.title ?? (status === 'loading-song' ? 'Loading song…' : 'BBeBee Music'),
+        h('span', null, nowPlaying?.title ?? (status === 'loading-song' ? 'Loading song…' : 'BBeBee Music')),
+        sourceType === 'lyric-source'
+          ? h(
+              'span',
+              {
+                style: {
+                  fontSize: 11,
+                  fontWeight: 500,
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  backgroundColor: 'rgba(95, 135, 255, 0.2)',
+                  color: '#93B4FF',
+                  border: '1px solid rgba(95, 135, 255, 0.35)',
+                },
+              },
+              '歌词源',
+            )
+          : null,
       ),
       h(
         'div',
@@ -280,8 +300,45 @@ export function LyricsPanel({ ctx, style }: LyricsPanelProps): ReactElement {
             h(
               'span',
               { style: { fontSize: 16 } },
-              status === 'idle' ? '暂无播放歌曲' : '暂无歌词',
+              status === 'idle'
+                ? '暂无播放歌曲'
+                : supportsLyricSource === false
+                  ? '当前音源未启用外部歌词源'
+                  : '暂无歌词',
             ),
+            status === 'no-lyrics' && supportsLyricSource === false
+              ? h(
+                  'span',
+                  { style: { fontSize: 13, color: 'rgba(255, 255, 255, 0.35)' } },
+                  '可在设置「歌词源管理」中开启该音频源的外部歌词源支持',
+                )
+              : null,
+            status === 'no-lyrics' && supportsLyricSource !== false
+              ? h(
+                  'button',
+                  {
+                    onClick: () => void retry(),
+                    style: {
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(255, 255, 255, 0.16)',
+                      borderRadius: 6,
+                      color: 'rgba(255, 255, 255, 0.85)',
+                      padding: '6px 14px',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      marginTop: 4,
+                      transition: 'background 0.2s ease',
+                    },
+                    onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.16)'
+                    },
+                    onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                    },
+                  },
+                  '重新检索歌词',
+                )
+              : null,
           )
         : null,
 
