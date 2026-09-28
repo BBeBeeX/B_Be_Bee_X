@@ -482,8 +482,8 @@ describe('NowPlayingScreen', () => {
     expect(menu).toBeTruthy()
     expect(menu?.getAttribute('aria-label')).toBe('播放页样式')
 
-    // Options for all 4 templates exist
-    for (const styleId of ['classic', 'full-cover', 'vinyl', 'compact']) {
+    // Options for all 5 templates exist
+    for (const styleId of ['classic', 'full-cover', 'vinyl', 'compact', 'cinematic']) {
       expect(container.querySelector(`[data-testid="style-option-${styleId}"]`)).toBeTruthy()
     }
   })
@@ -508,6 +508,28 @@ describe('NowPlayingScreen', () => {
     ctx.nowPlaying.setStyle('compact')
     const { container } = render(h(NowPlayingScreen, { ctx }))
     expect(container.querySelector('[data-testid="layout-compact"]')).toBeTruthy()
+  })
+
+  it('renders cinematic layout with waveform and lyrics when style is cinematic', async () => {
+    const { ctx } = await harness({
+      status: 'playing',
+      trackUrn: 'BBeBee:local:track:1',
+      positionMs: 60_000,
+      durationMs: 240_000,
+      nowPlaying: {
+        title: 'Cinematic Track',
+        artist: 'Cinematic Artist',
+      },
+    })
+    ctx.nowPlaying.setStyle('cinematic')
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+    expect(container.querySelector('[data-testid="layout-cinematic"]')).toBeTruthy()
+    expect(container.querySelector('[data-testid="cinematic-waveform"]')).toBeTruthy()
+    expect(container.querySelector('[data-testid="cinematic-lyrics-block"]')).toBeTruthy()
+    expect(container.textContent).toContain('Cinematic Track')
+    expect(container.textContent).toContain('Cinematic Artist')
+    expect(container.textContent).toContain('1:00')
+    expect(container.textContent).toContain('4:00')
   })
 
   it('switches layout dynamically when selecting an option from style switcher', async () => {

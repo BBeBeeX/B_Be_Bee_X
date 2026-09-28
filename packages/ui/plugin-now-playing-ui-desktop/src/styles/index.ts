@@ -14,6 +14,7 @@ import { ClassicLayout } from './ClassicLayout.js'
 import { FullCoverLayout } from './FullCoverLayout.js'
 import { VinylLayout } from './VinylLayout.js'
 import { CompactLayout } from './CompactLayout.js'
+import { CinematicLayout } from './CinematicLayout.js'
 
 export interface NowPlayingLayoutProps {
   ctx: Context
@@ -44,6 +45,7 @@ export interface NowPlayingLayoutProps {
 
 export const NOW_PLAYING_LAYOUT_MAP: Record<NowPlayingStyleId, ComponentType<NowPlayingLayoutProps>> = {
   classic: ClassicLayout,
+  cinematic: CinematicLayout,
   'full-cover': FullCoverLayout,
   vinyl: VinylLayout,
   compact: CompactLayout,

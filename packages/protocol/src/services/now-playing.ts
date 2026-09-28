@@ -16,7 +16,7 @@
  *  - `vinyl`       Circular artwork spinning like a record, controls below.
  *  - `compact`     Side-by-side: large cover left, info + controls right.
  */
-export type NowPlayingStyleId = 'classic' | 'full-cover' | 'vinyl' | 'compact'
+export type NowPlayingStyleId = 'classic' | 'full-cover' | 'vinyl' | 'compact' | 'cinematic'
 
 export interface NowPlayingStyleMeta {
   id: NowPlayingStyleId
@@ -33,6 +33,7 @@ export const NOW_PLAYING_STYLES: readonly NowPlayingStyleMeta[] = [
   { id: 'full-cover', name: '沉浸封面', description: '全屏模糊封面背景', icon: 'photo' },
   { id: 'vinyl', name: '黑胶唱片', description: '旋转黑胶唱片风格', icon: 'vinyl' },
   { id: 'compact', name: '左右分栏', description: '封面与信息并排显示', icon: 'layout-sidebar-right' },
+  { id: 'cinematic', name: '映画歌词', description: '16:9 映画质感与动态声波', icon: 'wave-sine' },
 ] as const
 
 export const DEFAULT_NOW_PLAYING_STYLE: NowPlayingStyleId = 'classic'

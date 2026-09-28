@@ -303,6 +303,77 @@ function CompactMobileLayout({ ctx, state, position, duration, can, onClose }: {
   )
 }
 
+/* ── Cinematic layout ──────────────────────────────────────────────────── */
+
+function CinematicMobileLayout({ ctx, state, position, duration, can, onClose }: {
+  ctx: Context; state: ReturnType<typeof useTransport>
+  position: number; duration: number | undefined
+  can: ReturnType<typeof useTransportAvailability>; onClose?: () => void
+}): ReactElement {
+  const native = nativePrimitives()
+  return h(
+    native.View as never,
+    {
+      style: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: tokens.space[4],
+        padding: tokens.space[5],
+        backgroundColor: '#0F1522',
+      },
+    },
+    /* Faint blurred cover backdrop (~0.12 opacity) */
+    h(
+      native.View as never,
+      {
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          opacity: 0.12,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+      },
+      h(CachedArtwork, {
+        ctx,
+        artwork: state.nowPlaying?.artwork,
+        seed: state.trackUrn,
+        size: 500,
+        radius: 0,
+      }),
+    ),
+    onClose ? h(CloseButton, { onClose }) : null,
+    /* Square artwork with white border */
+    h(
+      native.View as never,
+      {
+        style: {
+          borderWidth: 2,
+          borderColor: 'rgba(255, 255, 255, 0.85)',
+          borderRadius: tokens.radius.md,
+          overflow: 'hidden',
+          backgroundColor: 'rgba(255, 255, 255, 0.04)',
+        },
+      },
+      h(CachedArtwork, {
+        ctx,
+        artwork: state.nowPlaying?.artwork,
+        seed: state.trackUrn,
+        size: 240,
+        radius: 0,
+      }),
+    ),
+    h(TrackInfo, { state }),
+    state.status === 'stalled' ? h(Text, { variant: 'sm', tone: 'muted', children: 'Buffering…' }) : null,
+    h(SeekBar, { ctx, position, duration, can }),
+    h(TransportRow, { ctx, can }),
+  )
+}
+
 /* ── Close button ──────────────────────────────────────────────────────── */
 
 function CloseButton({ onClose }: { onClose: () => void }): ReactElement {
@@ -358,6 +429,7 @@ function StyleSwitcherButton({ styleId, setStyle }: {
 
 const MOBILE_LAYOUT_MAP: Record<NowPlayingStyleId, typeof ClassicMobileLayout> = {
   classic: ClassicMobileLayout,
+  cinematic: CinematicMobileLayout,
   'full-cover': FullCoverMobileLayout,
   vinyl: VinylMobileLayout,
   compact: CompactMobileLayout,

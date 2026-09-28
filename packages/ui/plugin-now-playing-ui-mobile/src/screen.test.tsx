@@ -267,4 +267,11 @@ describe('NowPlayingScreen on mobile', () => {
     const { container } = render(h(NowPlayingScreen, { ctx }))
     expect(container.textContent).toContain('Nothing playing')
   })
+
+  it('renders cinematic layout without crashing', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    ctx.nowPlaying.setStyle('cinematic')
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+    expect(container.textContent).toContain('Nothing playing')
+  })
 })
