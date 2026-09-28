@@ -20,8 +20,9 @@ import {
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { useServiceState } from '@BBeBee/ui-core'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
+import { NOW_PLAYING_STYLES } from '@BBeBee/protocol'
 import { useNowPlayingStyle } from '@BBeBee/plugin-now-playing/hooks'
-import { NOW_PLAYING_LAYOUT_MAP } from '../styles/index.js'
+import { NOW_PLAYING_LAYOUT_MAP, SandboxedLayout } from '../styles/index.js'
 import { StyleSwitcher } from './StyleSwitcher.js'
 
 const p = () => palettes.dark
@@ -41,6 +42,14 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
   const displayPosition = seekingPosition ?? position
   const { styleId, setStyle } = useNowPlayingStyle(ctx)
 
+  const allStyles = useServiceState(
+    ctx,
+    ['now-playing/registry-changed'],
+    () => ctx.nowPlaying?.getStyles?.() ?? NOW_PLAYING_STYLES,
+  )
+  const currentMeta = allStyles.find((s) => s.id === styleId)
+  const isSandboxed = currentMeta?.type === 'sandboxed'
+
   const PanelComponent = useServiceState(ctx, ['ui/changed'], () => {
     const panelSlots = ctx.ui?.slotsFor?.('now-playing.panel') ?? []
     if (panelSlots[0]) {
@@ -57,7 +66,7 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
     return (ctx.ui?.viewFor?.('visualizer.canvas') as React.ComponentType<{ ctx: Context }> | undefined) ?? null
   })
 
-  const LayoutComponent = NOW_PLAYING_LAYOUT_MAP[styleId] ?? NOW_PLAYING_LAYOUT_MAP.classic
+  const BuiltinLayout = NOW_PLAYING_LAYOUT_MAP[styleId as keyof typeof NOW_PLAYING_LAYOUT_MAP] ?? NOW_PLAYING_LAYOUT_MAP.classic
 
   return h(
     'div',
@@ -118,22 +127,41 @@ export function NowPlayingScreen({ ctx, onClose }: NowPlayingScreenProps): React
     /* ── style switcher (top-right) ───────────────────────────────── */
     h(StyleSwitcher, { ctx, styleId, onStyleChange: setStyle }),
     /* ── layout body ──────────────────────────────────────────────── */
-    h(LayoutComponent, {
-      ctx,
-      onClose,
-      state,
-      position,
-      displayPosition,
-      duration,
-      can,
-      seekingPosition,
-      onSeekChange: (value: number) => setSeekingPosition(value),
-      onSeekCommit: (value: number) => {
-        setSeekingPosition(undefined)
-        void ctx.player.seek(value)
-      },
-      PanelComponent,
-      VisualizerComponent,
-    }),
+    isSandboxed && currentMeta
+      ? h(SandboxedLayout, {
+          ctx,
+          onClose,
+          state,
+          position,
+          displayPosition,
+          duration,
+          can,
+          seekingPosition,
+          onSeekChange: (value: number) => setSeekingPosition(value),
+          onSeekCommit: (value: number) => {
+            setSeekingPosition(undefined)
+            void ctx.player.seek(value)
+          },
+          PanelComponent,
+          VisualizerComponent,
+          meta: currentMeta,
+        })
+      : h(BuiltinLayout, {
+          ctx,
+          onClose,
+          state,
+          position,
+          displayPosition,
+          duration,
+          can,
+          seekingPosition,
+          onSeekChange: (value: number) => setSeekingPosition(value),
+          onSeekCommit: (value: number) => {
+            setSeekingPosition(undefined)
+            void ctx.player.seek(value)
+          },
+          PanelComponent,
+          VisualizerComponent,
+        }),
   )
 }

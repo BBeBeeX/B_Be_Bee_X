@@ -11,6 +11,7 @@ import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { NowPlayingStyleId } from '@BBeBee/protocol'
 import { NOW_PLAYING_STYLES } from '@BBeBee/protocol'
+import { useServiceState } from '@BBeBee/ui-core'
 import { Text, tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
 
@@ -20,9 +21,15 @@ export interface StyleSwitcherProps {
   onStyleChange: (id: NowPlayingStyleId) => void
 }
 
-export function StyleSwitcher({ styleId, onStyleChange }: StyleSwitcherProps): ReactElement {
+export function StyleSwitcher({ ctx, styleId, onStyleChange }: StyleSwitcherProps): ReactElement {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const styles = useServiceState(
+    ctx,
+    ['now-playing/registry-changed'],
+    () => ctx.nowPlaying?.getStyles?.() ?? NOW_PLAYING_STYLES,
+  )
 
   useEffect(() => {
     if (!open) return
@@ -111,7 +118,7 @@ export function StyleSwitcher({ styleId, onStyleChange }: StyleSwitcherProps): R
               zIndex: 100,
             },
           },
-          ...NOW_PLAYING_STYLES.map((s) => {
+          ...styles.map((s) => {
             const isActive = s.id === styleId
             return h(
               'button',

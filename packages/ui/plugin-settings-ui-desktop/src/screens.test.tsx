@@ -7,8 +7,8 @@ import { describe, expect, it, afterEach, vi } from 'vitest'
 import { createElement as h } from 'react'
 import { fireEvent, render, cleanup, waitFor } from '@testing-library/react'
 import { Context, Service } from 'cordis'
-import type { AppSettings, SettingsService, CacheClass, CacheStats, ThemeDefinition } from '@BBeBee/protocol'
-import { DEFAULT_APP_SETTINGS } from '@BBeBee/protocol'
+import type { AppSettings, SettingsService, CacheClass, CacheStats, ThemeDefinition, NowPlayingStyleMeta } from '@BBeBee/protocol'
+import { DEFAULT_APP_SETTINGS, NOW_PLAYING_STYLES } from '@BBeBee/protocol'
 import { midnightPurpleTheme, spotifyTheme } from '@BBeBee/ui-tokens'
 import { SettingsScreen } from './SettingsScreen.js'
 import { DebugScreen } from './DebugScreen.js'
@@ -215,6 +215,37 @@ async function harness(initialSettings: Partial<AppSettings> = {}) {
     }
   }
 
+  class NowPlayingStub extends Service {
+    public styles: NowPlayingStyleMeta[] = [...NOW_PLAYING_STYLES]
+    public currentStyle: string = currentSettings.nowPlayingStyle || 'classic'
+    private appCtx: Context
+
+    constructor(ctx: Context) {
+      super(ctx, 'nowPlaying')
+      this.appCtx = ctx
+    }
+
+    getStyle = () => this.currentStyle
+    getStyles = () => this.styles
+    setStyle = (id: string) => {
+      calls.push(`nowPlaying:setStyle:${id}`)
+      this.currentStyle = id
+      this.appCtx.emit('now-playing/style-changed', id)
+    }
+    registerStyle = (meta: NowPlayingStyleMeta) => {
+      calls.push(`nowPlaying:register:${meta.id}`)
+      this.styles.push(meta)
+      this.appCtx.emit('now-playing/registry-changed', this.styles)
+      return () => this.removeStyle(meta.id)
+    }
+    removeStyle = (id: string) => {
+      calls.push(`nowPlaying:remove:${id}`)
+      this.styles = this.styles.filter((s) => s.id !== id)
+      this.appCtx.emit('now-playing/registry-changed', this.styles)
+      return true
+    }
+  }
+
   const root = new Context()
   await root.plugin(SettingsStub)
   await root.plugin(CacheStub)
@@ -222,6 +253,7 @@ async function harness(initialSettings: Partial<AppSettings> = {}) {
   await root.plugin(DspStub)
   await root.plugin(LogBufferStub)
   await root.plugin(ThemeStub)
+  await root.plugin(NowPlayingStub)
 
   let scoped: Context | undefined
   root.inject(['ui', 'settings'], (s) => void (scoped = s))
@@ -742,5 +774,74 @@ describe('SettingsScreen', () => {
     const backBtn = getByText('← 返回调试')
     fireEvent.click(backBtn)
     expect(calls.includes('navigate:debug.view')).toBe(true)
+  })
+
+  it('renders Now Playing styles in PlaybackSection and allows switching active style', async () => {
+    const { ctx, calls } = await harness()
+    const { getByText, getByTestId } = render(h(SettingsScreen, { ctx }))
+
+    expect(getByText('播放页样式模板 (Now Playing Layout Styles)')).toBeTruthy()
+    expect(getByText('经典')).toBeTruthy()
+    expect(getByText('映画歌词')).toBeTruthy()
+    expect(getByText('沉浸封面')).toBeTruthy()
+    expect(getByText('黑胶唱片')).toBeTruthy()
+    expect(getByText('左右分栏')).toBeTruthy()
+
+    // Select cinematic style
+    const cinematicCard = getByTestId('now-playing-style-cinematic')
+    expect(cinematicCard).toBeTruthy()
+    fireEvent.click(cinematicCard)
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.includes('"nowPlayingStyle":"cinematic"'))).toBe(true)
+      expect(calls.includes('nowPlaying:setStyle:cinematic')).toBe(true)
+    })
+  })
+
+  it('imports sandboxed player plugin and handles deletion in PlaybackSection', async () => {
+    const { ctx, calls } = await harness()
+    const { getByText, getByTestId } = render(h(SettingsScreen, { ctx }))
+
+    // Open import modal
+    const importBtn = getByTestId('import-style-button')
+    fireEvent.click(importBtn)
+    expect(getByText('导入外部播放页样式插件')).toBeTruthy()
+    expect(getByText('沙箱隔离保障：')).toBeTruthy()
+
+    // Try submitting empty JSON -> error
+    const submitBtn = getByTestId('submit-import-style')
+    fireEvent.click(submitBtn)
+    expect(getByTestId('import-style-error')).toBeTruthy()
+    expect(getByTestId('import-style-error').textContent).toContain('请输入或选择播放页模板插件 JSON 清单')
+
+    // Click load sample template button
+    const loadSampleBtn = getByTestId('load-sample-template-button')
+    fireEvent.click(loadSampleBtn)
+
+    const textarea = getByTestId('style-manifest-textarea') as HTMLTextAreaElement
+    expect(textarea.value).toContain('sample-neon-player')
+    expect(textarea.value).toContain('霓虹沙箱播放器')
+
+    // Submit valid sample template
+    fireEvent.click(submitBtn)
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.includes('nowPlaying:register:sample-neon-player'))).toBe(true)
+      expect(calls.some((c) => c.includes('"nowPlayingStyle":"sample-neon-player"'))).toBe(true)
+      expect(calls.includes('nowPlaying:setStyle:sample-neon-player')).toBe(true)
+    })
+
+    // Verify imported style card rendered with sandboxed badge
+    expect(getByText('霓虹沙箱播放器')).toBeTruthy()
+    expect(getByText('沙箱 🛡️')).toBeTruthy()
+
+    // Delete custom style
+    const deleteBtn = getByTestId('delete-style-sample-neon-player')
+    expect(deleteBtn).toBeTruthy()
+    fireEvent.click(deleteBtn)
+
+    await waitFor(() => {
+      expect(calls.includes('nowPlaying:remove:sample-neon-player')).toBe(true)
+    })
   })
 })

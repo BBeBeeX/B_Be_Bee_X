@@ -69,6 +69,8 @@ Each piece of application state has exactly ONE owner:
 - Audio nodes → `ctx.audio`
 - Effect parameters → `ctx.dsp`
 - Credentials & tokens → `ctx.secrets` (per source ID)
+- Now Playing layout styles & sandboxed plugins → `ctx.nowPlaying`
+- Visual themes → `ctx.theme`
 - UI contributions → `ctx.ui`
 - Plugin configuration → `@BBeBee/kernel`
 

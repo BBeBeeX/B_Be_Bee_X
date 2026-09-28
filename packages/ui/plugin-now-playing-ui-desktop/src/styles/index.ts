@@ -15,6 +15,9 @@ import { FullCoverLayout } from './FullCoverLayout.js'
 import { VinylLayout } from './VinylLayout.js'
 import { CompactLayout } from './CompactLayout.js'
 import { CinematicLayout } from './CinematicLayout.js'
+import { SandboxedLayout, type SandboxedLayoutProps } from './SandboxedLayout.js'
+
+export { SandboxedLayout, type SandboxedLayoutProps }
 
 export interface NowPlayingLayoutProps {
   ctx: Context

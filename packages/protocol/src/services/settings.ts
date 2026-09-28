@@ -89,6 +89,8 @@ export interface AppSettings {
   theme: 'dark' | 'light' | 'system'
   /** Color theme identifier (e.g. 'midnight-purple', 'spotify'). */
   themeId?: string
+  /** Full-screen player style layout identifier (e.g. 'classic', 'cinematic'). */
+  nowPlayingStyle: string
   /** User interface language. */
   language: 'zh' | 'en' | 'system'
   /** Default startup playback volume (0 to 100). */
@@ -170,6 +172,7 @@ export const DEFAULT_PROXY_SETTINGS: ProxySettings = {
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: 'dark',
   themeId: 'midnight-purple',
+  nowPlayingStyle: 'classic',
   language: 'zh',
   defaultVolume: 80,
   crossfadeEnabled: false,

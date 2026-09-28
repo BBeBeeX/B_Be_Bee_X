@@ -7,6 +7,7 @@ import { Select } from '../Select.js'
 import { SettingsRow } from '../SettingsRow.js'
 import { SettingsSection } from '../SettingsSection.js'
 import { Switch } from '../Switch.js'
+import { NowPlayingStylesSection } from './NowPlayingStylesSection.js'
 
 export function PlaybackSection({
   ctx,
@@ -227,6 +228,7 @@ export function PlaybackSection({
   return h(
     'div',
     { id: 'section-playback' },
+    h(NowPlayingStylesSection, { ctx, settings, update }),
     h(
       SettingsSection,
       {

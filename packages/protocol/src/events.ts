@@ -47,7 +47,7 @@ import type { SleepTimerState } from './services/sleep-timer.js'
 import type { DesktopLyricsState, LyricsState } from './services/lyrics.js'
 import type { MiniPlayerServiceState } from './services/mini-player.js'
 import type { ThemeDefinition } from './services/theme.js'
-import type { NowPlayingStyleId } from './services/now-playing.js'
+import type { NowPlayingStyleId, NowPlayingStyleMeta } from './services/now-playing.js'
 import type { UrnKind } from './urn.js'
 
 declare module 'cordis' {
@@ -188,6 +188,7 @@ declare module 'cordis' {
 
     /* ── now-playing ─────────────────────────────────── emit ── */
     'now-playing/style-changed'(styleId: NowPlayingStyleId): void
+    'now-playing/registry-changed'(styles: readonly NowPlayingStyleMeta[]): void
   }
 }
 
@@ -242,6 +243,7 @@ export const DISPATCH_MODES = {
   'theme/registry-changed': 'emit',
   'mini-player/changed': 'emit',
   'now-playing/style-changed': 'emit',
+  'now-playing/registry-changed': 'emit',
 } as const satisfies Record<string, DispatchMode>
 
 export type BBeBeeEventName = keyof typeof DISPATCH_MODES

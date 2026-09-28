@@ -102,6 +102,61 @@ describe('plugin-now-playing style preference', () => {
     const store = (ctx as unknown as { store: SeededStore }).store
     expect(await store.get('now-playing.style')).toBe('full-cover')
   })
+
+  it('supports dynamic style registration and removal with store persistence and active fallback', async () => {
+    const ctx = new Context()
+    class MemoryStore extends Service {
+      data = new Map<string, unknown>()
+      constructor(c: Context) {
+        super(c, 'store')
+      }
+      async get<T>(key: string): Promise<T | undefined> {
+        return this.data.get(key) as T | undefined
+      }
+      async set(key: string, value: unknown): Promise<void> {
+        this.data.set(key, value)
+      }
+    }
+    await ctx.plugin(MemoryStore)
+    await ctx.plugin(plugin)
+    await tick()
+
+    const initialStyles = ctx.nowPlaying.getStyles()
+    expect(initialStyles.length).toBe(5)
+    expect(initialStyles.every((s) => s.type === 'builtin')).toBe(true)
+
+    // Cannot remove built-in style
+    expect(ctx.nowPlaying.removeStyle('classic')).toBe(false)
+
+    // Register custom sandboxed plugin style
+    const customStyle = {
+      id: 'neon-cyberpunk',
+      name: '霓虹赛博',
+      description: '动态全息流光沙箱插件',
+      icon: 'sparkles',
+      author: 'Tester',
+      htmlContent: '<html><body>Hello Neon</body></html>',
+    }
+    const unregister = ctx.nowPlaying.registerStyle(customStyle)
+    await tick()
+
+    expect(ctx.nowPlaying.getStyles().some((s) => s.id === 'neon-cyberpunk')).toBe(true)
+    const store = (ctx as unknown as { store: MemoryStore }).store
+    const savedCustom = await store.get<any[]>('now-playing.custom-styles')
+    expect(savedCustom?.length).toBe(1)
+    expect(savedCustom?.[0].id).toBe('neon-cyberpunk')
+
+    // Switch to custom style
+    ctx.nowPlaying.setStyle('neon-cyberpunk')
+    expect(ctx.nowPlaying.getStyle()).toBe('neon-cyberpunk')
+
+    // Remove active custom style -> resets to classic default
+    unregister()
+    await tick()
+
+    expect(ctx.nowPlaying.getStyles().some((s) => s.id === 'neon-cyberpunk')).toBe(false)
+    expect(ctx.nowPlaying.getStyle()).toBe('classic')
+  })
 })
 
 describe('plugin-now-playing lifecycle', () => {

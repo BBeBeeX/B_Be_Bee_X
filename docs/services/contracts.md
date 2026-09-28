@@ -771,7 +771,83 @@ export interface ThemeService {
 
 ---
 
-## 21. Where to go next
+## 21. `ctx.nowPlaying` — now playing presentation & sandboxed styles
+
+**Purpose.** Manage full-screen Now Playing player layout styles (`classic`, `cinematic`, `full-cover`, `vinyl`, `compact`), dynamic plugin registration, store/settings synchronization, and secure sandboxed execution of external player themes.
+
+```ts
+export type BuiltinNowPlayingStyleId = 'classic' | 'full-cover' | 'vinyl' | 'compact' | 'cinematic'
+export type NowPlayingStyleId = BuiltinNowPlayingStyleId | (string & {})
+export type NowPlayingStyleType = 'builtin' | 'sandboxed'
+
+export interface NowPlayingStyleMeta {
+  id: NowPlayingStyleId
+  name: string
+  description: string
+  icon: string
+  type?: NowPlayingStyleType
+  author?: string
+  version?: string
+  htmlContent?: string
+  entryUrl?: string
+  config?: Record<string, unknown>
+}
+
+export interface SandboxPlayerLyricLine {
+  timeMs?: number
+  text: string
+  translation?: string
+}
+
+export interface SandboxPlayerSnapshot {
+  cover: string | null
+  coverThemeColor: string | null
+  title: string
+  artist: string
+  album?: string
+  lyrics: {
+    lines: SandboxPlayerLyricLine[]
+    activeIndex: number
+  }
+  positionMs: number
+  durationMs: number
+  isPlaying: boolean
+  isLoved: boolean
+}
+
+export type SandboxPlayerAction =
+  | { type: 'action:play' }
+  | { type: 'action:pause' }
+  | { type: 'action:togglePlay' }
+  | { type: 'action:previous' }
+  | { type: 'action:next' }
+  | { type: 'action:seek'; positionMs: number }
+  | { type: 'action:toggleFavorite' }
+
+export interface NowPlayingService {
+  getStyle(): NowPlayingStyleId
+  getStyles(): readonly NowPlayingStyleMeta[]
+  setStyle(id: NowPlayingStyleId): void
+  registerStyle(meta: NowPlayingStyleMeta): Disposable
+  removeStyle(id: string): boolean
+}
+```
+
+| | Electron (Desktop DOM) | Expo (Mobile / Native) |
+|---|---|---|
+| Backing | `@BBeBee/plugin-now-playing` + `SandboxedLayout` (iframe `sandbox="allow-scripts"`, `origin: null`) | `@BBeBee/plugin-now-playing` (native layout switching) |
+| Persistence | `ctx.store` keys `now-playing.style` & `now-playing.custom-styles`, bi-directionally synced with `settings.nowPlayingStyle` | Same |
+| Built-in Styles | `classic`, `cinematic`, `full-cover`, `vinyl`, `compact` | `classic`, `cinematic`, `full-cover`, `vinyl`, `compact` |
+| Sandboxed Plugins | Third-party HTML/CSS/JS executed inside isolated iframe; communicates exclusively via postMessage with strict whitelist validation | Fallback to built-in styles |
+
+- **Security Sandbox Guarantee**: Sandboxed external plugins have zero access to the host DOM, parent window, cookies, storage, Cordis context, or platform SDKs.
+- **Strict Data Whitelist (`SandboxPlayerSnapshot`)**: Only 8 core playback fields are projected (`cover`, `coverThemeColor`, `title`, `artist`, `lyrics`, `positionMs`/`durationMs`, `isPlaying`, `isLoved`).
+- **Strict Action Whitelist (`SandboxPlayerAction`)**: Only whitelisted transport/playback commands are honored (`play`, `pause`, `togglePlay`, `previous`, `next`, `seek`, `toggleFavorite`).
+- **Active Fallback Protection**: Removing a custom plugin currently in use automatically resets active layout to `'classic'`.
+
+---
+
+## 22. Where to go next
 
 [05 — Audio & Playback](../audio/playback.md) builds the playback engine and DSP chain on top of
 these services.

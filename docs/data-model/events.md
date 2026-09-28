@@ -66,6 +66,10 @@ declare module 'cordis' {
     'dsp/build-chain'(segments: EffectSegment[], next: (s: EffectSegment[]) => EffectSegment[]): EffectSegment[]
     'dsp/chain-changed'(chain: DspService['chain']): void
 
+    // now-playing — emit
+    'now-playing/style-changed'(style: NowPlayingStyleId): void
+    'now-playing/registry-changed'(styles: readonly NowPlayingStyleMeta[]): void
+
     // plugins
     'plugin/loaded'(id: string): void
     'plugin/failed'(id: string, error: Error): void
@@ -81,7 +85,7 @@ declare module 'cordis' {
 | Event group | Mode | Why |
 |---|---|---|
 | `player/before-resolve`, `player/before-enqueue`, `http/request`, `dsp/build-chain` | **waterfall** | Listeners transform the value and control whether the chain continues. The composition mechanism of [02 §5](../architecture/layers.md#5-composition-how-features-reach-each-other) |
-| `*/changed`, `*/progress`, `player/*`, `plugin/*` | **emit** | Notification. Listener errors must not affect the emitter |
+| `*/changed`, `*/progress`, `player/*`, `plugin/*`, `now-playing/*` | **emit** | Notification. Listener errors must not affect the emitter |
 | `player/track-completed` | **parallel** | Scrobblers, stats, and history all run; all are awaited; one failing does not block the others |
 | `source/auth-expired` | **serial** | Ordered handling — the session refresher gets first refusal before the UI prompts |
 | `source/signed-out` | **parallel** | Every listener purging session-derived state is awaited, so sign-out completes only once the cleanup has actually finished |

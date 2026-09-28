@@ -16,30 +16,62 @@
 
 import { Service } from '@BBeBee/kernel'
 import type { Context } from 'cordis'
-import type { NowPlayingService, NowPlayingStyleId } from '@BBeBee/protocol'
+import type { Disposable, NowPlayingService, NowPlayingStyleId, NowPlayingStyleMeta } from '@BBeBee/protocol'
 import { DEFAULT_NOW_PLAYING_STYLE, NOW_PLAYING_STYLES } from '@BBeBee/protocol'
 import { NOW_PLAYING_ROUTES } from './views.js'
 
 const STORE_KEY = 'now-playing.style'
+const CUSTOM_STYLES_STORE_KEY = 'now-playing.custom-styles'
 
 export class NowPlayingPlugin extends Service implements NowPlayingService {
   static override readonly name = 'nowPlaying'
   static readonly inject = []
 
   private currentStyle: NowPlayingStyleId = DEFAULT_NOW_PLAYING_STYLE
-  private readonly validIds = new Set<string>(NOW_PLAYING_STYLES.map((s) => s.id))
+  private readonly styles = new Map<string, NowPlayingStyleMeta>()
 
   constructor(ctx: Context) {
     super(ctx, 'nowPlaying')
 
-    // Restore persisted preference via store if available.
+    // Seed registry with built-in styles
+    for (const style of NOW_PLAYING_STYLES) {
+      this.styles.set(style.id, { ...style, type: 'builtin' })
+    }
+
+    // 1. Restore persisted custom styles & preferred style via store
     this.ctx.inject(['store'], (scoped) => {
+      void scoped.store.get<NowPlayingStyleMeta[]>(CUSTOM_STYLES_STORE_KEY).then((customList) => {
+        if (Array.isArray(customList)) {
+          for (const item of customList) {
+            if (item && item.id && !this.styles.has(item.id)) {
+              this.styles.set(item.id, { ...item, type: item.type ?? 'sandboxed' })
+            }
+          }
+          this.ctx.emit('now-playing/registry-changed', this.getStyles())
+        }
+      }).catch(() => {})
+
       void scoped.store.get<string>(STORE_KEY).then((storedId) => {
-        if (storedId && this.validIds.has(storedId)) {
+        if (storedId && this.styles.has(storedId)) {
           this.currentStyle = storedId as NowPlayingStyleId
           this.ctx.emit('now-playing/style-changed', this.currentStyle)
         }
       }).catch(() => {})
+    })
+
+    // 2. Sync with settings service if present
+    this.ctx.inject(['settings'], (scoped) => {
+      const initial = scoped.settings.getSync?.()
+      if (initial?.nowPlayingStyle && this.styles.has(initial.nowPlayingStyle)) {
+        this.currentStyle = initial.nowPlayingStyle as NowPlayingStyleId
+        this.ctx.emit('now-playing/style-changed', this.currentStyle)
+      }
+
+      scoped.on('settings/changed', (s) => {
+        if (s.nowPlayingStyle && s.nowPlayingStyle !== this.currentStyle && this.styles.has(s.nowPlayingStyle)) {
+          this.setStyle(s.nowPlayingStyle as NowPlayingStyleId)
+        }
+      })
     })
   }
 
@@ -47,8 +79,12 @@ export class NowPlayingPlugin extends Service implements NowPlayingService {
     return this.currentStyle
   }
 
+  getStyles(): readonly NowPlayingStyleMeta[] {
+    return Array.from(this.styles.values())
+  }
+
   setStyle(id: NowPlayingStyleId): void {
-    if (!this.validIds.has(id)) {
+    if (!this.styles.has(id)) {
       this.ctx.logger.warn(`now-playing: unknown style "${id}"`)
       return
     }
@@ -62,6 +98,61 @@ export class NowPlayingPlugin extends Service implements NowPlayingService {
     if (store) {
       store.set(STORE_KEY, id).catch((err) => {
         this.ctx.logger.warn(`now-playing: failed to persist style: ${err}`)
+      })
+    }
+
+    // Persist to settings if available
+    const settings = (this.ctx as unknown as { reflect?: { get(k: string, req: boolean): unknown } })
+      .reflect?.get('settings', false) as { update(p: Record<string, unknown>): Promise<unknown> } | undefined
+    if (settings) {
+      settings.update({ nowPlayingStyle: id }).catch(() => {})
+    }
+  }
+
+  registerStyle(meta: NowPlayingStyleMeta): Disposable {
+    if (!meta.id || !meta.name) {
+      throw new Error('registerStyle: style must have non-empty id and name')
+    }
+    const finalMeta: NowPlayingStyleMeta = {
+      ...meta,
+      type: meta.type ?? 'sandboxed',
+    }
+    this.styles.set(meta.id, finalMeta)
+    this.persistCustomStyles()
+    this.ctx.emit('now-playing/registry-changed', this.getStyles())
+
+    return () => {
+      this.removeStyle(meta.id)
+    }
+  }
+
+  removeStyle(id: string): boolean {
+    const existing = this.styles.get(id)
+    if (!existing) return false
+    if (existing.type === 'builtin') {
+      this.ctx.logger.warn(`now-playing: cannot remove built-in style "${id}"`)
+      return false
+    }
+
+    this.styles.delete(id)
+    this.persistCustomStyles()
+
+    // If active style was deleted, reset to default style
+    if (this.currentStyle === id) {
+      this.setStyle(DEFAULT_NOW_PLAYING_STYLE)
+    }
+
+    this.ctx.emit('now-playing/registry-changed', this.getStyles())
+    return true
+  }
+
+  private persistCustomStyles(): void {
+    const customList = Array.from(this.styles.values()).filter((s) => s.type !== 'builtin')
+    const store = (this.ctx as unknown as { reflect?: { get(k: string, req: boolean): unknown } })
+      .reflect?.get('store', false) as { set(k: string, v: unknown): Promise<void> } | undefined
+    if (store) {
+      store.set(CUSTOM_STYLES_STORE_KEY, customList).catch((err) => {
+        this.ctx.logger.warn(`now-playing: failed to persist custom styles: ${err}`)
       })
     }
   }

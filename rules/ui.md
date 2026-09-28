@@ -328,3 +328,66 @@ Rules for desktop floating mini player, Dynamic Island secondary windows, and ge
 - When dispatching playback actions from a secondary window service, the service class must declare `static inject = ['player']` and the plugin module must export `inject = ['player']`.
 - Accessing `this.ctx.player` without explicit injection throws Cordis proxy violations at runtime (`cannot get property "player" without inject`).
 
+---
+
+## 9. Now Playing Layout Styles & Sandboxed Dynamic Import
+
+Rules for full-screen player layout templates, sandboxed plugin execution, and settings integration:
+
+### 9.1 Built-in Layout Styles
+The app provides 5 built-in layout styles managed by `ctx.nowPlaying`:
+1. **`classic`** (Default): Centered artwork, song title and artist below, transport controls at bottom, collapsible lyrics panel on the right.
+2. **`cinematic`** (16:9 映画歌词):
+   - 16:9 centered stage (`aspectRatio: '16 / 9'`), maximum width 1240px.
+   - Deep navy-indigo radial gradient (`#182236` → `#111724` → `#0B0F18`) with 0.12 opacity 80px blurred cover ambient base.
+   - Left section (~38% width): square album artwork with pure white hairline border (`2px solid rgba(255, 255, 255, 0.85)`) and soft deep shadow (`16px 24px 50px rgba(0, 0, 0, 0.65)`).
+   - Right section: real song title, muted artist, and 3~5 synchronized lyrics lines (current active line pure white bold 22px with optional translated subtitle, previous line dimmed 0.32, following lines fading 0.18).
+   - Bottom section: Canvas dynamic jumping waveform visualizer (`WaveformCanvas`), ultra-thin progress bar, and real playback timestamps (`formatDuration`).
+3. **`full-cover`**: Fullscreen blurred cover background, glassmorphism overlay, floating translucent transport controls.
+4. **`vinyl`**: Circular spinning vinyl record animation with concentric groove sheen and center album label.
+5. **`compact`**: Side-by-side widescreen layout with large artwork on the left and vertical metadata/controls/lyrics stream on the right.
+
+### 9.2 Sandboxed External Plugin Dynamic Import (Option B)
+External developers can create custom HTML/CSS/JS player skins and users can dynamically import them.
+
+- **Strict Iframe Sandbox Isolation**:
+  - Rendered using `<iframe sandbox="allow-scripts" />` (strictly omitting `allow-same-origin`, resulting in `origin: null`).
+  - Completely blocks access to host DOM, `parent.window`, cookies, local storage, Electron/Node runtime, and arbitrary network/filesystem access.
+- **Strict Data Whitelist (`SandboxPlayerSnapshot`)**:
+  - The host only pushes a sanitized, read-only playback snapshot via `postMessage`:
+    - `cover`: Safe artwork URL or `null`.
+    - `coverThemeColor`: Vibrant dominant cover theme hex color extracted via `useImageColor` (e.g. `'#3A5F7D'`).
+    - `title`: Song title.
+    - `artist`: Author / artist name.
+    - `album`: Album name.
+    - `lyrics`: Array of synchronized `{ timeMs, text, translation }` lines and current `activeIndex`.
+    - `positionMs` & `durationMs`: Playback position and total length in milliseconds.
+    - `isPlaying`: Playback active status.
+    - `isLoved`: Track favorite status.
+- **Strict Action Whitelist (`SandboxPlayerAction`)**:
+  - Sandboxed scripts may only emit whitelisted actions back to the host:
+    - `action:play`, `action:pause`, `action:togglePlay`
+    - `action:previous`, `action:next`
+    - `action:seek` (with `positionMs`)
+    - `action:toggleFavorite`
+  - Host validates all incoming messages before calling transport services.
+- **Injected Client SDK (`window.BBeBeePlayer`)**:
+  - The iframe host automatically injects a lightweight SDK bridge:
+    - `window.BBeBeePlayer.onSnapshot(callback)`
+    - `window.BBeBeePlayer.play()` / `pause()` / `togglePlay()`
+    - `window.BBeBeePlayer.previous()` / `next()`
+    - `window.BBeBeePlayer.seek(positionMs)`
+    - `window.BBeBeePlayer.toggleFavorite()`
+
+### 9.3 Settings UI Integration (`NowPlayingStylesSection`)
+- Mounted at the top of the "播放与音频 (`PlaybackSection`)" settings tab.
+- **Style Cards Grid**: Displays each style's name, description, tabler icon, author/version, and "官方内置" vs "沙箱 🛡️" badge.
+- Clicking any card switches the active style immediately and persists to `settings.nowPlayingStyle` and `ctx.store`.
+- Sandboxed plugins provide a delete button; deleting an active plugin automatically falls back to `'classic'`.
+- **Import Plugin Modal (`Sheet`)**:
+  - Displays sandbox security guarantees and data boundaries.
+  - "载入示例模板" button provides an instant, fully functioning neon glassmorphic sample template.
+  - Supports direct JSON manifest paste or local `.json` file upload.
+  - Validates required fields (`id`, `name`, `htmlContent`) and prevents collisions with built-in style IDs.
+
+

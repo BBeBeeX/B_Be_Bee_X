@@ -15,7 +15,7 @@ import { createElement as h } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { Context, Service } from 'cordis'
-import type { NowPlayingStyleId, QueueItem, Track, TransportState } from '@BBeBee/protocol'
+import { NOW_PLAYING_STYLES, type NowPlayingStyleId, type NowPlayingStyleMeta, type QueueItem, type Track, type TransportState } from '@BBeBee/protocol'
 import { NowPlayingBar, NowPlayingScreen } from './index.js'
 
 afterEach(() => {
@@ -132,6 +132,7 @@ async function harness(
 
   class NowPlayingStub extends Service {
     style: NowPlayingStyleId = 'classic'
+    styles: NowPlayingStyleMeta[] = [...NOW_PLAYING_STYLES]
     constructor(ctx: Context) {
       super(ctx, 'nowPlaying')
     }
@@ -140,6 +141,22 @@ async function harness(
       this.style = s
       calls.push(`setStyle:${s}`)
       this.ctx.emit('now-playing/style-changed', s)
+    }
+    getStyles = () => this.styles
+    registerStyle = (meta: NowPlayingStyleMeta) => {
+      this.styles.push(meta)
+      this.ctx.emit('now-playing/registry-changed', this.styles)
+      return () => {
+        this.styles = this.styles.filter((s) => s.id !== meta.id)
+        this.ctx.emit('now-playing/registry-changed', this.styles)
+      }
+    }
+    removeStyle = (id: string) => {
+      const idx = this.styles.findIndex((s) => s.id === id)
+      if (idx === -1) return false
+      this.styles.splice(idx, 1)
+      this.ctx.emit('now-playing/registry-changed', this.styles)
+      return true
     }
   }
 
@@ -549,5 +566,26 @@ describe('NowPlayingScreen', () => {
 
     expect(calls).toContain('setStyle:vinyl')
     expect(container.querySelector('[data-testid="layout-vinyl"]')).toBeTruthy()
+  })
+
+  it('renders sandboxed layout iframe when style is sandboxed plugin', async () => {
+    const { ctx } = await harness({ status: 'playing' })
+    ctx.nowPlaying.registerStyle({
+      id: 'custom-sandboxed-test',
+      name: 'Custom Sandboxed',
+      description: 'Test sandbox',
+      icon: 'sparkles',
+      type: 'sandboxed',
+      htmlContent: '<div id="plugin-test">Plugin Active</div>',
+    })
+    ctx.nowPlaying.setStyle('custom-sandboxed-test')
+
+    const { container } = render(h(NowPlayingScreen, { ctx }))
+    expect(container.querySelector('[data-testid="layout-sandboxed"]')).toBeTruthy()
+    const iframe = container.querySelector('[data-testid="sandbox-iframe"]') as HTMLIFrameElement
+    expect(iframe).toBeTruthy()
+    expect(iframe.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(iframe.getAttribute('srcdoc')).toContain('Plugin Active')
+    expect(iframe.getAttribute('srcdoc')).toContain('window.BBeBeePlayer')
   })
 })
