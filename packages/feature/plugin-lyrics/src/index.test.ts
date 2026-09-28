@@ -84,7 +84,16 @@ class DbStub extends Service {
         fetched_at: params[8],
       })
     } else if (sql.includes('DELETE FROM lyrics')) {
-      this.lyricsRows.delete(params[0])
+      if (params && params[0]) {
+        this.lyricsRows.delete(params[0])
+      } else {
+        this.lyricsRows.clear()
+      }
+    } else if (sql.includes('UPDATE lyrics SET offset_ms')) {
+      const row = this.lyricsRows.get(params[1])
+      if (row) {
+        row.offset_ms = params[0]
+      }
     }
   }
 }
@@ -337,5 +346,75 @@ describe('plugin-lyrics', () => {
     expect(lyricSources.lastQuery).toBeDefined()
     expect(lyricSources.lastQuery.title).toBe('External Song')
     expect(lyricSources.lastQuery.artist).toBe('External Artist')
+  })
+
+  it('persists fetched lyrics to SQLite and reuses DB cache on subsequent queries', async () => {
+    const sharedDbRows = new Map<string, any>()
+    const { ctx, player, sources } = await createHarness(undefined, sharedDbRows)
+
+    sources.lyricsMap.set('cache-test', {
+      format: 'lrc',
+      content: '[00:05.00]Cached Lyric Content',
+      synced: true,
+      offsetMs: 0,
+    })
+
+    player.setTrack('BBeBee:mock:track:cache-test')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(ctx.lyrics.state.status).toBe('ready')
+    expect(ctx.lyrics.state.lyrics?.content).toBe('[00:05.00]Cached Lyric Content')
+    expect(sources.getLyricsCallCount).toBe(1)
+    expect(sharedDbRows.has('BBeBee:mock:track:cache-test')).toBe(true)
+
+    // Now start a fresh instance sharing the same SQLite DB rows (simulating restart)
+    const secondHarness = await createHarness(undefined, sharedDbRows)
+    const lyricsFromCache = await secondHarness.ctx.lyrics.getLyricsForTrack('BBeBee:mock:track:cache-test')
+
+    expect(lyricsFromCache).toBeDefined()
+    expect(lyricsFromCache?.content).toBe('[00:05.00]Cached Lyric Content')
+    // Source was NOT queried again because it came from SQLite DB!
+    expect(secondHarness.sources.getLyricsCallCount).toBe(0)
+  })
+
+  it('persists offset updates to database cache', async () => {
+    const sharedDbRows = new Map<string, any>()
+    const { ctx, player, sources } = await createHarness(undefined, sharedDbRows)
+
+    sources.lyricsMap.set('offset-test', {
+      format: 'lrc',
+      content: '[00:05.00]Offset Test',
+      synced: true,
+      offsetMs: 0,
+    })
+
+    player.setTrack('BBeBee:mock:track:offset-test')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(ctx.lyrics.state.offsetMs).toBe(0)
+    ctx.lyrics.setOffset(250)
+    expect(ctx.lyrics.state.offsetMs).toBe(250)
+
+    const row = sharedDbRows.get('BBeBee:mock:track:offset-test')
+    expect(row?.offset_ms).toBe(250)
+  })
+
+  it('clears cache via clearCache method', async () => {
+    const sharedDbRows = new Map<string, any>()
+    const { ctx, player, sources } = await createHarness(undefined, sharedDbRows)
+
+    sources.lyricsMap.set('clear-test', {
+      format: 'lrc',
+      content: '[00:05.00]To Be Cleared',
+      synced: true,
+      offsetMs: 0,
+    })
+
+    player.setTrack('BBeBee:mock:track:clear-test')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(sharedDbRows.size).toBe(1)
+    await ctx.lyrics.clearCache('BBeBee:mock:track:clear-test')
+    expect(sharedDbRows.size).toBe(0)
   })
 })

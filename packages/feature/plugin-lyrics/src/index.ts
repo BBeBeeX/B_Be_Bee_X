@@ -215,7 +215,7 @@ export class LyricsPlugin extends Service implements LyricsService {
           language: string
           fetched_at?: number
         }>(
-          'SELECT format, content, synced, offset_ms, language, fetched_at FROM lyrics WHERE track_urn = ? LIMIT 1',
+          'SELECT format, content, synced, offset_ms, language, fetched_at FROM lyrics WHERE track_urn = ? ORDER BY is_preferred DESC, fetched_at DESC LIMIT 1',
           [trackUrn],
         )
         if (rows.length > 0 && rows[0]) {
@@ -359,13 +359,13 @@ export class LyricsPlugin extends Service implements LyricsService {
     if (!this.ownCtx.db) return
     try {
       const parsedUrn = tryParseUrn(trackUrn)
-      const instanceId = parsedUrn?.sourceId ?? 'default'
+      const sourceId = parsedUrn?.sourceId ?? 'default'
       await this.ownCtx.db.exec(
-        `INSERT OR REPLACE INTO lyrics (track_urn, instance_id, format, content, synced, offset_ms, language, is_preferred, fetched_at)
+        `INSERT OR REPLACE INTO lyrics (track_urn, source_id, format, content, synced, offset_ms, language, is_preferred, fetched_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           trackUrn,
-          instanceId,
+          sourceId,
           lyrics.format,
           lyrics.content,
           lyrics.synced ? 1 : 0,
@@ -384,13 +384,13 @@ export class LyricsPlugin extends Service implements LyricsService {
     if (!this.ownCtx.db) return
     try {
       const parsedUrn = tryParseUrn(trackUrn)
-      const instanceId = parsedUrn?.sourceId ?? 'default'
+      const sourceId = parsedUrn?.sourceId ?? 'default'
       await this.ownCtx.db.exec(
-        `INSERT OR REPLACE INTO lyrics (track_urn, instance_id, format, content, synced, offset_ms, language, is_preferred, fetched_at)
+        `INSERT OR REPLACE INTO lyrics (track_urn, source_id, format, content, synced, offset_ms, language, is_preferred, fetched_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           trackUrn,
-          instanceId,
+          sourceId,
           'none',
           '',
           0,
@@ -407,6 +407,44 @@ export class LyricsPlugin extends Service implements LyricsService {
 
   setOffset(offsetMs: number): void {
     this.updateState({ offsetMs })
+    const trackUrn = this.currentState.trackUrn
+    if (trackUrn) {
+      const cached = this.memoryCache.get(trackUrn)
+      if (cached) {
+        cached.offsetMs = offsetMs
+      }
+      if (this.ownCtx.db) {
+        void this.ownCtx.db
+          .exec('UPDATE lyrics SET offset_ms = ? WHERE track_urn = ?', [offsetMs, trackUrn])
+          .catch(() => undefined)
+      }
+    }
+  }
+
+  async clearCache(trackUrn?: string): Promise<void> {
+    if (trackUrn) {
+      this.memoryCache.delete(trackUrn)
+      this.parsedCache.delete(trackUrn)
+      this.negativeCache.delete(trackUrn)
+      if (this.ownCtx.db) {
+        try {
+          await this.ownCtx.db.exec('DELETE FROM lyrics WHERE track_urn = ?', [trackUrn])
+        } catch (e) {
+          this.ownCtx.logger.debug(`lyrics: failed to clear cache for ${trackUrn}: ${String(e)}`)
+        }
+      }
+    } else {
+      this.memoryCache.clear()
+      this.parsedCache.clear()
+      this.negativeCache.clear()
+      if (this.ownCtx.db) {
+        try {
+          await this.ownCtx.db.exec('DELETE FROM lyrics')
+        } catch (e) {
+          this.ownCtx.logger.debug(`lyrics: failed to clear all lyrics cache: ${String(e)}`)
+        }
+      }
+    }
   }
 
   async retry(): Promise<void> {

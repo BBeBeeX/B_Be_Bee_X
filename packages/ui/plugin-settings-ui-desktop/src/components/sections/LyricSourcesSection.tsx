@@ -10,6 +10,7 @@ import type {
   LyricSourceDefinition,
   LyricSourcesService,
   LyricSourceTestResult,
+  LyricsService,
   SourceRecord,
   SourcesService,
 } from '@BBeBee/protocol'
@@ -155,6 +156,7 @@ export function LyricSourcesSection({ ctx }: LyricSourcesSectionProps): ReactEle
   const [testResult, setTestResult] = useState<{ id: string; result: LyricSourceTestResult } | null>(
     null,
   )
+  const [cacheCleared, setCacheCleared] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -569,7 +571,32 @@ export function LyricSourcesSection({ ctx }: LyricSourcesSectionProps): ReactEle
           ),
     ),
 
-    // 3. Import Sheet Modal
+    // 3. Lyric Cache Section
+    h(
+      SettingsSection,
+      {
+        title: '本地歌词缓存 (Lyric Cache)',
+        description:
+          '已检索获取的歌词会自动在本地 SQLite 数据库中持久化缓存，离线及重复播放即时加载。',
+      },
+      h(SettingsRow, {
+        title: '本地歌词持久化缓存',
+        description: '清除内存及本地 SQLite 数据库中所有已缓存的歌词文档，下次播放时将重新向源发起检索。',
+        action: h(Button, {
+          variant: 'secondary',
+          onPress: async () => {
+            if (!ctx) return
+            const lyricsSvc = serviceOf<LyricsService>(ctx, 'lyrics')
+            await lyricsSvc?.clearCache?.()
+            setCacheCleared(true)
+            setTimeout(() => setCacheCleared(false), 2000)
+          },
+          children: cacheCleared ? '已清空缓存' : '清空歌词缓存',
+        }),
+      }),
+    ),
+
+    // 4. Import Sheet Modal
     h(
       Sheet,
       {

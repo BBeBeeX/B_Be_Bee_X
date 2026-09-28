@@ -31,6 +31,8 @@ export interface LyricsService {
   getLyricsForTrack(urn: string): Promise<Lyrics | undefined>
   setOffset(offsetMs: number): void
   retry(): Promise<void>
+  /** Clear cached lyrics (memory and SQLite). If trackUrn is omitted, clears all cached lyrics. */
+  clearCache(trackUrn?: string): Promise<void>
 }
 
 export interface DesktopLyricsPosition {
