@@ -4,7 +4,7 @@ import type { Context } from 'cordis'
 import type { Album, PlayerService, Track } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { serviceOf, type MenuAnchor, type MenuItemSpec } from '@BBeBee/ui-core'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useDetailBarCollapse, viewModeMenuItems, useViewMode, coverGradient } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useDetailBarCollapse, viewModeMenuItems, useViewMode, headerGradient } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -825,9 +825,10 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
     playButton: renderPlayButton(48, 24, 'local-music-play-sticky'),
   })
 
+  // 渐变只存在于头部区域（随内容滚走），下方内容为纯色。
   const headerNode = h(
     'div',
-    null,
+    { style: { background: headerGradient(undefined) } },
     // Hero Header (No Cover)
     h(
       'header',
@@ -1265,7 +1266,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        background: coverGradient(undefined),
+        background: 'var(--bg-primary, #080A10)',
         color: '#FFFFFF',
         overflow: 'hidden',
       },

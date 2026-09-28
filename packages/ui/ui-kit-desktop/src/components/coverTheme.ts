@@ -55,18 +55,23 @@ export function tintRgba(tint: string | undefined, alpha: number): string | unde
 }
 
 const DEFAULT_GRADIENT =
-  'linear-gradient(180deg, var(--surface-hover, rgba(95, 135, 255, 0.15)) 0%, var(--surface-1, rgba(8, 13, 26, 0.7)) 280px, var(--bg-primary, #080A10) 100%)'
+  'linear-gradient(180deg, var(--surface-hover, rgba(95, 135, 255, 0.15)) 0%, var(--surface-1, rgba(8, 13, 26, 0.7)) 62%, var(--bg-primary, #080A10) 100%)'
 
 /**
- * A detail page's section background: the cover's colour strongest at the
- * top, fading into the app background. No tint — no cover, unreadable cover —
- * falls back to the neutral brand wash every page showed before.
+ * A detail page's header gradient — the cover's colour strongest at the very
+ * top, fading into the app background exactly at the header's bottom edge.
+ * Percentage stops, so whatever the header's height turns out to be, the
+ * content below the header sits on pure `--bg-primary` with no seam, and the
+ * pinned table header's solid background matches it.
+ *
+ * No tint — no cover, unreadable cover — falls back to the neutral brand
+ * wash with the same shape.
  */
-export function coverGradient(tint: string | undefined): string {
+export function headerGradient(tint: string | undefined): string {
   const top = tintRgba(tint, 0.5)
   const mid = tintRgba(tint, 0.16)
   if (!top || !mid) return DEFAULT_GRADIENT
-  return `linear-gradient(180deg, ${top} 0%, ${mid} 280px, var(--bg-primary, #080A10) 100%)`
+  return `linear-gradient(180deg, ${top} 0%, ${mid} 62%, var(--bg-primary, #080A10) 100%)`
 }
 
 /**

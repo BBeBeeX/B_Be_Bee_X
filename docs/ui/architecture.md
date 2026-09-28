@@ -326,9 +326,12 @@ which events invalidate which state — are written once. Only the JSX is writte
   `useResolvedArtwork` + the kit's `useImageColor`: the ref's `dominantColor` — computed once at
   cache time — wins; a ref without one gets a one-shot canvas extraction (`extractVibrantColor`,
   vividness-scored buckets, run on the same URL the `<img>` shows); an unreadable cover (remote
-  URL without CORS taints the canvas) returns `undefined`. `coverGradient(tint)` builds the
-  section background and the sticky bar's wash, and `undefined` falls back to the neutral brand
-  gradient — a missing cover degrades to what the page looked like before, never to an error.
+  URL without CORS taints the canvas) returns `undefined`. `headerGradient(tint)` paints the
+  **scrolling header area only** — percentage stops land it exactly on `--bg-primary` at the
+  header's bottom edge, so everything below (rows, and the pinned table header) sits on the same
+  solid colour with no seam — and the sticky bar's wash tints with it. `undefined` falls back to
+  the neutral brand gradient — a missing cover degrades to what the page looked like before,
+  never to an error.
 
 ---
 

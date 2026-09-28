@@ -5,7 +5,7 @@ import type { PlayerService, Track } from '@BBeBee/protocol'
 import { useSaved } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import { serviceOf, type MenuAnchor, type MenuItemSpec } from '@BBeBee/ui-core'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useDetailBarCollapse, coverGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useDetailBarCollapse, headerGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -425,9 +425,10 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
     playButton: renderPlayButton(48, 24, 'favorites-play-sticky'),
   })
 
+  // 渐变只存在于头部区域（随内容滚走），下方内容为纯色。
   const headerNode = h(
     'div',
-    null,
+    { style: { background: headerGradient(FAVORITES_TINT) } },
     // Hero Header (No Cover, exactly matching LocalMusicScreen)
     h(
       'header',
@@ -728,7 +729,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        background: coverGradient(FAVORITES_TINT),
+        background: 'var(--bg-primary, #080A10)',
         color: '#FFFFFF',
         overflow: 'hidden',
       },

@@ -32,7 +32,7 @@ Layer 5（ui）— React DOM 版对等组件集（parity component set）的桌�
 
 **kit 级导出**：`setScheme(next: Scheme)`（shell 启动时调用）。
 
-**桌面专属扩展**（不进 parity 清单，mobile 无对应物）：`ContextMenu`（右键菜单 + 子菜单飞出）、`SaveToPlaylistPopover`（心形按钮的"添加到歌单"弹层，最小高度 480px、文件夹二级浮层 320px，随视口封顶）、`StickyDetailBar`（详情页滚动折叠后的吸顶栏：标题 + 播放按钮，透明度/底色均为 `progress` 的函数，`pointer-events` 跟随淡入以免透明的它吃掉 hero 的点击）、`useImageColor` / `coverGradient` / `tintRgba` / `extractVibrantColor`（封面主题色：`dominantColor` 优先，缺失时一次 canvas 取色，失败回退 `undefined` → 调用方的中性渐变）与 `viewModeMenuItems` / `useViewMode`。
+**桌面专属扩展**（不进 parity 清单，mobile 无对应物）：`ContextMenu`（右键菜单 + 子菜单飞出）、`SaveToPlaylistPopover`（心形按钮的"添加到歌单"弹层，最小高度 480px、文件夹二级浮层 320px，随视口封顶）、`StickyDetailBar`（详情页滚动折叠后的吸顶栏：标题 + 播放按钮，滑入/吸附动作均为 `progress` 的函数，`pointer-events` 跟随淡入以免透明的它吃掉 hero 的点击）、`useImageColor` / `headerGradient` / `tintRgba` / `extractVibrantColor`（封面主题色：`dominantColor` 优先，缺失时一次 canvas 取色，失败回退 `undefined` → 调用方的中性渐变；渐变按百分比收在 header 底边，其下内容与吸附表头同为纯色 `--bg-primary`）与 `viewModeMenuItems` / `useViewMode`。
 
 ### `src/manifest.ts` — parity 声明
 

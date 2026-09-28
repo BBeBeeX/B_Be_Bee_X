@@ -6,7 +6,7 @@ import { usePlaylist } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
 import type { MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { useTrackMenu } from '@BBeBee/ui-menus'
-import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useDetailBarCollapse, useImageColor, coverGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useDetailBarCollapse, useImageColor, headerGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { tokens } from '@BBeBee/ui-tokens'
 import { CachedArtwork } from '../components/CachedArtwork.js'
@@ -530,9 +530,11 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
     playButton: renderPlayButton(48, 24, 'playlist-play-sticky'),
   })
 
+  // 渐变只存在于头部区域（随内容滚走），到底边精确过渡为纯色；下方内容
+  // 与吸附后的表头都是纯色 --bg-primary。
   const headerNode = h(
     'div',
-    null,
+    { style: { background: headerGradient(tint) } },
     // Hero Header
     h(
       'header',
@@ -948,7 +950,7 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        background: coverGradient(tint),
+        background: 'var(--bg-primary, #080A10)',
         color: '#FFFFFF',
         overflow: 'hidden',
       },

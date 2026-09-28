@@ -27,7 +27,7 @@ import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { formatDuration, formatTotalDuration } from '@BBeBee/toolkit'
 import { addToCollectionSubmenu, sleepTimerSubmenu, useSaveToPlaylistMenu, useTrackMenu } from '@BBeBee/ui-menus'
-import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, tablerIcon, useDetailBarCollapse, useImageColor, coverGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
+import { Artwork, ContextMenu, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, tablerIcon, useDetailBarCollapse, useImageColor, headerGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { serviceOf } from '@BBeBee/ui-core'
 import type { ArtworkProps, MenuAnchor, MenuItemSpec } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
@@ -695,9 +695,11 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
     playButton: renderPlayButton(48, 24, 'album-play-sticky'),
   })
 
+  // 渐变只存在于头部区域（随内容滚走），到底边精确过渡为纯色；下方内容
+  // 与吸附后的表头都是纯色 --bg-primary。
   const headerNode = h(
     'div',
-    null,
+    { style: { background: headerGradient(tint) } },
     // Hero Header
     h(
       'header',
@@ -1075,7 +1077,7 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        background: coverGradient(tint),
+        background: 'var(--bg-primary, #080A10)',
         color: '#FFFFFF',
         overflow: 'hidden',
       },
