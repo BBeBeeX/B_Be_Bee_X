@@ -16,7 +16,7 @@ Layer 5（ui）— `plugin-album`（headless）的桌面视图包：专辑页的
 
 **`AlbumScreen({ urn })`** — `useAlbum` → 三态分支（`Pending` / "Album unavailable" + 原因 / 内容）：
 
-- **header（随列表滚走）**：横排 232px `Artwork`（经 `CachedArtwork` 走 `ctx.cache`，未命中先画 fallback，不把远端 URL 交给第二个请求）+ 标题 + 艺人 + "Play album"。hero 与操作栏放进 `List` 的 `header` 插槽随内容滚走；播放按钮靠近顶部时 `StickyDetailBar` 吸顶栏（标题 + 播放按钮）从视口上方滑入，滚过其一半高度时吸附（缩放动作），表头吸附在吸顶栏正下方。页面背景与吸顶栏底色取自封面 `dominantColor`（`useImageColor`，缺失时画布提取，失败回退中性渐变）；
+- **header（随列表滚走）**：横排 232px `Artwork`（经 `CachedArtwork` 走 `ctx.cache`，未命中先画 fallback，不把远端 URL 交给第二个请求）+ 标题 + 艺人 + "Play album"。hero 与操作栏放进 `List` 的 `header` 插槽随内容滚走；播放按钮靠近顶部时 `StickyDetailBar` 吸顶栏（标题 + 播放按钮）从视口上方滑入，滚过其一半高度时吸附（缩放动作），表头经 `stickyHeader` 插槽固定在吸顶栏正下方，默认不带排序箭头（悬停显示）。页面背景与吸顶栏底色取自封面 `dominantColor`（`useImageColor`，缺失时画布提取，失败回退中性渐变）；
 - **操作栏与多维排序**：
   - 绿色主播放按钮（`▶`）、随机播放、爱心收藏按钮（`♥`/`♡` 接线 `library.setSaved`，收藏后同步在音乐库中呈现）与 `⋯` 更多操作；
   - 专辑三点菜单提供「加入文件夹」（原加入合集）、「添加到音乐库/从音乐库中删除」、「加入播放列表」、「下载」（本地专辑自动隐藏）与「睡眠定时器」，移除了原冗余的「加入歌单」与「转至专辑」；

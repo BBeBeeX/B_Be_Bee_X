@@ -7,42 +7,59 @@ import { common } from '../theme.js'
 export function List<T>(props: ListProps<T>) {
   const scroller = useRef<HTMLDivElement | null>(null)
   const headerRef = useRef<HTMLDivElement | null>(null)
+  const spacerRef = useRef<HTMLDivElement | null>(null)
   const count = props.items.length
   const estimate = props.estimatedItemSize ?? tokens.size.row
 
-  // A header scrolls inside the scroller above the rows, so the virtualiser
-  // must treat the first row as starting below it — `scrollMargin`, measured
-  // off the real header box, since a wrapped title or an optional toolbar
-  // makes the height unknowable from props.
-  const [headerHeight, setHeaderHeight] = useState(0)
+  // Content scrolls inside the scroller above the rows — a collapsible bar,
+  // a scroll-away header, a pinned table header — so the virtualiser must
+  // treat the first row as starting below all of it. The offset is measured
+  // off the spacer's real position (everything above it, whatever its
+  // heights), because a wrapped title or an optional toolbar makes the total
+  // unknowable from props.
+  const [scrollMargin, setScrollMargin] = useState(0)
   const hasHeader = props.header !== undefined
+  const hasStickyHeader = props.stickyHeader !== undefined
 
   useLayoutEffect(() => {
-    const el = headerRef.current
-    if (!el || !hasHeader) {
-      setHeaderHeight((prev) => (prev === 0 ? prev : 0))
+    const scrollerEl = scroller.current
+    const spacerEl = spacerRef.current
+    if (!scrollerEl || !spacerEl) {
+      setScrollMargin((prev) => (prev === 0 ? prev : 0))
       return
     }
     const measure = () => {
-      const height = Math.round(el.getBoundingClientRect().height)
-      setHeaderHeight((prev) => (prev === height ? prev : height))
+      const margin = Math.round(
+        spacerEl.getBoundingClientRect().top -
+          scrollerEl.getBoundingClientRect().top +
+          scrollerEl.scrollTop,
+      )
+      setScrollMargin((prev) => (prev === margin ? prev : Math.max(0, margin)))
     }
     measure()
-    // jsdom (and some embedded webviews) ship no ResizeObserver; a missing
-    // one costs only live re-measurement — the mount-time measure above
-    // already covers the static case.
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [hasHeader])
+    // The margin is scroll-invariant, so the internal scroll listener is a
+    // cheap invariant check — it only fires a re-render if the header's
+    // height changed mid-scroll. jsdom (and some embedded webviews) ship no
+    // ResizeObserver; a missing one costs only live re-measurement.
+    scrollerEl.addEventListener('scroll', measure)
+    let observer: ResizeObserver | undefined
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(measure)
+      if (headerRef.current) observer.observe(headerRef.current)
+      observer.observe(spacerEl)
+    }
+    return () => {
+      scrollerEl.removeEventListener('scroll', measure)
+      observer?.disconnect()
+    }
+  }, [hasHeader, hasStickyHeader])
 
   const virtualizer = useVirtualizer({
     count,
     getScrollElement: () => scroller.current,
     estimateSize: () => estimate,
     overscan: 8,
-    scrollMargin: headerHeight,
+    scrollMargin,
   })
 
   const rows = virtualizer.getVirtualItems()
@@ -73,16 +90,21 @@ export function List<T>(props: ListProps<T>) {
       onScroll: onScroll ? handleScroll : undefined,
       style: { overflowY: 'auto', overflowX: 'hidden', height: '100%' },
     },
-    // The pinned bar has to be the scroller's own child: a sticky element
-    // only sticks within its parent's box, so nesting it inside the header
-    // would let it scroll away exactly when it has finished arriving.
+    // Sticky elements have to be the scroller's own children: a sticky
+    // element only sticks within its parent's box, so nesting either the bar
+    // or the pinned table header inside the header would let them scroll
+    // away exactly when they have finished arriving.
     (props.sticky ?? null) as ReactNode,
     hasHeader ? h('div', { ref: headerRef }, props.header as ReactNode) : null,
+    (props.stickyHeader ?? null) as ReactNode,
     isEmpty
       ? (props.empty as ReactNode)
       : h(
           'div',
-          { style: { height: virtualizer.getTotalSize(), position: 'relative', width: '100%' } },
+          {
+            ref: spacerRef,
+            style: { height: virtualizer.getTotalSize(), position: 'relative', width: '100%' },
+          },
           rows.map((row) => {
             const item = props.items[row.index]!
             return h(
@@ -99,7 +121,7 @@ export function List<T>(props: ListProps<T>) {
                   top: 0,
                   left: 0,
                   width: '100%',
-                  transform: `translateY(${row.start - headerHeight}px)`,
+                  transform: `translateY(${row.start - scrollMargin}px)`,
                 },
               },
               props.renderItem(item, row.index) as ReactNode,

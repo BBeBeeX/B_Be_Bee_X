@@ -8,7 +8,7 @@
  * said out loud rather than shown as an empty page.
  */
 
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { createElement as h } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from 'cordis'
@@ -363,6 +363,12 @@ describe('AlbumScreen', () => {
 
       await act(async () => {
         albumCol.click()
+        await tick()
+      })
+      // 表头默认不带箭头；悬停表头后，当前排序列显示方向箭头。
+      expect(albumCol.querySelector('[data-icon="chevron-up"]')).toBeNull()
+      await act(async () => {
+        fireEvent.mouseOver(albumCol)
         await tick()
       })
       expect(albumCol.querySelector('[data-icon="chevron-up"]')).toBeTruthy()

@@ -317,16 +317,14 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
   }
 
   const renderSortIndicator = (key: FavoriteSortKey) => {
+    // 表头默认不带箭头；悬停时当前排序列显示方向箭头，其余列显示浅色提示。
+    if (!headerHovered) return null
     if (sortKey === key) {
       return sortOrder === 'asc'
         ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
         : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
     }
-    // 悬停表头时，未排序的列给出“可排序”的浅色箭头提示。
-    if (headerHovered) {
-      return tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4, opacity: 0.35 } })
-    }
-    return null
+    return tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4, opacity: 0.35 } })
   }
 
   const sortLabelMap: Record<FavoriteSortKey, string> = {
@@ -584,11 +582,14 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
     saved.status === 'error'
       ? h('div', { style: { padding: '0 32px 8px 32px' } }, h(Text, { tone: 'error' }, `Could not read favourites: ${saved.error?.message}`))
       : null,
-    // Table Header — 吸附在吸顶栏正下方；悬停时显示列分隔线与排序箭头。
-    h(
-      'div',
-      {
-        onMouseEnter: () => setHeaderHovered(true),
+  )
+
+  // 表头走 stickyHeader 插槽（滚动容器的直接子节点）——嵌在 header 盒内时
+  // sticky 只在父盒范围吸附，作为父盒最后一个子元素等于完全吸不住。
+  const tableHeaderNode = h(
+    'div',
+    {
+      onMouseEnter: () => setHeaderHovered(true),
         onMouseLeave: () => setHeaderHovered(false),
         style: {
           display: 'flex',
@@ -717,8 +718,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
         tablerIcon('clock', { size: 18 }),
         renderSortIndicator('duration'),
       ),
-    ),
-  )
+    )
 
   return h(
     'section',
@@ -741,6 +741,7 @@ export function FavoritesScreen({ ctx }: { ctx: Context }): ReactElement {
         testID: 'favorites-list',
         header: headerNode,
         sticky: stickyBar,
+        stickyHeader: tableHeaderNode,
         onScroll: collapse.handleScroll,
         items: sortedTracks,
         estimatedItemSize: tokens.size.row,

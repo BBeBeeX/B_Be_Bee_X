@@ -197,6 +197,13 @@ export interface ListProps<T> extends CommonProps {
    */
   sticky?: ReactNode
   /**
+   * Desktop only. The table header that pins just below the sticky bar once
+   * scrolled past (`position: sticky; top: <bar height>` in the caller's
+   * styles). Rendered as the scroller's direct child too — nested inside the
+   * header it would stick only within the header's box, i.e. not at all.
+   */
+  stickyHeader?: ReactNode
+  /**
    * Desktop only. The scroller's scroll position, on every scroll event.
    * Drives collapsing headers: the bar's opacity is a function of this.
    */

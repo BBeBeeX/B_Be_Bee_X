@@ -668,16 +668,14 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
   }
 
   const renderTrackSortIndicator = (key: LocalTrackSortKey) => {
+    // 表头默认不带箭头；悬停时当前排序列显示方向箭头，其余列显示浅色提示。
+    if (!headerHovered) return null
     if (trackSortKey === key) {
       return trackSortOrder === 'asc'
         ? tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4 } })
         : tablerIcon('chevron-down', { size: 16, style: { marginLeft: 4 } })
     }
-    // 悬停表头时，未排序的列给出“可排序”的浅色箭头提示。
-    if (headerHovered) {
-      return tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4, opacity: 0.35 } })
-    }
-    return null
+    return tablerIcon('chevron-up', { size: 16, style: { marginLeft: 4, opacity: 0.35 } })
   }
 
   const trackSortLabelMap: Record<LocalTrackSortKey, string> = {
@@ -1043,13 +1041,16 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
       ),
     ),
     error ? h('div', { style: { padding: '0 32px 8px 32px' } }, h(Text, { variant: 'sm', tone: 'error' }, error)) : null,
-    // Table Header (歌曲模式) — 吸附在吸顶栏正下方；悬停时显示列分隔线与排序箭头。
-    viewMode === 'tracks'
-      ? h(
-          'div',
-          {
-            key: 'track-table-header',
-            onMouseEnter: () => setHeaderHovered(true),
+  )
+
+  // 表头走 stickyHeader 插槽（滚动容器的直接子节点）——嵌在 header 盒内时
+  // sticky 只在父盒范围吸附，作为父盒最后一个子元素等于完全吸不住。
+  const tableHeaderNode = viewMode === 'tracks'
+    ? h(
+        'div',
+        {
+          key: 'track-table-header',
+          onMouseEnter: () => setHeaderHovered(true),
             onMouseLeave: () => setHeaderHovered(false),
             style: {
               display: 'flex',
@@ -1179,8 +1180,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
             renderTrackSortIndicator('duration'),
           ),
         )
-      : null,
-  )
+      : null
 
   // 专辑模式的内容（平铺网格或行列表），直接在滚动流里，不再自带滚动容器。
   const albumsContent = loading
@@ -1281,6 +1281,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
                 testID: 'local-tracks-list',
                 header: headerNode,
                 sticky: stickyBar,
+                stickyHeader: tableHeaderNode ?? undefined,
                 onScroll: collapse.handleScroll,
                 items: sortedTracks,
                 estimatedItemSize: tokens.size.row,
