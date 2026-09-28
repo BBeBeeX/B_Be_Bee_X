@@ -20,12 +20,14 @@ type LocalAlbumSortKey = 'default' | 'title' | 'artist' | 'year' | 'count'
 function LocalAlbumRow({
   ctx,
   album,
+  index,
   compact,
   onOpen,
   onPlay,
 }: {
   ctx: Context
   album: Album
+  index: number
   /** 紧凑视图：无封面，艺人独立成列。 */
   compact?: boolean
   onOpen: () => void
@@ -33,7 +35,6 @@ function LocalAlbumRow({
 }): ReactElement {
   const [hovered, setHovered] = useState(false)
   const artists = album.artists?.map((a) => a.name).join(', ') || '未知艺人'
-  const meta = `${album.year ? `${album.year} • ` : ''}${album.trackCount ? `${album.trackCount} 首歌曲` : '专辑'}`
 
   return h(
     'div',
@@ -56,28 +57,47 @@ function LocalAlbumRow({
         boxSizing: 'border-box',
       },
     },
-    // Col 1: Cover (list only) or disc icon
-    compact
-      ? null
-      : h(
-          'div',
-          {
-            style: {
-              width: 40,
-              height: 40,
-              borderRadius: 4,
-              overflow: 'hidden',
-              flexShrink: 0,
-              backgroundColor: '#282828',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+    // Col 1: # or Play on hover
+    h(
+      'div',
+      {
+        style: {
+          width: 40,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 14,
+          color: hovered ? '#FFFFFF' : '#b3b3b3',
+        },
+      },
+      hovered && onPlay
+        ? h(
+            'button',
+            {
+              type: 'button',
+              'data-testid': `local-album-play-${album.urn}`,
+              'aria-label': `播放 ${album.title}`,
+              title: `播放 ${album.title}`,
+              onClick: (e: ReactMouseEvent) => {
+                e.stopPropagation()
+                onPlay()
+              },
+              style: {
+                background: 'none',
+                border: 'none',
+                color: '#FFFFFF',
+                cursor: 'pointer',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
             },
-          },
-          album.artwork
-            ? h(CachedArtwork, { ctx, artwork: album.artwork, seed: album.urn, size: 40, radius: 4 })
-            : tablerIcon('disc', { size: 22, color: '#7f7f7f' }),
-        ),
+            tablerIcon('play', { size: 18, color: '#FFFFFF' }),
+          )
+        : String(index + 1),
+    ),
     // Col 2: Title (+ artists inline in list mode)
     h(
       'div',
@@ -85,13 +105,34 @@ function LocalAlbumRow({
         style: {
           flex: 2,
           minWidth: 0,
-          paddingLeft: compact ? 0 : 12,
+          paddingLeft: 12,
           paddingRight: 16,
           display: 'flex',
           alignItems: 'center',
           gap: 12,
         },
       },
+      compact
+        ? null
+        : h(
+            'div',
+            {
+              style: {
+                width: 40,
+                height: 40,
+                borderRadius: 4,
+                overflow: 'hidden',
+                flexShrink: 0,
+                backgroundColor: '#282828',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
+            },
+            album.artwork
+              ? h(CachedArtwork, { ctx, artwork: album.artwork, seed: album.urn, size: 40, radius: 4 })
+              : tablerIcon('disc', { size: 22, color: '#7f7f7f' }),
+          ),
       h(
         'div',
         {
@@ -154,7 +195,7 @@ function LocalAlbumRow({
           artists,
         )
       : null,
-    // Col 4: Year & count
+    // Col 4: Year
     h(
       'div',
       {
@@ -169,36 +210,24 @@ function LocalAlbumRow({
           whiteSpace: 'nowrap',
         },
       },
-      meta,
+      album.year ? String(album.year) : '-',
     ),
-    // Col 5: Play on hover
+    // Col 5: Track count
     h(
-      'button',
+      'div',
       {
-        type: 'button',
-        'aria-label': `播放 ${album.title}`,
-        title: `播放 ${album.title}`,
-        onClick: (e: ReactMouseEvent) => {
-          e.stopPropagation()
-          onPlay?.()
-        },
         style: {
-          width: 36,
-          height: 36,
-          borderRadius: '50%',
-          border: 'none',
-          background: 'var(--button-primary-bg, var(--color-primary, #5F87FF))',
-          color: '#ffffff',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          width: 100,
           flexShrink: 0,
-          opacity: hovered ? 1 : 0,
-          transition: 'opacity 0.15s ease',
+          textAlign: 'right',
+          fontSize: 13,
+          color: '#b3b3b3',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
         },
       },
-      tablerIcon('play', { size: 20, color: '#ffffff' }),
+      album.trackCount ? `${album.trackCount} 首歌曲` : '-',
     ),
   )
 }
@@ -377,6 +406,15 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
     } else {
       setTrackSortKey(key)
       setTrackSortOrder('asc')
+    }
+  }
+
+  const handleAlbumHeaderClick = (key: LocalAlbumSortKey) => {
+    if (albumSortKey === key) {
+      setAlbumSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setAlbumSortKey(key)
+      setAlbumSortOrder('asc')
     }
   }
 
@@ -651,6 +689,25 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
       })
     : undefined
 
+  const albumTableHeaderNode =
+    albumViewMode === 'tiled'
+      ? undefined
+      : h(DetailTableHeader, {
+          testID: 'local-albums-table-header',
+          accessibilityLabel: '本地专辑',
+          columns: [
+            { key: 'default', label: '#', testID: 'local-album-sort-default', width: 40, align: 'center' },
+            { key: 'title', label: '专辑', testID: 'local-album-sort-title', flex: 2, paddingLeft: 12 },
+            { key: 'artist', label: '艺人', testID: 'local-album-sort-artist', flex: 1.5, visible: albumViewMode === 'compact' },
+            { key: 'year', label: '年份', testID: 'local-album-sort-year', flex: 1 },
+            { key: 'count', label: '曲目数', testID: 'local-album-sort-count', width: 100, align: 'right' },
+          ] satisfies DetailColumnSpec[],
+          sortKey: albumSortKey,
+          sortDirection: albumSortOrder,
+          onSort: (key) => handleAlbumHeaderClick(key as LocalAlbumSortKey),
+          solid: collapse.docked,
+        })
+
   // 专辑模式的内容（平铺网格或行列表），直接在滚动流里，不再自带滚动容器。
   const albumsContent = loading
     ? h(EmptyState, { key: 'album-loading', title: '加载中…' })
@@ -704,11 +761,12 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
     : h(
         'div',
         { key: 'album-list', style: { padding: '8px 0 32px 0' } },
-        sortedAlbums.map((album) =>
+        sortedAlbums.map((album, index) =>
           h(LocalAlbumRow, {
             key: album.urn,
             ctx,
             album,
+            index,
             compact: albumViewMode === 'compact',
             onOpen: () => ctx.ui.navigate(ALBUM_VIEWS.album, { urn: album.urn }),
             onPlay: () => {
@@ -789,6 +847,7 @@ export function LocalMusicScreen({ ctx }: { ctx: Context }): ReactElement {
           },
           stickyBar,
           headerNode,
+          albumTableHeaderNode,
           albumsContent,
         ),
     h(ContextMenu, menu.menuProps),

@@ -1200,6 +1200,84 @@ describe('LocalMusicScreen', () => {
     })
   })
 
+  it('renders album table header and row with front play button in list and compact modes', async () => {
+    const { ctx, sources, player } = await harness()
+    sources.albums = [
+      { urn: 'BBeBee:local:album:a', title: 'AAA', trackCount: 2, year: 2020 },
+    ]
+    sources.tracks = [
+      { urn: 'BBeBee:local:track:1', title: 'T1', albumUrn: 'BBeBee:local:album:a', albumTitle: 'AAA' },
+      { urn: 'BBeBee:local:track:2', title: 'T2', albumUrn: 'BBeBee:local:album:a', albumTitle: 'AAA' },
+    ]
+
+    await withListLayout(async () => {
+      const { getByTestId, getByText, queryByTestId, getByRole } = render(h(LocalMusicScreen, { ctx }))
+      await act(async () => {
+        await tick()
+      })
+
+      // Switch to albums view
+      await act(async () => {
+        getByTestId('local-tab-albums').click()
+        await tick()
+      })
+
+      // In tiled mode, table header should NOT be present
+      expect(queryByTestId('local-albums-table-header')).toBeNull()
+
+      // Switch view mode to "列表"
+      await act(async () => {
+        getByTestId('local-music-sort-trigger').click()
+        await tick()
+      })
+      await act(async () => {
+        getByText('列表').click()
+        await tick()
+      })
+
+      // Now table header should be present
+      const header = getByTestId('local-albums-table-header')
+      expect(header).toBeTruthy()
+      expect(getByTestId('local-album-sort-default')).toBeTruthy()
+      expect(getByTestId('local-album-sort-title')).toBeTruthy()
+      expect(getByTestId('local-album-sort-year')).toBeTruthy()
+      expect(getByTestId('local-album-sort-count')).toBeTruthy()
+
+      // Row exists and Col 1 shows # (1)
+      const row = getByRole('row', { name: 'AAA' })
+      expect(row).toBeTruthy()
+      expect(row.textContent).toContain('1')
+
+      // Hover row to reveal Col 1 play button
+      await act(async () => {
+        fireEvent.mouseEnter(row)
+        await tick()
+      })
+
+      const playBtn = getByTestId('local-album-play-BBeBee:local:album:a')
+      expect(playBtn).toBeTruthy()
+      await act(async () => {
+        playBtn.click()
+        await tick()
+      })
+      expect(player.calls.some((c) => c.startsWith('BBeBee:local:track:1'))).toBe(true)
+
+      // Switch to "紧凑" mode
+      await act(async () => {
+        getByTestId('local-music-sort-trigger').click()
+        await tick()
+      })
+      await act(async () => {
+        getByText('紧凑').click()
+        await tick()
+      })
+
+      // In compact mode, table header should also be present and include artist column
+      expect(getByTestId('local-albums-table-header')).toBeTruthy()
+      expect(getByTestId('local-album-sort-artist')).toBeTruthy()
+    })
+  })
+
   it('shows ＋ button when track is not in library and adds to favorites on click', async () => {
     const { ctx, library } = await harness()
     library.saved = [] // not saved

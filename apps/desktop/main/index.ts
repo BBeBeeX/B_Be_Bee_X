@@ -249,9 +249,21 @@ function createWindow(): BrowserWindow {
     join(here, 'resources/icon.png'),
   ].find((p) => existsSync(p))
 
+  let width = 1360
+  let height = 860
+  try {
+    const primary = screen.getPrimaryDisplay()
+    if (primary?.workAreaSize) {
+      width = Math.min(width, Math.max(720, primary.workAreaSize.width))
+      height = Math.min(height, Math.max(480, primary.workAreaSize.height))
+    }
+  } catch {
+    // fallback to static 1360x860
+  }
+
   const window = new BrowserWindow({
-    width: 1180,
-    height: 760,
+    width,
+    height,
     minWidth: 720,
     minHeight: 480,
     backgroundColor: '#05060A',
