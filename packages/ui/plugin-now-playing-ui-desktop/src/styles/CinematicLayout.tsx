@@ -23,7 +23,7 @@ import type { NowPlayingLayoutProps } from './index.js'
 
 /* ── Cursive / handwriting font stack ───────────────────────────────────── */
 
-const CURSIVE_FONT = "'Caveat', 'Segoe Print', 'Bradley Hand', 'Chalkboard SE', cursive, sans-serif"
+const CURSIVE_FONT = "'CinematicCursive', 'Caveat', 'Segoe Print', 'Bradley Hand', 'Chalkboard SE', 'Z003', 'URW Chancery L', cursive, sans-serif"
 
 /* ── Delicate Organic Waveform with Tapered Ends ────────────────────────── */
 
@@ -98,12 +98,12 @@ function WaveformCanvas({ isPlaying }: WaveformCanvasProps): ReactElement {
 
   return h('canvas', {
     ref: canvasRef,
-    width: 600,
+    width: 800,
     height: 24,
     'data-testid': 'cinematic-waveform',
     style: {
       width: '100%',
-      maxWidth: 300,
+      maxWidth: 450,
       height: 24,
       display: 'block',
       margin: '0 auto',
@@ -131,9 +131,12 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
 
   const parsedLines = useMemo(() => {
     if (!lyricsState?.lyrics?.content) return []
+    if (lyricsState.trackUrn && state.trackUrn && lyricsState.trackUrn !== state.trackUrn) {
+      return []
+    }
     const parsed = parseLrc(lyricsState.lyrics.content, { offsetMs: lyricsState.offsetMs })
     return parsed.lines
-  }, [lyricsState?.lyrics?.content, lyricsState?.offsetMs])
+  }, [lyricsState?.lyrics?.content, lyricsState?.offsetMs, lyricsState?.trackUrn, state.trackUrn])
 
   const activeIndex = useMemo(() => {
     if (parsedLines.length === 0) return -1
@@ -405,7 +408,15 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                         maxWidth: '90%',
                       },
                     },
-                    h('div', null, slot.line.text),
+                    h(
+                      'div',
+                      {
+                        style: {
+                          fontFamily: CURSIVE_FONT,
+                        },
+                      },
+                      slot.line.text,
+                    ),
                     slot.line.translation
                       ? h(
                           'div',
@@ -453,17 +464,17 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
               },
             },
 
-            /* 1. Gentle Organic Waveform (shorter than progress bar, fine ends) */
+            /* 1. Gentle Organic Waveform (nested slightly inside progress bar, fine ends) */
             h(
               'div',
-              { style: { width: '100%', maxWidth: 300 } },
+              { style: { width: '100%', maxWidth: 450 } },
               h(WaveformCanvas, { isPlaying }),
             ),
 
-            /* 2. Progress Slider (shorter, ~380px max width) */
+            /* 2. Progress Slider (extended, ~520px max width) */
             h(
               'div',
-              { style: { width: '100%', maxWidth: 380 } },
+              { style: { width: '100%', maxWidth: 520 } },
               h(Slider, {
                 value: duration ? Math.min(displayPosition, duration) : displayPosition,
                 max: duration ?? 0,
@@ -474,7 +485,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
               }),
             ),
 
-            /* 3. Timestamps below progress bar (larger font + shadow) */
+            /* 3. Timestamps below progress bar (larger font + shadow, matching 520px width) */
             h(
               'div',
               {
@@ -483,7 +494,7 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   width: '100%',
-                  maxWidth: 380,
+                  maxWidth: 520,
                   marginTop: 2,
                 },
               },

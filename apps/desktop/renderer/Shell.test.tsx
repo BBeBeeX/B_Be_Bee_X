@@ -191,6 +191,31 @@ describe('the desktop shell', () => {
     ).not.toBeNull()
     expect(container.querySelector('[data-testid="hover-bottom-bar-container"]')).not.toBeNull()
 
+    // Moving mouse to top area (clientY <= 64) reveals top bar with drag region
+    const fullscreenContainer = container.querySelector('[data-testid="fullscreen-now-playing"]') as HTMLElement
+    const topBar = container.querySelector('[data-testid="fullscreen-top-bar"]') as HTMLElement
+    expect(topBar).not.toBeNull()
+
+    await act(async () => {
+      fireEvent.mouseMove(fullscreenContainer, { clientY: 30 })
+    })
+    expect(topBar.style.transform).toBe('translateY(0)')
+    expect(topBar.style.visibility).toBe('visible')
+
+    // Moving mouse down (clientY >= 76) schedules hide of top bar
+    await act(async () => {
+      fireEvent.mouseMove(fullscreenContainer, { clientY: 100 })
+      await new Promise((r) => setTimeout(r, 300))
+    })
+    expect(topBar.style.transform).toBe('translateY(-100%)')
+
+    // Moving back to top re-reveals top bar
+    await act(async () => {
+      fireEvent.mouseMove(fullscreenContainer, { clientY: 20 })
+    })
+    expect(topBar.style.transform).toBe('translateY(0)')
+    expect(topBar.style.visibility).toBe('visible')
+
     // Click close button
     const closeBtn = container.querySelector(
       'button[aria-label="Close now playing"]',

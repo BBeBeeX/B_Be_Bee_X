@@ -201,6 +201,16 @@ export function useActiveLyricIndex(
   return activeIndex
 }
 
+export type LyricPlaybackStage =
+  | 'loading'
+  | 'prelude'
+  | 'singing'
+  | 'interlude'
+  | 'outro'
+  | 'unsynced'
+  | 'no-lyrics'
+  | 'idle'
+
 export interface CurrentLyricInfo {
   status: LyricsStatus
   currentLine?: LyricLine
@@ -214,13 +224,16 @@ export interface CurrentLyricInfo {
   isPlaying: boolean
   supportsLyricSource?: boolean
   sourceType?: 'lyric-source' | 'audio-provider' | 'cache'
+  stage: LyricPlaybackStage
+  displayCurrentLine: string
+  displayNextLine?: string
 }
 
 /**
  * High-level hook returning the current and next line for desktop lyrics.
  */
 export function useCurrentLyric(ctx: Context): CurrentLyricInfo {
-  const { status, parsed, offsetMs, supportsLyricSource, sourceType } = useLyrics(ctx)
+  const { status, trackUrn: lyricTrackUrn, parsed, offsetMs, supportsLyricSource, sourceType } = useLyrics(ctx)
   const activeIndex = useActiveLyricIndex(ctx, parsed.lines, offsetMs)
 
   const getPlayer = () => serviceOf<PlayerService>(ctx, 'player')
@@ -230,24 +243,91 @@ export function useCurrentLyric(ctx: Context): CurrentLyricInfo {
     () => getPlayer()?.state ?? IDLE_TRANSPORT_STATE,
   )
 
-  const currentLine = activeIndex >= 0 ? parsed.lines[activeIndex] : undefined
-  const nextLine =
-    activeIndex >= 0 && activeIndex + 1 < parsed.lines.length
-      ? parsed.lines[activeIndex + 1]
-      : undefined
+  const isTrackUrnMatch =
+    !transport.trackUrn || !lyricTrackUrn || transport.trackUrn === lyricTrackUrn
+  const lines = isTrackUrnMatch ? parsed.lines : []
+  const hasLines = lines.length > 0
+  const title = transport.nowPlaying?.title
+  const artist = transport.nowPlaying?.artist
+  const fallbackTitle = title ? `${title}${artist ? ` - ${artist}` : ''}` : 'BBeBee 音乐'
+
+  let stage: LyricPlaybackStage
+  let currentLine: LyricLine | undefined
+  let nextLine: LyricLine | undefined
+  let displayCurrentLine: string
+  let displayNextLine: string | undefined
+
+  if (!isTrackUrnMatch || status === 'loading-song' || status === 'loading-lyrics') {
+    stage = 'loading'
+    displayCurrentLine = '歌词加载中…'
+    displayNextLine = undefined
+  } else if (parsed.synced && hasLines) {
+    if (activeIndex === -1) {
+      stage = 'prelude'
+      const firstUpcoming =
+        lines.find((l) => l.timeMs !== undefined && l.text.trim().length > 0) ?? lines[0]
+      nextLine = firstUpcoming
+      displayCurrentLine = title ? `(前奏) ${title}` : '♪ 前奏 ♪'
+      displayNextLine = firstUpcoming?.text
+    } else {
+      currentLine = lines[activeIndex]
+      const isCurrentEmpty = !currentLine?.text || currentLine.text.trim().length === 0
+
+      // Find next upcoming non-empty lyric line
+      const upcoming = lines.slice(activeIndex + 1).find((l) => l.text.trim().length > 0)
+      nextLine = upcoming
+
+      if (isCurrentEmpty) {
+        if (upcoming) {
+          stage = 'interlude'
+          displayCurrentLine = '♪ 间奏 ♪'
+          displayNextLine = upcoming.text
+        } else {
+          stage = 'outro'
+          displayCurrentLine = '♪ 尾奏 ♪'
+          displayNextLine = undefined
+        }
+      } else {
+        stage = 'singing'
+        displayCurrentLine = currentLine?.text ?? fallbackTitle
+        displayNextLine = upcoming?.text
+      }
+    }
+  } else if (!parsed.synced && hasLines) {
+    stage = 'unsynced'
+    displayCurrentLine = fallbackTitle
+    displayNextLine = lines[0]?.text?.trim() ? lines[0].text : '纯文本歌词'
+    currentLine = lines[0]
+  } else if (status === 'no-lyrics' || (status === 'ready' && !hasLines)) {
+    stage = 'no-lyrics'
+    displayCurrentLine = fallbackTitle
+    displayNextLine = '暂无歌词'
+  } else if (status === 'error') {
+    stage = 'no-lyrics'
+    displayCurrentLine = fallbackTitle
+    displayNextLine = '歌词加载失败'
+  } else {
+    stage = 'idle'
+    displayCurrentLine = fallbackTitle
+    displayNextLine = transport.status === 'playing' ? undefined : '聆听高品质音乐'
+  }
 
   return {
     status,
     currentLine,
     nextLine,
     synced: parsed.synced,
-    title: transport.nowPlaying?.title,
-    artist: transport.nowPlaying?.artist,
+    title,
+    artist,
     album: transport.nowPlaying?.album,
     durationMs: transport.durationMs,
     positionMs: transport.positionMs,
     isPlaying: transport.status === 'playing',
     supportsLyricSource,
     sourceType,
+    stage,
+    displayCurrentLine,
+    displayNextLine,
   }
 }
+

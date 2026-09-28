@@ -126,8 +126,11 @@ export function SandboxedLayout({
 
   const parsedLyrics = useMemo(() => {
     if (!lyricsState?.lyrics?.content) return { lines: [] }
+    if (lyricsState.trackUrn && state.trackUrn && lyricsState.trackUrn !== state.trackUrn) {
+      return { lines: [] }
+    }
     return parseLrc(lyricsState.lyrics.content, { offsetMs: lyricsState.offsetMs })
-  }, [lyricsState?.lyrics?.content, lyricsState?.offsetMs])
+  }, [lyricsState?.lyrics?.content, lyricsState?.offsetMs, lyricsState?.trackUrn, state.trackUrn])
 
   const activeIndex = useMemo(() => {
     if (parsedLyrics.lines.length === 0) return -1

@@ -920,6 +920,7 @@ export class Player extends Service implements PlayerService {
       status: 'loading',
       currentItemId: entry.item.id,
       trackUrn: entry.item.trackUrn,
+      nowPlaying: undefined,
       positionMs: opts.positionMs ?? 0,
       durationMs: 0,
       bufferedMs: 0,
@@ -1261,6 +1262,7 @@ export class Player extends Service implements PlayerService {
     this.set({
       currentItemId: next.item.id,
       trackUrn: next.item.trackUrn,
+      nowPlaying: undefined,
       positionMs: 0,
       bufferedMs: 0,
       error: undefined,

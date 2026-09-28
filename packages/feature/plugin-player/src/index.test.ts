@@ -844,6 +844,20 @@ describe('stalls', () => {
     }
   })
 
+  it('clears nowPlaying metadata immediately when changing track', async () => {
+    const { player, ctx } = await harness()
+    let observedNowPlayingDuringTrackChange: any = 'initial'
+    ctx.on('player/track-changed', () => {
+      observedNowPlayingDuringTrackChange = player.state.nowPlaying
+    })
+
+    await player.playNow([urn('a')])
+    ;(player as any).transport.nowPlaying = { title: 'Track A', artist: 'Artist A' }
+
+    await player.playNow([urn('b')])
+    expect(observedNowPlayingDuringTrackChange).toBeUndefined()
+  })
+
   it('hands over a network cover URL, and the local one separately', async () => {
     /*
      * The two OS surfaces need different things: Chromium's `MediaMetadata`

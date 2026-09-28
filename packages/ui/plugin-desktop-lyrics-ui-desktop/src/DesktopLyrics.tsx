@@ -94,7 +94,13 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
   const posX = lyricsConfig?.position?.x ?? position.x
   const posY = lyricsConfig?.position?.y ?? position.y
 
-  const { status, currentLine, nextLine, title, artist, isPlaying } = useCurrentLyric(ctx)
+  const {
+    displayCurrentLine,
+    displayNextLine,
+    title,
+    artist,
+    isPlaying,
+  } = useCurrentLyric(ctx)
   const [hovered, setHovered] = useState(false)
 
   // Check if running in Electron environment with native desktopLyrics window support
@@ -129,20 +135,9 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
   useEffect(() => {
     if (!hasNativeBridge || !bridge || !isEnabled) return
 
-    let lineText = currentLine?.text
-    if (!lineText) {
-      if (status === 'loading-song' || status === 'loading-lyrics') {
-        lineText = '歌词加载中…'
-      } else if (title) {
-        lineText = `${title}${artist ? ` - ${artist}` : ''}`
-      } else {
-        lineText = 'BBeBee 音乐'
-      }
-    }
-
     void bridge.updateData({
-      currentLine: lineText,
-      nextLine: !isSingleLine && showNextLine && nextLine ? nextLine.text : undefined,
+      currentLine: displayCurrentLine,
+      nextLine: !isSingleLine && showNextLine ? displayNextLine : undefined,
       fontSize: effectiveFontSize,
       opacity: effectiveOpacity,
       locked: isLocked,
@@ -159,8 +154,8 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
     bridge,
     isEnabled,
     isLocked,
-    currentLine?.text,
-    nextLine?.text,
+    displayCurrentLine,
+    displayNextLine,
     showNextLine,
     effectiveFontSize,
     effectiveOpacity,
@@ -172,7 +167,6 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
     isPlaying,
     title,
     artist,
-    status,
   ])
 
   // 监听原生窗口拖拽位置移动并实时保存至设置（仅在数值变化时更新，彻底阻断回环）
@@ -317,18 +311,8 @@ export function DesktopLyrics({ ctx }: DesktopLyricsProps): ReactElement | null 
   if (!isEnabled) return null
 
   // Determine displayText
-  let displayText = currentLine?.text
-  if (!displayText) {
-    if (status === 'loading-song' || status === 'loading-lyrics') {
-      displayText = '歌词加载中…'
-    } else if (title) {
-      displayText = `${title}${artist ? ` - ${artist}` : ''}`
-    } else {
-      displayText = 'BBeBee Music'
-    }
-  }
-
-  const secondaryText = !isSingleLine && showNextLine && nextLine ? nextLine.text : undefined
+  const displayText = displayCurrentLine
+  const secondaryText = !isSingleLine && showNextLine ? displayNextLine : undefined
 
   return h(
     'div',

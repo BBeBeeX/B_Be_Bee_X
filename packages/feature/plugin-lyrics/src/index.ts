@@ -482,14 +482,7 @@ export class LyricsPlugin extends Service implements LyricsService {
     let artist: string | undefined = presetMetadata?.artist
     let duration = presetMetadata?.durationMs ?? 0
 
-    const playerState = this.ownCtx.player?.state
-    if (!title && playerState?.trackUrn === trackUrn && playerState.nowPlaying?.title) {
-      title = playerState.nowPlaying.title
-      artist = playerState.nowPlaying.artist ?? ''
-      duration = playerState.durationMs || 0
-    }
-
-    // Direct SQLite lookup from tracks table (fastest & most reliable)
+    // 1. Direct SQLite lookup from tracks table (fastest & strictly keyed by trackUrn)
     if ((!title || !artist) && this.ownCtx.db) {
       try {
         const rows =
@@ -529,7 +522,7 @@ export class LyricsPlugin extends Service implements LyricsService {
       }
     }
 
-    // Fallback: sources catalog query
+    // 2. Fallback: sources catalog query (strictly keyed by trackUrn)
     if ((!title || !artist) && this.ownCtx.sources) {
       try {
         const tracks = await this.ownCtx.sources.getTracks([trackUrn])
@@ -541,6 +534,14 @@ export class LyricsPlugin extends Service implements LyricsService {
       } catch {
         // ignore
       }
+    }
+
+    // 3. Fallback: Player transport state only if currently playing this exact track
+    const playerState = this.ownCtx.player?.state
+    if (!title && playerState?.trackUrn === trackUrn && playerState.nowPlaying?.title) {
+      title = playerState.nowPlaying.title
+      artist = playerState.nowPlaying.artist ?? ''
+      duration = playerState.durationMs || 0
     }
 
     if (!title) {

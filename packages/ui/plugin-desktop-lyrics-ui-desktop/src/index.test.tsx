@@ -50,10 +50,16 @@ class PlayerStub extends Service {
   get state() {
     return this.transport
   }
+
+  setPosition(ms: number) {
+    this.transport.positionMs = ms
+    this.ctx.emit('player/position', ms, this.transport.durationMs)
+    this.ctx.emit('player/state-changed', this.transport)
+  }
 }
 
 class LyricsStub extends Service {
-  private currentState = {
+  public currentState = {
     status: 'ready' as const,
     offsetMs: 0,
     lyrics: {
@@ -69,6 +75,19 @@ class LyricsStub extends Service {
 
   get state() {
     return this.currentState
+  }
+
+  setLyrics(content: string, status: any = 'ready') {
+    this.currentState = {
+      status,
+      offsetMs: 0,
+      lyrics: {
+        format: 'lrc' as const,
+        content,
+        synced: true,
+      },
+    }
+    this.ctx.emit('lyrics/changed', this.currentState)
   }
 }
 
@@ -104,7 +123,11 @@ async function createHarness() {
   await ctx.plugin(DesktopLyricsStub)
   await ctx.plugin(pluginDesktopLyricsUi)
 
-  return { ctx }
+  const player = (ctx as unknown as { player: PlayerStub }).player
+  const lyrics = (ctx as unknown as { lyrics: LyricsStub }).lyrics
+  const desktopLyrics = (ctx as unknown as { desktopLyrics: DesktopLyricsStub }).desktopLyrics
+
+  return { ctx, player, lyrics, desktopLyrics }
 }
 
 describe('DesktopLyrics', () => {
@@ -122,9 +145,38 @@ describe('DesktopLyrics', () => {
     expect(html).toContain('Second Floating Lyric')
   })
 
+  it('renders prelude with song title and upcoming first lyric', async () => {
+    const { ctx, player } = await createHarness()
+    player.setPosition(500) // Before 00:01.00
+    const html = renderToStaticMarkup(h(DesktopLyrics, { ctx }))
+
+    expect(html).toContain('(前奏) Floating Song')
+    expect(html).toContain('First Floating Lyric')
+  })
+
+  it('renders interlude symbol instead of song title and artist during blank lines', async () => {
+    const { ctx, player, lyrics } = await createHarness()
+    lyrics.setLyrics('[00:01.00]Verse 1\n[00:03.00]\n[00:06.00]Verse 2')
+    player.setPosition(4000) // At 00:03.00 blank line
+    const html = renderToStaticMarkup(h(DesktopLyrics, { ctx }))
+
+    expect(html).toContain('♪ 间奏 ♪')
+    expect(html).toContain('Verse 2')
+    expect(html).not.toContain('Floating Song - Floating Artist')
+  })
+
+  it('renders outro symbol when playback reaches trailing blank line', async () => {
+    const { ctx, player, lyrics } = await createHarness()
+    lyrics.setLyrics('[00:01.00]Verse 1\n[00:05.00]')
+    player.setPosition(6000) // At 00:05.00 blank line at end
+    const html = renderToStaticMarkup(h(DesktopLyrics, { ctx }))
+
+    expect(html).toContain('♪ 尾奏 ♪')
+  })
+
   it('returns null when invisible', async () => {
-    const { ctx } = await createHarness()
-    ctx.desktopLyrics.setVisible(false)
+    const { ctx, desktopLyrics } = await createHarness()
+    desktopLyrics.setVisible(false)
 
     const html = renderToStaticMarkup(h(DesktopLyrics, { ctx }))
     expect(html).toBe('')

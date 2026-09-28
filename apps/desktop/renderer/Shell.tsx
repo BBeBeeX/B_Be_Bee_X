@@ -242,8 +242,9 @@ export function Shell({ ctx }: { ctx: Context }) {
     entries[0]
   const [isFullscreenNowPlaying, setIsFullscreenNowPlaying] = useState(false)
   const [isTopBarHovered, setIsTopBarHovered] = useState(false)
+  const isTopBarHoveredRef = useRef(false)
+  isTopBarHoveredRef.current = isTopBarHovered
   const topBarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isDirectlyHoveringTopBarRef = useRef(false)
 
   const clearTopBarTimeout = useCallback(() => {
     if (topBarTimeoutRef.current) {
@@ -252,35 +253,33 @@ export function Shell({ ctx }: { ctx: Context }) {
     }
   }, [])
 
-  const scheduleTopBarHide = useCallback((delay = 2000) => {
+  const scheduleTopBarHide = useCallback((delay = 250) => {
     clearTopBarTimeout()
     topBarTimeoutRef.current = setTimeout(() => {
-      if (!isDirectlyHoveringTopBarRef.current) {
-        setIsTopBarHovered(false)
-      }
+      setIsTopBarHovered(false)
     }, delay)
   }, [clearTopBarTimeout])
 
   const handleFullscreenMouseMove = useCallback((e: React.MouseEvent) => {
-    if (e.clientY < 80) {
+    if (e.clientY <= 64) {
       clearTopBarTimeout()
       setIsTopBarHovered(true)
-    } else {
-      if (!topBarTimeoutRef.current && !isDirectlyHoveringTopBarRef.current) {
-        scheduleTopBarHide(2000)
+    } else if (e.clientY >= 76) {
+      if (isTopBarHoveredRef.current && !topBarTimeoutRef.current) {
+        scheduleTopBarHide(250)
       }
     }
   }, [clearTopBarTimeout, scheduleTopBarHide])
 
   const handleTopBarMouseEnter = useCallback(() => {
-    isDirectlyHoveringTopBarRef.current = true
     clearTopBarTimeout()
     setIsTopBarHovered(true)
   }, [clearTopBarTimeout])
 
-  const handleTopBarMouseLeave = useCallback(() => {
-    isDirectlyHoveringTopBarRef.current = false
-    scheduleTopBarHide(2000)
+  const handleTopBarMouseLeave = useCallback((e: React.MouseEvent) => {
+    if (e.clientY >= 52) {
+      scheduleTopBarHide(250)
+    }
   }, [scheduleTopBarHide])
 
   const [isBottomBarHovered, setIsBottomBarHovered] = useState(false)
@@ -546,8 +545,7 @@ export function Shell({ ctx }: { ctx: Context }) {
         'data-testid': 'fullscreen-now-playing',
         onMouseMove: handleFullscreenMouseMove,
         onMouseLeave: () => {
-          isDirectlyHoveringTopBarRef.current = false
-          scheduleTopBarHide(1000)
+          scheduleTopBarHide(300)
         },
         style: {
           position: 'fixed',
@@ -566,7 +564,21 @@ export function Shell({ ctx }: { ctx: Context }) {
           padding: 0,
         },
       },
-      // Unified fullscreen top bar: left close button + right window controls (auto-hides together)
+      // Top trigger sensor strip when top bar is hidden
+      h('div', {
+        'data-testid': 'top-bar-trigger-strip',
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 36,
+          zIndex: 140,
+          pointerEvents: isTopBarHovered ? 'none' : 'auto',
+        },
+        onMouseEnter: handleTopBarMouseEnter,
+      }),
+      // Unified fullscreen top bar: left close button + center drag region + right window controls
       h(
         'header',
         {
@@ -580,8 +592,8 @@ export function Shell({ ctx }: { ctx: Context }) {
             height: 52,
             minHeight: 52,
             padding: '0 16px',
-            background: 'linear-gradient(to bottom, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.15) 70%, transparent 100%)',
-            WebkitAppRegion: 'drag',
+            background: 'linear-gradient(to bottom, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0.2) 70%, transparent 100%)',
+            WebkitAppRegion: isTopBarHovered ? 'drag' : undefined,
             position: 'absolute',
             top: 0,
             left: 0,
@@ -632,7 +644,7 @@ export function Shell({ ctx }: { ctx: Context }) {
           style: {
             flex: 1,
             height: '100%',
-            WebkitAppRegion: 'drag',
+            WebkitAppRegion: isTopBarHovered ? 'drag' : undefined,
           } as ElectronCSSProperties,
         }),
         // Right: SleepTimer + WindowControls
