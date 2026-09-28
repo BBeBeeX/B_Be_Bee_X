@@ -223,6 +223,11 @@ All visual icons across desktop UI components are standardized on **Tabler Icons
 
 ## 7. Detail Screens, Sorting & Playback History Specifications
 
+### Collapsing Header & Cover Theming (`AlbumScreen`, `PlaylistDetailScreen`, `FavoritesScreen`, `LocalMusicScreen`)
+- **Spotify-style collapsing header**: The detail page's hero, action bar, and table header live in the list's `header` slot (`List` from `ui-kit-desktop`), scrolling away with the content. After ~240px of scroll (`COLLAPSE_DISTANCE`), a `StickyDetailBar` fades in — title + compact play button only — and stays pinned while rows slide under it. Local Music's 专辑 (albums) tab, which is not virtualised, reproduces the identical structure with the page's own scroll container.
+- **Sticky bar contract**: The bar is passed as the `List`'s `sticky` slot — a **direct child of the scroller** (`position: sticky` only sticks within its parent's box; nesting it in the header would scroll it away exactly when it finishes arriving). Its background wash, opacity, and title crossfade are pure functions of `scrollProgress`; `pointer-events` follows the fade so the transparent bar never eats a click meant for the hero.
+- **Cover-tinted theming**: The section background (`coverGradient(tint)`) and the sticky bar's wash take the cover's `dominantColor` (Album / Playlist — first track's artwork when the playlist has none), resolved via `useResolvedArtwork` + `useImageColor` with a one-shot canvas extraction fallback; an unreadable or missing cover falls back to the neutral brand gradient. Favorites pins the liked-songs purple (`#450af5`) as its identity tint; Local Music keeps the neutral gradient.
+
 ### Track Table Sorting & Row Interactions (`AlbumScreen`, `PlaylistDetailScreen`, `LocalMusicScreen`, `FavoritesScreen`, `CollectionScreen`)
 - **Interactive Header Columns**:
   - Clicking column headers (`#`, `标题`, `专辑`, `添加日期`, `时长` with Tabler `clock` icon, `播放量`) toggles between ascending (`asc`) and descending (`desc`) order.
@@ -239,13 +244,16 @@ All visual icons across desktop UI components are standardized on **Tabler Icons
 - **Unified Row Library Action Button (`TrackLibraryActionButton`) & Popover**:
   - Replaces previous static checkmark or favorite icon in track rows across `LocalMusicScreen`, `PlaylistDetailScreen`, `FavoritesScreen`, and `CollectionScreen`.
   - Hidden by default; smoothly fades in on row hover (`opacity: 1`).
-  - **Not in library**: displays `plus` icon (`tablerIcon('plus')`), clicking adds track directly to favorites (`library.setSaved(track.urn, true)`).
+  - **Not in library**: displays `plus` icon (`tablerIcon('plus')`), clicking adds track directly to favorites — writing **both stores**: `sources.setLoved(track.urn, true)` first, then `library.setSaved(track.urn, true)` (see the dual-write invariant below).
   - **In library / favorites / playlist / collection**: displays `heart-filled` (green heart via `tablerIcon('heart-filled')`), clicking opens a dedicated Spotify-style `SaveToPlaylistPopover` instead of a raw context menu:
     - Real-time search filter for existing playlists;
     - Inline "新建歌单" quick creation input with `plus` icon;
     - "已点赞的歌曲" group with immediate favorite toggle;
     - Playlist rows with checkbox toggles and folder rows expanding nested sub-playlists;
-    - Viewport boundary detection with horizontal/vertical auto-flipping and clamping.
+    - Viewport boundary detection with horizontal/vertical auto-flipping and clamping;
+    - A tall, steady presence: minimum height 480px (folder flyout 320px), capped by the viewport — a menu that collapses to three rows reads as broken.
+  - **In-library state is live, never a snapshot**: rows take `inLibrary` from `useTrackLibraryInfo.isTrackInLibrary` — the real-time saved set (`useSaved(ctx, 'track')`, reloaded on `library/changed`) with the row's possibly-stale `track.loved` only filling in what live data has not answered yet; the hook re-reads the changed URNs' loved flags from the catalogue on every `library/changed` event. Hardcoding `inLibrary: true` (a row being in a playlist does not mean it is favourited) or trusting a mount-time snapshot is how "unfavourited but still a heart" bugs happen.
+- **Favourite Dual-Write Invariant**: A track's "loved" lives in two stores — `track_stats.loved` (what the row's heart draws and the catalogue's `onlyLoved` answers) and its `library_items` row (what the Favourites shelf reads). **Every writer writes both**, catalogue first so the `library/changed` event the shelf write fires sees the final state: the row button, the track context menu (`trackMenuItems`), and the popover's liked toggle (`useSaveToPlaylistMenu.onToggleLiked`). A writer that touches only one store leaves a hearted track missing from Favourites — or an unfavourited row still drawing a heart.
 - **Playback Queue Coherence**:
   - Playing a single track or clicking "Play All / Play Album" passes the currently sorted/filtered track URN sequence to `ctx.player.playFromContext`.
   - Up-next playback order strictly follows the visual sorted order on screen.
@@ -256,7 +264,7 @@ All visual icons across desktop UI components are standardized on **Tabler Icons
   - Local album safety: detects `urn.startsWith('BBeBee:local:')` to omit download button in header and row items, and removes download menu item.
   - Three-dot menu: "加入合集" renamed to "加入文件夹", "添加至最喜欢的音乐" updated to "添加到音乐库/从音乐库中删除", redundant "加入歌单" and "转至专辑" items removed.
 - **Favorites Screen Parity (`FavoritesScreen`)**:
-  - Aligned with `LocalMusicScreen`: purple gradient background (`#4c1d95`), no-cover text Hero Header ("已点赞的歌曲"), action bar with 56px play button (`play-filled`), shuffle (`shuffle`), search input, and sort dropdown (`arrows-sort`).
+  - Aligned with `LocalMusicScreen`: liked-songs purple gradient (`#450af5` via `coverGradient`), no-cover text Hero Header ("已点赞的歌曲"), action bar with 56px play button (`play-filled`), shuffle (`shuffle`), search input, and sort dropdown (`arrows-sort`).
   - Rows render as `FavoriteTrackTableRow`: index/hover play, 40px cover art, title/artist, album, hover `TrackLibraryActionButton` (`heart-filled` / `heart` submenu), hover `dots` more button, and duration.
 
 ### Local Music Dual Views & Pagination (`LocalMusicScreen`)

@@ -46,8 +46,9 @@ useAddToCollection(ctx)                 → { open(title, itemUrns, anchor?, opt
 - **智能歌单在“加入歌单”子菜单里 disabled**：它的曲目来自规则，没有可写的行（服务会拒绝；会抛错的菜单项比明显不可用更糟）。
 - **锚点可选**：右键/长按带坐标，`⋯` 按钮没有——没有锚点时菜单落在屏幕中上，移动端忽略坐标（底部 sheet）。
 - **移动与根目录感知**：通过 `currentFolderId` 自动排除当前所在文件夹；处于子文件夹内的项提供“移至根目录”快捷项；移动操作自动触发原文件夹移除与目标文件夹添加。
+- **收藏双写不变量**：喜欢/取消喜欢——曲目右键条目与 `useSaveToPlaylistMenu` 弹层里「已点赞的歌曲」的开关——同时写两个存储：先 `sources.setLoved`（画红心、驱动 `onlyLoved`），再 `library.setSaved`（收藏架读这边）。目录先行是为了 `library/changed` 事件触发监听方重读时已是最终状态；只写一边就会出现“取消收藏了但行还是红心”。
 - 打开菜单时才拉取歌单列表，慢的 `listPlaylists` 不阻塞菜单本身；子菜单晚一拍填充。
 
 ## 测试（`src/index.test.tsx`）
 
-29 个用例：曲目条目的顺序、缺服务时条目消失、`remove-from-playlist` 只在歌单内出现、取消喜欢同时写 `track_stats` 与 `library_items`、入队/下载/转专辑的调用、睡眠定时器预设与自定义时间解析/取消、子菜单的创建/选择/智能歌单禁用、专辑 `delete-album` 选项触发、歌单与合集条目、文件夹间移动与移至根目录、`useTrackMenu` 的 open/close 状态。
+32 个用例：曲目条目的顺序、缺服务时条目消失、`remove-from-playlist` 只在歌单内出现、取消喜欢同时写 `track_stats` 与 `library_items`（右键与弹层开关两条路径都 pin 了双写与先后顺序）、入队/下载/转专辑的调用、睡眠定时器预设与自定义时间解析/取消、子菜单的创建/选择/智能歌单禁用、专辑 `delete-album` 选项触发、歌单与合集条目、文件夹间移动与移至根目录、`useTrackMenu` 的 open/close 状态。
