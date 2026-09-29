@@ -31,6 +31,8 @@ export interface StoreConfig {
   fileName?: string
   /** Milliseconds to batch writes over. 0 writes synchronously. */
   flushDelayMs?: number
+  /** Preloaded initial store data to skip redundant disk reads during startup. */
+  initialData?: Record<string, unknown>
 }
 
 /** The shared, mutable document. One per app, regardless of namespaces. */
@@ -70,6 +72,10 @@ export class StoreFs extends Service implements StoreService {
     super(ctx, 'store')
     this.fileName = config.fileName ?? 'store.json'
     this.flushDelayMs = config.flushDelayMs ?? 50
+    if (config.initialData) {
+      this.doc.data = { ...config.initialData }
+      this.doc.loaded = true
+    }
   }
 
   async [Service.init]() {

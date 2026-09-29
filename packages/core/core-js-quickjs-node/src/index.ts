@@ -54,7 +54,8 @@ export interface JsQuickJsConfig {
 export class JsQuickJsNode extends Service implements JsService {
   readonly engine = { name: 'quickjs-emscripten', version: '0.32.0' }
 
-  private module!: QuickJSWASMModule
+  private module?: QuickJSWASMModule
+  private modulePromise?: Promise<QuickJSWASMModule>
   /** Every live realm, so unloading the service cannot leak a native handle. */
   private readonly realms = new Set<QuickJsRealm>()
 
@@ -65,20 +66,26 @@ export class JsQuickJsNode extends Service implements JsService {
     super(ctx, 'js')
   }
 
-  async [Service.init]() {
-    // One WASM module for the process; realms are cheap, the module is not.
-    this.module = await newQuickJSWASMModuleFromVariant(variant)
+  private async getModule(): Promise<QuickJSWASMModule> {
+    if (!this.module) {
+      this.modulePromise ??= newQuickJSWASMModuleFromVariant(variant)
+      this.module = await this.modulePromise
+    }
+    return this.module
+  }
 
-    // A realm outliving the service is a leaked WASM allocation that nothing
-    // will ever free. Copied first: `dispose()` removes from the set.
+  async [Service.init]() {
+    // QuickJS WASM module is compiled lazily on first `createRealm` call,
+    // keeping startup instantaneous.
     return () => {
       for (const realm of [...this.realms]) realm.dispose()
     }
   }
 
   async createRealm(limits: Partial<JsLimits> = {}): Promise<JsRealm> {
+    const module = await this.getModule()
     const resolved: JsLimits = { ...DEFAULT_JS_LIMITS, ...this.config.limits, ...limits }
-    const realm = new QuickJsRealm(this.module, resolved, () => this.realms.delete(realm))
+    const realm = new QuickJsRealm(module, resolved, () => this.realms.delete(realm))
     // An unhandled rejection inside a realm is the sandbox's business to
     // surface: nothing else can see it, and the caller has already moved on.
     realm.onJobError = (error) => {

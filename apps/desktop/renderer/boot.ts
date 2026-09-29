@@ -62,7 +62,7 @@ import logConsole from '@BBeBee/plugin-log-console'
 import logFile from '@BBeBee/plugin-log-file'
 
 import { bundled } from '../generated/plugins.js'
-import { BOOTSTRAP_SERVICES, ENABLED } from './plugins.js'
+import { BOOTSTRAP_SERVICES, INITIAL_ENABLED } from './plugins.js'
 
 declare global {
   interface Window {
@@ -506,12 +506,13 @@ export async function boot(): Promise<App> {
 
   // Determine initial audio engine: check persisted settings in store.json
   let initialEngine: 'wasapi' | 'webaudio' = hostPlatform() === 'windows' ? 'wasapi' : 'webaudio'
+  let preloadedStoreData: Record<string, unknown> | undefined
   try {
     const storeUri = `${pathSnapshot.appData}/store.json`
     const raw = await window.BBeBeeBridge?.call('fs', 'readFile', [storeUri])
     if (raw && typeof raw === 'string') {
-      const data = JSON.parse(raw) as Record<string, unknown>
-      const prefs = data['preferences'] as { audioOutputEngine?: 'wasapi' | 'webaudio' } | undefined
+      preloadedStoreData = JSON.parse(raw) as Record<string, unknown>
+      const prefs = preloadedStoreData['preferences'] as { audioOutputEngine?: 'wasapi' | 'webaudio' } | undefined
       if (prefs?.audioOutputEngine === 'wasapi' || prefs?.audioOutputEngine === 'webaudio') {
         initialEngine = prefs.audioOutputEngine
       }
@@ -525,7 +526,7 @@ export async function boot(): Promise<App> {
     bootstrap: [
       [PathsBridge, pathSnapshot],
       FsBridge,
-      StoreFs,
+      [StoreFs, { initialData: preloadedStoreData }],
       DbBridge,
       // The OS-facing trio. Each degrades to "no OS surface" rather than
       // throwing when the platform does not provide one, so a Linux box with
@@ -600,7 +601,7 @@ export async function boot(): Promise<App> {
         : ([[logFile, { level: 2 }]] as const)),
     ],
     registry: bundled,
-    config: { plugins: ENABLED },
+    config: { plugins: INITIAL_ENABLED },
   })
   await app.start()
 

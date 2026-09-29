@@ -243,6 +243,11 @@ const URI_ARGS: Record<string, number[]> = {
  */
 
 export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promise<Host> {
+  let markReady!: () => void
+  const isReady = new Promise<void>((resolve) => {
+    markReady = resolve
+  })
+
   const maxOpenStreams = options.maxOpenStreams ?? 64
   const maxOpenRequests = options.maxOpenRequests ?? 32
   const transactionIdleMs = options.transactionIdleMs ?? 30_000
@@ -355,6 +360,7 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
   /* ── Generic method dispatch ──────────────────────────────────────── */
 
   ipc.handle(CH.call, async (event: CallerLike, ...rest): Promise<BridgeEnvelope> => {
+    await isReady
     try {
       const [service, method, args, token] = rest as unknown as [
         BridgedService,
@@ -722,6 +728,8 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     transactions.delete(token)
     open.finish(commit)
   })
+
+  markReady()
 
   return {
     ctx,

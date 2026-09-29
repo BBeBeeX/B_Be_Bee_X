@@ -135,7 +135,6 @@ export class Cache extends Service implements CacheService {
     try {
       await this.ownCtx.fs.mkdir(this.artworkDir, { recursive: true })
       await this.ownCtx.fs.mkdir(this.streamDir, { recursive: true })
-      await this.sweep()
     } catch (error) {
       // A cache with nowhere to land is a cache that does nothing; playback
       // and covers still work, so this is a warning rather than a failure.
@@ -148,6 +147,15 @@ export class Cache extends Service implements CacheService {
         this.resolve(urn, prefs, next),
     )
     const offError = this.ownCtx.on('player/error', (_error, urn: string) => this.invalidate(urn))
+
+    // Initial sweep runs deferred in the background so it never blocks app startup.
+    const initialSweepTimer = setTimeout(() => {
+      if (this.disposed) return
+      void this.sweep().catch((error: unknown) => {
+        this.ownCtx.logger.warn(`cache: sweep failed: ${String(error)}`)
+      })
+    }, 5_000)
+
     if (this.config.sweepIntervalMs > 0) {
       this.sweepTimer = setInterval(() => {
         if (this.disposed) return
@@ -164,6 +172,7 @@ export class Cache extends Service implements CacheService {
       offResolve()
       offError()
       this.disposed = true
+      clearTimeout(initialSweepTimer)
       if (this.sweepTimer) clearInterval(this.sweepTimer)
       for (const controller of this.controllers.values()) controller.abort()
       this.controllers.clear()
@@ -583,7 +592,7 @@ export class Cache extends Service implements CacheService {
    * ⚠️ In-flight targets are kept even though no row names them yet. A partial
    * transfer is work, not garbage.
    */
-  private async sweep(): Promise<void> {
+  async sweep(): Promise<void> {
     await this.prune(ARTWORK)
     await this.prune(STREAM)
     for (const [className, dir] of [

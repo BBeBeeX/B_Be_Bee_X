@@ -268,6 +268,7 @@ function createWindow(): BrowserWindow {
     minHeight: 480,
     backgroundColor: '#05060A',
     frame: false,
+    show: false,
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hidden' as const } : {}),
     autoHideMenuBar: true,
     icon: iconCandidate,
@@ -279,6 +280,10 @@ function createWindow(): BrowserWindow {
       sandbox: true,
       preload: join(here, '../preload/index.cjs'),
     },
+  })
+
+  window.once('ready-to-show', () => {
+    window.show()
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
@@ -1263,6 +1268,10 @@ void app.whenReady().then(async () => {
 
   registerHandlers()
 
+  tray = createTray()
+  mainWindow = createWindow()
+  updateTaskbar(currentTaskbarState)
+
   // A holder rather than a bare binding: `systemHost` needs to reach the host
   // to emit events, and it is constructed as an argument *to* the call that
   // creates it. The indirection is the knot being tied, not an accident.
@@ -1332,10 +1341,6 @@ void app.whenReady().then(async () => {
    * that never fires is worse than no hook (docs/11 §4.3).
    */
   powerMonitor.on('suspend', () => bridge.host?.emit({ topic: 'will-suspend' }))
-
-  tray = createTray()
-  mainWindow = createWindow()
-  updateTaskbar(currentTaskbarState)
 
   app.on('activate', () => {
     showWindow()

@@ -342,6 +342,7 @@ describe('plugin-cache housekeeping', () => {
     await tick()
     await h.ctx.plugin(plugin, {})
     await tick()
+    await (h.ctx.cache as Cache).sweep()
 
     expect(await h.ctx.fs.exists(orphan), 'an unrecorded file is garbage').toBe(false)
     expect(await h.entries('stream'), 'a row whose file is gone is garbage').toHaveLength(0)

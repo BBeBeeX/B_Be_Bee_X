@@ -11,18 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' BBeBee-plugin:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: bbebee-file: https:; media-src 'self' blob: data: http: https: bbebee-file:; connect-src 'self' ws: wss: http: https:"
     />
-    <script>
-      (function () {
-        if (location.search.includes('desktop-lyrics') || location.hash.includes('desktop-lyrics')) {
-          document.documentElement.classList.add('is-lyrics-window')
-          document.documentElement.style.background = 'transparent'
-        }
-        if (location.search.includes('mini-player') || location.hash.includes('mini-player')) {
-          document.documentElement.classList.add('is-mini-player-window')
-          document.documentElement.style.background = 'transparent'
-        }
-      })()
-    </script>
+    <script type="module" src="./window-init.ts"></script>
     <title>BBeBee</title>
     <link rel="icon" type="image/png" href="./assets/logo-badge.png" />
     <style>
@@ -352,10 +341,83 @@
       /* Immersive panes scroll when they must, but never show a scrollbar. */
       .no-scrollbar { scrollbar-width: none; }
       .no-scrollbar::-webkit-scrollbar { display: none; }
+
+      /* ── Startup Splash Screen ── */
+      #splash-screen {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--black-950, #05060A);
+        z-index: 99999;
+        user-select: none;
+        -webkit-app-region: drag;
+      }
+
+      .splash-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+      }
+
+      .splash-logo {
+        width: 72px;
+        height: 72px;
+        object-fit: contain;
+        filter: drop-shadow(0 0 16px rgba(111, 155, 255, 0.4));
+        animation: splash-pulse 2s ease-in-out infinite;
+      }
+
+      .splash-spinner {
+        width: 120px;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 2px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .splash-spinner-bar {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 40%;
+        background: linear-gradient(90deg, transparent, #5F87FF, #91B0FF, transparent);
+        border-radius: 2px;
+        animation: splash-indeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+
+      @keyframes splash-pulse {
+        0%, 100% { transform: scale(1); opacity: 0.92; }
+        50% { transform: scale(1.04); opacity: 1; }
+      }
+
+      @keyframes splash-indeterminate {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(250%); }
+      }
+
+      .is-lyrics-window #splash-screen,
+      .is-mini-player-window #splash-screen {
+        display: none !important;
+      }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="splash-screen">
+        <div class="splash-content">
+          <img src="./assets/logo-badge.png" class="splash-logo" alt="BBeBee Logo" />
+          <div class="splash-spinner">
+            <div class="splash-spinner-bar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="./main.tsx"></script>
   </body>
 </html>

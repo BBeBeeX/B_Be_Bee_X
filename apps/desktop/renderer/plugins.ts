@@ -110,3 +110,29 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-share': {},
   '@BBeBee/plugin-share-ui-desktop': {},
 }
+
+/**
+ * Plugins deferred until after the first frame has rendered.
+ * These are not needed for initial screen rendering and loading them
+ * during idle reduces initial startup time without changing the feature set.
+ */
+export const DEFERRED_PLUGIN_IDS = [
+  '@BBeBee/plugin-local-scanner',
+  '@BBeBee/plugin-local-scanner-ui-desktop',
+  '@BBeBee/plugin-download',
+  '@BBeBee/plugin-download-ui-desktop',
+  '@BBeBee/plugin-share',
+  '@BBeBee/plugin-share-ui-desktop',
+  '@BBeBee/plugin-visualizer',
+  '@BBeBee/plugin-visualizer-ui-desktop',
+  '@BBeBee/plugin-sleep-timer',
+  '@BBeBee/plugin-history',
+  '@BBeBee/plugin-history-ui-desktop',
+] as const
+
+export const INITIAL_ENABLED: NonNullable<AppConfig['plugins']> = Object.fromEntries(
+  Object.entries(ENABLED).filter(
+    ([id]) => !DEFERRED_PLUGIN_IDS.includes(id as (typeof DEFERRED_PLUGIN_IDS)[number]),
+  ),
+)
+

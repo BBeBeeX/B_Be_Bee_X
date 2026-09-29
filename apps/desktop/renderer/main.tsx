@@ -11,6 +11,7 @@ import { boot } from './boot.js'
 import { Shell } from './Shell.js'
 import { DesktopLyricsWindow } from './DesktopLyricsWindow.js'
 import { MiniPlayerWindow } from '@BBeBee/plugin-mini-player-ui-desktop'
+import { DEFERRED_PLUGIN_IDS } from './plugins.js'
 
 const root = createRoot(document.getElementById('root')!)
 
@@ -63,6 +64,22 @@ if (isMiniPlayerWindow) {
     .then(async (app) => {
       const ctx = await app.ready(['ui'], { timeoutMs: 10_000 })
       root.render(h(StrictMode, null, h(Shell, { ctx })))
+
+      // Load deferred non-first-screen plugins during idle after first frame
+      const scheduleIdle =
+        typeof window !== 'undefined' && 'requestIdleCallback' in window
+          ? window.requestIdleCallback
+          : (cb: () => void) => setTimeout(cb, 200)
+
+      scheduleIdle(async () => {
+        for (const id of DEFERRED_PLUGIN_IDS) {
+          try {
+            await app.loadPlugin(id)
+          } catch (error) {
+            ctx.logger?.warn?.(`deferred plugin ${id} failed to load: ${String(error)}`)
+          }
+        }
+      })
     })
   .catch((error: unknown) => {
     // A boot failure must be visible, not a blank window.

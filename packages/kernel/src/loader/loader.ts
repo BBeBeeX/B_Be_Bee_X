@@ -93,118 +93,110 @@ export async function loadPlugins(
   options: LoadOptions = {},
 ): Promise<LoadedPlugin[]> {
   const quarantineAfter = options.quarantineAfter ?? 2
-  const results: LoadedPlugin[] = []
+  return Promise.all(
+    plugins.map(async (inst): Promise<LoadedPlugin> => {
+      const entry = registry[inst.pluginId]
 
-  for (const inst of plugins) {
-    const entry = registry[inst.pluginId]
-
-    if (!entry) {
-      const error = new Error(`plugin ${inst.pluginId} is configured but not in the registry`)
-      ctx.logger.warn(error.message)
-      ctx.emit('plugin/failed', inst.pluginId, error)
-      results.push({ ...ids(inst), state: 'missing', error })
-      continue
-    }
-
-    const failures = options.failCounts?.[inst.pluginId] ?? 0
-    if (failures >= quarantineAfter) {
-      ctx.logger.warn(
-        `plugin ${inst.pluginId} is quarantined after ${failures} consecutive failures`,
-      )
-      results.push({ ...ids(inst), state: 'quarantined' })
-      continue
-    }
-
-    // Fail closed: a plugin that is neither bundled nor explicitly granted
-    // does not silently receive whatever its own manifest asked for.
-    const granted = options.grants?.[inst.pluginId]
-    if (!entry.builtin && !granted && entry.manifest.capabilities.length > 0) {
-      const error = new Error(
-        `plugin ${inst.pluginId} requests [${entry.manifest.capabilities.join(', ')}] ` +
-          `but has no capability grant; install it to approve`,
-      )
-      ctx.logger.warn(error.message)
-      results.push({ ...ids(inst), state: 'ungranted', error })
-      continue
-    }
-
-    try {
-      let plugin = entry.plugin
-      if (!plugin && entry.load) {
-        try {
-          const mod = await entry.load()
-          plugin =
-            mod && typeof mod === 'object' && 'default' in mod && mod.default
-              ? (mod.default as Plugin)
-              : (mod as Plugin)
-          entry.plugin = plugin
-        } catch (cause) {
-          const error = cause instanceof Error ? cause : new Error(String(cause))
-          ctx.logger.error(
-            `failed to dynamically load plugin module for ${inst.pluginId}: ${error.message}`,
-          )
-          ctx.emit('plugin/failed', inst.pluginId, error)
-          results.push({ ...ids(inst), state: 'failed', error })
-          continue
-        }
-      }
-
-      if (!plugin) {
-        const error = new Error(
-          `plugin ${inst.pluginId} provides neither a plugin instance nor a load function`,
-        )
-        ctx.logger.error(error.message)
+      if (!entry) {
+        const error = new Error(`plugin ${inst.pluginId} is configured but not in the registry`)
+        ctx.logger.warn(error.message)
         ctx.emit('plugin/failed', inst.pluginId, error)
-        results.push({ ...ids(inst), state: 'failed', error })
-        continue
+        return { ...ids(inst), state: 'missing', error }
       }
 
-      const base = scopeContext(ctx, {
-        pluginId: inst.pluginId,
-        requested: entry.manifest.capabilities,
-        ...(granted ? { granted } : {}),
-      })
-      const scoped = options.deriveContext?.(base, inst, entry.manifest) ?? base
-
-      const fiber = await scoped.plugin(plugin, inst.config)
-
-      // `await ctx.plugin()` resolves as soon as the fiber settles — which
-      // includes settling into PENDING because an injected service never
-      // arrived. Reporting that as `active` makes the plugin inspector claim
-      // a plugin is healthy while it has never run.
-      if (fiber.state !== FiberState.ACTIVE) {
-        const waitingFor = missingInjections(scoped, plugin)
+      const failures = options.failCounts?.[inst.pluginId] ?? 0
+      if (failures >= quarantineAfter) {
         ctx.logger.warn(
-          `plugin ${inst.pluginId} is ${fiberStateName(fiber.state)}` +
-            (waitingFor.length ? `, waiting for: ${waitingFor.join(', ')}` : ''),
+          `plugin ${inst.pluginId} is quarantined after ${failures} consecutive failures`,
         )
-        results.push({
-          ...ids(inst),
-          state: 'pending',
-          waitingFor,
-          dispose: () => fiber.dispose(),
-        })
-        continue
+        return { ...ids(inst), state: 'quarantined' }
       }
 
-      ctx.emit('plugin/loaded', inst.pluginId)
-      results.push({
-        ...ids(inst),
-        state: 'active',
-        dispose: async () => {
-          await fiber.dispose()
-          ctx.emit('plugin/unloaded', inst.pluginId)
-        },
-      })
-    } catch (cause) {
-      const error = cause instanceof Error ? cause : new Error(String(cause))
-      ctx.logger.error(`plugin ${inst.pluginId} failed to load: ${error.message}`)
-      ctx.emit('plugin/failed', inst.pluginId, error)
-      results.push({ ...ids(inst), state: 'failed', error })
-    }
-  }
+      // Fail closed: a plugin that is neither bundled nor explicitly granted
+      // does not silently receive whatever its own manifest asked for.
+      const granted = options.grants?.[inst.pluginId]
+      if (!entry.builtin && !granted && entry.manifest.capabilities.length > 0) {
+        const error = new Error(
+          `plugin ${inst.pluginId} requests [${entry.manifest.capabilities.join(', ')}] ` +
+            `but has no capability grant; install it to approve`,
+        )
+        ctx.logger.warn(error.message)
+        return { ...ids(inst), state: 'ungranted', error }
+      }
 
-  return results
+      try {
+        let plugin = entry.plugin
+        if (!plugin && entry.load) {
+          try {
+            const mod = await entry.load()
+            plugin =
+              mod && typeof mod === 'object' && 'default' in mod && mod.default
+                ? (mod.default as Plugin)
+                : (mod as Plugin)
+            entry.plugin = plugin
+          } catch (cause) {
+            const error = cause instanceof Error ? cause : new Error(String(cause))
+            ctx.logger.error(
+              `failed to dynamically load plugin module for ${inst.pluginId}: ${error.message}`,
+            )
+            ctx.emit('plugin/failed', inst.pluginId, error)
+            return { ...ids(inst), state: 'failed', error }
+          }
+        }
+
+        if (!plugin) {
+          const error = new Error(
+            `plugin ${inst.pluginId} provides neither a plugin instance nor a load function`,
+          )
+          ctx.logger.error(error.message)
+          ctx.emit('plugin/failed', inst.pluginId, error)
+          return { ...ids(inst), state: 'failed', error }
+        }
+
+        const base = scopeContext(ctx, {
+          pluginId: inst.pluginId,
+          requested: entry.manifest.capabilities,
+          ...(granted ? { granted } : {}),
+        })
+        const scoped = options.deriveContext?.(base, inst, entry.manifest) ?? base
+
+        const fiber = await scoped.plugin(plugin, inst.config)
+
+        // `await ctx.plugin()` resolves as soon as the fiber settles — which
+        // includes settling into PENDING because an injected service never
+        // arrived. Reporting that as `active` makes the plugin inspector claim
+        // a plugin is healthy while it has never run.
+        if (fiber.state !== FiberState.ACTIVE) {
+          const waitingFor = missingInjections(scoped, plugin)
+          ctx.logger.warn(
+            `plugin ${inst.pluginId} is ${fiberStateName(fiber.state)}` +
+              (waitingFor.length ? `, waiting for: ${waitingFor.join(', ')}` : ''),
+          )
+          return {
+            ...ids(inst),
+            state: 'pending',
+            waitingFor,
+            dispose: () => fiber.dispose(),
+          }
+        }
+
+        ctx.emit('plugin/loaded', inst.pluginId)
+        return {
+          ...ids(inst),
+          state: 'active',
+          dispose: async () => {
+            await fiber.dispose()
+            ctx.emit('plugin/unloaded', inst.pluginId)
+          },
+        }
+      } catch (cause) {
+        const error = cause instanceof Error ? cause : new Error(String(cause))
+        ctx.logger.error(`plugin ${inst.pluginId} failed to load: ${error.message}`)
+        ctx.emit('plugin/failed', inst.pluginId, error)
+        return { ...ids(inst), state: 'failed', error }
+      }
+    }),
+  )
 }
 
 /**
