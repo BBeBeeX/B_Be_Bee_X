@@ -131,7 +131,7 @@ function renderBackground(
   height: number,
   themeColor: string,
   mode: BackgroundMode,
-  contentMidY = 450,
+  contentMidY = 480,
 ) {
   if (mode === "black") {
     ctx.fillStyle = "#000000"
@@ -168,13 +168,13 @@ export async function generateTrackCardCanvas(
   canvas.height = height
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!
 
-  // Floating Card dimensions
+  // Floating Card dimensions (vertically centered, balanced 530px height)
   const cardW = 440
-  const cardH = 580
+  const cardH = 530
   const cardX = (width - cardW) / 2
-  const cardY = 160
+  const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
-  const contentMidY = cardY + cardH * 0.5
+  const contentMidY = Math.round(cardY + cardH * 0.5)
 
   // 1. Draw overall background (gradient to half of share content height)
   renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
@@ -193,7 +193,7 @@ export async function generateTrackCardCanvas(
   const artW = 380
   const artH = 380
   const artX = cardX + (cardW - artW) / 2
-  const artY = cardY + 28
+  const artY = cardY + 24
   const artRadius = 16
 
   const coverImg = track.artwork ? await loadImage(track.artwork) : null
@@ -217,27 +217,27 @@ export async function generateTrackCardCanvas(
   // Song Title
   ctx.save()
   ctx.fillStyle = "#FFFFFF"
-  ctx.font = "bold 24px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
   const textX = artX
-  const titleY = artY + artH + 24
+  const titleY = artY + artH + 18
   fillTruncatedText(ctx, track.title, textX, titleY, cardW - 60)
 
   // Artist
   ctx.fillStyle = "#B3B9C9"
-  ctx.font = "500 17px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  const artistY = titleY + 34
+  ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const artistY = titleY + 30
   fillTruncatedText(ctx, track.artist, textX, artistY, cardW - 60)
   ctx.restore()
 
-  // Logo (enlarged to 160px, aligned to bottom-left)
+  // Logo (140px, aligned to bottom-left with 20px bottom padding)
   const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
   if (logoImg) {
-    const logoW = 160
+    const logoW = 140
     const logoH = (logoW / logoImg.width) * logoImg.height
-    const logoX = cardX + 22
-    const logoY = cardY + cardH - logoH - 16
+    const logoX = cardX + 26
+    const logoY = cardY + cardH - logoH - 20
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 
@@ -271,11 +271,11 @@ export async function generatePlaylistCardCanvas(
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!
 
   const cardW = 440
-  const cardH = 580
+  const cardH = 530
   const cardX = (width - cardW) / 2
-  const cardY = 160
+  const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
-  const contentMidY = cardY + cardH * 0.5
+  const contentMidY = Math.round(cardY + cardH * 0.5)
 
   renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
 
@@ -292,7 +292,7 @@ export async function generatePlaylistCardCanvas(
   const artW = 380
   const artH = 380
   const artX = cardX + (cardW - artW) / 2
-  const artY = cardY + 28
+  const artY = cardY + 24
   const artRadius = 16
 
   const coverImg = playlist.artwork ? await loadImage(playlist.artwork) : null
@@ -315,28 +315,28 @@ export async function generatePlaylistCardCanvas(
   // Playlist Name
   ctx.save()
   ctx.fillStyle = "#FFFFFF"
-  ctx.font = "bold 24px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
   const textX = artX
-  const titleY = artY + artH + 24
+  const titleY = artY + artH + 18
   fillTruncatedText(ctx, playlist.name, textX, titleY, cardW - 60)
 
   // Subtitle / Track count
   ctx.fillStyle = "#B3B9C9"
-  ctx.font = "500 17px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  const artistY = titleY + 34
+  ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const artistY = titleY + 30
   const subtitle = playlist.trackCount > 0 ? `歌单 • ${playlist.trackCount} 首歌曲` : "歌单"
   fillTruncatedText(ctx, subtitle, textX, artistY, cardW - 60)
   ctx.restore()
 
-  // Logo (enlarged to 160px, aligned to bottom-left)
+  // Logo (140px, aligned to bottom-left with 20px bottom padding)
   const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
   if (logoImg) {
-    const logoW = 160
+    const logoW = 140
     const logoH = (logoW / logoImg.width) * logoImg.height
-    const logoX = cardX + 22
-    const logoY = cardY + cardH - logoH - 16
+    const logoX = cardX + 26
+    const logoY = cardY + cardH - logoH - 20
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 
@@ -370,11 +370,11 @@ export async function generateAlbumCardCanvas(
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!
 
   const cardW = 440
-  const cardH = 580
+  const cardH = 530
   const cardX = (width - cardW) / 2
-  const cardY = 160
+  const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
-  const contentMidY = cardY + cardH * 0.5
+  const contentMidY = Math.round(cardY + cardH * 0.5)
 
   renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
 
@@ -391,7 +391,7 @@ export async function generateAlbumCardCanvas(
   const artW = 380
   const artH = 380
   const artX = cardX + (cardW - artW) / 2
-  const artY = cardY + 28
+  const artY = cardY + 24
   const artRadius = 16
 
   const coverImg = album.artwork ? await loadImage(album.artwork) : null
@@ -414,17 +414,17 @@ export async function generateAlbumCardCanvas(
   // Album Title
   ctx.save()
   ctx.fillStyle = "#FFFFFF"
-  ctx.font = "bold 24px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
   const textX = artX
-  const titleY = artY + artH + 24
+  const titleY = artY + artH + 18
   fillTruncatedText(ctx, album.title, textX, titleY, cardW - 60)
 
   // Subtitle (Artist • Track Count)
   ctx.fillStyle = "#B3B9C9"
-  ctx.font = "500 17px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  const artistY = titleY + 34
+  ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const artistY = titleY + 30
   const subtitleParts = ["专辑"]
   if (album.artist) subtitleParts.push(album.artist)
   if (album.trackCount > 0) subtitleParts.push(`${album.trackCount} 首歌曲`)
@@ -432,13 +432,13 @@ export async function generateAlbumCardCanvas(
   fillTruncatedText(ctx, subtitleParts.join(" • "), textX, artistY, cardW - 60)
   ctx.restore()
 
-  // Logo (enlarged to 160px, aligned to bottom-left)
+  // Logo (140px, aligned to bottom-left with 20px bottom padding)
   const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
   if (logoImg) {
-    const logoW = 160
+    const logoW = 140
     const logoH = (logoW / logoImg.width) * logoImg.height
-    const logoX = cardX + 22
-    const logoY = cardY + cardH - logoH - 16
+    const logoX = cardX + 26
+    const logoY = cardY + cardH - logoH - 20
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 
@@ -478,7 +478,7 @@ export async function generateLyricsCardCanvas(
   const cardX = (width - cardW) / 2
   const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
-  const contentMidY = cardY + cardH * 0.5
+  const contentMidY = Math.round(cardY + cardH * 0.5)
 
   // 1. Draw overall background (gradient to half of share content height)
   renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)

@@ -32,20 +32,24 @@ export function ShareCardPreview({
   if (backgroundMode === 'black') {
     backgroundStyle = '#000000'
   } else if (backgroundMode === 'gradient') {
-    backgroundStyle = `linear-gradient(180deg, ${themeColor} 0%, ${themeColor} 20%, #000000 50%, #000000 100%)`
+    backgroundStyle = `linear-gradient(180deg, ${themeColor} 0%, ${themeColor} 17.5%, #000000 50%, #000000 100%)`
   } else {
     backgroundStyle = themeColor
   }
 
   const isLyricsMode = Boolean(lyrics && lyrics.length > 0)
   const displayArtwork = normalizeArtworkUrl(artwork)
+  const lineCount = isLyricsMode ? Math.max(1, Math.min(6, lyrics!.length)) : 0
+  const lyricsCardH = isLyricsMode
+    ? Math.round(Math.min(390, Math.max(220, 130 + lineCount * 36)) * (252 / 540))
+    : 247
 
   return h(
     'div',
     {
       style: {
-        width: 250,
-        height: 440,
+        width: 252,
+        height: 448,
         borderRadius: 20,
         background: backgroundStyle,
         position: 'relative',
@@ -55,178 +59,60 @@ export function ShareCardPreview({
         justifyContent: 'center',
         overflow: 'hidden',
         boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 0, 0, 0.4)',
-        padding: 16,
         boxSizing: 'border-box',
         userSelect: 'none',
       },
     },
-    // Floating Card
+    // Floating Card (205px wide, strictly centered, matching canvas proportions)
     h(
       'div',
       {
         style: {
-          width: '100%',
-          borderRadius: 16,
+          width: 205,
+          height: isLyricsMode ? lyricsCardH : 247,
+          borderRadius: 11,
           position: 'relative',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 12px 30px rgba(0, 0, 0, 0.45)',
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.55)',
           background: isLyricsMode ? themeColor : '#000000',
+          boxSizing: 'border-box',
+          padding: isLyricsMode ? '9px 10px 7px 10px' : '11px 14px 9px 14px',
         },
       },
-      // Inner card container
-      h(
-        'div',
-        {
-          style: {
-            background: 'transparent',
-            padding: isLyricsMode ? '12px 14px 8px 14px' : 14,
-            display: 'flex',
-            flexDirection: 'column',
-            width: '100%',
-            height: '100%',
-            boxSizing: 'border-box',
-          },
-        },
-        isLyricsMode
-          ? // Lyrics Card Content (bright cover theme color, crisp white text)
+      isLyricsMode
+        ? // Lyrics Card Content (bright cover theme color, crisp white text)
+          h(
+            'div',
+            {
+              style: {
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                width: '100%',
+              },
+            },
+            // Mini Header
             h(
               'div',
-              { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-              // Mini Header
-              h(
-                'div',
-                { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                h(
-                  'div',
-                  {
-                    style: {
-                      width: 32,
-                      height: 32,
-                      borderRadius: 6,
-                      overflow: 'hidden',
-                      background: '#1a1e2b',
-                      flexShrink: 0,
-                    },
-                  },
-                  displayArtwork
-                    ? h('img', {
-                        src: displayArtwork,
-                        alt: 'cover',
-                        referrerPolicy: 'no-referrer',
-                        loading: 'lazy',
-                        style: { width: '100%', height: '100%', objectFit: 'cover' },
-                      })
-                    : h(
-                        'div',
-                        {
-                          style: {
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            height: '100%',
-                            color: 'rgba(255,255,255,0.6)',
-                            fontSize: 13,
-                          },
-                        },
-                        '♪',
-                      ),
-                ),
-                h(
-                  'div',
-                  { style: { minWidth: 0, flex: 1 } },
-                  h(
-                    'div',
-                    {
-                      style: {
-                        color: '#FFFFFF',
-                        fontWeight: 700,
-                        fontSize: 12,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      },
-                    },
-                    title,
-                  ),
-                  h(
-                    'div',
-                    {
-                      style: {
-                        color: 'rgba(255, 255, 255, 0.88)',
-                        fontSize: 10,
-                        fontWeight: 500,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      },
-                    },
-                    subtitle,
-                  ),
-                ),
-              ),
-              // Lyrics Lines
+              { style: { display: 'flex', alignItems: 'center', gap: 6 } },
               h(
                 'div',
                 {
                   style: {
-                    margin: '2px 0',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                  },
-                },
-                lyrics!.slice(0, 5).map((line, idx) =>
-                  h(
-                    'div',
-                    {
-                      key: idx,
-                      style: {
-                        color: '#FFFFFF',
-                        fontWeight: 700,
-                        fontSize: 12,
-                        lineHeight: 1.35,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      },
-                    },
-                    line,
-                  ),
-                ),
-              ),
-              // BBeBee Logo at bottom-left
-              h('img', {
-                src: BBEBEE_LOGO_DATA_URL,
-                alt: 'BBeBee',
-                referrerPolicy: 'no-referrer',
-                style: { width: 68, height: 'auto', alignSelf: 'flex-start', marginTop: 4, marginLeft: 0 },
-              }),
-            )
-          : // Track / Playlist / Album Card Content
-            h(
-              'div',
-              { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-              // Large Cover Artwork
-              h(
-                'div',
-                {
-                  style: {
-                    width: '100%',
-                    aspectRatio: '1/1',
-                    borderRadius: 10,
+                    width: 22,
+                    height: 22,
+                    borderRadius: 4,
                     overflow: 'hidden',
                     background: '#1a1e2b',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    flexShrink: 0,
                   },
                 },
                 displayArtwork
                   ? h('img', {
                       src: displayArtwork,
-                      alt: 'artwork',
+                      alt: 'cover',
                       referrerPolicy: 'no-referrer',
                       loading: 'lazy',
                       style: { width: '100%', height: '100%', objectFit: 'cover' },
@@ -235,25 +121,28 @@ export function ShareCardPreview({
                       'div',
                       {
                         style: {
-                          fontSize: 32,
-                          color: 'rgba(255, 255, 255, 0.3)',
-                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '100%',
+                          color: 'rgba(255,255,255,0.6)',
+                          fontSize: 10,
                         },
                       },
                       '♪',
                     ),
               ),
-              // Metadata
               h(
                 'div',
-                { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+                { style: { minWidth: 0, flex: 1 } },
                 h(
                   'div',
                   {
                     style: {
                       color: '#FFFFFF',
-                      fontSize: 14,
                       fontWeight: 700,
+                      fontSize: 9,
+                      lineHeight: '12px',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -265,9 +154,10 @@ export function ShareCardPreview({
                   'div',
                   {
                     style: {
-                      color: '#B3B9C9',
-                      fontSize: 11,
+                      color: 'rgba(255, 255, 255, 0.88)',
+                      fontSize: 8,
                       fontWeight: 500,
+                      lineHeight: '11px',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -276,15 +166,148 @@ export function ShareCardPreview({
                   subtitle,
                 ),
               ),
-              // BBeBee Logo at bottom-left (proportional to canvas 160px: 76px)
-              h('img', {
-                src: BBEBEE_LOGO_DATA_URL,
-                alt: 'BBeBee',
-                referrerPolicy: 'no-referrer',
-                style: { width: 76, height: 'auto', alignSelf: 'flex-start', marginTop: 6, marginLeft: 0 },
-              }),
             ),
-      ),
+            // Lyrics Lines
+            h(
+              'div',
+              {
+                style: {
+                  marginTop: 6,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                },
+              },
+              lyrics!.slice(0, 6).map((line, idx) =>
+                h(
+                  'div',
+                  {
+                    key: idx,
+                    style: {
+                      color: '#FFFFFF',
+                      fontWeight: 700,
+                      fontSize: 10.5,
+                      lineHeight: '16px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    },
+                  },
+                  line,
+                ),
+              ),
+            ),
+            // BBeBee Logo at bottom-left
+            h('img', {
+              src: BBEBEE_LOGO_DATA_URL,
+              alt: 'BBeBee',
+              referrerPolicy: 'no-referrer',
+              style: {
+                width: 61,
+                height: 'auto',
+                alignSelf: 'flex-start',
+                marginTop: 'auto',
+                marginLeft: 0,
+              },
+            }),
+          )
+        : // Track / Playlist / Album Card Content
+          h(
+            'div',
+            {
+              style: {
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                width: '100%',
+              },
+            },
+            // Large Cover Artwork (177x177)
+            h(
+              'div',
+              {
+                style: {
+                  width: 177,
+                  height: 177,
+                  borderRadius: 7,
+                  overflow: 'hidden',
+                  background: '#1a1e2b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                },
+              },
+              displayArtwork
+                ? h('img', {
+                    src: displayArtwork,
+                    alt: 'artwork',
+                    referrerPolicy: 'no-referrer',
+                    loading: 'lazy',
+                    style: { width: '100%', height: '100%', objectFit: 'cover' },
+                  })
+                : h(
+                    'div',
+                    {
+                      style: {
+                        fontSize: 28,
+                        color: 'rgba(255, 255, 255, 0.3)',
+                        fontWeight: 700,
+                      },
+                    },
+                    '♪',
+                  ),
+            ),
+            // Metadata
+            h(
+              'div',
+              { style: { display: 'flex', flexDirection: 'column', marginTop: 8 } },
+              h(
+                'div',
+                {
+                  style: {
+                    color: '#FFFFFF',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    lineHeight: '14px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  },
+                },
+                title,
+              ),
+              h(
+                'div',
+                {
+                  style: {
+                    color: '#B3B9C9',
+                    fontSize: 8.5,
+                    fontWeight: 500,
+                    lineHeight: '12px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    marginTop: 2,
+                  },
+                },
+                subtitle,
+              ),
+            ),
+            // BBeBee Logo at bottom-left
+            h('img', {
+              src: BBEBEE_LOGO_DATA_URL,
+              alt: 'BBeBee',
+              referrerPolicy: 'no-referrer',
+              style: {
+                width: 65,
+                height: 'auto',
+                alignSelf: 'flex-start',
+                marginTop: 'auto',
+                marginLeft: 0,
+              },
+            }),
+          ),
     ),
   )
 }

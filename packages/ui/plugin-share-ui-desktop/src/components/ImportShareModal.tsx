@@ -24,6 +24,8 @@ export interface ImportShareModalProps {
 export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps): ReactElement | null {
   const [pastedText, setPastedText] = useState('')
   const [decoded, setDecoded] = useState<ShareMetadataEnvelope | null>(null)
+  const [extractedCoverUrl, setExtractedCoverUrl] = useState<string | null>(null)
+  const [imageLoadError, setImageLoadError] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isDecoding, setIsDecoding] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -31,6 +33,8 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
   const resetState = () => {
     setPastedText('')
     setDecoded(null)
+    setExtractedCoverUrl(null)
+    setImageLoadError(false)
     setErrorMsg(null)
     setIsDecoding(false)
   }
@@ -46,6 +50,8 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
     const envelope = decodeMetadata(b64)
     if (envelope) {
       setDecoded(envelope)
+      setExtractedCoverUrl(null)
+      setImageLoadError(false)
     } else {
       setErrorMsg('无法解析 Base64 数据：非有效的 BBeBee 分享数据包')
     }
@@ -89,6 +95,67 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
           setIsDecoding(false)
           if (envelope) {
             setDecoded(envelope)
+            setImageLoadError(false)
+
+            // Extract embedded cover directly from the uploaded share card canvas
+            try {
+              const scale = img.width / 540
+              let cropX = 0
+              let cropY = 0
+              let cropW = 0
+              let cropH = 0
+
+              if (envelope.type === 'lyrics') {
+                const lineCount = Math.max(1, Math.min(6, (envelope.data as any).lines?.length ?? 1))
+                const cardH = Math.min(390, Math.max(220, 130 + lineCount * 36)) * scale
+                const cardY = (img.height - cardH) / 2
+                cropX = (img.width - 440 * scale) / 2 + 22 * scale
+                cropY = cardY + 20 * scale
+                cropW = 48 * scale
+                cropH = 48 * scale
+              } else {
+                // Track / Playlist / Album
+                let cardY = (img.height - 530 * scale) / 2
+                // Support legacy 160*scale position if detected
+                const legacyCardY = 160 * scale
+                const testData = canvasCtx.getImageData(
+                  Math.round(img.width / 2),
+                  Math.round(legacyCardY + 10 * scale),
+                  1,
+                  1,
+                )
+                if (testData.data[0]! < 30 && testData.data[1]! < 30 && testData.data[2]! < 30) {
+                  cardY = legacyCardY
+                }
+                cropX = (img.width - 440 * scale) / 2 + 30 * scale
+                cropY = cardY + 24 * scale
+                cropW = 380 * scale
+                cropH = 380 * scale
+              }
+
+              if (cropW > 0 && cropH > 0) {
+                const cropCanvas = document.createElement('canvas')
+                cropCanvas.width = Math.round(cropW)
+                cropCanvas.height = Math.round(cropH)
+                const cropCtx = cropCanvas.getContext('2d')
+                if (cropCtx) {
+                  cropCtx.drawImage(
+                    canvas,
+                    Math.round(cropX),
+                    Math.round(cropY),
+                    Math.round(cropW),
+                    Math.round(cropH),
+                    0,
+                    0,
+                    cropCanvas.width,
+                    cropCanvas.height,
+                  )
+                  setExtractedCoverUrl(cropCanvas.toDataURL('image/png'))
+                }
+              }
+            } catch {
+              // Extraction failed, fall back to metadata artwork URL
+            }
           } else {
             setErrorMsg('图片中的隐写数据格式损坏或不匹配')
           }
@@ -370,13 +437,21 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
                   },
                 },
                 (() => {
-                  const artwork = (decoded.data as { artwork?: string }).artwork
-                  return artwork
+                  const rawArtwork = (decoded.data as { artwork?: string }).artwork
+                  const normalizedArtwork = rawArtwork
+                    ? rawArtwork.startsWith('file://')
+                      ? rawArtwork.replace(/^file:\/\//, 'bbebee-file://')
+                      : rawArtwork
+                    : undefined
+                  const displayArtwork = extractedCoverUrl || normalizedArtwork
+
+                  return displayArtwork && !imageLoadError
                     ? h('img', {
-                        src: artwork,
+                        src: displayArtwork,
                         alt: 'artwork',
                         referrerPolicy: 'no-referrer',
                         loading: 'lazy',
+                        onError: () => setImageLoadError(true),
                         style: { width: '100%', height: '100%', objectFit: 'cover' },
                       })
                     : h(
