@@ -1,6 +1,7 @@
 import { createElement as h, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type React from 'react'
 import type { KeyboardEvent, ReactElement } from 'react'
+import { createPortal } from 'react-dom'
 import type { ArtworkRef } from '@BBeBee/protocol'
 import { tokens } from '@BBeBee/ui-tokens'
 import { Artwork } from './Artwork.js'
@@ -48,6 +49,12 @@ export interface SaveToPlaylistPopoverProps {
   onTogglePlaylist?: (playlistUrn: string, currentlyContains: boolean) => void | Promise<void>
   testID?: string
   accessibilityLabel?: string
+  /**
+   * Mounts the fixed popover through a portal on `document.body`, escaping
+   * ancestors whose `transform`/`overflow` would clip it (the fullscreen
+   * play page's hover bottom bar).
+   */
+  portal?: boolean
 }
 
 export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactElement | null {
@@ -179,7 +186,7 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
     await props.onCreatePlaylist?.(trimmed, folderId)
   }
 
-  return h(
+  const popover = h(
     'div',
     {
       role: 'presentation',
@@ -805,6 +812,8 @@ export function SaveToPlaylistPopover(props: SaveToPlaylistPopoverProps): ReactE
         )
       : null,
   )
+
+  return props.portal ? createPortal(popover, document.body) : popover
 }
 
 function RowItem({

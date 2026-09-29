@@ -1,6 +1,7 @@
 import { createElement as h, Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type React from 'react'
 import type { KeyboardEvent, ReactElement } from 'react'
+import { createPortal } from 'react-dom'
 import { tokens } from '@BBeBee/ui-tokens'
 import type { ContextMenuProps, MenuItemSpec } from '@BBeBee/ui-core'
 import { c, common, useHover } from '../theme.js'
@@ -195,7 +196,7 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
 
   if (!props.open) return null
 
-  return h(
+  const menu = h(
     'div',
     {
       role: 'presentation',
@@ -414,6 +415,10 @@ export function ContextMenu(props: ContextMenuProps): ReactElement | null {
         )
       : null,
   )
+
+  // A portal escapes ancestors whose `transform`/`overflow` would clip or
+  // re-anchor fixed positioning (the fullscreen play page's hover bottom bar).
+  return props.portal ? createPortal(menu, document.body) : menu
 }
 
 function renderMenuIcon(icon: React.ReactNode | string | undefined): React.ReactNode {

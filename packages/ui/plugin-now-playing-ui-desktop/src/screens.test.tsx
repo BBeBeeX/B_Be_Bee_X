@@ -69,6 +69,7 @@ async function harness(
     playNow = async (urns: string[]) => void calls.push(`playNow:${urns.join(',')}`)
     playFromContext = async (urn: string, contextUrns: readonly string[] = []) =>
       void calls.push(`jump:${urn}${contextUrns.length ? `|${contextUrns.join(',')}` : ''}`)
+    removeItems = (ids: string[]) => void calls.push(`removeItems:${ids.join(',')}`)
   }
 
   class SourcesStub extends Service {
@@ -433,6 +434,23 @@ describe('NowPlayingBar', () => {
     const { queryByTestId } = render(h(NowPlayingBar, { ctx }))
     expect(queryByTestId('track-library-action-btn')).toBeNull()
   })
+
+  it('mounts the cover context menu through a portal when portalMenus is set', async () => {
+    // Over the fullscreen play page the bar sits inside an `overflow: hidden`
+    // container whose footer carries a slide `transform` — either would clip
+    // or re-anchor a fixed menu, so there it must be portaled to the body.
+    const { ctx } = await harness({
+      status: 'playing',
+      trackUrn: 'BBeBee:local:track:1',
+      nowPlaying: { title: 'Bohemian Rhapsody', artist: 'Queen' },
+    })
+    const { getByLabelText, findByText, container } = render(h(NowPlayingBar, { ctx, portalMenus: true }))
+    fireEvent.contextMenu(getByLabelText('Open now playing'))
+    expect(await findByText('加入播放列表')).toBeTruthy()
+    // The menu lives outside the bar's own tree — the body, not the container.
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+    expect(document.querySelector('[role="menu"]')).toBeTruthy()
+  })
 })
 
 describe('NowPlayingScreen', () => {
@@ -607,5 +625,78 @@ describe('NowPlayingScreen', () => {
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts')
     expect(iframe.getAttribute('srcdoc')).toContain('Plugin Active')
     expect(iframe.getAttribute('srcdoc')).toContain('window.BBeBeePlayer')
+  })
+
+  it('opens the current track menu on right-click, with remove-from-queue', async () => {
+    const { ctx, calls } = await harness(
+      {
+        status: 'playing',
+        trackUrn: 'BBeBee:local:track:1',
+        currentItemId: 'q1',
+        nowPlaying: { title: 'Hotel California', artist: 'Eagles' },
+      },
+      [{ id: 'q1', trackUrn: 'BBeBee:local:track:1', addedBy: 'user' }],
+    )
+    const { container, findByText, getByText } = render(h(NowPlayingScreen, { ctx }))
+
+    fireEvent.contextMenu(container.querySelector('[aria-label="Now playing"]') as HTMLElement)
+    expect(await findByText('从队列中移除')).toBeTruthy()
+
+    fireEvent.click(getByText('从队列中移除'))
+    expect(calls).toContain('removeItems:q1')
+    // Acting on the item closes the menu.
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+  })
+
+  it('offers share-lyrics on right-click only when the track has lyrics', async () => {
+    class ShareStub extends Service {
+      readonly calls: string[] = []
+      constructor(c: Context) {
+        super(c, 'share')
+      }
+      shareTrack(t: Track) {
+        void this.calls.push(`shareTrack:${t.urn}`)
+      }
+      shareLyrics(t: Track, lines: string[]) {
+        void this.calls.push(`shareLyrics:${t.urn}:${lines.join('|')}`)
+      }
+    }
+
+    class LyricsStub extends Service {
+      public state = {
+        status: 'ready',
+        trackUrn: 'BBeBee:local:track:1',
+        offsetMs: 0,
+        lyrics: { format: 'lrc', content: '[00:01]第一句歌词\n[00:02]第二句歌词', synced: true },
+      }
+      constructor(c: Context) {
+        super(c, 'lyrics')
+      }
+    }
+
+    const { ctx } = await harness({
+      status: 'playing',
+      trackUrn: 'BBeBee:local:track:1',
+      nowPlaying: { title: 'Hotel California', artist: 'Eagles' },
+    })
+    await ctx.plugin(ShareStub)
+    await ctx.plugin(LyricsStub)
+    const share = (ctx as unknown as { share: ShareStub }).share
+    const lyrics = (ctx as unknown as { lyrics: LyricsStub }).lyrics
+
+    // Lyrics for another track are not ours to share.
+    lyrics.state = { ...lyrics.state, trackUrn: 'BBeBee:local:track:other' }
+    const without = render(h(NowPlayingScreen, { ctx }))
+    fireEvent.contextMenu(without.container.querySelector('[aria-label="Now playing"]') as HTMLElement)
+    expect(await without.findByText('分享歌曲')).toBeTruthy()
+    expect(without.queryByText('分享歌词')).toBeNull()
+
+    // Lyrics for the playing track add the item, and it shares their text.
+    lyrics.state = { ...lyrics.state, trackUrn: 'BBeBee:local:track:1' }
+    const { container, findByText, getByText } = render(h(NowPlayingScreen, { ctx }))
+    fireEvent.contextMenu(container.querySelector('[aria-label="Now playing"]') as HTMLElement)
+    expect(await findByText('分享歌词')).toBeTruthy()
+    fireEvent.click(getByText('分享歌词'))
+    expect(share.calls).toContain('shareLyrics:BBeBee:local:track:1:第一句歌词|第二句歌词')
   })
 })

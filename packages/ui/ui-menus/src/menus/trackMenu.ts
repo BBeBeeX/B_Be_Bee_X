@@ -47,6 +47,12 @@ export interface TrackMenuOptions {
   collections?: readonly Collection[]
   /** Set when used in a history list. */
   isHistory?: boolean
+  /**
+   * The lyric text of the track, when the calling screen already has it on
+   * screen; its presence (with the share service) makes "分享歌词" offerable.
+   * The model never fetches lyrics itself.
+   */
+  lyrics?: { lines: readonly string[] }
 }
 
 /**
@@ -154,6 +160,17 @@ export function trackMenuItems(
       icon: 'share',
       onSelect: () => share.shareTrack(track),
     })
+
+    const lyricLines = opts.lyrics?.lines ?? []
+    if (lyricLines.length > 0) {
+      const lines = [...lyricLines]
+      items.push({
+        id: 'share-lyrics',
+        label: '分享歌词',
+        icon: 'share',
+        onSelect: () => share.shareLyrics(track, lines),
+      })
+    }
   }
 
   const sleepTimer = serviceOf<SleepTimerService>(ctx, 'sleepTimer')

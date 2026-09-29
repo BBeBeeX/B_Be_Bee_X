@@ -126,6 +126,13 @@ export interface ContextMenuProps extends CommonProps {
    * indistinguishable, and on mobile the sheet has no other context.
    */
   title?: string
+  /**
+   * Desktop only; the mobile sheet ignores it. Mounts the fixed overlay
+   * through a portal on `document.body`. Needed when the menu lives inside
+   * an ancestor whose `transform`/`overflow` would clip or re-anchor fixed
+   * positioning — the fullscreen play page's hover bottom bar is one.
+   */
+  portal?: boolean
 }
 
 export interface TrackRowProps extends CommonProps {

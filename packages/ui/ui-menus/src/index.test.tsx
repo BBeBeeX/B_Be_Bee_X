@@ -165,6 +165,9 @@ class ShareStub extends Service {
   sharePlaylist(p: { urn: string }, tracks?: readonly any[]) {
     this.calls.push(`sharePlaylist:${p.urn}:${tracks?.length ?? 0}`)
   }
+  shareLyrics(t: Track, lines: string[]) {
+    this.calls.push(`shareLyrics:${t.urn}:${lines.length}`)
+  }
 }
 
 async function harness(opts: { downloads?: boolean; player?: boolean; ui?: boolean; sleepTimer?: boolean; share?: boolean } = {}) {
@@ -302,6 +305,20 @@ describe('trackMenuItems', () => {
     expect(shareItem?.label).toBe('分享歌曲')
     await press(items, 'share-track')
     expect(h.share.calls).toContain(`shareTrack:${URN}`)
+  })
+
+  it('offers share-lyrics only when the caller hands over lyric lines', async () => {
+    const h = await harness({ share: true })
+
+    // Without lyrics on screen the model must not promise the share.
+    const bare = trackMenuItems(h.ctx, { track }, { playlists })
+    expect(bare.some((i) => i.id === 'share-lyrics')).toBe(false)
+
+    const items = trackMenuItems(h.ctx, { track }, { playlists, lyrics: { lines: ['第一句', '第二句'] } })
+    const lyricsItem = items.find((i) => i.id === 'share-lyrics')
+    expect(lyricsItem?.label).toBe('分享歌词')
+    await press(items, 'share-lyrics')
+    expect(h.share.calls).toContain(`shareLyrics:${URN}:2`)
   })
 })
 

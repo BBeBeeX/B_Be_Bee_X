@@ -747,6 +747,8 @@ export function Shell({ ctx }: { ctx: Context }) {
               h(BottomBar, {
                 ctx,
                 currentRoute: isQueueOpen ? 'queue.view' : currentId,
+                // The hover container clips fixed menus; portal them out.
+                portalMenus: true,
               }),
             ),
           )

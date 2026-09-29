@@ -1,4 +1,4 @@
-import { createElement as h, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createElement as h, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { LibraryService, PlayMode, SourcesService, Track } from '@BBeBee/protocol'
@@ -7,7 +7,6 @@ import { NOW_PLAYING_VIEWS } from '@BBeBee/plugin-now-playing/views'
 import {
   useDuration,
   usePosition,
-  useTracksByUrn,
   useTransport,
   useTransportAvailability,
 } from '@BBeBee/plugin-player/hooks'
@@ -17,6 +16,7 @@ import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { serviceOf, type ArtworkProps } from '@BBeBee/ui-core'
 import { tokens } from '@BBeBee/ui-tokens'
 import { DesktopLyricsToggle } from './DesktopLyricsToggle.js'
+import { useCurrentTrack } from '../hooks.js'
 
 /**
  * Button on the bottom transport bar to open/toggle the queue panel.
@@ -431,10 +431,16 @@ export interface NowPlayingBarProps {
   ctx: Context
   currentRoute?: string
   onOpenNowPlaying?: () => void
+  /**
+   * Render the context menu / popover through a portal. Required when the bar
+   * floats over the fullscreen play page: the hover container's `overflow`
+   * and the footer's slide `transform` would clip or re-anchor fixed menus.
+   */
+  portalMenus?: boolean
 }
 
 /** The persistent transport bar. Desktop's answer to "now playing". */
-export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayingBarProps): ReactElement {
+export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying, portalMenus }: NowPlayingBarProps): ReactElement {
   const [coverHovered, setCoverHovered] = useState(false)
   const [seekingPosition, setSeekingPosition] = useState<number | undefined>(undefined)
   const state = useTransport(ctx)
@@ -447,23 +453,7 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
   const saveToPlaylistMenu = useSaveToPlaylistMenu(ctx)
   const [isInLibrary, setIsInLibrary] = useState(false)
 
-  const tracksMap = useTracksByUrn(ctx, state.trackUrn ? [state.trackUrn] : [])
-  const catalogTrack = state.trackUrn ? tracksMap.get(state.trackUrn) : undefined
-
-  const currentTrack: Track | undefined = useMemo(() => {
-    if (catalogTrack) return catalogTrack
-    if (!state.trackUrn || !state.nowPlaying) return undefined
-    return {
-      urn: state.trackUrn,
-      title: state.nowPlaying.title,
-      artists: state.nowPlaying.artist
-        ? [{ urn: `${state.trackUrn}#artist`, name: state.nowPlaying.artist, role: 'main', ordinal: 0 }]
-        : [],
-      albumTitle: state.nowPlaying.album,
-      artwork: state.nowPlaying.artwork,
-      loved: false,
-    }
-  }, [catalogTrack, state.trackUrn, state.nowPlaying])
+  const currentTrack = useCurrentTrack(ctx)
 
   useEffect(() => {
     if (!state.trackUrn) {
@@ -797,7 +787,7 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
       h(DesktopLyricsToggle, { ctx }),
       h(QueueButton, { ctx, currentRoute }),
     ),
-    h(ContextMenu, menu.menuProps),
-    h(SaveToPlaylistPopover, saveToPlaylistMenu.menuProps),
+    h(ContextMenu, { ...menu.menuProps, portal: portalMenus }),
+    h(SaveToPlaylistPopover, { ...saveToPlaylistMenu.menuProps, portal: portalMenus }),
   )
 }
