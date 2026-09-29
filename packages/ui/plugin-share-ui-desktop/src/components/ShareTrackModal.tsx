@@ -5,6 +5,8 @@ import type { ShareTrackData } from '@BBeBee/protocol'
 import { encodeMetadata } from '@BBeBee/plugin-share/metadata'
 import { Button, Sheet, tablerIcon, useImageColor } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '../utils/useResolvedArtwork.js'
+import { copyToClipboard } from '../utils/clipboard.js'
+import { isLocalSource } from '../utils/sourceHelper.js'
 import { tokens } from '@BBeBee/ui-tokens'
 import {
   type BackgroundMode,
@@ -31,6 +33,8 @@ export function ShareTrackModal({
   const [downloading, setDownloading] = useState(false)
   const [disabledReason, setDisabledReason] = useState<string | null>(null)
 
+  const isLocal = useMemo(() => isLocalSource(track), [track])
+
   // Resolve artwork via cache if available
   const artworkRef = useMemo(() => {
     return track.artwork ? { id: track.urn || track.title, sourceUrl: track.artwork } : undefined
@@ -42,9 +46,14 @@ export function ShareTrackModal({
   const extractedColor = useImageColor(resolvedArtwork)
   const themeColor = extractedColor ?? '#4D6BFE'
 
-  const canCopy = Boolean(track && track.title && track.title.trim().length > 0)
+  const canCopy = !isLocal && Boolean(track && track.title && track.title.trim().length > 0)
 
   const handleCopyBase64 = useCallback(async () => {
+    if (isLocal) {
+      setDisabledReason('无法分享本地音乐')
+      setTimeout(() => setDisabledReason(null), 3500)
+      return
+    }
     if (!canCopy) {
       setDisabledReason('无法复制：歌曲缺少有效标题等元数据')
       setTimeout(() => setDisabledReason(null), 3500)
@@ -52,18 +61,29 @@ export function ShareTrackModal({
     }
     try {
       const b64 = encodeMetadata('track', track)
-      await navigator.clipboard.writeText(b64)
-      setCopied(true)
-      setDisabledReason(null)
-      setTimeout(() => setCopied(false), 2000)
+      const ok = await copyToClipboard(b64)
+      if (ok) {
+        setCopied(true)
+        setDisabledReason(null)
+        setTimeout(() => setCopied(false), 2000)
+      } else {
+        ctx.logger?.error('Failed to copy base64 via clipboard')
+        setDisabledReason('无法复制：剪贴板写入失败，请检查系统权限')
+        setTimeout(() => setDisabledReason(null), 3500)
+      }
     } catch (err) {
       ctx.logger?.error(`Failed to copy base64: ${String(err)}`)
       setDisabledReason('无法复制：剪贴板写入失败，请检查系统权限')
       setTimeout(() => setDisabledReason(null), 3500)
     }
-  }, [ctx, track, canCopy])
+  }, [ctx, track, canCopy, isLocal])
 
   const handleDownload = useCallback(async () => {
+    if (isLocal) {
+      setDisabledReason('无法分享本地音乐')
+      setTimeout(() => setDisabledReason(null), 3500)
+      return
+    }
     try {
       setDownloading(true)
       const canvas = await generateTrackCardCanvas({
@@ -81,7 +101,7 @@ export function ShareTrackModal({
     } finally {
       setDownloading(false)
     }
-  }, [ctx, track, resolvedArtwork, themeColor, backgroundMode])
+  }, [ctx, track, resolvedArtwork, themeColor, backgroundMode, isLocal])
 
   if (!open) return null
 
@@ -135,6 +155,30 @@ export function ShareTrackModal({
           tablerIcon('x', { size: 18 }),
         ),
       ),
+      // Local source warning banner
+      isLocal
+        ? h(
+            'div',
+            {
+              'data-testid': 'local-source-warning',
+              style: {
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 8,
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                color: '#FCA5A5',
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                boxSizing: 'border-box',
+              },
+            },
+            tablerIcon('alert-circle', { size: 16 }),
+            h('span', null, '无法分享本地音乐'),
+          )
+        : null,
       // Visual Card Preview
       h(ShareCardPreview, {
         title: track.title,
@@ -252,7 +296,7 @@ export function ShareTrackModal({
                   type: 'button',
                   'data-testid': 'copy-base64-disabled-btn',
                   onClick: () => {
-                    setDisabledReason('无法复制：歌曲缺少有效标题等元数据')
+                    setDisabledReason(isLocal ? '无法分享本地音乐' : '无法复制：歌曲缺少有效标题等元数据')
                     setTimeout(() => setDisabledReason(null), 3500)
                   },
                   style: {
@@ -277,12 +321,40 @@ export function ShareTrackModal({
         h(
           'div',
           { style: { flex: 1, display: 'flex' } },
-          h(Button, {
-            variant: 'primary',
-            onPress: handleDownload,
-            disabled: downloading,
-            children: downloading ? '生成中…' : '下载图片',
-          }),
+          !isLocal
+            ? h(Button, {
+                variant: 'primary',
+                onPress: handleDownload,
+                disabled: downloading,
+                children: downloading ? '生成中…' : '下载图片',
+              })
+            : h(
+                'button',
+                {
+                  type: 'button',
+                  'data-testid': 'download-disabled-btn',
+                  onClick: () => {
+                    setDisabledReason('无法分享本地音乐')
+                    setTimeout(() => setDisabledReason(null), 3500)
+                  },
+                  style: {
+                    width: '100%',
+                    height: 38,
+                    borderRadius: tokens.radius.pill,
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    color: 'rgba(255, 255, 255, 0.35)',
+                    cursor: 'not-allowed',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 16px',
+                  },
+                },
+                '下载图片',
+              ),
         ),
       ),
     ),

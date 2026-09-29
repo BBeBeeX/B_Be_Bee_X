@@ -4,6 +4,7 @@ import type { Context } from 'cordis'
 import type { ShareLyricsData } from '@BBeBee/protocol'
 import { Button, Sheet, tablerIcon, useImageColor } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '../utils/useResolvedArtwork.js'
+import { copyToClipboard } from '../utils/clipboard.js'
 import { tokens } from '@BBeBee/ui-tokens'
 import {
   type BackgroundMode,
@@ -71,10 +72,16 @@ export function ShareLyricsModal({
     }
     try {
       const textToCopy = `${activeLines.join('\n')}\n\n—— ${lyrics.artist}《${lyrics.title}》`
-      await navigator.clipboard.writeText(textToCopy)
-      setCopiedText(true)
-      setDisabledReason(null)
-      setTimeout(() => setCopiedText(false), 2000)
+      const ok = await copyToClipboard(textToCopy)
+      if (ok) {
+        setCopiedText(true)
+        setDisabledReason(null)
+        setTimeout(() => setCopiedText(false), 2000)
+      } else {
+        ctx.logger?.error('Failed to copy lyrics via clipboard')
+        setDisabledReason('无法复制：剪贴板写入失败，请检查系统权限')
+        setTimeout(() => setDisabledReason(null), 3500)
+      }
     } catch (err) {
       ctx.logger?.error(`Failed to copy lyrics: ${String(err)}`)
       setDisabledReason('无法复制：剪贴板写入失败，请检查系统权限')

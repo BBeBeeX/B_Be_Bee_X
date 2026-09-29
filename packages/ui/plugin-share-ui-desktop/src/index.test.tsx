@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it, afterEach } from 'vitest'
+import { describe, expect, it, afterEach, vi } from 'vitest'
 import { createElement as h } from 'react'
 import { render, fireEvent, cleanup } from '@testing-library/react'
 import { Context, Service } from 'cordis'
@@ -243,6 +243,124 @@ describe('plugin-share-ui-desktop', () => {
     const toast = getByTestId('copy-disabled-reason-toast')
     expect(toast).toBeDefined()
     expect(toast.textContent).toContain('无法复制：专辑缺少有效标题等元数据')
+  })
+
+  it('displays warning banner and disables copy/download for local track', () => {
+    const ctx = new Context()
+    const { getByTestId, queryByTestId } = render(
+      h(ShareTrackModal, {
+        ctx,
+        open: true,
+        onClose: () => {},
+        track: {
+          urn: 'BBeBee:local:track:local_song_1',
+          source: 'local',
+          title: 'Local Music Track',
+          artist: 'Local Artist',
+        },
+      }),
+    )
+
+    // Warning banner should be visible
+    const warning = getByTestId('local-source-warning')
+    expect(warning).toBeDefined()
+    expect(warning.textContent).toContain('无法分享本地音乐')
+
+    // Copy and download buttons should be disabled
+    const copyBtn = getByTestId('copy-base64-disabled-btn')
+    const downloadBtn = getByTestId('download-disabled-btn')
+    expect(copyBtn).toBeDefined()
+    expect(downloadBtn).toBeDefined()
+
+    // Clicking disabled copy button shows '无法分享本地音乐'
+    fireEvent.click(copyBtn)
+    let toast = getByTestId('copy-disabled-reason-toast')
+    expect(toast.textContent).toContain('无法分享本地音乐')
+
+    // Clicking disabled download button shows '无法分享本地音乐'
+    fireEvent.click(downloadBtn)
+    toast = getByTestId('copy-disabled-reason-toast')
+    expect(toast.textContent).toContain('无法分享本地音乐')
+  })
+
+  it('displays warning banner and disables copy/download for local playlist and album', () => {
+    const ctx = new Context()
+    const { getByTestId: getPlaylistTestId } = render(
+      h(SharePlaylistModal, {
+        ctx,
+        open: true,
+        onClose: () => {},
+        playlist: {
+          urn: 'local:playlist:1',
+          name: 'Local Playlist',
+          trackCount: 15,
+        },
+      }),
+    )
+    expect(getPlaylistTestId('local-source-warning').textContent).toContain('无法分享本地音乐')
+    expect(getPlaylistTestId('copy-base64-disabled-btn')).toBeDefined()
+    expect(getPlaylistTestId('download-disabled-btn')).toBeDefined()
+
+    cleanup()
+
+    const { getByTestId: getAlbumTestId } = render(
+      h(ShareAlbumModal, {
+        ctx,
+        open: true,
+        onClose: () => {},
+        album: {
+          urn: 'local:album:1',
+          title: 'Local Album',
+          trackCount: 8,
+        },
+      }),
+    )
+    expect(getAlbumTestId('local-source-warning').textContent).toContain('无法分享本地音乐')
+    expect(getAlbumTestId('copy-base64-disabled-btn')).toBeDefined()
+    expect(getAlbumTestId('download-disabled-btn')).toBeDefined()
+  })
+
+  it('correctly identifies local music via isLocalSource utility', async () => {
+    const { isLocalSource } = await import('./utils/sourceHelper.js')
+    expect(isLocalSource({ source: 'local' })).toBe(true)
+    expect(isLocalSource({ source: 'netease' })).toBe(false)
+    expect(isLocalSource({ urn: 'local:track:123' })).toBe(true)
+    expect(isLocalSource({ urn: 'source:local:track:123' })).toBe(true)
+    expect(isLocalSource({ urn: 'file:///path/song.mp3' })).toBe(true)
+    expect(isLocalSource({ urn: 'bbebee-file://local/song.mp3' })).toBe(true)
+    expect(isLocalSource({ urn: 'BBeBee:local:track:local_123' })).toBe(true)
+    expect(isLocalSource({ urn: 'BBeBee:netease:track:182910' })).toBe(false)
+    expect(isLocalSource(null)).toBe(false)
+    expect(isLocalSource(undefined)).toBe(false)
+  })
+
+  it('handles clipboard writing and fallback in copyToClipboard utility', async () => {
+    const { copyToClipboard } = await import('./utils/clipboard.js')
+
+    // Scenario 1: navigator.clipboard succeeds
+    const writeTextMock = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextMock,
+      },
+    })
+    const res1 = await copyToClipboard('test payload')
+    expect(res1).toBe(true)
+    expect(writeTextMock).toHaveBeenCalledWith('test payload')
+
+    // Scenario 2: navigator.clipboard fails, falls back to execCommand
+    const writeTextFailMock = vi.fn().mockRejectedValue(new Error('Permission denied'))
+    const execCommandMock = vi.fn().mockReturnValue(true)
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextFailMock,
+      },
+    })
+    document.execCommand = execCommandMock
+
+    const res2 = await copyToClipboard('fallback payload')
+    expect(res2).toBe(true)
+    expect(execCommandMock).toHaveBeenCalledWith('copy')
   })
 })
 

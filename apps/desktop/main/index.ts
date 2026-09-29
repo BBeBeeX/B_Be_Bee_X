@@ -1192,6 +1192,13 @@ void app.whenReady().then(async () => {
     callback({ requestHeaders: details.requestHeaders })
   })
 
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const responseHeaders = { ...details.responseHeaders }
+    responseHeaders['access-control-allow-origin'] = ['*']
+    responseHeaders['access-control-allow-methods'] = ['GET, HEAD, OPTIONS']
+    callback({ responseHeaders })
+  })
+
   protocol.handle('bbebee-file', (request) => {
     try {
       const filePath = toNativePath(request.url)

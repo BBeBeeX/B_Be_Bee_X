@@ -80,8 +80,8 @@ export function ShareCardPreview({
         'div',
         {
           style: {
-            background: isLyricsMode ? 'transparent' : 'rgba(0, 0, 0, 0.48)',
-            padding: 14,
+            background: isLyricsMode ? 'transparent' : '#000000',
+            padding: isLyricsMode ? '14px 14px 12px 14px' : 14,
             display: 'flex',
             flexDirection: 'column',
             width: '100%',
@@ -93,7 +93,7 @@ export function ShareCardPreview({
           ? // Lyrics Card Content (bright cover theme color, crisp white text)
             h(
               'div',
-              { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+              { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
               // Mini Header
               h(
                 'div',
@@ -171,10 +171,10 @@ export function ShareCardPreview({
                 'div',
                 {
                   style: {
-                    margin: '8px 0',
+                    margin: '4px 0',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 6,
+                    gap: 5,
                   },
                 },
                 lyrics!.slice(0, 5).map((line, idx) =>
@@ -196,12 +196,12 @@ export function ShareCardPreview({
                   ),
                 ),
               ),
-              // BBeBee Logo at bottom (enlarged to 36px)
+              // BBeBee Logo at bottom-left (proportional to canvas 160px: 76px)
               h('img', {
                 src: BBEBEE_LOGO_DATA_URL,
                 alt: 'BBeBee',
                 referrerPolicy: 'no-referrer',
-                style: { height: 36, width: 'auto', alignSelf: 'flex-start', marginTop: 8 },
+                style: { width: 76, height: 'auto', alignSelf: 'flex-start', marginTop: 6, marginLeft: 0 },
               }),
             )
           : // Track / Playlist / Album Card Content
@@ -276,12 +276,12 @@ export function ShareCardPreview({
                   subtitle,
                 ),
               ),
-              // BBeBee Logo (enlarged to 36px)
+              // BBeBee Logo at bottom-left (proportional to canvas 160px: 76px)
               h('img', {
                 src: BBEBEE_LOGO_DATA_URL,
                 alt: 'BBeBee',
                 referrerPolicy: 'no-referrer',
-                style: { height: 36, width: 'auto', alignSelf: 'flex-start', marginTop: 6 },
+                style: { width: 76, height: 'auto', alignSelf: 'flex-start', marginTop: 6, marginLeft: 0 },
               }),
             ),
       ),
