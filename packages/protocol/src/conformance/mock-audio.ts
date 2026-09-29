@@ -225,6 +225,14 @@ export function createMockAudio(options: MockAudioOptions = {}): MockAudio {
       routes.add(cb)
       return () => void routes.delete(cb)
     },
+    // The publishing half of the same pair: how a shell (or a test standing in
+    // for one) drives the listeners above.
+    emitInterruption(event) {
+      for (const cb of [...interruptions]) cb(event)
+    },
+    emitRouteChange(event) {
+      for (const cb of [...routes]) cb(event)
+    },
   }
 
   return {

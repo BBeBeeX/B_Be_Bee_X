@@ -524,7 +524,12 @@ export function Shell({ ctx }: { ctx: Context }) {
       }>
     | undefined
   const BottomBar = ctx.ui.viewFor('now-playing.bar') as
-    | ComponentType<{ ctx: Context; currentRoute?: string; onOpenNowPlaying?: () => void }>
+    | ComponentType<{
+        ctx: Context
+        currentRoute?: string
+        onOpenNowPlaying?: () => void
+        portalMenus?: boolean
+      }>
     | undefined
   const DesktopLyrics = ctx.ui.viewFor('desktop-lyrics.floating') as
     | ComponentType<{ ctx: Context }>

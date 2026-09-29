@@ -340,6 +340,8 @@ which events invalidate which state — are written once. Only the JSX is writte
 
 Right-click on desktop, long-press on mobile, one menu. `TrackRow.onMore`, `UnifiedLibraryRow.onMore`, and header action controls hand the pointer anchor to the screen; the screen holds a controller from `@BBeBee/ui-menus` and renders the kit's `ContextMenu`. The **model** — which actions exist for a track, a playlist, a collection, and what each one calls — is written once in `@BBeBee/ui-menus`; the kits know how to draw menu rows and nothing about playlists or queues, which is what keeps the shells' menus unified down to the order of the items.
 
+Two model details worth pinning: `TrackMenuOptions.lyrics` (the lyric lines a screen already shows) is what makes the 分享歌词 item offerable — the model never fetches lyrics itself; and a menu rendered inside an ancestor whose `transform`/`overflow` would clip fixed positioning (the play page's hover bottom bar) must pass `portal: true` so the kit mounts it on `document.body`. The fullscreen play page itself right-clicks to the playing track's menu — `useCurrentTrack` (shared with the bottom bar) resolves the track, the transport's `currentItemId` (queue-row fallback) targets 从队列中移除 at the real queue entry, and the lyric text on screen feeds 分享歌词.
+
 #### Visual and Component Model
 - **Container styling**: High-contrast dark streaming card (`#242424`), 8px border radius, 4px padding, `0 12px 32px rgba(0,0,0,0.55)` depth shadow, and subtle 1px border (`rgba(255, 255, 255, 0.08)`).
 - **Dividers**: Menu items support `divider: true` to draw a 1px translucent separator line above critical or dangerous operations.

@@ -74,6 +74,33 @@ export interface AudioWebAudioConfig {
   ) => Promise<ArrayBuffer>
   /** Reported as `outputLatencyMs` where the platform does not know. */
   fallbackLatencyMs?: number
+  /**
+   * Translate the `AudioContext`'s own state transitions into interruption
+   * events.
+   *
+   * Desktop opts in: it has no other interruption surface, and Chromium
+   * reports device loss and post-sleep recovery through `state` — without
+   * this, a context left `suspended` is playback that silently stops while
+   * the transport still says *playing*. Mobile keeps it off: the shell wires
+   * `AudioManager`'s events, which carry the OS's `shouldResume`; the raw
+   * state transitions would fire a second, less informed copy of every
+   * interruption.
+   */
+  emitContextInterruptions?: boolean
+}
+
+/**
+ * The slice of the context that carries its lifecycle.
+ *
+ * Declared structurally because not every realm provides it — the fake engine
+ * in tests has none of these members, and the service must treat a context
+ * without them as one that simply cannot be interrupted or stuck.
+ */
+interface ContextLifecycle {
+  readonly state?: string
+  resume?: () => Promise<void>
+  addEventListener?: (type: 'statechange', listener: () => void) => void
+  removeEventListener?: (type: 'statechange', listener: () => void) => void
 }
 
 /* ── Source handles ─────────────────────────────────────────────────────── */
@@ -109,6 +136,7 @@ class BufferedHandle implements AudioSourceHandle {
     private readonly context: BaseAudioContext,
     private readonly buffer: AudioBuffer,
     private readonly logger?: AudioLogger,
+    private readonly ensureRunning?: () => void,
   ) {
     this.node = context.createGain()
     this.durationMs = Math.round(buffer.duration * 1000)
@@ -123,6 +151,9 @@ class BufferedHandle implements AudioSourceHandle {
 
   play(atMs?: number): void {
     if (this.disposed) return
+    // A context the OS left suspended or interrupted would swallow this start
+    // silently — sources queued on it wait for a resume nobody had scheduled.
+    this.ensureRunning?.()
     if (atMs !== undefined) this.offsetSeconds = Math.max(0, atMs / 1000)
     this.logger?.debug?.('webaudio: [buffered] play (offsetSeconds: %s)', this.offsetSeconds)
     this.stopSource()
@@ -275,6 +306,7 @@ class StreamedHandle implements AudioSourceHandle {
     private readonly element: MediaElementLike,
     node: AudioNode,
     private readonly logger?: AudioLogger,
+    private readonly ensureRunning?: () => void,
   ) {
     this.node = node
     this.logger?.debug?.('webaudio: [streamed] handle created (src: %s)', element.src)
@@ -335,6 +367,10 @@ class StreamedHandle implements AudioSourceHandle {
   }
 
   play(atMs?: number): void {
+    // Same reasoning as the buffered handle: a suspended context wraps the
+    // element in silence, and the element's own `play()` would resolve while
+    // producing nothing.
+    this.ensureRunning?.()
     if (atMs !== undefined) {
       this.seek(atMs)
     }
@@ -406,6 +442,35 @@ export class AudioWebAudio extends Service implements AudioService {
   private readonly interruptionListeners = new Set<(e: InterruptionEvent) => void>()
   private readonly routeListeners = new Set<(e: RouteChangeEvent) => void>()
   private readonly activeMediaElements = new Set<MediaElementLike>()
+  /**
+   * Whether the context was ever seen `running`.
+   *
+   * A context *born* suspended — Chromium's autoplay policy creating it
+   * before a gesture — was never playing anything, so its suspension is not
+   * an interruption and must not pause a player that is about to start.
+   */
+  private sawRunning = false
+  /** An interruption published from context state and not yet recovered. */
+  private contextInterrupted = false
+  /** Kept so the disposer unbinds exactly what it bound. */
+  private stateChangeListener?: () => void
+
+  /**
+   * Kick a suspended or interrupted context before a source starts on it.
+   *
+   * The user pressing play *is* the user gesture every policy needs, so the
+   * resume is safe to attempt here; a refusal is logged, never thrown — a
+   * host that won't resume is not a reason to fail the call.
+   */
+  private readonly ensureContextRunning = (): void => {
+    const lifecycle = this.context as BaseAudioContext & ContextLifecycle
+    if ((lifecycle.state === 'suspended' || lifecycle.state === 'interrupted') && lifecycle.resume) {
+      this.ctx.logger?.warn('webaudio: play() on a %s context — resuming', lifecycle.state)
+      void lifecycle.resume().catch((err: unknown) => {
+        this.ctx.logger?.warn('webaudio: context.resume() failed: %s', String(err))
+      })
+    }
+  }
 
   constructor(
     ctx: Context,
@@ -548,7 +613,7 @@ export class AudioWebAudio extends Service implements AudioService {
               opts.signal?.throwIfAborted()
               opts.onBuffered?.(buf.duration)
               this.ctx.logger?.info('webaudio: bridge decodePcm succeeded (%dms, %d channels, %dHz)', res.durationMs, res.channels, res.sampleRate)
-              return new BufferedHandle(this.context, buf, this.ctx.logger)
+              return new BufferedHandle(this.context, buf, this.ctx.logger, this.ensureContextRunning)
             }
           } catch (bridgeErr) {
             this.ctx.logger?.error('webaudio: bridge decodePcm failed for %s: %s', src, String(bridgeErr))
@@ -561,7 +626,7 @@ export class AudioWebAudio extends Service implements AudioService {
 
     // A decoded buffer is fully available, so the whole track is buffered.
     opts.onBuffered?.(buffer.duration)
-    return new BufferedHandle(this.context, buffer, this.ctx.logger)
+    return new BufferedHandle(this.context, buffer, this.ctx.logger, this.ensureContextRunning)
   }
 
   private async loadStreamed(src: string, opts: LoadOptions): Promise<AudioSourceHandle> {
@@ -606,7 +671,7 @@ export class AudioWebAudio extends Service implements AudioService {
 
     this.activeMediaElements.add(element)
     this.ctx.logger?.info('webaudio: streamed source ready for %s', targetSrc)
-    const handle = new StreamedHandle(element, node, this.ctx.logger)
+    const handle = new StreamedHandle(element, node, this.ctx.logger, this.ensureContextRunning)
     const originalDispose = handle.dispose.bind(handle)
     handle.dispose = () => {
       this.activeMediaElements.delete(element)
@@ -879,9 +944,65 @@ export class AudioWebAudio extends Service implements AudioService {
     for (const listener of this.routeListeners) listener(event)
   }
 
+  /**
+   * Context state transitions, translated into log lines and — where the
+   * shell opted in (`emitContextInterruptions`) — interruption events.
+   *
+   * This is the observability the silent pauses lacked: a context the OS
+   * left `suspended` used to stop playback with no line anywhere, because no
+   * player code ran. Now the transition itself is the record.
+   */
+  private onContextStateChange(): void {
+    const lifecycle = this.context as BaseAudioContext & ContextLifecycle
+    const state = lifecycle.state
+    switch (state) {
+      case 'running':
+        this.ctx.logger?.info('webaudio: context state -> running')
+        this.sawRunning = true
+        if (this.config.emitContextInterruptions && this.contextInterrupted) {
+          this.contextInterrupted = false
+          // `shouldResume: false`: the shell cannot know whether the OS
+          // considers the disruption over, so the user decides. Pressing
+          // play resumes the context on the way (`ensureContextRunning`).
+          this.emitInterruption({ type: 'ended', shouldResume: false })
+        }
+        break
+      case 'interrupted':
+      case 'suspended':
+        this.ctx.logger?.warn('webaudio: context state -> %s', state)
+        if (this.config.emitContextInterruptions && !this.contextInterrupted && this.sawRunning) {
+          this.contextInterrupted = true
+          this.emitInterruption({ type: 'began', shouldResume: false })
+        }
+        break
+      case 'closed':
+        this.ctx.logger?.warn('webaudio: context state -> closed')
+        break
+      default:
+        // A realm with no `state` at all — nothing to observe.
+        break
+    }
+  }
+
   async [Service.init]() {
+    const lifecycle = this.context as BaseAudioContext & ContextLifecycle
+    // A context created already running never transitions *to* running, so
+    // the initial state is read once here — otherwise the first suspension
+    // would not qualify as an interruption.
+    if (lifecycle.state === 'running') this.sawRunning = true
+    if (typeof lifecycle.addEventListener === 'function') {
+      const listener = () => this.onContextStateChange()
+      this.stateChangeListener = listener
+      lifecycle.addEventListener('statechange', listener)
+    }
     return async () => {
       this.ctx.logger?.info('webaudio: disposing audio service')
+      // Before `close()`: closing fires a final statechange, and a listener
+      // outliving its service logs through an inactive context.
+      if (this.stateChangeListener && typeof lifecycle.removeEventListener === 'function') {
+        lifecycle.removeEventListener('statechange', this.stateChangeListener)
+      }
+      this.stateChangeListener = undefined
       this.chainInput.disconnect()
       this.master.disconnect()
       this.interruptionListeners.clear()

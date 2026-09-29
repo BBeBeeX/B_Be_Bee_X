@@ -13,7 +13,7 @@
  * lands where it was seeked — not about millisecond accuracy.
  */
 
-import type { AudioService } from '../index.js'
+import type { AudioService, InterruptionEvent } from '../index.js'
 import { assert, type ConformanceSuite } from './harness.js'
 
 export interface AudioSubject {
@@ -164,6 +164,19 @@ export const audioConformance: ConformanceSuite<AudioSubject> = {
         const offRoute = audio.onRouteChange(() => {})
         offInterruption()
         offRoute()
+      },
+    },
+    {
+      name: 'the shell can publish an interruption that listeners receive',
+      because:
+        'the shell is where platform events arrive; a publishing half with no path to the ' +
+        'listeners leaves every OS-driven pause invisible to the policy in ctx.player',
+      async run({ audio }) {
+        let received: InterruptionEvent | undefined
+        const off = audio.onInterruption((event) => void (received = event))
+        audio.emitInterruption({ type: 'began', shouldResume: false })
+        off()
+        assert(received?.type === 'began', 'the listener received the published interruption')
       },
     },
   ],

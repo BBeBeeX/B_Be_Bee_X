@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { scopeContext } from '@BBeBee/kernel'
 import { CapabilityError } from '@BBeBee/protocol'
+import type { InterruptionEvent } from '@BBeBee/protocol'
 import { audioConformance } from '@BBeBee/protocol/conformance'
 import { diffSnapshots, snapshotContext, tick } from '@BBeBee/kernel/testing'
 import plugin, { AudioWebAudio } from './index.js'
+import type { AudioWebAudioConfig } from './index.js'
 import { type FakeAudioContext, createFakeAudioContext } from './fake-context.js'
 
 /**
@@ -60,7 +62,7 @@ class FakeMediaElement {
  * The graph wiring, offset arithmetic and one-shot source lifecycle are
  * therefore genuinely exercised.
  */
-async function harness(): Promise<{
+async function harness(config: Partial<AudioWebAudioConfig> = {}): Promise<{
   ctx: Context
   audio: AudioWebAudio
   engine: FakeAudioContext
@@ -77,6 +79,7 @@ async function harness(): Promise<{
       elements.push(element)
       return element
     },
+    ...config,
   })
   await tick()
   return { ctx, audio: ctx.audio as AudioWebAudio, engine, elements }
@@ -371,6 +374,98 @@ describe('stalls', () => {
     await tick()
 
     expect(ended).toBe(true)
+  })
+})
+
+describe('context state', () => {
+  it('publishes an interruption when a running context is suspended, and ends it on recovery', async () => {
+    // The desktop case: the OS (sleep, device loss) suspends the context out
+    // from under a playing source. Without this translation the transport
+    // keeps saying `playing` over silence, with nothing logged anywhere.
+    const { audio, engine } = await harness({ emitContextInterruptions: true })
+    const seen: InterruptionEvent[] = []
+    audio.onInterruption((e) => void seen.push(e))
+
+    engine.setState('suspended')
+    engine.setState('running')
+
+    expect(seen).toEqual([
+      { type: 'began', shouldResume: false },
+      { type: 'ended', shouldResume: false },
+    ])
+  })
+
+  it('does not call a context born suspended an interruption', async () => {
+    // Chromium's autoplay policy creates the context suspended, before any
+    // gesture. It was never running, so there is nothing being interrupted —
+    // and an event here would pause a player that is about to start.
+    const engine = createFakeAudioContext()
+    engine.state = 'suspended'
+    const ctx = new Context()
+    await ctx.plugin(plugin, {
+      createContext: () => engine as unknown as BaseAudioContext,
+      fetchBytes: async () => new ArrayBuffer(8),
+      emitContextInterruptions: true,
+    })
+    await tick()
+    const audio = ctx.audio as AudioWebAudio
+    const seen: InterruptionEvent[] = []
+    audio.onInterruption((e) => void seen.push(e))
+
+    engine.setState('running')
+
+    expect(seen).toEqual([])
+  })
+
+  it('stays silent on context state when the shell owns interruptions (mobile)', async () => {
+    // On mobile `AudioManager`'s events are the informed source — they carry
+    // the OS's `shouldResume`. Raw state transitions would double-publish.
+    const { audio, engine } = await harness()
+    const seen: InterruptionEvent[] = []
+    audio.onInterruption((e) => void seen.push(e))
+
+    engine.setState('interrupted')
+    engine.setState('running')
+
+    expect(seen).toEqual([])
+  })
+
+  it('kicks a suspended context when play is requested on a buffered source', async () => {
+    // The recovery half: the user pressing play is the gesture, so the
+    // resume happens on the way in rather than leaving a play that sounds.
+    const { audio, engine } = await harness()
+    engine.setState('suspended')
+    const source = await audio.load('file:///music/a.flac', { strategy: 'buffer' })
+
+    source.play()
+
+    expect(engine.state).toBe('running')
+  })
+
+  it('does the same for a streamed source', async () => {
+    const { audio, engine } = await harness()
+    engine.setState('interrupted')
+    const source = await audio.load('https://example.org/a.mp3', { strategy: 'stream' })
+
+    source.play(0)
+
+    expect(engine.state).toBe('running')
+  })
+
+  it('unbinds its statechange listener when unloaded', async () => {
+    const engine = createFakeAudioContext()
+    const ctx = new Context()
+    const fiber = await ctx.plugin(plugin, {
+      createContext: () => engine as unknown as BaseAudioContext,
+      fetchBytes: async () => new ArrayBuffer(8),
+    })
+    await tick()
+    expect(engine.countStateListeners()).toBe(1)
+
+    await fiber.dispose()
+    await tick()
+
+    expect(engine.countStateListeners(), 'no listener outlives the service').toBe(0)
   })
 })
 

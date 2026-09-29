@@ -221,6 +221,55 @@ export async function boot(): Promise<App> {
    * only place to catch it is here, where what was registered is known.
    */
   await app.ready([...BOOTSTRAP_SERVICES], { timeoutMs: 15_000 })
+
+  /*
+   * The OS's own audio events, published into `ctx.audio`.
+   *
+   * `observeAudioInterruptions(true)` below only *enables* the native
+   * observation — until something subscribes here, the events it produces
+   * fall on the floor: a phone call, an alarm or another app taking audio
+   * focus pauses the engine with the transport still claiming `playing`, and
+   * not one log line anywhere (docs/05 §5).
+   *
+   * Desktop needs none of this: there the `AudioContext`'s own state
+   * transitions carry the same news, via `emitContextInterruptions` — which
+   * stays off here, because these OS events are the informed source and a
+   * second one would publish every interruption twice.
+   */
+  app.ctx.inject(['audio'], (scoped) => {
+    const audio = scoped.audio
+    const offInterruption = AudioManager.addSystemEventListener('interruption', (event) => {
+      // RNAA's payload is the protocol's `InterruptionEvent` verbatim.
+      audio.emitInterruption(event)
+    })
+    const offRouteChange = AudioManager.addSystemEventListener('routeChange', (event) => {
+      const reason = RNAA_ROUTE_REASONS[event.reason]
+      if (reason) {
+        audio.emitRouteChange({ reason })
+      } else {
+        // 'CategoryChange', 'WakeFromSleep', … — real events, but ones the
+        // transport has no policy for; naming them keeps them from looking
+        // like a lost `device-removed`.
+        app.ctx.logger.debug(`boot: audio route change ignored (${event.reason})`)
+      }
+    })
+    return () => {
+      offInterruption?.remove()
+      offRouteChange?.remove()
+    }
+  })
+
   await startAudioSession(app.ctx.background as BackgroundExpo)
   return app
+}
+
+/**
+ * RNAA route reasons that map onto the transport's three. The rest have no
+ * policy in `ctx.player`, so they are logged and dropped rather than forced
+ * into a shape that would say something untrue.
+ */
+const RNAA_ROUTE_REASONS: Record<string, 'device-removed' | 'device-added' | 'override'> = {
+  OldDeviceUnavailable: 'device-removed',
+  NewDeviceAvailable: 'device-added',
+  Override: 'override',
 }

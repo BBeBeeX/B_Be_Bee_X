@@ -106,11 +106,13 @@ export class FakeAudioContext {
   readonly destination = new FakeNode()
   currentTime = 0
   closed = false
+  state = 'running'
 
   /** Duration `decodeAudioData` reports, in seconds. */
   decodedDuration = 2
 
   private readonly scheduled: Scheduled[] = []
+  private readonly stateListeners = new Set<() => void>()
 
   /** Every element wrapped by `createMediaElementSource`, in order. */
   readonly mediaSources: { element: unknown; node: FakeNode }[] = []
@@ -121,6 +123,30 @@ export class FakeAudioContext {
 
   createBufferSource(): FakeBufferSource {
     return new FakeBufferSource(this)
+  }
+
+  addEventListener(type: 'statechange', listener: () => void): void {
+    if (type === 'statechange') this.stateListeners.add(listener)
+  }
+
+  removeEventListener(type: 'statechange', listener: () => void): void {
+    if (type === 'statechange') this.stateListeners.delete(listener)
+  }
+
+  async resume(): Promise<void> {
+    this.setState('running')
+  }
+
+  /** Test driver: move the state the way the engine would, firing the event. */
+  setState(state: string): void {
+    if (this.state === state) return
+    this.state = state
+    for (const listener of [...this.stateListeners]) listener()
+  }
+
+  /** Listeners still attached, so a disposed service can be shown to leave none. */
+  countStateListeners(): number {
+    return this.stateListeners.size
   }
 
   /**
@@ -143,6 +169,7 @@ export class FakeAudioContext {
 
   async close(): Promise<void> {
     this.closed = true
+    this.setState('closed')
   }
 
   /** Called by fake sources; not part of the Web Audio API. */

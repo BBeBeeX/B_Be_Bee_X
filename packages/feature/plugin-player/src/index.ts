@@ -244,8 +244,11 @@ export class Player extends Service implements PlayerService {
     // every platform's rules differ, the policy does not (docs/05 §5).
     const offInterruption = this.ownCtx.audio.onInterruption((event) => {
       if (event.type === 'began') {
-        this.ownCtx.logger.info('player: audio interruption began, pausing')
+        // Logged only when it actually does something: a suspension while
+        // idle (desktop powers down, nothing playing) is not a pause, and a
+        // line saying "pausing" that paused nothing reads as a lost cause.
         if (isPlayingLike(this.transport.status)) {
+          this.ownCtx.logger.info('player: audio interruption began, pausing')
           this.pause()
           this.pausedByInterruption = true
         }
@@ -278,7 +281,11 @@ export class Player extends Service implements PlayerService {
       scoped.mediaSession.setSupportedCommands(['play', 'pause', 'next', 'previous', 'seek'])
       this.publishNowPlaying()
       const off = scoped.mediaSession.onCommand((command) => {
-        this.ownCtx.logger.debug('player: mediaSession command: %s', command.type)
+        // Info, not debug: a pause that arrives here comes from the OS —
+        // media keys, a lock-screen button, another app taking the media
+        // session — and in a shipped build the file transport runs at info.
+        // At debug the most common "why did it stop" record never existed.
+        this.ownCtx.logger.info('player: mediaSession command: %s', command.type)
         switch (command.type) {
           case 'play':
             void this.play()

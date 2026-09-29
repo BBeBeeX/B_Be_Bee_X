@@ -282,6 +282,15 @@ export async function boot(): Promise<App> {
             if (!response.ok) throw new Error(`audio: ${response.status} loading ${src}`)
             return response.arrayBuffer()
           },
+          /*
+           * The renderer has no other interruption surface: there is no
+           * `AudioManager` here, so the `AudioContext`'s own state
+           * transitions are what reports device loss and post-sleep
+           * suspension. Translating them into interruption events is what
+           * makes a suspended context a logged, cleanly paused playback
+           * instead of silence under a `playing` transport (docs/05 §5).
+           */
+          emitContextInterruptions: true,
         },
       ],
 

@@ -289,6 +289,26 @@ different; the *policy* is uniform.
 The headphone rule matters enough to be non-configurable. It is the one audio behaviour users
 never forgive.
 
+Where the events come from is the shell's job — `ctx.audio` only publishes what a shell hands it
+(`emitInterruption` / `emitRouteChange`):
+
+- **Mobile** — `apps/mobile/src/boot.ts` subscribes to `AudioManager`'s `interruption` and
+  `routeChange` system events and forwards them verbatim. These carry the OS's `shouldResume`, so
+  they are the informed source, and the `AudioContext`'s own state transitions stay untranslated
+  (`emitContextInterruptions` off) rather than publishing every interruption twice.
+- **Desktop** — there is no other interruption surface, so the desktop shell opts into
+  `emitContextInterruptions`: `core-audio-webaudio` translates the `AudioContext`'s state
+  transitions (`running → suspended/interrupted → running`) into `began`/`ended` events, and logs
+  every transition. A context *born* suspended (autoplay policy) is not an interruption. The
+  events carry `shouldResume: false` — waking the machine does not mean the user wants sound —
+  but `play()` itself resumes a suspended context on the way in, since the press of the button is
+  the user gesture.
+
+The publishing half is part of the `AudioService` contract, and the conformance suite asserts a
+published interruption reaches its listeners. A pause arriving through `ctx.mediaSession` (media
+keys, lock screen, another app taking the session) is logged at info with its command name — the
+"where did this pause come from" record.
+
 ---
 
 ## 6. Playback and the background

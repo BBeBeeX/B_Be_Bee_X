@@ -136,6 +136,8 @@ class FakeAudioService extends Service implements AudioService {
   onRouteChange() {
     return () => {}
   }
+  emitInterruption() {}
+  emitRouteChange() {}
 }
 
 async function harness() {

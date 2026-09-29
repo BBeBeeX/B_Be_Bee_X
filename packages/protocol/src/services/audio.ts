@@ -100,6 +100,19 @@ export interface AudioService {
 
   onInterruption(cb: (e: InterruptionEvent) => void): Disposable
   onRouteChange(cb: (e: RouteChangeEvent) => void): Disposable
+
+  /**
+   * Publish a platform interruption to the listeners above.
+   *
+   * The *shell* calls this: it is the place the platform's own events arrive —
+   * `AudioManager` on mobile, the `AudioContext`'s own state transitions on
+   * desktop. The *policy* — what to pause, what to resume — belongs to
+   * `ctx.player` (docs/05 §5), which is why the flow is split across the two
+   * members: the shell publishes, the player decides.
+   */
+  emitInterruption(e: InterruptionEvent): void
+  /** Publish a route change. Same reasoning as `emitInterruption`. */
+  emitRouteChange(e: RouteChangeEvent): void
 }
 
 /* ── ctx.player ─────────────────────────────────────────────────────────── */
