@@ -128,4 +128,113 @@ describe('scripts/sources', () => {
     expect(s1Out.sourceName).toBe('S1')
     expect(s2Out.sourceName).toBe('S2')
   })
+
+  it('compiles a lyric source folder with source.js inlined as the script', async () => {
+    const srcDir = join(tmp, 'lrclib')
+    await mkdir(srcDir, { recursive: true })
+
+    await writeFile(
+      join(srcDir, 'source.json'),
+      JSON.stringify({
+        id: 'builtin-lrclib',
+        name: 'LRCLIB',
+        version: '1.4.0',
+        allowedHosts: ['lrclib.net'],
+      }),
+      'utf8',
+    )
+    await writeFile(
+      join(srcDir, 'source.js'),
+      'async function searchLyrics(query) { return query.title; }',
+      'utf8',
+    )
+
+    const outFile = join(tmp, 'lyric-fixtures', 'lrclib.json')
+    const compiled = await compileSource({ sourceDir: srcDir, outFile })
+    const parsed = JSON.parse(compiled)
+
+    expect(parsed.id).toBe('builtin-lrclib')
+    expect(parsed.jsLib).toBeUndefined()
+    expect(parsed.script).toBe('async function searchLyrics(query) { return query.title; }')
+  })
+
+  it('rejects a lyric source document without a script', async () => {
+    const srcDir = join(tmp, 'lyric-no-script')
+    await mkdir(srcDir, { recursive: true })
+
+    await writeFile(
+      join(srcDir, 'source.json'),
+      JSON.stringify({ id: 'no-script', name: 'No Script' }),
+      'utf8',
+    )
+
+    await expect(compileSource({ sourceDir: srcDir })).rejects.toThrow(/script/)
+  })
+
+  it('routes lyric fixtures to lyricOutDir and emits the generated TS module', async () => {
+    const sourcesRoot = join(tmp, 'sources')
+    const outRoot = join(tmp, 'fixtures')
+    const lyricOutRoot = join(tmp, 'lyric-fixtures')
+    const codegenFile = join(tmp, 'generated', 'builtin-lyric-sources.generated.ts')
+
+    const music = join(sourcesRoot, 'music-src')
+    const lyric = join(sourcesRoot, 'lrclib')
+    await mkdir(music, { recursive: true })
+    await mkdir(lyric, { recursive: true })
+
+    await writeFile(
+      join(music, 'source.json'),
+      JSON.stringify({
+        sourceUrl: 'https://music.com',
+        sourceName: 'Music',
+        ruleStream: { url: 'https://music.com/stream' },
+      }),
+    )
+    await writeFile(
+      join(lyric, 'source.json'),
+      JSON.stringify({ id: 'builtin-lrclib', name: 'LRCLIB', version: '1.4.0' }),
+    )
+    await writeFile(join(lyric, 'source.js'), 'async function searchLyrics() { return null; }')
+
+    const written = await buildSources({
+      sourcesDir: sourcesRoot,
+      outDir: outRoot,
+      lyricOutDir: lyricOutRoot,
+      lyricCodegenFile: codegenFile,
+    })
+    expect(written).toHaveLength(2)
+    expect(written).toContain(join(lyricOutRoot, 'lrclib.json'))
+    expect(written).toContain(join(outRoot, 'music-src.json'))
+
+    // Lyric fixtures never leak into the music output directory.
+    expect(JSON.parse(await readFile(join(outRoot, 'music-src.json'), 'utf8')).jsLib).toBeUndefined()
+    await expect(readFile(join(outRoot, 'lrclib.json'), 'utf8')).rejects.toThrow()
+
+    const codegen = await readFile(codegenFile, 'utf8')
+    expect(codegen).toContain('BUILTIN_LYRIC_SOURCES')
+    expect(codegen).toContain('async function searchLyrics() { return null; }')
+  })
+
+  it('unpacks a lyric document back into source.json and source.js', async () => {
+    const singleFile = join(tmp, 'lyric.json')
+    await writeFile(
+      singleFile,
+      JSON.stringify({
+        id: 'builtin-lrclib',
+        name: 'LRCLIB',
+        script: 'async function searchLyrics() { return null; }',
+      }),
+      'utf8',
+    )
+
+    const outDir = join(tmp, 'unpacked-lyric')
+    const res = await unpackSource({ jsonFile: singleFile, outDir })
+
+    const json = JSON.parse(await readFile(res.jsonFile, 'utf8'))
+    expect(json.name).toBe('LRCLIB')
+    expect(json.script).toBeUndefined()
+
+    const js = (await readFile(res.jsFile!, 'utf8')).trim()
+    expect(js).toBe('async function searchLyrics() { return null; }')
+  })
 })

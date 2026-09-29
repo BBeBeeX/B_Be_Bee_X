@@ -1,4 +1,4 @@
-import type { SourceDocument, StreamQuality } from '@BBeBee/protocol'
+import type { LyricSourceDefinition, SourceDocument, StreamQuality } from '@BBeBee/protocol'
 
 const STREAM_QUALITIES: readonly StreamQuality[] = ['low', 'normal', 'high', 'lossless', 'hi-res']
 
@@ -131,4 +131,54 @@ export function validateSourceDocument(value: unknown): SourceDocument {
   }
 
   return doc as unknown as SourceDocument
+}
+
+/**
+ * Validates a lyric source document (`LyricSourceDefinition`) — the doc model
+ * used under `sources/` for lyric platforms: metadata plus one sandbox script.
+ * Returns the document if valid, or throws an Error listing all detected issues.
+ */
+export function validateLyricSourceDocument(value: unknown): LyricSourceDefinition {
+  const issues: string[] = []
+  const at = (path: string, message: string) => issues.push(`${path}: ${message}`)
+
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Lyric source document must be a JSON object')
+  }
+
+  const doc = value as Record<string, unknown>
+
+  if (typeof doc.id !== 'string' || !doc.id.trim()) {
+    at('id', 'required')
+  }
+  if (typeof doc.name !== 'string' || !doc.name.trim()) {
+    at('name', 'required')
+  }
+  if (typeof doc.script !== 'string' || !doc.script.trim()) {
+    at('script', 'required — expected source.js to be inlined by the compiler')
+  }
+
+  for (const key of ['description', 'version', 'author'] as const) {
+    if (doc[key] !== undefined && typeof doc[key] !== 'string') {
+      at(key, 'must be a string')
+    }
+  }
+  if (doc.enabled !== undefined && typeof doc.enabled !== 'boolean') {
+    at('enabled', 'must be a boolean')
+  }
+  if (doc.sortOrder !== undefined && typeof doc.sortOrder !== 'number') {
+    at('sortOrder', 'must be a number')
+  }
+  if (doc.allowedHosts !== undefined) {
+    if (!Array.isArray(doc.allowedHosts) || !doc.allowedHosts.every((h) => typeof h === 'string')) {
+      at('allowedHosts', 'must be an array of hostnames')
+    }
+  }
+
+  if (issues.length > 0) {
+    const name = typeof doc.name === 'string' ? doc.name : 'Lyric source document'
+    throw new Error(`${name} validation failed: ${issues.join('; ')}`)
+  }
+
+  return doc as unknown as LyricSourceDefinition
 }

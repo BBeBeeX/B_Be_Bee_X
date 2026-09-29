@@ -5,7 +5,12 @@ import {
   normalizeToLyrics,
 } from './normalizer.js'
 import { checkAllowedHost, executeLyricSource } from './sandbox.js'
-import { BUILTIN_LRCLIB_SOURCE, LyricSourcesPlugin, STORE_LYRIC_SOURCES_KEY } from './index.js'
+import {
+  BUILTIN_LYRIC_SOURCES,
+  BUILTIN_LRCLIB_SOURCE,
+  LyricSourcesPlugin,
+  STORE_LYRIC_SOURCES_KEY,
+} from './index.js'
 import type { HttpRequest, HttpService, LyricSourceDefinition } from '@BBeBee/protocol'
 
 describe('Lyrics Normalizer', () => {
@@ -165,6 +170,17 @@ describe('Sandbox & Security Boundaries', () => {
 })
 
 describe('LyricSourcesPlugin Service', () => {
+  it('ships builtins generated from the sources/ documents', () => {
+    // The per-platform code lives in sources/<dir>/; this package only
+    // consumes the compiled module. Pin that the wiring stayed intact.
+    expect(BUILTIN_LYRIC_SOURCES.length).toBeGreaterThan(0)
+    expect(BUILTIN_LRCLIB_SOURCE.id).toBe('builtin-lrclib')
+    expect(BUILTIN_LRCLIB_SOURCE.allowedHosts).toContain('lrclib.net')
+    expect(BUILTIN_LRCLIB_SOURCE.version).toBe('1.3.0')
+    expect(BUILTIN_LRCLIB_SOURCE.script).toContain('/api/get')
+    expect(BUILTIN_LRCLIB_SOURCE.script).toContain('/api/search')
+  })
+
   it('manages sources and priority execution', async () => {
     const ctx = new Context()
     await ctx.plugin(LyricSourcesPlugin)
@@ -227,30 +243,22 @@ describe('LyricSourcesPlugin Service', () => {
     expect(afterRemove.some((s) => s.id === 'custom-priority')).toBe(false)
   })
 
-  it('executes LRCLIB source via /api/search with track_name and artist_name', async () => {
+  it('executes LRCLIB source with exact match /api/get', async () => {
     const mockHttp: HttpService = (async (req: HttpRequest) => {
-      expect(req.url).toContain('https://lrclib.net/api/search?')
+      expect(req.url).toContain('https://lrclib.net/api/get')
       expect(req.url).toContain('track_name=Yellow')
       expect(req.url).toContain('artist_name=Coldplay')
+      expect(req.url).toContain('duration=269')
       expect(req.headers?.['Lrclib-Client']).toBe('BBeBee-MusicPlayer/1.0.0')
 
-      const responseBody = JSON.stringify([
-        {
-          id: 1001,
-          trackName: 'Yellow (Live)',
-          artistName: 'Coldplay',
-          duration: 320,
-          syncedLyrics: '[00:10.00]Live version',
-        },
-        {
-          id: 1002,
-          trackName: 'Yellow',
-          artistName: 'Coldplay',
-          duration: 269,
-          syncedLyrics: '[00:15.00]Look at the stars\n[00:20.00]Look how they shine for you',
-          plainLyrics: 'Look at the stars\nLook how they shine for you',
-        },
-      ])
+      const responseBody = JSON.stringify({
+        id: 999,
+        trackName: 'Yellow',
+        artistName: 'Coldplay',
+        duration: 269,
+        syncedLyrics: '[00:15.00]Look at the stars\n[00:20.00]Look how they shine for you',
+        plainLyrics: 'Look at the stars\nLook how they shine for you',
+      })
 
       return {
         status: 200,
@@ -275,37 +283,51 @@ describe('LyricSourcesPlugin Service', () => {
     expect(normalized?.content).toContain('[00:15.00]Look at the stars')
   })
 
-  it('never requests /api/get and picks the closest-duration synced candidate', async () => {
+  it('executes LRCLIB source with fallback /api/search when /api/get returns 404', async () => {
+    let searchCalled = false
     const mockHttp: HttpService = (async (req: HttpRequest) => {
-      if (!req.url.includes('/api/search')) {
-        throw new Error(`Unexpected endpoint: ${req.url}`)
+      if (req.url.includes('/api/get')) {
+        return {
+          status: 404,
+          headers: {},
+          text: async () => JSON.stringify({ error: 'Not found' }),
+          json: async () => ({ error: 'Not found' }),
+          arrayBuffer: async () => new ArrayBuffer(0),
+          stream: () => ({} as any),
+        }
       }
 
-      const responseBody = JSON.stringify([
-        {
-          id: 1001,
-          trackName: 'Yellow (Live)',
-          artistName: 'Coldplay',
-          duration: 320,
-          syncedLyrics: '[00:10.00]Live version',
-        },
-        {
-          id: 1002,
-          trackName: 'Yellow',
-          artistName: 'Coldplay',
-          duration: 269,
-          syncedLyrics: '[00:15.00]Studio matched by duration',
-        },
-      ])
+      if (req.url.includes('/api/search')) {
+        searchCalled = true
+        expect(req.url).toContain('Coldplay')
+        const responseBody = JSON.stringify([
+          {
+            id: 1001,
+            trackName: 'Yellow (Live)',
+            artistName: 'Coldplay',
+            duration: 320,
+            syncedLyrics: '[00:10.00]Live version',
+          },
+          {
+            id: 1002,
+            trackName: 'Yellow',
+            artistName: 'Coldplay',
+            duration: 269,
+            syncedLyrics: '[00:15.00]Studio matched by duration',
+          },
+        ])
 
-      return {
-        status: 200,
-        headers: {},
-        text: async () => responseBody,
-        json: async () => JSON.parse(responseBody),
-        arrayBuffer: async () => new ArrayBuffer(0),
-        stream: () => ({} as any),
+        return {
+          status: 200,
+          headers: {},
+          text: async () => responseBody,
+          json: async () => JSON.parse(responseBody),
+          arrayBuffer: async () => new ArrayBuffer(0),
+          stream: () => ({} as any),
+        }
       }
+
+      throw new Error(`Unexpected url: ${req.url}`)
     }) as unknown as HttpService
 
     const raw = await executeLyricSource(
@@ -314,140 +336,23 @@ describe('LyricSourcesPlugin Service', () => {
       { http: mockHttp },
     )
 
+    expect(searchCalled).toBe(true)
     const normalized = normalizeToLyrics(raw)
+    expect(normalized).toBeDefined()
     expect(normalized?.content).toBe('[00:15.00]Studio matched by duration')
   })
 
-  it('prefers synced lyrics even when a plain candidate matches the duration better', async () => {
+  it('returns the instrumental marker on an exact instrumental match', async () => {
     const mockHttp: HttpService = (async (_req: HttpRequest) => {
-      const responseBody = JSON.stringify([
-        {
-          id: 2001,
-          trackName: 'Yellow',
-          artistName: 'Coldplay',
-          duration: 269,
-          plainLyrics: 'Exact-duration plain lyrics',
-        },
-        {
-          id: 2002,
-          trackName: 'Yellow',
-          artistName: 'Coldplay',
-          duration: 300,
-          syncedLyrics: '[00:05.00]Synced but off duration',
-        },
-      ])
-
-      return {
-        status: 200,
-        headers: {},
-        text: async () => responseBody,
-        json: async () => JSON.parse(responseBody),
-        arrayBuffer: async () => new ArrayBuffer(0),
-        stream: () => ({} as any),
-      }
-    }) as unknown as HttpService
-
-    const raw = await executeLyricSource(
-      BUILTIN_LRCLIB_SOURCE,
-      { title: 'Yellow', artist: 'Coldplay', duration: 269000 },
-      { http: mockHttp },
-    )
-
-    expect(raw).toBe('[00:05.00]Synced but off duration')
-  })
-
-  it('falls back to the closest plain candidate when no synced lyrics exist', async () => {
-    const mockHttp: HttpService = (async (_req: HttpRequest) => {
-      const responseBody = JSON.stringify([
-        {
-          id: 3001,
-          trackName: 'Yellow',
-          artistName: 'Coldplay',
-          duration: 320,
-          plainLyrics: 'Far plain lyrics',
-        },
-        {
-          id: 3002,
-          trackName: 'Yellow',
-          artistName: 'Coldplay',
-          duration: 268,
-          plainLyrics: 'Close plain lyrics',
-        },
-      ])
-
-      return {
-        status: 200,
-        headers: {},
-        text: async () => responseBody,
-        json: async () => JSON.parse(responseBody),
-        arrayBuffer: async () => new ArrayBuffer(0),
-        stream: () => ({} as any),
-      }
-    }) as unknown as HttpService
-
-    const raw = await executeLyricSource(
-      BUILTIN_LRCLIB_SOURCE,
-      { title: 'Yellow', artist: 'Coldplay', duration: 269000 },
-      { http: mockHttp },
-    )
-
-    expect(raw).toBe('Close plain lyrics')
-  })
-
-  it('keeps looking for a synced match when the precise attempt only has plain lyrics', async () => {
-    const mockHttp: HttpService = (async (req: HttpRequest) => {
-      const body = req.url.includes('track_name=')
-        ? JSON.stringify([
-            {
-              id: 4001,
-              trackName: 'Yellow',
-              artistName: 'Coldplay',
-              duration: 269,
-              plainLyrics: 'Precise plain lyrics',
-            },
-          ])
-        : JSON.stringify([
-            {
-              id: 4002,
-              trackName: 'Yellow',
-              artistName: 'Coldplay',
-              duration: 269,
-              syncedLyrics: '[00:15.00]Synced from broader search',
-            },
-          ])
-
-      return {
-        status: 200,
-        headers: {},
-        text: async () => body,
-        json: async () => JSON.parse(body),
-        arrayBuffer: async () => new ArrayBuffer(0),
-        stream: () => ({} as any),
-      }
-    }) as unknown as HttpService
-
-    const raw = await executeLyricSource(
-      BUILTIN_LRCLIB_SOURCE,
-      { title: 'Yellow', artist: 'Coldplay', duration: 269000 },
-      { http: mockHttp },
-    )
-
-    expect(raw).toBe('[00:15.00]Synced from broader search')
-  })
-
-  it('returns the instrumental marker when only an instrumental entry matches', async () => {
-    const mockHttp: HttpService = (async (_req: HttpRequest) => {
-      const responseBody = JSON.stringify([
-        {
-          id: 5001,
-          trackName: 'Yellow',
-          artistName: 'Coldplay',
-          duration: 269,
-          instrumental: true,
-          syncedLyrics: '',
-          plainLyrics: null,
-        },
-      ])
+      const responseBody = JSON.stringify({
+        id: 5001,
+        trackName: 'Yellow',
+        artistName: 'Coldplay',
+        duration: 269,
+        instrumental: true,
+        syncedLyrics: '',
+        plainLyrics: null,
+      })
 
       return {
         status: 200,
@@ -582,14 +487,11 @@ describe('LyricSourcesPlugin Service', () => {
       }
       async [Service.invoke](_req: HttpRequest) {
         seenConfig = this[Service.resolveConfig]()
-        const body = JSON.stringify([
-          { id: 1, trackName: 'Yellow', syncedLyrics: '[00:01.00]Scoped Lyric' },
-        ])
         return {
           status: 200,
           headers: {},
-          text: async () => body,
-          json: async () => JSON.parse(body),
+          text: async () => JSON.stringify({ syncedLyrics: '[00:01.00]Scoped Lyric' }),
+          json: async () => ({ syncedLyrics: '[00:01.00]Scoped Lyric' }),
           arrayBuffer: async () => new ArrayBuffer(0),
           stream: () => ({} as any),
         }

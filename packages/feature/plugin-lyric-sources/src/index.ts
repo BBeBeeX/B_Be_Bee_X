@@ -13,6 +13,7 @@ import type {
 } from '@BBeBee/protocol'
 import { executeLyricSource } from './sandbox.js'
 import { normalizeToLyrics } from './normalizer.js'
+import { BUILTIN_LYRIC_SOURCES as GENERATED_LYRIC_SOURCES } from './generated/builtin-lyric-sources.generated.js'
 
 export * from './sandbox.js'
 export * from './normalizer.js'
@@ -20,153 +21,28 @@ export * from './normalizer.js'
 export const STORE_LYRIC_SOURCES_KEY = 'lyric-sources.custom-sources'
 
 /**
- * Built-in open-source LRCLIB provider
+ * Every bundled lyric source document, compiled from `sources/<dir>/`
+ * (source.json + source.js) by `pnpm build:sources`. This file carries no
+ * per-platform code — a platform lives in its `sources/` folder.
  */
-export const BUILTIN_LRCLIB_SOURCE: LyricSourceDefinition = {
-  id: 'builtin-lrclib',
-  name: 'LRCLIB (默认歌词源)',
-  description: '基于公开开放的 LRCLIB 歌词数据库，支持全球海量百万同步 LRC 歌词搜索',
-  version: '1.4.0',
-  author: 'LRCLIB Community / BBeBee',
-  enabled: true,
-  sortOrder: 0,
-  allowedHosts: ['lrclib.net'],
-  script: `
-async function searchLyrics(query) {
-  const { title, artist, duration } = query;
-  if (!title || typeof title !== 'string') return null;
+export const BUILTIN_LYRIC_SOURCES: readonly LyricSourceDefinition[] = GENERATED_LYRIC_SOURCES
 
-  const trimmedTitle = title.trim();
-  const trimmedArtist = (artist || '').trim();
-  const durationSec = duration && duration > 0 ? Math.round(duration / 1000) : 0;
-
-  const headers = {
-    'User-Agent': 'BBeBee-MusicPlayer/1.0.0 (https://github.com/BBeBee)',
-    'Lrclib-Client': 'BBeBee-MusicPlayer/1.0.0',
-  };
-
-  function toQueryString(params) {
-    return Object.entries(params)
-      .filter(([_, v]) => v !== undefined && v !== null && v !== '')
-      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
-      .join('&');
+function builtinLyricSource(id: string): LyricSourceDefinition {
+  const found = BUILTIN_LYRIC_SOURCES.find((s) => s.id === id)
+  if (!found) {
+    throw new Error(`Builtin lyric source "${id}" is missing from the generated module; run \`pnpm build:sources\``)
   }
-
-  function cleanTitle(t) {
-    if (!t) return '';
-    return t
-      .replace(/\\s*[\\(\\[](?:(?:19|20)\\d\\d\\s+)?(?:remaster(?:ed)?|live|explicit|deluxe|bonus(?:\\s+track)?|anniversary|edit|mix|version|feat\\.?.*)(?:\\s+(?:19|20)\\d\\d)?[\\)\\]]\\s*$/i, '')
-      .replace(/\\s*-\\s*(?:(?:19|20)\\d\\d\\s+)?(?:remaster(?:ed)?|live|deluxe|bonus(?:\\s+track)?|anniversary|edit|mix|version)(?:\\s+(?:19|20)\\d\\d)?\\s*$/i, '')
-      .trim();
-  }
-
-  async function parseBody(res) {
-    if (!res) return null;
-    try {
-      if (typeof res.json === 'function') return await res.json();
-      if (typeof res.body === 'string' && res.body) return JSON.parse(res.body);
-    } catch (_) {}
-    return null;
-  }
-
-  function hasSynced(it) {
-    return !!(it && it.syncedLyrics && String(it.syncedLyrics).trim());
-  }
-
-  function hasPlain(it) {
-    return !!(it && it.plainLyrics && String(it.plainLyrics).trim());
-  }
-
-  function hasLyrics(it) {
-    return !!(hasSynced(it) || hasPlain(it) || (it && it.instrumental));
-  }
-
-  // Ranking policy: synced lyrics beat plain ones, then the closest duration
-  // wins. Candidates without a usable duration sort after timed ones.
-  const UNKNOWN_DURATION = Number.MAX_SAFE_INTEGER;
-
-  function tierOf(it) {
-    if (hasSynced(it)) return 0;
-    if (hasPlain(it)) return 1;
-    return 2;
-  }
-
-  function durationDelta(it) {
-    if (durationSec <= 0 || !it || !it.duration || it.duration <= 0) return UNKNOWN_DURATION;
-    return Math.abs(it.duration - durationSec);
-  }
-
-  function rank(a, b) {
-    const tier = tierOf(a) - tierOf(b);
-    if (tier !== 0) return tier;
-    return durationDelta(a) - durationDelta(b);
-  }
-
-  function pickBest(list) {
-    if (!Array.isArray(list) || list.length === 0) return null;
-    const candidates = list.filter(hasLyrics);
-    if (candidates.length === 0) return null;
-    return candidates.slice().sort(rank)[0];
-  }
-
-  function lyricsOf(it) {
-    if (!it) return null;
-    if (hasSynced(it)) return String(it.syncedLyrics);
-    if (hasPlain(it)) return String(it.plainLyrics);
-    if (it.instrumental) return '[00:00.00]纯音乐，请欣赏';
-    return null;
-  }
-
-  let lastNetworkError = null;
-  let plainFallback = null;
-
-  // Search attempts, most precise first. A precise attempt that only yields
-  // plain lyrics is buffered while broader attempts still look for a synced one.
-  const searchTitle = cleanTitle(trimmedTitle) || trimmedTitle;
-  const attempts = [];
-  if (trimmedArtist) {
-    attempts.push({ track_name: searchTitle, artist_name: trimmedArtist });
-    if (searchTitle !== trimmedTitle) {
-      attempts.push({ track_name: trimmedTitle, artist_name: trimmedArtist });
-    }
-  }
-  attempts.push({ q: trimmedArtist ? trimmedArtist + ' ' + searchTitle : searchTitle });
-  if (trimmedArtist && trimmedTitle) {
-    attempts.push({ q: trimmedTitle });
-  }
-
-  for (const params of attempts) {
-    try {
-      const res = await httpFetch('https://lrclib.net/api/search?' + toQueryString(params), {
-        headers,
-      });
-      if (!res || res.status !== 200) continue;
-      const best = pickBest(await parseBody(res));
-      const lyrics = lyricsOf(best);
-      if (!lyrics) continue;
-      if (hasSynced(best)) return lyrics;
-      if (!plainFallback) plainFallback = lyrics;
-    } catch (err) {
-      lastNetworkError = err;
-    }
-  }
-
-  if (plainFallback) return plainFallback;
-
-  if (lastNetworkError) {
-    throw lastNetworkError;
-  }
-
-  return null;
+  return found
 }
-`,
-}
+
+/** Built-in open-source LRCLIB provider (see `sources/lrclib/`). */
+export const BUILTIN_LRCLIB_SOURCE: LyricSourceDefinition = builtinLyricSource('builtin-lrclib')
 
 export class LyricSourcesPlugin extends Service implements LyricSourcesService {
   static override readonly name = 'lyricSources'
 
   private readonly ownCtx: Context
-  private sources: LyricSourceDefinition[] = [BUILTIN_LRCLIB_SOURCE]
+  private sources: LyricSourceDefinition[] = [...BUILTIN_LYRIC_SOURCES]
   private storeService?: StoreService
   private jsService?: JsService
   private httpService?: HttpService
@@ -222,24 +98,26 @@ export class LyricSourcesPlugin extends Service implements LyricSourcesService {
     try {
       const saved = await this.storeService.get<LyricSourceDefinition[]>(STORE_LYRIC_SOURCES_KEY)
       if (Array.isArray(saved) && saved.length > 0) {
-        // Merge or replace; ensure builtin exists and is updated to latest script/version
+        // Merge or replace: a stored builtin whose version lags the compiled
+        // document refreshes to it, keeping the user's enabled/sortOrder.
         this.sources = saved.map((s) => {
-          if (s.id === BUILTIN_LRCLIB_SOURCE.id) {
-            if (s.version !== BUILTIN_LRCLIB_SOURCE.version || !s.script.includes('toQueryString')) {
-              return {
-                ...BUILTIN_LRCLIB_SOURCE,
-                enabled: s.enabled ?? true,
-                sortOrder: s.sortOrder ?? 0,
-              }
+          const builtin = BUILTIN_LYRIC_SOURCES.find((b) => b.id === s.id)
+          if (builtin && s.version !== builtin.version) {
+            return {
+              ...builtin,
+              enabled: s.enabled ?? true,
+              sortOrder: s.sortOrder ?? 0,
             }
           }
           return s
         })
-        if (!this.sources.some((s) => s.id === BUILTIN_LRCLIB_SOURCE.id)) {
-          this.sources.unshift(BUILTIN_LRCLIB_SOURCE)
+        for (const builtin of [...BUILTIN_LYRIC_SOURCES].reverse()) {
+          if (!this.sources.some((s) => s.id === builtin.id)) {
+            this.sources.unshift(builtin)
+          }
         }
       } else {
-        this.sources = [BUILTIN_LRCLIB_SOURCE]
+        this.sources = [...BUILTIN_LYRIC_SOURCES]
       }
       this.loaded = true
       this.emitChanged()

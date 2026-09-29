@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
- * `pnpm build:sources` — compile multi-file sources in `sources/` into self-contained single-file JSONs in `fixtures/sources/`.
+ * `pnpm build:sources` — compile multi-file sources in `sources/` into
+ * self-contained single-file JSONs: music sources into `fixtures/sources/`,
+ * lyric sources into `fixtures/lyric-sources/` (bundled into a generated TS
+ * module for `plugin-lyric-sources` to import).
  */
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
@@ -10,6 +13,15 @@ import { buildSources, unpackSource } from './index.ts'
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const defaultSourcesDir = join(repoRoot, 'sources')
 const defaultOutDir = join(repoRoot, 'fixtures', 'sources')
+const defaultLyricCodegenFile = join(
+  repoRoot,
+  'packages',
+  'feature',
+  'plugin-lyric-sources',
+  'src',
+  'generated',
+  'builtin-lyric-sources.generated.ts',
+)
 
 const args = process.argv.slice(2)
 
@@ -37,13 +49,25 @@ for (let i = 0; i < args.length; i++) {
 
 const sourcesDir = customSourcesDir ? resolve(process.cwd(), customSourcesDir) : defaultSourcesDir
 const outDir = customOutDir ? resolve(process.cwd(), customOutDir) : defaultOutDir
+// Lyric fixtures live next to the music ones: fixtures/sources → fixtures/lyric-sources.
+const lyricOutDir = join(resolve(outDir, '..'), 'lyric-sources')
+const lyricCodegen = defaultLyricCodegenFile
 
 async function runBuild() {
   try {
-    const written = await buildSources({ sourcesDir, outDir, validate: true })
+    const written = await buildSources({
+      sourcesDir,
+      outDir,
+      lyricOutDir,
+      lyricCodegenFile: lyricCodegen,
+      validate: true,
+    })
     console.log(`[build:sources] Successfully compiled ${written.length} source(s):`)
     for (const f of written) {
       console.log(`  - ${f}`)
+    }
+    if (lyricCodegen) {
+      console.log(`[build:sources] Generated lyric-source module: ${lyricCodegen}`)
     }
   } catch (err) {
     console.error(`[build:sources] Error: ${err instanceof Error ? err.message : String(err)}`)
