@@ -306,14 +306,19 @@ export async function drawTrackCard(
   const artistLineH = 26
   const artistTotalH = Math.max(1, artistLines.length) * artistLineH
 
-  // Logo: small compact size
-  const logoW = 85
+  // Logo: larger and more prominent, tight vertical spacing
+  const logoW = 110
   const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
-  const logoH = logoImg ? (logoW / logoImg.width) * logoImg.height : 20
+  const logoH = logoImg ? Math.round((logoW / logoImg.width) * logoImg.height) : 24
 
-  // Calculate natural height and ensure taller card
-  const naturalCardH = 24 + artH + 18 + titleTotalH + 10 + artistTotalH + 16 + logoH + 24
-  const cardH = Math.min(680, Math.max(610, naturalCardH))
+  const gapCoverTitle = 16
+  const gapTitleArtist = 8
+  const gapAboveLogo = 10
+  const gapBelowLogo = 18
+
+  // Calculate natural height: tight padding around logo
+  const naturalCardH = 24 + artH + gapCoverTitle + titleTotalH + gapTitleArtist + artistTotalH + gapAboveLogo + logoH + gapBelowLogo
+  const cardH = naturalCardH
   const cardX = (width - cardW) / 2
   const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
@@ -363,7 +368,7 @@ export async function drawTrackCard(
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
   const textX = artX
-  const titleY = artY + artH + 18
+  const titleY = artY + artH + gapCoverTitle
   titleLines.forEach((line, idx) => {
     ctx.fillText(line, textX, titleY + idx * titleLineH)
   })
@@ -371,16 +376,16 @@ export async function drawTrackCard(
   // 5. Artist (larger font, wraps up to 3 lines)
   ctx.fillStyle = "#B3B9C9"
   ctx.font = "500 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  const artistY = titleY + titleTotalH + 10
+  const artistY = titleY + titleTotalH + gapTitleArtist
   artistLines.forEach((line, idx) => {
     ctx.fillText(line, textX, artistY + idx * artistLineH)
   })
   ctx.restore()
 
-  // 6. Logo: directly below artist, smaller size
+  // 6. Logo: directly below artist with compact gap
   if (logoImg) {
     const logoX = textX
-    const logoY = artistY + artistTotalH + 16
+    const logoY = artistY + artistTotalH + gapAboveLogo
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 }
@@ -417,14 +422,19 @@ export async function drawPlaylistCard(
   const subtitleLineH = 26
   const subtitleTotalH = Math.max(1, subtitleLines.length) * subtitleLineH
 
-  // Logo: small compact size
-  const logoW = 85
+  // Logo: larger and more prominent, tight vertical spacing
+  const logoW = 110
   const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
-  const logoH = logoImg ? (logoW / logoImg.width) * logoImg.height : 20
+  const logoH = logoImg ? Math.round((logoW / logoImg.width) * logoImg.height) : 24
 
-  // Calculate natural height and ensure taller card
-  const naturalCardH = 24 + artH + 18 + titleTotalH + 10 + subtitleTotalH + 16 + logoH + 24
-  const cardH = Math.min(680, Math.max(610, naturalCardH))
+  const gapCoverTitle = 16
+  const gapTitleArtist = 8
+  const gapAboveLogo = 10
+  const gapBelowLogo = 18
+
+  // Calculate natural height: tight padding around logo
+  const naturalCardH = 24 + artH + gapCoverTitle + titleTotalH + gapTitleArtist + subtitleTotalH + gapAboveLogo + logoH + gapBelowLogo
+  const cardH = naturalCardH
   const cardX = (width - cardW) / 2
   const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
@@ -473,7 +483,7 @@ export async function drawPlaylistCard(
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
   const textX = artX
-  const titleY = artY + artH + 18
+  const titleY = artY + artH + gapCoverTitle
   titleLines.forEach((line, idx) => {
     ctx.fillText(line, textX, titleY + idx * titleLineH)
   })
@@ -481,16 +491,16 @@ export async function drawPlaylistCard(
   // 5. Subtitle (larger font, wraps up to 3 lines)
   ctx.fillStyle = "#B3B9C9"
   ctx.font = "500 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  const subtitleY = titleY + titleTotalH + 10
+  const subtitleY = titleY + titleTotalH + gapTitleArtist
   subtitleLines.forEach((line, idx) => {
     ctx.fillText(line, textX, subtitleY + idx * subtitleLineH)
   })
   ctx.restore()
 
-  // 6. Logo: directly below subtitle, smaller size
+  // 6. Logo: directly below subtitle with compact gap
   if (logoImg) {
     const logoX = textX
-    const logoY = subtitleY + subtitleTotalH + 16
+    const logoY = subtitleY + subtitleTotalH + gapAboveLogo
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 }
@@ -535,14 +545,19 @@ export async function drawAlbumCard(
   const subtitleLineH = 26
   const subtitleTotalH = Math.max(1, subtitleLines.length) * subtitleLineH
 
-  // Logo: small compact size
-  const logoW = 85
+  // Logo: larger and more prominent, tight vertical spacing
+  const logoW = 110
   const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
-  const logoH = logoImg ? (logoW / logoImg.width) * logoImg.height : 20
+  const logoH = logoImg ? Math.round((logoW / logoImg.width) * logoImg.height) : 24
 
-  // Calculate natural height and ensure taller card
-  const naturalCardH = 24 + artH + 18 + titleTotalH + 10 + subtitleTotalH + 16 + logoH + 24
-  const cardH = Math.min(680, Math.max(610, naturalCardH))
+  const gapCoverTitle = 16
+  const gapTitleArtist = 8
+  const gapAboveLogo = 10
+  const gapBelowLogo = 18
+
+  // Calculate natural height: tight padding around logo
+  const naturalCardH = 24 + artH + gapCoverTitle + titleTotalH + gapTitleArtist + subtitleTotalH + gapAboveLogo + logoH + gapBelowLogo
+  const cardH = naturalCardH
   const cardX = (width - cardW) / 2
   const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
@@ -591,7 +606,7 @@ export async function drawAlbumCard(
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
   const textX = artX
-  const titleY = artY + artH + 18
+  const titleY = artY + artH + gapCoverTitle
   titleLines.forEach((line, idx) => {
     ctx.fillText(line, textX, titleY + idx * titleLineH)
   })
@@ -599,16 +614,16 @@ export async function drawAlbumCard(
   // 5. Subtitle (larger font, wraps up to 3 lines)
   ctx.fillStyle = "#B3B9C9"
   ctx.font = "500 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  const subtitleY = titleY + titleTotalH + 10
+  const subtitleY = titleY + titleTotalH + gapTitleArtist
   subtitleLines.forEach((line, idx) => {
     ctx.fillText(line, textX, subtitleY + idx * subtitleLineH)
   })
   ctx.restore()
 
-  // 6. Logo: directly below subtitle, smaller size
+  // 6. Logo: directly below subtitle with compact gap
   if (logoImg) {
     const logoX = textX
-    const logoY = subtitleY + subtitleTotalH + 16
+    const logoY = subtitleY + subtitleTotalH + gapAboveLogo
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 }
@@ -657,14 +672,18 @@ export async function drawLyricsCard(
   const paragraphSpacing = 10
   const totalLyricsH = totalLyricLineCount * lyricLineH + Math.max(0, wrappedParagraphs.length - 1) * paragraphSpacing
 
-  // Logo: small compact size
-  const logoW = 85
+  // Logo: larger and more prominent, tight vertical spacing
+  const logoW = 105
   const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
-  const logoH = logoImg ? (logoW / logoImg.width) * logoImg.height : 20
+  const logoH = logoImg ? Math.round((logoW / logoImg.width) * logoImg.height) : 24
 
-  // Calculate natural height for lyrics card
-  const naturalCardH = 22 + headerH + 20 + totalLyricsH + 20 + logoH + 22
-  const cardH = Math.min(760, Math.max(340, naturalCardH))
+  const gapHeaderLyrics = 16
+  const gapAboveLogo = 10
+  const gapBelowLogo = 18
+
+  // Calculate natural height for lyrics card: tight padding around logo
+  const naturalCardH = 22 + headerH + gapHeaderLyrics + totalLyricsH + gapAboveLogo + logoH + gapBelowLogo
+  const cardH = naturalCardH
   const cardX = (width - cardW) / 2
   const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
@@ -732,7 +751,7 @@ export async function drawLyricsCard(
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
   const lyricStartX = cardX + 22
-  const lyricStartY = miniY + headerH + 20
+  const lyricStartY = miniY + headerH + gapHeaderLyrics
 
   let currentY = lyricStartY
   wrappedParagraphs.forEach((paraLines) => {
@@ -744,10 +763,10 @@ export async function drawLyricsCard(
   })
   ctx.restore()
 
-  // 5. Bottom Section: BBeBee Logo (compact size at bottom-left)
+  // 5. Bottom Section: BBeBee Logo (directly below lyrics with compact gap)
   if (logoImg) {
     const logoX = cardX + 22
-    const logoY = cardY + cardH - logoH - 20
+    const logoY = lyricStartY + totalLyricsH + gapAboveLogo
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 }
