@@ -191,6 +191,18 @@ export class Cache extends Service implements CacheService {
       return local
     }
 
+    // If sourceUrl is an already-local location, it needs no HTTP fetch
+    if (ref.sourceUrl && /^(file|content|data|bbebee-file):/i.test(ref.sourceUrl)) {
+      try {
+        if (ref.sourceUrl.startsWith('file:') && (await this.exists(ref.sourceUrl))) {
+          await this.rememberLocal(ref.id, ref.sourceUrl)
+        }
+      } catch {
+        // ignore
+      }
+      return ref.sourceUrl
+    }
+
     if (!this.config.enabled || !ref.sourceUrl) return undefined
     const fetched = await this.fetchArtwork(key, ref.id, ref.sourceUrl)
     return fetched

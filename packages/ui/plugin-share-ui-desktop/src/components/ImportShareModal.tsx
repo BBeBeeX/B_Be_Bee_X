@@ -106,7 +106,8 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
               let cropH = 0
 
               if (envelope.type === 'lyrics') {
-                const lineCount = Math.max(1, Math.min(6, (envelope.data as any).lines?.length ?? 1))
+                const lyricsData = envelope.data as ShareLyricsData
+                const lineCount = Math.max(1, Math.min(6, lyricsData.lines?.length ?? 1))
                 const cardH = Math.min(390, Math.max(220, 130 + lineCount * 36)) * scale
                 const cardY = (img.height - cardH) / 2
                 cropX = (img.width - 440 * scale) / 2 + 22 * scale
@@ -179,7 +180,7 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
 
   const handlePlayNow = async () => {
     if (!decoded) return
-    const player = serviceOf<PlayerService>(ctx, 'player') ?? (ctx as any).player as PlayerService | undefined
+    const player = serviceOf<PlayerService>(ctx, 'player')
     if (!player) {
       setErrorMsg('播放器服务未就绪')
       return
@@ -209,7 +210,7 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
 
   const handleEnqueue = async () => {
     if (!decoded) return
-    const player = serviceOf<PlayerService>(ctx, 'player') ?? (ctx as any).player as PlayerService | undefined
+    const player = serviceOf<PlayerService>(ctx, 'player')
     if (!player) {
       setErrorMsg('播放器服务未就绪')
       return
@@ -239,7 +240,7 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
 
   const handleSaveToLibrary = async () => {
     if (!decoded) return
-    const library = serviceOf<LibraryService>(ctx, 'library') ?? (ctx as any).library as LibraryService | undefined
+    const library = serviceOf<LibraryService>(ctx, 'library')
     if (!library) {
       setErrorMsg('音乐库服务未就绪')
       return
@@ -438,12 +439,14 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
                 },
                 (() => {
                   const rawArtwork = (decoded.data as { artwork?: string }).artwork
+                  const isHttp = Boolean(rawArtwork && /^https?:\/\//i.test(rawArtwork))
                   const normalizedArtwork = rawArtwork
                     ? rawArtwork.startsWith('file://')
                       ? rawArtwork.replace(/^file:\/\//, 'bbebee-file://')
                       : rawArtwork
                     : undefined
-                  const displayArtwork = extractedCoverUrl || normalizedArtwork
+                  // Prioritize the embedded HTTP address as requested
+                  const displayArtwork = (isHttp ? rawArtwork : undefined) || extractedCoverUrl || normalizedArtwork
 
                   return displayArtwork && !imageLoadError
                     ? h('img', {

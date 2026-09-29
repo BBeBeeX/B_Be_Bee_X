@@ -132,11 +132,16 @@ export class Share extends Service implements ShareService {
       }
     })
 
+    const playlistArtwork =
+      typeof playlist.artwork === "string"
+        ? playlist.artwork
+        : (playlist.artwork as { sourceUrl?: string } | undefined)?.sourceUrl
+
     const playlistData: SharePlaylistData = {
       urn: playlist.urn,
       name: playlist.name,
       description: playlist.description,
-      artwork: playlist.artwork,
+      artwork: playlistArtwork,
       trackCount: playlistTracks ? playlistTracks.length : 0,
       tracks: playlistTracks,
     }
@@ -183,11 +188,16 @@ export class Share extends Service implements ShareService {
       }
     })
 
+    const albumArtwork =
+      typeof album.artwork === "string"
+        ? album.artwork
+        : (album.artwork as { sourceUrl?: string } | undefined)?.sourceUrl
+
     const albumData: ShareAlbumData = {
       urn: album.urn,
       title: album.title,
       artist: album.artist,
-      artwork: album.artwork,
+      artwork: albumArtwork,
       year: album.year,
       trackCount: album.trackCount ?? (albumTracks ? albumTracks.length : 0),
       tracks: albumTracks,

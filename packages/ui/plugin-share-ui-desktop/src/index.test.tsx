@@ -301,7 +301,7 @@ describe('plugin-share-ui-desktop', () => {
 
   it('displays warning banner and disables copy/download for local track', () => {
     const ctx = new Context()
-    const { getByTestId, queryByTestId } = render(
+    const { getByTestId } = render(
       h(ShareTrackModal, {
         ctx,
         open: true,
@@ -416,5 +416,41 @@ describe('plugin-share-ui-desktop', () => {
     expect(res2).toBe(true)
     expect(execCommandMock).toHaveBeenCalledWith('copy')
   })
+
+  it('extracts HTTP artwork URLs and prioritizes them in ImportShareModal', async () => {
+    const { extractHttpArtworkUrl } = await import('./hooks/useShareModalState.js')
+
+    // Test extraction utility
+    expect(extractHttpArtworkUrl('https://example.com/cover.jpg')).toBe('https://example.com/cover.jpg')
+    expect(extractHttpArtworkUrl('http://example.com/cover.png')).toBe('http://example.com/cover.png')
+    expect(extractHttpArtworkUrl('file:///local/cover.jpg')).toBeUndefined()
+    expect(extractHttpArtworkUrl({ sourceUrl: 'https://example.com/source.jpg' })).toBe('https://example.com/source.jpg')
+
+    // Test ImportShareModal using HTTP cover
+    const { encodeMetadata } = await import('@BBeBee/plugin-share/metadata')
+    const b64WithHttpCover = encodeMetadata('track', {
+      urn: 'source:test:track:http_cover',
+      title: 'HTTP Cover Song',
+      artist: 'Online Artist',
+      artwork: 'https://cdn.example.com/online_cover.jpg',
+    })
+
+    const ctx = new Context()
+    const { getByPlaceholderText, getByAltText } = render(
+      h(ImportShareModal, {
+        ctx,
+        open: true,
+        onClose: () => {},
+      }),
+    )
+
+    const input = getByPlaceholderText('粘贴 Base64 分享数据…')
+    fireEvent.change(input, { target: { value: b64WithHttpCover } })
+
+    const img = getByAltText('artwork') as HTMLImageElement
+    expect(img).toBeDefined()
+    expect(img.src).toBe('https://cdn.example.com/online_cover.jpg')
+  })
 })
+
 

@@ -27,6 +27,10 @@ export function useResolvedArtwork(ctx: Context, artwork?: ArtworkRef): ArtworkR
       setResolution(undefined)
       return
     }
+    if (sourceUrl && isLocalUri(sourceUrl)) {
+      setResolution({ id, uri: sourceUrl, settled: true })
+      return
+    }
     const cache = serviceOf<CacheService>(ctx, 'cache')
     if (!cache) {
       setResolution(undefined)

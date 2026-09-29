@@ -14,37 +14,79 @@ export interface RenderTrackCardOptions {
   track: ShareTrackData
   themeColor: string
   backgroundMode: BackgroundMode
+  renderArtwork?: string
 }
 
 export interface RenderPlaylistCardOptions {
-  playlist: SharePlaylistData
+  playlist: SharePlaylistData & { subtitle?: string }
   themeColor: string
   backgroundMode: BackgroundMode
+  renderArtwork?: string
 }
 
 export interface RenderAlbumCardOptions {
-  album: ShareAlbumData
+  album: ShareAlbumData & { subtitle?: string }
   themeColor: string
   backgroundMode: BackgroundMode
+  renderArtwork?: string
 }
 
 export interface RenderLyricsCardOptions {
   lyrics: ShareLyricsData
   themeColor: string
   backgroundMode: BackgroundMode
+  renderArtwork?: string
 }
 
 /** Helper to safely load an image URL with CORS and fallback */
-export function loadImage(src: string): Promise<HTMLImageElement | null> {
+/** Helper to safely load an image URL with CORS and fallback */
+export async function loadImage(src: string): Promise<HTMLImageElement | null> {
+  if (!src) return null
+  const normalized = src.startsWith("file://") ? src.replace(/^file:\/\//, "bbebee-file://") : src
+
+  // For data: and blob: URLs, load directly without CORS
+  if (normalized.startsWith("data:") || normalized.startsWith("blob:")) {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => resolve(null)
+      img.src = normalized
+    })
+  }
+
+  // For bbebee-file: URLs, fetch as Blob to get a same-origin Blob URL
+  // This completely eliminates CORS issues and canvas tainting in Electron
+  if (normalized.startsWith("bbebee-file://")) {
+    try {
+      if (typeof fetch === "function") {
+        const res = await fetch(normalized)
+        if (res.ok) {
+          const blob = await res.blob()
+          const blobUrl = URL.createObjectURL(blob)
+          return new Promise((resolve) => {
+            const img = new Image()
+            img.onload = () => resolve(img)
+            img.onerror = () => {
+              URL.revokeObjectURL(blobUrl)
+              resolve(null)
+            }
+            img.src = blobUrl
+          })
+        }
+      }
+    } catch {
+      // Fall through to regular loading
+    }
+  }
+
+  // Standard remote or local image loading with CORS anonymous, with fallbacks
   return new Promise((resolve) => {
-    if (!src) return resolve(null)
-    const normalized = src.startsWith("file://") ? src.replace(/^file:\/\//, "bbebee-file://") : src
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.referrerPolicy = "no-referrer"
     img.onload = () => resolve(img)
     img.onerror = () => {
-      // If CORS anonymous failed, try fetching as blob
+      // If direct image load failed, try fetching as blob
       if (typeof fetch === "function" && (normalized.startsWith("http://") || normalized.startsWith("https://"))) {
         fetch(normalized, { referrerPolicy: "no-referrer" })
           .then((res) => {
@@ -54,10 +96,7 @@ export function loadImage(src: string): Promise<HTMLImageElement | null> {
           .then((blob) => {
             const blobUrl = URL.createObjectURL(blob)
             const blobImg = new Image()
-            blobImg.onload = () => {
-              URL.revokeObjectURL(blobUrl)
-              resolve(blobImg)
-            }
+            blobImg.onload = () => resolve(blobImg)
             blobImg.onerror = () => {
               URL.revokeObjectURL(blobUrl)
               resolve(null)
@@ -65,7 +104,7 @@ export function loadImage(src: string): Promise<HTMLImageElement | null> {
             blobImg.src = blobUrl
           })
           .catch(() => {
-            // As last fallback, load without crossOrigin
+            // Last resort: load without crossOrigin
             const fallback = new Image()
             fallback.referrerPolicy = "no-referrer"
             fallback.onload = () => resolve(fallback)
@@ -73,7 +112,11 @@ export function loadImage(src: string): Promise<HTMLImageElement | null> {
             fallback.src = normalized
           })
       } else {
-        resolve(null)
+        const fallback = new Image()
+        fallback.referrerPolicy = "no-referrer"
+        fallback.onload = () => resolve(fallback)
+        fallback.onerror = () => resolve(null)
+        fallback.src = normalized
       }
     }
     img.src = normalized
@@ -153,20 +196,19 @@ function renderBackground(
 }
 
 /**
- * Generates an HTMLCanvasElement with the rendered track share card
- * and embeds the Base64 metadata steganographically into its pixels.
+ * Draws the track card layout directly onto any provided HTMLCanvasElement.
  */
-export async function generateTrackCardCanvas(
+export async function drawTrackCard(
+  canvas: HTMLCanvasElement,
   options: RenderTrackCardOptions,
-): Promise<HTMLCanvasElement> {
+): Promise<void> {
   const { track, themeColor, backgroundMode } = options
   const width = 540
   const height = 960
-
-  const canvas = document.createElement("canvas")
   canvas.width = width
   canvas.height = height
-  const ctx = canvas.getContext("2d", { willReadFrequently: true })!
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })
+  if (!ctx) return
 
   // Floating Card dimensions (vertically centered, balanced 530px height)
   const cardW = 440
@@ -176,10 +218,10 @@ export async function generateTrackCardCanvas(
   const cardRadius = 24
   const contentMidY = Math.round(cardY + cardH * 0.5)
 
-  // 1. Draw overall background (gradient to half of share content height)
+  // 1. Draw overall background
   renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
 
-  // Card background: pure black container
+  // Card background: pure black container with drop shadow
   ctx.save()
   ctx.shadowColor = "rgba(0, 0, 0, 0.55)"
   ctx.shadowBlur = 40
@@ -196,7 +238,8 @@ export async function generateTrackCardCanvas(
   const artY = cardY + 24
   const artRadius = 16
 
-  const coverImg = track.artwork ? await loadImage(track.artwork) : null
+  const artworkSrc = options.renderArtwork || track.artwork
+  const coverImg = artworkSrc ? await loadImage(artworkSrc) : null
   ctx.save()
   drawRoundRect(ctx, artX, artY, artW, artH, artRadius)
   ctx.clip()
@@ -240,35 +283,22 @@ export async function generateTrackCardCanvas(
     const logoY = cardY + cardH - logoH - 20
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
-
-  // 3. Steganography Embedding
-  try {
-    const b64Payload = encodeMetadata("track", track)
-    const imgData = ctx.getImageData(0, 0, width, height)
-    const encoded = encodeSteganography(imgData, b64Payload)
-    imgData.data.set(encoded.data)
-    ctx.putImageData(imgData, 0, 0)
-  } catch (err) {
-    throw new Error(`隐写数据嵌入失败: ${String(err)}`)
-  }
-
-  return canvas
 }
 
 /**
- * Generates an HTMLCanvasElement with the rendered playlist share card.
+ * Draws the playlist card layout directly onto any provided HTMLCanvasElement.
  */
-export async function generatePlaylistCardCanvas(
+export async function drawPlaylistCard(
+  canvas: HTMLCanvasElement,
   options: RenderPlaylistCardOptions,
-): Promise<HTMLCanvasElement> {
+): Promise<void> {
   const { playlist, themeColor, backgroundMode } = options
   const width = 540
   const height = 960
-
-  const canvas = document.createElement("canvas")
   canvas.width = width
   canvas.height = height
-  const ctx = canvas.getContext("2d", { willReadFrequently: true })!
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })
+  if (!ctx) return
 
   const cardW = 440
   const cardH = 530
@@ -295,7 +325,8 @@ export async function generatePlaylistCardCanvas(
   const artY = cardY + 24
   const artRadius = 16
 
-  const coverImg = playlist.artwork ? await loadImage(playlist.artwork) : null
+  const artworkSrc = options.renderArtwork || playlist.artwork
+  const coverImg = artworkSrc ? await loadImage(artworkSrc) : null
   ctx.save()
   drawRoundRect(ctx, artX, artY, artW, artH, artRadius)
   ctx.clip()
@@ -326,7 +357,7 @@ export async function generatePlaylistCardCanvas(
   ctx.fillStyle = "#B3B9C9"
   ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   const artistY = titleY + 30
-  const subtitle = playlist.trackCount > 0 ? `歌单 • ${playlist.trackCount} 首歌曲` : "歌单"
+  const subtitle = playlist.subtitle || (playlist.trackCount > 0 ? `歌单 • ${playlist.trackCount} 首歌曲` : "歌单")
   fillTruncatedText(ctx, subtitle, textX, artistY, cardW - 60)
   ctx.restore()
 
@@ -339,35 +370,22 @@ export async function generatePlaylistCardCanvas(
     const logoY = cardY + cardH - logoH - 20
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
-
-  // Steganography
-  try {
-    const b64Payload = encodeMetadata("playlist", playlist)
-    const imgData = ctx.getImageData(0, 0, width, height)
-    const encoded = encodeSteganography(imgData, b64Payload)
-    imgData.data.set(encoded.data)
-    ctx.putImageData(imgData, 0, 0)
-  } catch (err) {
-    throw new Error(`隐写数据嵌入失败: ${String(err)}`)
-  }
-
-  return canvas
 }
 
 /**
- * Generates an HTMLCanvasElement with the rendered album share card.
+ * Draws the album card layout directly onto any provided HTMLCanvasElement.
  */
-export async function generateAlbumCardCanvas(
+export async function drawAlbumCard(
+  canvas: HTMLCanvasElement,
   options: RenderAlbumCardOptions,
-): Promise<HTMLCanvasElement> {
+): Promise<void> {
   const { album, themeColor, backgroundMode } = options
   const width = 540
   const height = 960
-
-  const canvas = document.createElement("canvas")
   canvas.width = width
   canvas.height = height
-  const ctx = canvas.getContext("2d", { willReadFrequently: true })!
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })
+  if (!ctx) return
 
   const cardW = 440
   const cardH = 530
@@ -394,7 +412,8 @@ export async function generateAlbumCardCanvas(
   const artY = cardY + 24
   const artRadius = 16
 
-  const coverImg = album.artwork ? await loadImage(album.artwork) : null
+  const artworkSrc = options.renderArtwork || album.artwork
+  const coverImg = artworkSrc ? await loadImage(artworkSrc) : null
   ctx.save()
   drawRoundRect(ctx, artX, artY, artW, artH, artRadius)
   ctx.clip()
@@ -425,11 +444,15 @@ export async function generateAlbumCardCanvas(
   ctx.fillStyle = "#B3B9C9"
   ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   const artistY = titleY + 30
-  const subtitleParts = ["专辑"]
-  if (album.artist) subtitleParts.push(album.artist)
-  if (album.trackCount > 0) subtitleParts.push(`${album.trackCount} 首歌曲`)
-  if (album.year) subtitleParts.push(String(album.year))
-  fillTruncatedText(ctx, subtitleParts.join(" • "), textX, artistY, cardW - 60)
+  let subtitle = album.subtitle
+  if (!subtitle) {
+    const subtitleParts = ["专辑"]
+    if (album.artist) subtitleParts.push(album.artist)
+    if (album.trackCount > 0) subtitleParts.push(`${album.trackCount} 首歌曲`)
+    if (album.year) subtitleParts.push(String(album.year))
+    subtitle = subtitleParts.join(" • ")
+  }
+  fillTruncatedText(ctx, subtitle, textX, artistY, cardW - 60)
   ctx.restore()
 
   // Logo (140px, aligned to bottom-left with 20px bottom padding)
@@ -441,36 +464,22 @@ export async function generateAlbumCardCanvas(
     const logoY = cardY + cardH - logoH - 20
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
-
-  // Steganography
-  try {
-    const b64Payload = encodeMetadata("album", album)
-    const imgData = ctx.getImageData(0, 0, width, height)
-    const encoded = encodeSteganography(imgData, b64Payload)
-    imgData.data.set(encoded.data)
-    ctx.putImageData(imgData, 0, 0)
-  } catch (err) {
-    throw new Error(`隐写数据嵌入失败: ${String(err)}`)
-  }
-
-  return canvas
 }
 
 /**
- * Generates an HTMLCanvasElement with the rendered lyric share card (Matching reference image 2)
- * and embeds the metadata steganographically into its pixels.
+ * Draws the lyrics card layout directly onto any provided HTMLCanvasElement.
  */
-export async function generateLyricsCardCanvas(
+export async function drawLyricsCard(
+  canvas: HTMLCanvasElement,
   options: RenderLyricsCardOptions,
-): Promise<HTMLCanvasElement> {
+): Promise<void> {
   const { lyrics, themeColor, backgroundMode } = options
   const width = 540
   const height = 960
-
-  const canvas = document.createElement("canvas")
   canvas.width = width
   canvas.height = height
-  const ctx = canvas.getContext("2d", { willReadFrequently: true })!
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })
+  if (!ctx) return
 
   const lineCount = Math.max(1, Math.min(6, lyrics.lines.length))
   const cardW = 440
@@ -480,10 +489,10 @@ export async function generateLyricsCardCanvas(
   const cardRadius = 24
   const contentMidY = Math.round(cardY + cardH * 0.5)
 
-  // 1. Draw overall background (gradient to half of share content height)
+  // 1. Draw overall background
   renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
 
-  // 2. Draw Floating Card with bright cover theme color (NO dark mask, matching Spotify lyric share reference)
+  // 2. Draw Floating Card with bright cover theme color
   ctx.save()
   ctx.shadowColor = "rgba(0, 0, 0, 0.45)"
   ctx.shadowBlur = 40
@@ -499,7 +508,8 @@ export async function generateLyricsCardCanvas(
   const miniY = cardY + 20
   const miniRadius = 8
 
-  const coverImg = lyrics.artwork ? await loadImage(lyrics.artwork) : null
+  const artworkSrc = options.renderArtwork || lyrics.artwork
+  const coverImg = artworkSrc ? await loadImage(artworkSrc) : null
   ctx.save()
   drawRoundRect(ctx, miniX, miniY, miniCoverSize, miniCoverSize, miniRadius)
   ctx.clip()
@@ -557,16 +567,97 @@ export async function generateLyricsCardCanvas(
     const logoY = cardY + cardH - logoH - 14
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
+}
 
-  // Steganography
+/**
+ * Generates an HTMLCanvasElement with the rendered track share card
+ * and embeds the Base64 metadata steganographically into its pixels.
+ */
+export async function generateTrackCardCanvas(
+  options: RenderTrackCardOptions,
+): Promise<HTMLCanvasElement> {
+  const canvas = document.createElement("canvas")
+  await drawTrackCard(canvas, options)
+
   try {
-    const b64Payload = encodeMetadata("lyrics", lyrics)
-    const imgData = ctx.getImageData(0, 0, width, height)
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!
+    const b64Payload = encodeMetadata("track", options.track)
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
     const encoded = encodeSteganography(imgData, b64Payload)
     imgData.data.set(encoded.data)
     ctx.putImageData(imgData, 0, 0)
   } catch (err) {
-    throw new Error(`隐写数据嵌入失败: ${String(err)}`)
+    throw new Error(`隐写数据嵌入失败: ${String(err)}`, { cause: err })
+  }
+
+  return canvas
+}
+
+/**
+ * Generates an HTMLCanvasElement with the rendered playlist share card.
+ */
+export async function generatePlaylistCardCanvas(
+  options: RenderPlaylistCardOptions,
+): Promise<HTMLCanvasElement> {
+  const canvas = document.createElement("canvas")
+  await drawPlaylistCard(canvas, options)
+
+  try {
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!
+    const b64Payload = encodeMetadata("playlist", options.playlist)
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const encoded = encodeSteganography(imgData, b64Payload)
+    imgData.data.set(encoded.data)
+    ctx.putImageData(imgData, 0, 0)
+  } catch (err) {
+    throw new Error(`隐写数据嵌入失败: ${String(err)}`, { cause: err })
+  }
+
+  return canvas
+}
+
+/**
+ * Generates an HTMLCanvasElement with the rendered album share card.
+ */
+export async function generateAlbumCardCanvas(
+  options: RenderAlbumCardOptions,
+): Promise<HTMLCanvasElement> {
+  const canvas = document.createElement("canvas")
+  await drawAlbumCard(canvas, options)
+
+  try {
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!
+    const b64Payload = encodeMetadata("album", options.album)
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const encoded = encodeSteganography(imgData, b64Payload)
+    imgData.data.set(encoded.data)
+    ctx.putImageData(imgData, 0, 0)
+  } catch (err) {
+    throw new Error(`隐写数据嵌入失败: ${String(err)}`, { cause: err })
+  }
+
+  return canvas
+}
+
+/**
+ * Generates an HTMLCanvasElement with the rendered lyric share card (Matching reference image 2)
+ * and embeds the metadata steganographically into its pixels.
+ */
+export async function generateLyricsCardCanvas(
+  options: RenderLyricsCardOptions,
+): Promise<HTMLCanvasElement> {
+  const canvas = document.createElement("canvas")
+  await drawLyricsCard(canvas, options)
+
+  try {
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!
+    const b64Payload = encodeMetadata("lyrics", options.lyrics)
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const encoded = encodeSteganography(imgData, b64Payload)
+    imgData.data.set(encoded.data)
+    ctx.putImageData(imgData, 0, 0)
+  } catch (err) {
+    throw new Error(`隐写数据嵌入失败: ${String(err)}`, { cause: err })
   }
 
   return canvas
