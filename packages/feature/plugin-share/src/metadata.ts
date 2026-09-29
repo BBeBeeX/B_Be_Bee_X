@@ -1,4 +1,5 @@
 import type {
+  ShareAlbumData,
   ShareLyricsData,
   ShareMetadataEnvelope,
   SharePlaylistData,
@@ -34,7 +35,7 @@ export function fromBase64(base64: string): string {
 /**
  * Serializes metadata into a Base64-encoded JSON envelope.
  */
-export function encodeMetadata<T extends ShareTrackData | SharePlaylistData | ShareLyricsData>(
+export function encodeMetadata<T extends ShareTrackData | SharePlaylistData | ShareLyricsData | ShareAlbumData>(
   type: ShareType,
   data: T,
 ): string {
@@ -66,7 +67,7 @@ export function decodeMetadata(base64: string): ShareMetadataEnvelope | null {
       parsed.version === 1 &&
       "type" in parsed &&
       typeof parsed.type === "string" &&
-      ("track" === parsed.type || "playlist" === parsed.type || "lyrics" === parsed.type) &&
+      ("track" === parsed.type || "playlist" === parsed.type || "lyrics" === parsed.type || "album" === parsed.type) &&
       "data" in parsed &&
       typeof parsed.data === "object" &&
       parsed.data !== null

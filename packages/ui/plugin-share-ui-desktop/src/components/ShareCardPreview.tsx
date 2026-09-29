@@ -12,6 +12,14 @@ export interface ShareCardPreviewProps {
   lyrics?: string[]
 }
 
+export function normalizeArtworkUrl(src?: string): string | undefined {
+  if (!src) return undefined
+  if (src.startsWith('file://')) {
+    return src.replace(/^file:\/\//, 'bbebee-file://')
+  }
+  return src
+}
+
 export function ShareCardPreview({
   title,
   subtitle,
@@ -24,12 +32,13 @@ export function ShareCardPreview({
   if (backgroundMode === 'black') {
     backgroundStyle = '#000000'
   } else if (backgroundMode === 'gradient') {
-    backgroundStyle = `linear-gradient(180deg, ${themeColor} 0%, ${themeColor} 50%, #000000 100%)`
+    backgroundStyle = `linear-gradient(180deg, ${themeColor} 0%, ${themeColor} 20%, #000000 50%, #000000 100%)`
   } else {
     backgroundStyle = themeColor
   }
 
   const isLyricsMode = Boolean(lyrics && lyrics.length > 0)
+  const displayArtwork = normalizeArtworkUrl(artwork)
 
   return h(
     'div',
@@ -66,13 +75,13 @@ export function ShareCardPreview({
           background: themeColor,
         },
       },
-      // Semi-transparent black mask layer
+      // Inner card container: in lyrics mode NO dark overlay, in track/playlist mode semi-transparent mask
       h(
         'div',
         {
           style: {
-            background: 'rgba(0, 0, 0, 0.48)',
-            padding: isLyricsMode ? 14 : 14,
+            background: isLyricsMode ? 'transparent' : 'rgba(0, 0, 0, 0.48)',
+            padding: 14,
             display: 'flex',
             flexDirection: 'column',
             width: '100%',
@@ -81,7 +90,7 @@ export function ShareCardPreview({
           },
         },
         isLyricsMode
-          ? // Lyrics Card Content
+          ? // Lyrics Card Content (bright cover theme color, crisp white text)
             h(
               'div',
               { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
@@ -101,10 +110,12 @@ export function ShareCardPreview({
                       flexShrink: 0,
                     },
                   },
-                  artwork
+                  displayArtwork
                     ? h('img', {
-                        src: artwork,
+                        src: displayArtwork,
                         alt: 'cover',
+                        referrerPolicy: 'no-referrer',
+                        loading: 'lazy',
                         style: { width: '100%', height: '100%', objectFit: 'cover' },
                       })
                     : h(
@@ -115,7 +126,7 @@ export function ShareCardPreview({
                             alignItems: 'center',
                             justifyContent: 'center',
                             height: '100%',
-                            color: 'rgba(255,255,255,0.4)',
+                            color: 'rgba(255,255,255,0.6)',
                             fontSize: 14,
                           },
                         },
@@ -143,7 +154,7 @@ export function ShareCardPreview({
                     'div',
                     {
                       style: {
-                        color: '#B3B9C9',
+                        color: 'rgba(255, 255, 255, 0.88)',
                         fontSize: 10,
                         fontWeight: 500,
                         whiteSpace: 'nowrap',
@@ -185,14 +196,15 @@ export function ShareCardPreview({
                   ),
                 ),
               ),
-              // BBeBee Logo at bottom
+              // BBeBee Logo at bottom (enlarged to 36px)
               h('img', {
                 src: BBEBEE_LOGO_DATA_URL,
                 alt: 'BBeBee',
-                style: { height: 20, width: 'auto', alignSelf: 'flex-start', marginTop: 4 },
+                referrerPolicy: 'no-referrer',
+                style: { height: 36, width: 'auto', alignSelf: 'flex-start', marginTop: 8 },
               }),
             )
-          : // Track / Playlist Card Content
+          : // Track / Playlist / Album Card Content
             h(
               'div',
               { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
@@ -211,10 +223,12 @@ export function ShareCardPreview({
                     justifyContent: 'center',
                   },
                 },
-                artwork
+                displayArtwork
                   ? h('img', {
-                      src: artwork,
+                      src: displayArtwork,
                       alt: 'artwork',
+                      referrerPolicy: 'no-referrer',
+                      loading: 'lazy',
                       style: { width: '100%', height: '100%', objectFit: 'cover' },
                     })
                   : h(
@@ -262,11 +276,12 @@ export function ShareCardPreview({
                   subtitle,
                 ),
               ),
-              // BBeBee Logo
+              // BBeBee Logo (enlarged to 36px)
               h('img', {
                 src: BBEBEE_LOGO_DATA_URL,
                 alt: 'BBeBee',
-                style: { height: 22, width: 'auto', alignSelf: 'flex-start', marginTop: 2 },
+                referrerPolicy: 'no-referrer',
+                style: { height: 36, width: 'auto', alignSelf: 'flex-start', marginTop: 6 },
               }),
             ),
       ),

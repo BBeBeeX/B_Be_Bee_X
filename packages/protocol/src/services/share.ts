@@ -9,7 +9,7 @@
 import type { Track } from "../entities/catalog.js"
 import type { NowPlayingMeta } from "../entities/playback.js"
 
-export type ShareType = "track" | "playlist" | "lyrics"
+export type ShareType = "track" | "playlist" | "lyrics" | "album"
 
 /**
  * Universal pixel buffer representing an uncompressed RGBA bitmap.
@@ -59,6 +59,25 @@ export interface SharePlaylistData {
   extra?: Record<string, unknown>
 }
 
+export interface ShareAlbumData {
+  urn: string
+  title: string
+  artist?: string
+  artwork?: string
+  year?: number
+  trackCount: number
+  tracks?: Array<{
+    urn: string
+    title: string
+    artist: string
+    albumTitle?: string
+    artwork?: string
+    duration?: number
+  }>
+  source?: string
+  extra?: Record<string, unknown>
+}
+
 export interface ShareLyricsData {
   trackUrn: string
   title: string
@@ -72,6 +91,7 @@ export type ShareTarget =
   | { type: "track"; track: ShareTrackData }
   | { type: "playlist"; playlist: SharePlaylistData }
   | { type: "lyrics"; lyrics: ShareLyricsData }
+  | { type: "album"; album: ShareAlbumData }
 
 export type ShareableTrack =
   | Track
@@ -92,7 +112,7 @@ export type ShareableTrack =
     }
 
 export interface ShareService {
-  encodeMetadata<T extends ShareTrackData | SharePlaylistData | ShareLyricsData>(
+  encodeMetadata<T extends ShareTrackData | SharePlaylistData | ShareLyricsData | ShareAlbumData>(
     type: ShareType,
     data: T,
   ): string
@@ -102,6 +122,10 @@ export interface ShareService {
   shareTrack(track: ShareableTrack): void
   sharePlaylist(
     playlist: { urn: string; name: string; description?: string; artwork?: string },
+    tracks?: readonly ShareableTrack[],
+  ): void
+  shareAlbum(
+    album: { urn: string; title: string; artist?: string; artwork?: string; year?: number; trackCount?: number },
     tracks?: readonly ShareableTrack[],
   ): void
   shareLyrics(track: ShareableTrack, lines: string[]): void

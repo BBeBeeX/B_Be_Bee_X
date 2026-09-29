@@ -1,9 +1,10 @@
-import { createElement as h, useState, useCallback } from 'react'
+import { createElement as h, useState, useCallback, useMemo } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { SharePlaylistData } from '@BBeBee/protocol'
 import { encodeMetadata } from '@BBeBee/plugin-share/metadata'
 import { Button, Sheet, tablerIcon, useImageColor } from '@BBeBee/ui-kit-desktop'
+import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { tokens } from '@BBeBee/ui-tokens'
 import {
   type BackgroundMode,
@@ -28,26 +29,47 @@ export function SharePlaylistModal({
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('cover')
   const [copied, setCopied] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [disabledReason, setDisabledReason] = useState<string | null>(null)
 
-  const extractedColor = useImageColor(playlist.artwork)
+  // Resolve artwork via cache if available
+  const artworkRef = useMemo(() => {
+    return playlist.artwork ? { id: playlist.urn || playlist.name, sourceUrl: playlist.artwork } : undefined
+  }, [playlist.artwork, playlist.urn, playlist.name])
+  const resolvedArtworkRef = useResolvedArtwork(ctx, artworkRef)
+  const resolvedArtwork = resolvedArtworkRef?.sourceUrl ?? playlist.artwork
+
+  const extractedColor = useImageColor(resolvedArtwork)
   const themeColor = extractedColor ?? '#8C52FF'
 
+  const canCopy = Boolean(playlist && playlist.name && playlist.name.trim().length > 0)
+
   const handleCopyBase64 = useCallback(async () => {
+    if (!canCopy) {
+      setDisabledReason('无法复制：歌单缺少有效标题等元数据')
+      setTimeout(() => setDisabledReason(null), 3500)
+      return
+    }
     try {
       const b64 = encodeMetadata('playlist', playlist)
       await navigator.clipboard.writeText(b64)
       setCopied(true)
+      setDisabledReason(null)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       ctx.logger?.error(`Failed to copy base64: ${String(err)}`)
+      setDisabledReason('无法复制：剪贴板写入失败，请检查系统权限')
+      setTimeout(() => setDisabledReason(null), 3500)
     }
-  }, [ctx, playlist])
+  }, [ctx, playlist, canCopy])
 
   const handleDownload = useCallback(async () => {
     try {
       setDownloading(true)
       const canvas = await generatePlaylistCardCanvas({
-        playlist,
+        playlist: {
+          ...playlist,
+          artwork: resolvedArtwork,
+        },
         themeColor,
         backgroundMode,
       })
@@ -58,7 +80,7 @@ export function SharePlaylistModal({
     } finally {
       setDownloading(false)
     }
-  }, [ctx, playlist, themeColor, backgroundMode])
+  }, [ctx, playlist, resolvedArtwork, themeColor, backgroundMode])
 
   if (!open) return null
 
@@ -119,7 +141,7 @@ export function SharePlaylistModal({
       h(ShareCardPreview, {
         title: playlist.name,
         subtitle,
-        artwork: playlist.artwork,
+        artwork: resolvedArtwork,
         themeColor,
         backgroundMode,
       }),
@@ -182,6 +204,30 @@ export function SharePlaylistModal({
           }),
         ),
       ),
+      // Disabled Reason Popup Toast
+      disabledReason
+        ? h(
+            'div',
+            {
+              'data-testid': 'copy-disabled-reason-toast',
+              style: {
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 8,
+                background: 'rgba(245, 158, 11, 0.15)',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                color: '#FCD34D',
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                boxSizing: 'border-box',
+              },
+            },
+            tablerIcon('alert-circle', { size: 16 }),
+            h('span', null, disabledReason),
+          )
+        : null,
       // Action Buttons
       h(
         'div',
@@ -196,11 +242,39 @@ export function SharePlaylistModal({
         h(
           'div',
           { style: { flex: 1, display: 'flex' } },
-          h(Button, {
-            variant: 'secondary',
-            onPress: handleCopyBase64,
-            children: copied ? '已复制 Base64' : '复制 Base64',
-          }),
+          canCopy
+            ? h(Button, {
+                variant: 'secondary',
+                onPress: handleCopyBase64,
+                children: copied ? '已复制 Base64' : '复制 Base64',
+              })
+            : h(
+                'button',
+                {
+                  type: 'button',
+                  'data-testid': 'copy-base64-disabled-btn',
+                  onClick: () => {
+                    setDisabledReason('无法复制：歌单缺少有效标题等元数据')
+                    setTimeout(() => setDisabledReason(null), 3500)
+                  },
+                  style: {
+                    width: '100%',
+                    height: 38,
+                    borderRadius: tokens.radius.pill,
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    color: 'rgba(255, 255, 255, 0.35)',
+                    cursor: 'not-allowed',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 16px',
+                  },
+                },
+                '复制 Base64',
+              ),
         ),
         h(
           'div',

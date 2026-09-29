@@ -7,6 +7,7 @@ import type {
   ShareMetadataEnvelope,
   ShareTrackData,
   SharePlaylistData,
+  ShareAlbumData,
   ShareLyricsData,
 } from '@BBeBee/protocol'
 import { serviceOf } from '@BBeBee/ui-core'
@@ -125,6 +126,12 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
       await player.enqueueLast(urns)
       await player.play()
       handleClose()
+    } else if (decoded.type === 'album') {
+      const album = decoded.data as ShareAlbumData
+      const urns = album.tracks?.map((t) => t.urn) ?? [album.urn]
+      await player.enqueueLast(urns)
+      await player.play()
+      handleClose()
     }
   }
 
@@ -142,6 +149,11 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
       const urns = pl.tracks?.map((t) => t.urn) ?? [pl.urn]
       await player.enqueueLast(urns)
       handleClose()
+    } else if (decoded.type === 'album') {
+      const album = decoded.data as ShareAlbumData
+      const urns = album.tracks?.map((t) => t.urn) ?? [album.urn]
+      await player.enqueueLast(urns)
+      handleClose()
     }
   }
 
@@ -156,6 +168,9 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
     } else if (decoded.type === 'playlist') {
       const pl = decoded.data as SharePlaylistData
       await library.setSaved(pl.urn, true)
+    } else if (decoded.type === 'album') {
+      const album = decoded.data as ShareAlbumData
+      await library.setSaved(album.urn, true)
     }
     handleClose()
   }
@@ -339,12 +354,14 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
                     ? h('img', {
                         src: artwork,
                         alt: 'artwork',
+                        referrerPolicy: 'no-referrer',
+                        loading: 'lazy',
                         style: { width: '100%', height: '100%', objectFit: 'cover' },
                       })
                     : h(
                         'span',
                         { style: { fontSize: 24, color: 'rgba(255,255,255,0.4)' } },
-                        decoded.type === 'playlist' ? '♫' : '♪',
+                        decoded.type === 'playlist' ? '♫' : decoded.type === 'album' ? '💿' : '♪',
                       )
                 })(),
               ),
@@ -367,7 +384,9 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
                     ? (decoded.data as ShareTrackData).title
                     : decoded.type === 'playlist'
                       ? (decoded.data as SharePlaylistData).name
-                      : (decoded.data as ShareLyricsData).title,
+                      : decoded.type === 'album'
+                        ? (decoded.data as ShareAlbumData).title
+                        : (decoded.data as ShareLyricsData).title,
                 ),
                 h(
                   'div',
@@ -385,7 +404,9 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
                     ? (decoded.data as ShareTrackData).artist
                     : decoded.type === 'playlist'
                       ? `歌单 • ${(decoded.data as SharePlaylistData).trackCount} 首歌曲`
-                      : `歌词 • ${(decoded.data as ShareLyricsData).artist}`,
+                      : decoded.type === 'album'
+                        ? `专辑 • ${(decoded.data as ShareAlbumData).artist || '未知艺人'} • ${(decoded.data as ShareAlbumData).trackCount} 首歌曲`
+                        : `歌词 • ${(decoded.data as ShareLyricsData).artist}`,
                 ),
                 h(
                   'div',

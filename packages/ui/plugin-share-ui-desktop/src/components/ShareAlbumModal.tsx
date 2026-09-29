@@ -1,31 +1,31 @@
 import { createElement as h, useState, useCallback, useMemo } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { ShareTrackData } from '@BBeBee/protocol'
+import type { ShareAlbumData } from '@BBeBee/protocol'
 import { encodeMetadata } from '@BBeBee/plugin-share/metadata'
 import { Button, Sheet, tablerIcon, useImageColor } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { tokens } from '@BBeBee/ui-tokens'
 import {
   type BackgroundMode,
-  generateTrackCardCanvas,
+  generateAlbumCardCanvas,
   downloadCanvasAsPng,
 } from '../utils/canvasRenderer.js'
 import { ShareCardPreview } from './ShareCardPreview.js'
 
-export interface ShareTrackModalProps {
+export interface ShareAlbumModalProps {
   ctx: Context
-  track: ShareTrackData
+  album: ShareAlbumData
   open: boolean
   onClose: () => void
 }
 
-export function ShareTrackModal({
+export function ShareAlbumModal({
   ctx,
-  track,
+  album,
   open,
   onClose,
-}: ShareTrackModalProps): ReactElement | null {
+}: ShareAlbumModalProps): ReactElement | null {
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('cover')
   const [copied, setCopied] = useState(false)
   const [downloading, setDownloading] = useState(false)
@@ -33,25 +33,24 @@ export function ShareTrackModal({
 
   // Resolve artwork via cache if available
   const artworkRef = useMemo(() => {
-    return track.artwork ? { id: track.urn || track.title, sourceUrl: track.artwork } : undefined
-  }, [track.artwork, track.urn, track.title])
+    return album.artwork ? { id: album.urn || album.title, sourceUrl: album.artwork } : undefined
+  }, [album.artwork, album.urn, album.title])
   const resolvedArtworkRef = useResolvedArtwork(ctx, artworkRef)
-  const resolvedArtwork = resolvedArtworkRef?.sourceUrl ?? track.artwork
+  const resolvedArtwork = resolvedArtworkRef?.sourceUrl ?? album.artwork
 
-  // Extract cover theme color or default to vibrant brand accent
   const extractedColor = useImageColor(resolvedArtwork)
-  const themeColor = extractedColor ?? '#4D6BFE'
+  const themeColor = extractedColor ?? '#FF6B6B'
 
-  const canCopy = Boolean(track && track.title && track.title.trim().length > 0)
+  const canCopy = Boolean(album && album.title && album.title.trim().length > 0)
 
   const handleCopyBase64 = useCallback(async () => {
     if (!canCopy) {
-      setDisabledReason('无法复制：歌曲缺少有效标题等元数据')
+      setDisabledReason('无法复制：专辑缺少有效标题等元数据')
       setTimeout(() => setDisabledReason(null), 3500)
       return
     }
     try {
-      const b64 = encodeMetadata('track', track)
+      const b64 = encodeMetadata('album', album)
       await navigator.clipboard.writeText(b64)
       setCopied(true)
       setDisabledReason(null)
@@ -61,29 +60,35 @@ export function ShareTrackModal({
       setDisabledReason('无法复制：剪贴板写入失败，请检查系统权限')
       setTimeout(() => setDisabledReason(null), 3500)
     }
-  }, [ctx, track, canCopy])
+  }, [ctx, album, canCopy])
 
   const handleDownload = useCallback(async () => {
     try {
       setDownloading(true)
-      const canvas = await generateTrackCardCanvas({
-        track: {
-          ...track,
+      const canvas = await generateAlbumCardCanvas({
+        album: {
+          ...album,
           artwork: resolvedArtwork,
         },
         themeColor,
         backgroundMode,
       })
-      const filename = `${track.artist} - ${track.title} (BBeBee Share).png`
+      const filename = `${album.artist || '未知艺人'} - ${album.title} (BBeBee Album Share).png`
       downloadCanvasAsPng(canvas, filename)
     } catch (err) {
       ctx.logger?.error(`Failed to download share image: ${String(err)}`)
     } finally {
       setDownloading(false)
     }
-  }, [ctx, track, resolvedArtwork, themeColor, backgroundMode])
+  }, [ctx, album, resolvedArtwork, themeColor, backgroundMode])
 
   if (!open) return null
+
+  const subtitleParts = ['专辑']
+  if (album.artist) subtitleParts.push(album.artist)
+  if (album.trackCount > 0) subtitleParts.push(`${album.trackCount} 首歌曲`)
+  if (album.year) subtitleParts.push(String(album.year))
+  const subtitle = subtitleParts.join(' • ')
 
   return h(
     Sheet,
@@ -115,7 +120,7 @@ export function ShareTrackModal({
         h(
           'span',
           { style: { fontSize: 17, fontWeight: 700, color: 'var(--text-primary, #FFFFFF)' } },
-          '分享歌曲',
+          '分享专辑',
         ),
         h(
           'button',
@@ -137,23 +142,23 @@ export function ShareTrackModal({
       ),
       // Visual Card Preview
       h(ShareCardPreview, {
-        title: track.title,
-        subtitle: track.artist,
+        title: album.title,
+        subtitle,
         artwork: resolvedArtwork,
         themeColor,
         backgroundMode,
       }),
-      // Background Mode Selector
+      // Background Control
       h(
         'div',
         {
           style: {
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 8,
             width: '100%',
-            marginTop: 6,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 4px',
+            boxSizing: 'border-box',
           },
         },
         h(
@@ -168,7 +173,7 @@ export function ShareTrackModal({
               display: 'flex',
               background: 'rgba(255, 255, 255, 0.06)',
               borderRadius: tokens.radius.pill,
-              padding: 3,
+              padding: 2,
               gap: 4,
             },
           },
@@ -252,7 +257,7 @@ export function ShareTrackModal({
                   type: 'button',
                   'data-testid': 'copy-base64-disabled-btn',
                   onClick: () => {
-                    setDisabledReason('无法复制：歌曲缺少有效标题等元数据')
+                    setDisabledReason('无法复制：专辑缺少有效标题等元数据')
                     setTimeout(() => setDisabledReason(null), 3500)
                   },
                   style: {

@@ -82,6 +82,32 @@ describe("metadata codec", () => {
     expect(decoded?.data).toEqual(lyrics)
   })
 
+  it("encodes and decodes album metadata envelope", () => {
+    const album = {
+      urn: "source:netease:album:7788",
+      title: "亲爱的路人",
+      artist: "刘若英",
+      year: 2013,
+      trackCount: 1,
+      tracks: [
+        {
+          urn: "source:netease:song:123456",
+          title: "幸福不是情歌",
+          artist: "刘若英",
+          albumTitle: "亲爱的路人",
+          duration: 258000,
+        },
+      ],
+    }
+
+    const b64 = encodeMetadata("album", album)
+    const decoded = decodeMetadata(b64)
+
+    expect(decoded).not.toBeNull()
+    expect(decoded?.type).toBe("album")
+    expect(decoded?.data).toEqual(album)
+  })
+
   it("returns null for malformed base64 or invalid json", () => {
     expect(decodeMetadata("invalid-base-64!!")).toBeNull()
     expect(decodeMetadata(toBase64("not a json"))).toBeNull()

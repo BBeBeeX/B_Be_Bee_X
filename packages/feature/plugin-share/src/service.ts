@@ -2,6 +2,7 @@ import { Service } from "cordis"
 import type { Context } from "cordis"
 import type {
   PixelBuffer,
+  ShareAlbumData,
   ShareLyricsData,
   ShareMetadataEnvelope,
   SharePlaylistData,
@@ -27,7 +28,7 @@ export class Share extends Service implements ShareService {
     super(ctx, "share")
   }
 
-  encodeMetadata<T extends ShareTrackData | SharePlaylistData | ShareLyricsData>(
+  encodeMetadata<T extends ShareTrackData | SharePlaylistData | ShareLyricsData | ShareAlbumData>(
     type: ShareType,
     data: T,
   ): string {
@@ -141,6 +142,58 @@ export class Share extends Service implements ShareService {
     }
 
     this.ctx.emit("share/open", { type: "playlist", playlist: playlistData })
+  }
+
+  shareAlbum(
+    album: { urn: string; title: string; artist?: string; artwork?: string; year?: number; trackCount?: number },
+    tracks?: readonly ShareableTrack[],
+  ): void {
+    const albumTracks = tracks?.map((t) => {
+      const urn = "urn" in t && typeof t.urn === "string" ? t.urn : ""
+      const artist =
+        "artist" in t && typeof t.artist === "string"
+          ? t.artist
+          : "artists" in t && Array.isArray(t.artists)
+            ? t.artists.map((a: { name: string }) => a.name).join(", ")
+            : ""
+      const artwork =
+        typeof t.artwork === "string"
+          ? t.artwork
+          : typeof (t as { artworkUri?: unknown }).artworkUri === "string"
+            ? (t as { artworkUri: string }).artworkUri
+            : (t.artwork as { sourceUrl?: string } | undefined)?.sourceUrl
+      const albumTitle =
+        "albumTitle" in t && typeof t.albumTitle === "string"
+          ? t.albumTitle
+          : "album" in t && typeof t.album === "string"
+            ? t.album
+            : undefined
+      return {
+        urn,
+        title: t.title,
+        artist: artist || "Unknown Artist",
+        albumTitle,
+        artwork,
+        duration:
+          "durationMs" in t && typeof t.durationMs === "number"
+            ? t.durationMs
+            : "duration" in t && typeof t.duration === "number"
+              ? t.duration
+              : undefined,
+      }
+    })
+
+    const albumData: ShareAlbumData = {
+      urn: album.urn,
+      title: album.title,
+      artist: album.artist,
+      artwork: album.artwork,
+      year: album.year,
+      trackCount: album.trackCount ?? (albumTracks ? albumTracks.length : 0),
+      tracks: albumTracks,
+    }
+
+    this.ctx.emit("share/open", { type: "album", album: albumData })
   }
 
   shareLyrics(track: ShareableTrack, lines: string[]): void {

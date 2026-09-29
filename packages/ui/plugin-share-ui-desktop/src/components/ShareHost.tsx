@@ -5,6 +5,7 @@ import { useShareModalState } from '@BBeBee/plugin-share/hooks'
 import { ShareTrackModal } from './ShareTrackModal.js'
 import { SharePlaylistModal } from './SharePlaylistModal.js'
 import { ShareLyricsModal } from './ShareLyricsModal.js'
+import { ShareAlbumModal } from './ShareAlbumModal.js'
 import { ImportShareModal } from './ImportShareModal.js'
 
 export interface ShareHostProps {
@@ -50,6 +51,15 @@ export function ShareHost({ ctx }: ShareHostProps): ReactElement | null {
       return h(ShareLyricsModal, {
         ctx,
         lyrics: target.lyrics,
+        open: true,
+        onClose: close,
+      })
+    }
+
+    if (target.type === 'album') {
+      return h(ShareAlbumModal, {
+        ctx,
+        album: target.album,
         open: true,
         onClose: close,
       })

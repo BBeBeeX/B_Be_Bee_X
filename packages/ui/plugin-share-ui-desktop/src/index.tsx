@@ -13,6 +13,7 @@ import { ShareHost, type ShareHostProps } from './components/ShareHost.js'
 import { ShareTrackModal, type ShareTrackModalProps } from './components/ShareTrackModal.js'
 import { SharePlaylistModal, type SharePlaylistModalProps } from './components/SharePlaylistModal.js'
 import { ShareLyricsModal, type ShareLyricsModalProps } from './components/ShareLyricsModal.js'
+import { ShareAlbumModal, type ShareAlbumModalProps } from './components/ShareAlbumModal.js'
 import { ImportShareModal, type ImportShareModalProps } from './components/ImportShareModal.js'
 import { ShareCardPreview, type ShareCardPreviewProps } from './components/ShareCardPreview.js'
 
@@ -21,12 +22,14 @@ export {
   ShareTrackModal,
   SharePlaylistModal,
   ShareLyricsModal,
+  ShareAlbumModal,
   ImportShareModal,
   ShareCardPreview,
   type ShareHostProps,
   type ShareTrackModalProps,
   type SharePlaylistModalProps,
   type ShareLyricsModalProps,
+  type ShareAlbumModalProps,
   type ImportShareModalProps,
   type ShareCardPreviewProps,
 }

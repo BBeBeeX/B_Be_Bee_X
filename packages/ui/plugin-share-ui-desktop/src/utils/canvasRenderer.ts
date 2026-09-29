@@ -1,4 +1,5 @@
 import type {
+  ShareAlbumData,
   ShareLyricsData,
   SharePlaylistData,
   ShareTrackData,
@@ -21,21 +22,61 @@ export interface RenderPlaylistCardOptions {
   backgroundMode: BackgroundMode
 }
 
+export interface RenderAlbumCardOptions {
+  album: ShareAlbumData
+  themeColor: string
+  backgroundMode: BackgroundMode
+}
+
 export interface RenderLyricsCardOptions {
   lyrics: ShareLyricsData
   themeColor: string
   backgroundMode: BackgroundMode
 }
 
-/** Helper to safely load an image URL with CORS */
+/** Helper to safely load an image URL with CORS and fallback */
 export function loadImage(src: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     if (!src) return resolve(null)
+    const normalized = src.startsWith("file://") ? src.replace(/^file:\/\//, "bbebee-file://") : src
     const img = new Image()
     img.crossOrigin = "anonymous"
+    img.referrerPolicy = "no-referrer"
     img.onload = () => resolve(img)
-    img.onerror = () => resolve(null)
-    img.src = src.startsWith("file://") ? src.replace(/^file:\/\//, "bbebee-file://") : src
+    img.onerror = () => {
+      // If CORS anonymous failed, try fetching as blob
+      if (typeof fetch === "function" && (normalized.startsWith("http://") || normalized.startsWith("https://"))) {
+        fetch(normalized, { referrerPolicy: "no-referrer" })
+          .then((res) => {
+            if (!res.ok) throw new Error("Fetch failed")
+            return res.blob()
+          })
+          .then((blob) => {
+            const blobUrl = URL.createObjectURL(blob)
+            const blobImg = new Image()
+            blobImg.onload = () => {
+              URL.revokeObjectURL(blobUrl)
+              resolve(blobImg)
+            }
+            blobImg.onerror = () => {
+              URL.revokeObjectURL(blobUrl)
+              resolve(null)
+            }
+            blobImg.src = blobUrl
+          })
+          .catch(() => {
+            // As last fallback, load without crossOrigin
+            const fallback = new Image()
+            fallback.referrerPolicy = "no-referrer"
+            fallback.onload = () => resolve(fallback)
+            fallback.onerror = () => resolve(null)
+            fallback.src = normalized
+          })
+      } else {
+        resolve(null)
+      }
+    }
+    img.src = normalized
   })
 }
 
@@ -80,24 +121,30 @@ function fillTruncatedText(
   ctx.fillText(truncated + "…", x, y)
 }
 
-/** Renders the background according to backgroundMode */
+/**
+ * Renders the background according to backgroundMode.
+ * In gradient mode, the gradient transitions to black at half of the share content height.
+ */
 function renderBackground(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   themeColor: string,
   mode: BackgroundMode,
+  contentMidY = 450,
 ) {
   if (mode === "black") {
     ctx.fillStyle = "#000000"
     ctx.fillRect(0, 0, width, height)
   } else if (mode === "gradient") {
-    const grad = ctx.createLinearGradient(0, 0, 0, height)
+    const grad = ctx.createLinearGradient(0, 0, 0, contentMidY)
     grad.addColorStop(0, themeColor)
-    grad.addColorStop(0.5, themeColor)
+    grad.addColorStop(0.35, themeColor)
     grad.addColorStop(1, "#000000")
     ctx.fillStyle = grad
-    ctx.fillRect(0, 0, width, height)
+    ctx.fillRect(0, 0, width, contentMidY)
+    ctx.fillStyle = "#000000"
+    ctx.fillRect(0, contentMidY, width, height - contentMidY)
   } else {
     // Solid cover theme color
     ctx.fillStyle = themeColor
@@ -121,15 +168,16 @@ export async function generateTrackCardCanvas(
   canvas.height = height
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!
 
-  // 1. Draw overall background
-  renderBackground(ctx, width, height, themeColor, backgroundMode)
-
-  // 2. Draw Floating Card
+  // Floating Card dimensions
   const cardW = 440
   const cardH = 580
   const cardX = (width - cardW) / 2
   const cardY = 160
   const cardRadius = 24
+  const contentMidY = cardY + cardH * 0.5
+
+  // 1. Draw overall background (gradient to half of share content height)
+  renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
 
   // Card shadow
   ctx.save()
@@ -192,21 +240,25 @@ export async function generateTrackCardCanvas(
   fillTruncatedText(ctx, track.artist, textX, artistY, cardW - 60)
   ctx.restore()
 
-  // Logo
+  // Logo (enlarged to 160px)
   const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
   if (logoImg) {
-    const logoW = 72
+    const logoW = 160
     const logoH = (logoW / logoImg.width) * logoImg.height
     const logoX = textX
-    const logoY = cardY + cardH - logoH - 22
+    const logoY = cardY + cardH - logoH - 24
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 
   // 3. Steganography Embedding
-  const b64Payload = encodeMetadata("track", track)
-  const imgData = ctx.getImageData(0, 0, width, height)
-  const encoded = encodeSteganography(imgData, b64Payload)
-  ctx.putImageData(encoded as ImageData, 0, 0)
+  try {
+    const b64Payload = encodeMetadata("track", track)
+    const imgData = ctx.getImageData(0, 0, width, height)
+    const encoded = encodeSteganography(imgData, b64Payload)
+    ctx.putImageData(encoded as ImageData, 0, 0)
+  } catch {
+    // Steganography embedding skipped if canvas is tainted by external image
+  }
 
   return canvas
 }
@@ -226,13 +278,14 @@ export async function generatePlaylistCardCanvas(
   canvas.height = height
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!
 
-  renderBackground(ctx, width, height, themeColor, backgroundMode)
-
   const cardW = 440
   const cardH = 580
   const cardX = (width - cardW) / 2
   const cardY = 160
   const cardRadius = 24
+  const contentMidY = cardY + cardH * 0.5
+
+  renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
 
   ctx.save()
   ctx.shadowColor = "rgba(0, 0, 0, 0.45)"
@@ -290,21 +343,131 @@ export async function generatePlaylistCardCanvas(
   fillTruncatedText(ctx, subtitle, textX, artistY, cardW - 60)
   ctx.restore()
 
-  // Logo
+  // Logo (enlarged to 160px)
   const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
   if (logoImg) {
-    const logoW = 72
+    const logoW = 160
     const logoH = (logoW / logoImg.width) * logoImg.height
     const logoX = textX
-    const logoY = cardY + cardH - logoH - 22
+    const logoY = cardY + cardH - logoH - 24
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 
   // Steganography
-  const b64Payload = encodeMetadata("playlist", playlist)
-  const imgData = ctx.getImageData(0, 0, width, height)
-  const encoded = encodeSteganography(imgData, b64Payload)
-  ctx.putImageData(encoded as ImageData, 0, 0)
+  try {
+    const b64Payload = encodeMetadata("playlist", playlist)
+    const imgData = ctx.getImageData(0, 0, width, height)
+    const encoded = encodeSteganography(imgData, b64Payload)
+    ctx.putImageData(encoded as ImageData, 0, 0)
+  } catch {
+    // Steganography embedding skipped if canvas is tainted by external image
+  }
+
+  return canvas
+}
+
+/**
+ * Generates an HTMLCanvasElement with the rendered album share card.
+ */
+export async function generateAlbumCardCanvas(
+  options: RenderAlbumCardOptions,
+): Promise<HTMLCanvasElement> {
+  const { album, themeColor, backgroundMode } = options
+  const width = 540
+  const height = 960
+
+  const canvas = document.createElement("canvas")
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!
+
+  const cardW = 440
+  const cardH = 580
+  const cardX = (width - cardW) / 2
+  const cardY = 160
+  const cardRadius = 24
+  const contentMidY = cardY + cardH * 0.5
+
+  renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
+
+  ctx.save()
+  ctx.shadowColor = "rgba(0, 0, 0, 0.45)"
+  ctx.shadowBlur = 40
+  ctx.shadowOffsetY = 16
+  ctx.fillStyle = themeColor
+  drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardRadius)
+  ctx.fill()
+  ctx.restore()
+
+  ctx.save()
+  ctx.fillStyle = "rgba(0, 0, 0, 0.48)"
+  drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardRadius)
+  ctx.fill()
+  ctx.restore()
+
+  const artW = 380
+  const artH = 380
+  const artX = cardX + (cardW - artW) / 2
+  const artY = cardY + 28
+  const artRadius = 16
+
+  const coverImg = album.artwork ? await loadImage(album.artwork) : null
+  ctx.save()
+  drawRoundRect(ctx, artX, artY, artW, artH, artRadius)
+  ctx.clip()
+  if (coverImg) {
+    ctx.drawImage(coverImg, artX, artY, artW, artH)
+  } else {
+    ctx.fillStyle = "#1e2230"
+    ctx.fillRect(artX, artY, artW, artH)
+    ctx.fillStyle = "rgba(255, 255, 255, 0.3)"
+    ctx.font = "bold 64px sans-serif"
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.fillText("💿", artX + artW / 2, artY + artH / 2)
+  }
+  ctx.restore()
+
+  // Album Title
+  ctx.save()
+  ctx.fillStyle = "#FFFFFF"
+  ctx.font = "bold 24px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  ctx.textAlign = "left"
+  ctx.textBaseline = "top"
+  const textX = artX
+  const titleY = artY + artH + 24
+  fillTruncatedText(ctx, album.title, textX, titleY, cardW - 60)
+
+  // Subtitle (Artist • Track Count)
+  ctx.fillStyle = "#B3B9C9"
+  ctx.font = "500 17px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const artistY = titleY + 34
+  const subtitleParts = ["专辑"]
+  if (album.artist) subtitleParts.push(album.artist)
+  if (album.trackCount > 0) subtitleParts.push(`${album.trackCount} 首歌曲`)
+  if (album.year) subtitleParts.push(String(album.year))
+  fillTruncatedText(ctx, subtitleParts.join(" • "), textX, artistY, cardW - 60)
+  ctx.restore()
+
+  // Logo (enlarged to 160px)
+  const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
+  if (logoImg) {
+    const logoW = 160
+    const logoH = (logoW / logoImg.width) * logoImg.height
+    const logoX = textX
+    const logoY = cardY + cardH - logoH - 24
+    ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
+  }
+
+  // Steganography
+  try {
+    const b64Payload = encodeMetadata("album", album)
+    const imgData = ctx.getImageData(0, 0, width, height)
+    const encoded = encodeSteganography(imgData, b64Payload)
+    ctx.putImageData(encoded as ImageData, 0, 0)
+  } catch {
+    // Steganography embedding skipped if canvas is tainted by external image
+  }
 
   return canvas
 }
@@ -325,27 +488,22 @@ export async function generateLyricsCardCanvas(
   canvas.height = height
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!
 
-  renderBackground(ctx, width, height, themeColor, backgroundMode)
-
   const cardW = 440
   const cardH = 580
   const cardX = (width - cardW) / 2
   const cardY = 190
   const cardRadius = 24
+  const contentMidY = cardY + cardH * 0.5
 
-  // Shadow
+  // 1. Draw overall background (gradient to half of share content height)
+  renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
+
+  // 2. Draw Floating Card with bright cover theme color (NO dark mask, matching Spotify lyric share reference)
   ctx.save()
   ctx.shadowColor = "rgba(0, 0, 0, 0.45)"
   ctx.shadowBlur = 40
   ctx.shadowOffsetY = 16
   ctx.fillStyle = themeColor
-  drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardRadius)
-  ctx.fill()
-  ctx.restore()
-
-  // Semi-transparent mask
-  ctx.save()
-  ctx.fillStyle = "rgba(0, 0, 0, 0.45)"
   drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardRadius)
   ctx.fill()
   ctx.restore()
@@ -373,7 +531,7 @@ export async function generateLyricsCardCanvas(
   }
   ctx.restore()
 
-  // Title next to mini cover
+  // Title next to mini cover (crisp white)
   ctx.save()
   ctx.fillStyle = "#FFFFFF"
   ctx.font = "bold 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
@@ -383,8 +541,8 @@ export async function generateLyricsCardCanvas(
   const maxMetaW = cardW - 64 - miniCoverSize - 16
   fillTruncatedText(ctx, lyrics.title, metaX, miniY + 12, maxMetaW)
 
-  // Artist
-  ctx.fillStyle = "#B3B9C9"
+  // Artist (high contrast bright text)
+  ctx.fillStyle = "rgba(255, 255, 255, 0.88)"
   ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   fillTruncatedText(ctx, lyrics.artist, metaX, miniY + 40, maxMetaW)
   ctx.restore()
@@ -405,10 +563,10 @@ export async function generateLyricsCardCanvas(
   })
   ctx.restore()
 
-  // Bottom Section: BBeBee Logo
+  // Bottom Section: BBeBee Logo (enlarged to 160px)
   const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
   if (logoImg) {
-    const logoW = 72
+    const logoW = 160
     const logoH = (logoW / logoImg.width) * logoImg.height
     const logoX = cardX + 32
     const logoY = cardY + cardH - logoH - 28
@@ -416,10 +574,14 @@ export async function generateLyricsCardCanvas(
   }
 
   // Steganography
-  const b64Payload = encodeMetadata("lyrics", lyrics)
-  const imgData = ctx.getImageData(0, 0, width, height)
-  const encoded = encodeSteganography(imgData, b64Payload)
-  ctx.putImageData(encoded as ImageData, 0, 0)
+  try {
+    const b64Payload = encodeMetadata("lyrics", lyrics)
+    const imgData = ctx.getImageData(0, 0, width, height)
+    const encoded = encodeSteganography(imgData, b64Payload)
+    ctx.putImageData(encoded as ImageData, 0, 0)
+  } catch {
+    // Steganography embedding skipped if canvas is tainted by external image
+  }
 
   return canvas
 }

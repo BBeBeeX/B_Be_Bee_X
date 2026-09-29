@@ -20,8 +20,7 @@
 import { createElement as h, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type {} from '@BBeBee/protocol'
-import type { Collection, DownloadsService, LibraryService, PlayerService, SleepTimerService, SourcesService, Track } from '@BBeBee/protocol'
+import type { Collection, DownloadsService, LibraryService, PlayerService, ShareService, SleepTimerService, SourcesService, Track } from '@BBeBee/protocol'
 import { ALBUM_VIEWS } from '@BBeBee/plugin-album/views'
 import { useAlbum } from '@BBeBee/plugin-album/hooks'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
@@ -556,6 +555,31 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
     })
   }
 
+  const share = serviceOf<ShareService>(ctx, 'share')
+  if (share && detail) {
+    albumMenuItems.push({
+      id: 'share-album',
+      label: '分享专辑',
+      icon: tablerIcon('share', { size: 20 }),
+      onSelect: () => {
+        const coverUrl = typeof detail.artwork === 'string'
+          ? detail.artwork
+          : (detail.artwork as { sourceUrl?: string } | undefined)?.sourceUrl
+        share.shareAlbum(
+          {
+            urn: detail.urn,
+            title: detail.title,
+            artist: detail.artists?.map((a) => a.name).join(', ') || '未知艺人',
+            artwork: coverUrl,
+            year: detail.year,
+            trackCount: detail.tracks.length,
+          },
+          detail.tracks,
+        )
+      },
+    })
+  }
+
   const sleepSubmenu = sleepTimerSubmenu(sleepTimer)
   if (sleepSubmenu) {
     albumMenuItems.push({
@@ -755,6 +779,52 @@ export function AlbumScreen({ ctx, urn }: { ctx: Context; urn?: string }): React
               tablerIcon('download', { size: 24 }),
             )
           : null,
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-testid': 'album-share-action-btn',
+            title: '分享专辑',
+            'aria-label': '分享专辑',
+            onClick: () => {
+              const shareService = serviceOf<ShareService>(ctx, 'share')
+              if (shareService && detail) {
+                const coverUrl = typeof detail.artwork === 'string'
+                  ? detail.artwork
+                  : (detail.artwork as { sourceUrl?: string } | undefined)?.sourceUrl
+                shareService.shareAlbum(
+                  {
+                    urn: detail.urn,
+                    title: detail.title,
+                    artist: detail.artists?.map((a) => a.name).join(', ') || '未知艺人',
+                    artwork: coverUrl,
+                    year: detail.year,
+                    trackCount: detail.tracks.length,
+                  },
+                  detail.tracks,
+                )
+              }
+            },
+            style: {
+              background: 'none',
+              border: 'none',
+              color: '#b3b3b3',
+              cursor: 'pointer',
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'color 0.15s ease',
+            },
+            onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+              e.currentTarget.style.color = '#FFFFFF'
+            },
+            onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+              e.currentTarget.style.color = '#b3b3b3'
+            },
+          },
+          tablerIcon('share', { size: 24 }),
+        ),
         h(
           'button',
           {

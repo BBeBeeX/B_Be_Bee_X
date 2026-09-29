@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { ShareLyricsData } from '@BBeBee/protocol'
 import { Button, Sheet, tablerIcon, useImageColor } from '@BBeBee/ui-kit-desktop'
+import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
 import { tokens } from '@BBeBee/ui-tokens'
 import {
   type BackgroundMode,
@@ -31,8 +32,16 @@ export function ShareLyricsModal({
   })
   const [copiedText, setCopiedText] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [disabledReason, setDisabledReason] = useState<string | null>(null)
 
-  const extractedColor = useImageColor(lyrics.artwork)
+  // Resolve artwork via cache if available
+  const artworkRef = useMemo(() => {
+    return lyrics.artwork ? { id: lyrics.trackUrn || lyrics.title, sourceUrl: lyrics.artwork } : undefined
+  }, [lyrics.artwork, lyrics.trackUrn, lyrics.title])
+  const resolvedArtworkRef = useResolvedArtwork(ctx, artworkRef)
+  const resolvedArtwork = resolvedArtworkRef?.sourceUrl ?? lyrics.artwork
+
+  const extractedColor = useImageColor(resolvedArtwork)
   const themeColor = extractedColor ?? '#79486D'
 
   const activeLines = useMemo(() => {
@@ -45,7 +54,6 @@ export function ShareLyricsModal({
   const toggleLine = (index: number) => {
     setSelectedIndices((prev) => {
       if (prev.includes(index)) {
-        if (prev.length <= 1) return prev // Keep at least one line
         return prev.filter((i) => i !== index)
       }
       if (prev.length >= 6) return prev // Limit to max 6 lines for visual balance
@@ -53,22 +61,33 @@ export function ShareLyricsModal({
     })
   }
 
+  const canCopy = activeLines.length > 0
+
   const handleCopyText = useCallback(async () => {
+    if (!canCopy) {
+      setDisabledReason('无法复制歌词：请至少勾选一行歌词')
+      setTimeout(() => setDisabledReason(null), 3500)
+      return
+    }
     try {
       const textToCopy = `${activeLines.join('\n')}\n\n—— ${lyrics.artist}《${lyrics.title}》`
       await navigator.clipboard.writeText(textToCopy)
       setCopiedText(true)
+      setDisabledReason(null)
       setTimeout(() => setCopiedText(false), 2000)
     } catch (err) {
       ctx.logger?.error(`Failed to copy lyrics: ${String(err)}`)
+      setDisabledReason('无法复制：剪贴板写入失败，请检查系统权限')
+      setTimeout(() => setDisabledReason(null), 3500)
     }
-  }, [ctx, activeLines, lyrics.artist, lyrics.title])
+  }, [ctx, activeLines, lyrics.artist, lyrics.title, canCopy])
 
   const handleDownload = useCallback(async () => {
     try {
       setDownloading(true)
       const lyricsData: ShareLyricsData = {
         ...lyrics,
+        artwork: resolvedArtwork,
         lines: activeLines,
       }
       const canvas = await generateLyricsCardCanvas({
@@ -83,7 +102,7 @@ export function ShareLyricsModal({
     } finally {
       setDownloading(false)
     }
-  }, [ctx, lyrics, activeLines, themeColor, backgroundMode])
+  }, [ctx, lyrics, resolvedArtwork, activeLines, themeColor, backgroundMode])
 
   if (!open) return null
 
@@ -141,7 +160,7 @@ export function ShareLyricsModal({
       h(ShareCardPreview, {
         title: lyrics.title,
         subtitle: lyrics.artist,
-        artwork: lyrics.artwork,
+        artwork: resolvedArtwork,
         themeColor,
         backgroundMode,
         lyrics: activeLines,
@@ -275,6 +294,30 @@ export function ShareLyricsModal({
           }),
         ),
       ),
+      // Disabled Reason Popup Toast
+      disabledReason
+        ? h(
+            'div',
+            {
+              'data-testid': 'copy-disabled-reason-toast',
+              style: {
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 8,
+                background: 'rgba(245, 158, 11, 0.15)',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                color: '#FCD34D',
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                boxSizing: 'border-box',
+              },
+            },
+            tablerIcon('alert-circle', { size: 16 }),
+            h('span', null, disabledReason),
+          )
+        : null,
       // Bottom Buttons
       h(
         'div',
@@ -289,11 +332,39 @@ export function ShareLyricsModal({
         h(
           'div',
           { style: { flex: 1, display: 'flex' } },
-          h(Button, {
-            variant: 'secondary',
-            onPress: handleCopyText,
-            children: copiedText ? '已复制歌词' : '复制歌词',
-          }),
+          canCopy
+            ? h(Button, {
+                variant: 'secondary',
+                onPress: handleCopyText,
+                children: copiedText ? '已复制歌词' : '复制歌词',
+              })
+            : h(
+                'button',
+                {
+                  type: 'button',
+                  'data-testid': 'copy-lyrics-disabled-btn',
+                  onClick: () => {
+                    setDisabledReason('无法复制歌词：请至少勾选一行歌词')
+                    setTimeout(() => setDisabledReason(null), 3500)
+                  },
+                  style: {
+                    width: '100%',
+                    height: 38,
+                    borderRadius: tokens.radius.pill,
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    color: 'rgba(255, 255, 255, 0.35)',
+                    cursor: 'not-allowed',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 16px',
+                  },
+                },
+                '复制歌词',
+              ),
         ),
         h(
           'div',
