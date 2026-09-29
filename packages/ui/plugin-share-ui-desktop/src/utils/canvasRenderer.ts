@@ -145,23 +145,103 @@ export function drawRoundRect(
   ctx.closePath()
 }
 
-/** Truncates text with ellipsis if it exceeds maxWidth */
-function fillTruncatedText(
+/** Draws an image inside a destination rect with center-crop object-fit cover (no aspect ratio distortion) */
+export function drawImageCover(
   ctx: CanvasRenderingContext2D,
-  text: string,
+  img: HTMLImageElement,
   x: number,
   y: number,
-  maxWidth: number,
+  w: number,
+  h: number,
 ) {
-  let truncated = text
-  if (ctx.measureText(truncated).width <= maxWidth) {
-    ctx.fillText(truncated, x, y)
-    return
+  const imgW = img.naturalWidth || img.width
+  const imgH = img.naturalHeight || img.height
+  if (!imgW || !imgH) return
+
+  const targetRatio = w / h
+  const sourceRatio = imgW / imgH
+
+  let sx = 0
+  let sy = 0
+  let sw = imgW
+  let sh = imgH
+
+  if (sourceRatio > targetRatio) {
+    sw = Math.round(imgH * targetRatio)
+    sx = Math.round((imgW - sw) / 2)
+  } else if (sourceRatio < targetRatio) {
+    sh = Math.round(imgW / targetRatio)
+    sy = Math.round((imgH - sh) / 2)
   }
-  while (truncated.length > 0 && ctx.measureText(truncated + "…").width > maxWidth) {
-    truncated = truncated.slice(0, -1)
+
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h)
+}
+
+/**
+ * Wraps text into up to maxLines (default 3), truncating the last line with ellipsis if needed.
+ */
+export function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines = 3,
+): string[] {
+  if (!text) return []
+  const clean = text.trim()
+  if (!clean) return []
+
+  if (ctx.measureText(clean).width <= maxWidth) {
+    return [clean]
   }
-  ctx.fillText(truncated + "…", x, y)
+
+  const lines: string[] = []
+  let remaining = clean
+
+  while (remaining.length > 0 && lines.length < maxLines) {
+    if (lines.length === maxLines - 1) {
+      if (ctx.measureText(remaining).width <= maxWidth) {
+        lines.push(remaining)
+        break
+      }
+      let truncated = remaining
+      while (truncated.length > 0 && ctx.measureText(truncated + "…").width > maxWidth) {
+        truncated = truncated.slice(0, -1)
+      }
+      lines.push(truncated + "…")
+      break
+    }
+
+    let low = 1
+    let high = remaining.length
+    let bestFit = 1
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2)
+      const sub = remaining.slice(0, mid)
+      if (ctx.measureText(sub).width <= maxWidth) {
+        bestFit = mid
+        low = mid + 1
+      } else {
+        high = mid - 1
+      }
+    }
+
+    let breakIndex = bestFit
+    if (breakIndex < remaining.length) {
+      const lastSpace = remaining.slice(0, breakIndex).lastIndexOf(" ")
+      if (lastSpace > 0 && lastSpace > breakIndex - 12) {
+        breakIndex = lastSpace
+      }
+    }
+
+    const line = remaining.slice(0, breakIndex).trim()
+    if (line) {
+      lines.push(line)
+    }
+    remaining = remaining.slice(breakIndex).trimStart()
+  }
+
+  return lines
 }
 
 /**
@@ -210,9 +290,30 @@ export async function drawTrackCard(
   const ctx = canvas.getContext("2d", { willReadFrequently: true })
   if (!ctx) return
 
-  // Floating Card dimensions (vertically centered, balanced 530px height)
   const cardW = 440
-  const cardH = 530
+  const artW = 392
+  const artH = 392
+  const textW = artW
+
+  // Measure wrapped title & artist up to 3 lines
+  ctx.font = "bold 26px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const titleLines = wrapText(ctx, track.title, textW, 3)
+  const titleLineH = 34
+  const titleTotalH = Math.max(1, titleLines.length) * titleLineH
+
+  ctx.font = "500 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const artistLines = wrapText(ctx, track.artist, textW, 3)
+  const artistLineH = 26
+  const artistTotalH = Math.max(1, artistLines.length) * artistLineH
+
+  // Logo: small compact size
+  const logoW = 85
+  const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
+  const logoH = logoImg ? (logoW / logoImg.width) * logoImg.height : 20
+
+  // Calculate natural height and ensure taller card
+  const naturalCardH = 24 + artH + 18 + titleTotalH + 10 + artistTotalH + 16 + logoH + 24
+  const cardH = Math.min(680, Math.max(610, naturalCardH))
   const cardX = (width - cardW) / 2
   const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
@@ -221,7 +322,7 @@ export async function drawTrackCard(
   // 1. Draw overall background
   renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
 
-  // Card background: pure black container with drop shadow
+  // 2. Draw card container: pure black container with drop shadow
   ctx.save()
   ctx.shadowColor = "rgba(0, 0, 0, 0.55)"
   ctx.shadowBlur = 40
@@ -231,9 +332,7 @@ export async function drawTrackCard(
   ctx.fill()
   ctx.restore()
 
-  // Card Content (Cover, Title, Artist, Logo)
-  const artW = 380
-  const artH = 380
+  // 3. Draw Cover inside card (1:1 center-cropped without distortion/stretching)
   const artX = cardX + (cardW - artW) / 2
   const artY = cardY + 24
   const artRadius = 16
@@ -244,7 +343,7 @@ export async function drawTrackCard(
   drawRoundRect(ctx, artX, artY, artW, artH, artRadius)
   ctx.clip()
   if (coverImg) {
-    ctx.drawImage(coverImg, artX, artY, artW, artH)
+    drawImageCover(ctx, coverImg, artX, artY, artW, artH)
   } else {
     // Placeholder
     ctx.fillStyle = "#1e2230"
@@ -257,30 +356,31 @@ export async function drawTrackCard(
   }
   ctx.restore()
 
-  // Song Title
+  // 4. Song Title (larger font, wraps up to 3 lines)
   ctx.save()
   ctx.fillStyle = "#FFFFFF"
-  ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  ctx.font = "bold 26px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
   const textX = artX
   const titleY = artY + artH + 18
-  fillTruncatedText(ctx, track.title, textX, titleY, cardW - 60)
+  titleLines.forEach((line, idx) => {
+    ctx.fillText(line, textX, titleY + idx * titleLineH)
+  })
 
-  // Artist
+  // 5. Artist (larger font, wraps up to 3 lines)
   ctx.fillStyle = "#B3B9C9"
-  ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  const artistY = titleY + 30
-  fillTruncatedText(ctx, track.artist, textX, artistY, cardW - 60)
+  ctx.font = "500 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const artistY = titleY + titleTotalH + 10
+  artistLines.forEach((line, idx) => {
+    ctx.fillText(line, textX, artistY + idx * artistLineH)
+  })
   ctx.restore()
 
-  // Logo (140px, aligned to bottom-left with 20px bottom padding)
-  const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
+  // 6. Logo: directly below artist, smaller size
   if (logoImg) {
-    const logoW = 140
-    const logoH = (logoW / logoImg.width) * logoImg.height
-    const logoX = cardX + 26
-    const logoY = cardY + cardH - logoH - 20
+    const logoX = textX
+    const logoY = artistY + artistTotalH + 16
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 }
@@ -301,15 +401,39 @@ export async function drawPlaylistCard(
   if (!ctx) return
 
   const cardW = 440
-  const cardH = 530
+  const artW = 392
+  const artH = 392
+  const textW = artW
+
+  // Measure wrapped title & subtitle up to 3 lines
+  ctx.font = "bold 26px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const titleLines = wrapText(ctx, playlist.name, textW, 3)
+  const titleLineH = 34
+  const titleTotalH = Math.max(1, titleLines.length) * titleLineH
+
+  ctx.font = "500 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const subtitle = playlist.subtitle || (playlist.trackCount > 0 ? `歌单 • ${playlist.trackCount} 首歌曲` : "歌单")
+  const subtitleLines = wrapText(ctx, subtitle, textW, 3)
+  const subtitleLineH = 26
+  const subtitleTotalH = Math.max(1, subtitleLines.length) * subtitleLineH
+
+  // Logo: small compact size
+  const logoW = 85
+  const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
+  const logoH = logoImg ? (logoW / logoImg.width) * logoImg.height : 20
+
+  // Calculate natural height and ensure taller card
+  const naturalCardH = 24 + artH + 18 + titleTotalH + 10 + subtitleTotalH + 16 + logoH + 24
+  const cardH = Math.min(680, Math.max(610, naturalCardH))
   const cardX = (width - cardW) / 2
   const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
   const contentMidY = Math.round(cardY + cardH * 0.5)
 
+  // 1. Draw overall background
   renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
 
-  // Card background: pure black container
+  // 2. Draw card container: pure black container with drop shadow
   ctx.save()
   ctx.shadowColor = "rgba(0, 0, 0, 0.55)"
   ctx.shadowBlur = 40
@@ -319,8 +443,7 @@ export async function drawPlaylistCard(
   ctx.fill()
   ctx.restore()
 
-  const artW = 380
-  const artH = 380
+  // 3. Draw Cover inside card (1:1 center-cropped without distortion/stretching)
   const artX = cardX + (cardW - artW) / 2
   const artY = cardY + 24
   const artRadius = 16
@@ -331,7 +454,7 @@ export async function drawPlaylistCard(
   drawRoundRect(ctx, artX, artY, artW, artH, artRadius)
   ctx.clip()
   if (coverImg) {
-    ctx.drawImage(coverImg, artX, artY, artW, artH)
+    drawImageCover(ctx, coverImg, artX, artY, artW, artH)
   } else {
     ctx.fillStyle = "#1e2230"
     ctx.fillRect(artX, artY, artW, artH)
@@ -343,31 +466,31 @@ export async function drawPlaylistCard(
   }
   ctx.restore()
 
-  // Playlist Name
+  // 4. Playlist Name (larger font, wraps up to 3 lines)
   ctx.save()
   ctx.fillStyle = "#FFFFFF"
-  ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  ctx.font = "bold 26px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
   const textX = artX
   const titleY = artY + artH + 18
-  fillTruncatedText(ctx, playlist.name, textX, titleY, cardW - 60)
+  titleLines.forEach((line, idx) => {
+    ctx.fillText(line, textX, titleY + idx * titleLineH)
+  })
 
-  // Subtitle / Track count
+  // 5. Subtitle (larger font, wraps up to 3 lines)
   ctx.fillStyle = "#B3B9C9"
-  ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  const artistY = titleY + 30
-  const subtitle = playlist.subtitle || (playlist.trackCount > 0 ? `歌单 • ${playlist.trackCount} 首歌曲` : "歌单")
-  fillTruncatedText(ctx, subtitle, textX, artistY, cardW - 60)
+  ctx.font = "500 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const subtitleY = titleY + titleTotalH + 10
+  subtitleLines.forEach((line, idx) => {
+    ctx.fillText(line, textX, subtitleY + idx * subtitleLineH)
+  })
   ctx.restore()
 
-  // Logo (140px, aligned to bottom-left with 20px bottom padding)
-  const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
+  // 6. Logo: directly below subtitle, smaller size
   if (logoImg) {
-    const logoW = 140
-    const logoH = (logoW / logoImg.width) * logoImg.height
-    const logoX = cardX + 26
-    const logoY = cardY + cardH - logoH - 20
+    const logoX = textX
+    const logoY = subtitleY + subtitleTotalH + 16
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 }
@@ -388,15 +511,47 @@ export async function drawAlbumCard(
   if (!ctx) return
 
   const cardW = 440
-  const cardH = 530
+  const artW = 392
+  const artH = 392
+  const textW = artW
+
+  // Measure wrapped title & subtitle up to 3 lines
+  ctx.font = "bold 26px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const titleLines = wrapText(ctx, album.title, textW, 3)
+  const titleLineH = 34
+  const titleTotalH = Math.max(1, titleLines.length) * titleLineH
+
+  let subtitle = album.subtitle
+  if (!subtitle) {
+    const subtitleParts = ["专辑"]
+    if (album.artist) subtitleParts.push(album.artist)
+    if (album.trackCount > 0) subtitleParts.push(`${album.trackCount} 首歌曲`)
+    if (album.year) subtitleParts.push(String(album.year))
+    subtitle = subtitleParts.join(" • ")
+  }
+
+  ctx.font = "500 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const subtitleLines = wrapText(ctx, subtitle, textW, 3)
+  const subtitleLineH = 26
+  const subtitleTotalH = Math.max(1, subtitleLines.length) * subtitleLineH
+
+  // Logo: small compact size
+  const logoW = 85
+  const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
+  const logoH = logoImg ? (logoW / logoImg.width) * logoImg.height : 20
+
+  // Calculate natural height and ensure taller card
+  const naturalCardH = 24 + artH + 18 + titleTotalH + 10 + subtitleTotalH + 16 + logoH + 24
+  const cardH = Math.min(680, Math.max(610, naturalCardH))
   const cardX = (width - cardW) / 2
   const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
   const contentMidY = Math.round(cardY + cardH * 0.5)
 
+  // 1. Draw overall background
   renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
 
-  // Card background: pure black container
+  // 2. Draw card container: pure black container with drop shadow
   ctx.save()
   ctx.shadowColor = "rgba(0, 0, 0, 0.55)"
   ctx.shadowBlur = 40
@@ -406,8 +561,7 @@ export async function drawAlbumCard(
   ctx.fill()
   ctx.restore()
 
-  const artW = 380
-  const artH = 380
+  // 3. Draw Cover inside card (1:1 center-cropped without distortion/stretching)
   const artX = cardX + (cardW - artW) / 2
   const artY = cardY + 24
   const artRadius = 16
@@ -418,7 +572,7 @@ export async function drawAlbumCard(
   drawRoundRect(ctx, artX, artY, artW, artH, artRadius)
   ctx.clip()
   if (coverImg) {
-    ctx.drawImage(coverImg, artX, artY, artW, artH)
+    drawImageCover(ctx, coverImg, artX, artY, artW, artH)
   } else {
     ctx.fillStyle = "#1e2230"
     ctx.fillRect(artX, artY, artW, artH)
@@ -430,38 +584,31 @@ export async function drawAlbumCard(
   }
   ctx.restore()
 
-  // Album Title
+  // 4. Album Title (larger font, wraps up to 3 lines)
   ctx.save()
   ctx.fillStyle = "#FFFFFF"
-  ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  ctx.font = "bold 26px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
   const textX = artX
   const titleY = artY + artH + 18
-  fillTruncatedText(ctx, album.title, textX, titleY, cardW - 60)
+  titleLines.forEach((line, idx) => {
+    ctx.fillText(line, textX, titleY + idx * titleLineH)
+  })
 
-  // Subtitle (Artist • Track Count)
+  // 5. Subtitle (larger font, wraps up to 3 lines)
   ctx.fillStyle = "#B3B9C9"
-  ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  const artistY = titleY + 30
-  let subtitle = album.subtitle
-  if (!subtitle) {
-    const subtitleParts = ["专辑"]
-    if (album.artist) subtitleParts.push(album.artist)
-    if (album.trackCount > 0) subtitleParts.push(`${album.trackCount} 首歌曲`)
-    if (album.year) subtitleParts.push(String(album.year))
-    subtitle = subtitleParts.join(" • ")
-  }
-  fillTruncatedText(ctx, subtitle, textX, artistY, cardW - 60)
+  ctx.font = "500 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const subtitleY = titleY + titleTotalH + 10
+  subtitleLines.forEach((line, idx) => {
+    ctx.fillText(line, textX, subtitleY + idx * subtitleLineH)
+  })
   ctx.restore()
 
-  // Logo (140px, aligned to bottom-left with 20px bottom padding)
-  const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
+  // 6. Logo: directly below subtitle, smaller size
   if (logoImg) {
-    const logoW = 140
-    const logoH = (logoW / logoImg.width) * logoImg.height
-    const logoX = cardX + 26
-    const logoY = cardY + cardH - logoH - 20
+    const logoX = textX
+    const logoY = subtitleY + subtitleTotalH + 16
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 }
@@ -481,9 +628,43 @@ export async function drawLyricsCard(
   const ctx = canvas.getContext("2d", { willReadFrequently: true })
   if (!ctx) return
 
-  const lineCount = Math.max(1, Math.min(6, lyrics.lines.length))
   const cardW = 440
-  const cardH = Math.min(390, Math.max(220, 130 + lineCount * 36))
+  const miniCoverSize = 52
+  const miniRadius = 10
+  const maxMetaW = cardW - 44 - miniCoverSize - 14
+
+  // Wrap title & artist (up to 3 lines each)
+  ctx.font = "bold 19px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const titleLines = wrapText(ctx, lyrics.title, maxMetaW, 3)
+  const titleLineH = 25
+  const titleTotalH = Math.max(1, titleLines.length) * titleLineH
+
+  ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const artistLines = wrapText(ctx, lyrics.artist, maxMetaW, 3)
+  const artistLineH = 21
+  const artistTotalH = Math.max(1, artistLines.length) * artistLineH
+
+  const headerTextH = titleTotalH + 4 + artistTotalH
+  const headerH = Math.max(miniCoverSize, headerTextH)
+
+  // Measure lyric lines (wrap each line up to 3 lines)
+  ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const lyricLineH = 34
+  const lyricMaxW = cardW - 44
+  const linesToRender = lyrics.lines.slice(0, 6)
+  const wrappedParagraphs = linesToRender.map((line) => wrapText(ctx, line, lyricMaxW, 3))
+  const totalLyricLineCount = wrappedParagraphs.reduce((acc, lines) => acc + lines.length, 0)
+  const paragraphSpacing = 10
+  const totalLyricsH = totalLyricLineCount * lyricLineH + Math.max(0, wrappedParagraphs.length - 1) * paragraphSpacing
+
+  // Logo: small compact size
+  const logoW = 85
+  const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
+  const logoH = logoImg ? (logoW / logoImg.width) * logoImg.height : 20
+
+  // Calculate natural height for lyrics card
+  const naturalCardH = 22 + headerH + 20 + totalLyricsH + 20 + logoH + 22
+  const cardH = Math.min(760, Math.max(340, naturalCardH))
   const cardX = (width - cardW) / 2
   const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
@@ -502,11 +683,9 @@ export async function drawLyricsCard(
   ctx.fill()
   ctx.restore()
 
-  // Top Section: Mini cover + Title + Artist
-  const miniCoverSize = 48
+  // 3. Top Section: Mini cover + Title + Artist
   const miniX = cardX + 22
-  const miniY = cardY + 20
-  const miniRadius = 8
+  const miniY = cardY + 22
 
   const artworkSrc = options.renderArtwork || lyrics.artwork
   const coverImg = artworkSrc ? await loadImage(artworkSrc) : null
@@ -514,7 +693,7 @@ export async function drawLyricsCard(
   drawRoundRect(ctx, miniX, miniY, miniCoverSize, miniCoverSize, miniRadius)
   ctx.clip()
   if (coverImg) {
-    ctx.drawImage(coverImg, miniX, miniY, miniCoverSize, miniCoverSize)
+    drawImageCover(ctx, coverImg, miniX, miniY, miniCoverSize, miniCoverSize)
   } else {
     ctx.fillStyle = "#1e2230"
     ctx.fillRect(miniX, miniY, miniCoverSize, miniCoverSize)
@@ -529,42 +708,46 @@ export async function drawLyricsCard(
   // Title next to mini cover (crisp white)
   ctx.save()
   ctx.fillStyle = "#FFFFFF"
-  ctx.font = "bold 17px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  ctx.font = "bold 19px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
-  const metaX = miniX + miniCoverSize + 12
-  const maxMetaW = cardW - 44 - miniCoverSize - 12
-  fillTruncatedText(ctx, lyrics.title, metaX, miniY + 4, maxMetaW)
+  const metaX = miniX + miniCoverSize + 14
+  titleLines.forEach((line, idx) => {
+    ctx.fillText(line, metaX, miniY + idx * titleLineH)
+  })
 
   // Artist (high contrast bright text)
   ctx.fillStyle = "rgba(255, 255, 255, 0.88)"
-  ctx.font = "500 14px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  fillTruncatedText(ctx, lyrics.artist, metaX, miniY + 26, maxMetaW)
-  ctx.restore()
-
-  // Middle Section: Lyric Lines (Bold white text)
-  ctx.save()
-  ctx.fillStyle = "#FFFFFF"
-  ctx.font = "bold 21px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  ctx.textAlign = "left"
-  ctx.textBaseline = "top"
-  const lyricStartX = cardX + 22
-  const lyricStartY = miniY + miniCoverSize + 16
-  const lineHeight = 34
-
-  const linesToRender = lyrics.lines.slice(0, 6)
-  linesToRender.forEach((line, idx) => {
-    fillTruncatedText(ctx, line, lyricStartX, lyricStartY + idx * lineHeight, cardW - 44)
+  ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const artistY = miniY + titleTotalH + 4
+  artistLines.forEach((line, idx) => {
+    ctx.fillText(line, metaX, artistY + idx * artistLineH)
   })
   ctx.restore()
 
-  // Bottom Section: BBeBee Logo (bottom-left)
-  const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
+  // 4. Middle Section: Lyric Lines (Bold white text)
+  ctx.save()
+  ctx.fillStyle = "#FFFFFF"
+  ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  ctx.textAlign = "left"
+  ctx.textBaseline = "top"
+  const lyricStartX = cardX + 22
+  const lyricStartY = miniY + headerH + 20
+
+  let currentY = lyricStartY
+  wrappedParagraphs.forEach((paraLines) => {
+    paraLines.forEach((line) => {
+      ctx.fillText(line, lyricStartX, currentY)
+      currentY += lyricLineH
+    })
+    currentY += paragraphSpacing
+  })
+  ctx.restore()
+
+  // 5. Bottom Section: BBeBee Logo (compact size at bottom-left)
   if (logoImg) {
-    const logoW = 140
-    const logoH = (logoW / logoImg.width) * logoImg.height
-    const logoX = cardX + 20
-    const logoY = cardY + cardH - logoH - 14
+    const logoX = cardX + 22
+    const logoY = cardY + cardH - logoH - 20
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 }
