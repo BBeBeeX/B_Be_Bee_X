@@ -306,6 +306,16 @@ export class DesktopAudioService extends Service implements AudioService {
     }
   }
 
+  /** Publish a platform interruption through the active engine. */
+  emitInterruption(e: InterruptionEvent): void {
+    this.activeEngine?.emitInterruption(e)
+  }
+
+  /** Publish a route change through the active engine. */
+  emitRouteChange(e: RouteChangeEvent): void {
+    this.activeEngine?.emitRouteChange(e)
+  }
+
   private dispatchInterruption(e: InterruptionEvent): void {
     for (const listener of this.interruptionListeners) {
       try {
@@ -353,7 +363,16 @@ export class DesktopAudioService extends Service implements AudioService {
       throw err
     }
 
-    this.activeEngine = (scoped as unknown as { audio: AudioService }).audio
+    // The engine instance is read from the mounted fiber's store, where
+    // `provide` recorded it: `scoped.audio` resolves up the fiber chain and
+    // finds this wrapper's own 'audio' instead, so delegating to it would
+    // recurse through setVolume/setMuted until the stack overflows.
+    const mounted = (fiber as unknown as { store?: Record<string, { value?: AudioService }> })
+      .store?.audio?.value
+    if (!mounted || mounted === this) {
+      throw new Error(`desktop-audio: engine [${engineKey}] did not provide an audio service`)
+    }
+    this.activeEngine = mounted
     this.activeFiber = fiber
     this.activeEngineKey = engineKey
 
@@ -489,7 +508,7 @@ export async function boot(): Promise<App> {
   let initialEngine: 'wasapi' | 'webaudio' = hostPlatform() === 'windows' ? 'wasapi' : 'webaudio'
   try {
     const storeUri = `${pathSnapshot.appData}/store.json`
-    const raw = await window.BBeBeeBridge?.call('fs', 'readUtf8', [storeUri])
+    const raw = await window.BBeBeeBridge?.call('fs', 'readFile', [storeUri])
     if (raw && typeof raw === 'string') {
       const data = JSON.parse(raw) as Record<string, unknown>
       const prefs = data['preferences'] as { audioOutputEngine?: 'wasapi' | 'webaudio' } | undefined
