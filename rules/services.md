@@ -36,6 +36,7 @@ Declared in `packages/protocol/src/services/` and augmented onto `Context`:
 | `ctx.shell` | Open external URL, directory pickers | Desktop bridge, mobile intent |
 | `ctx.settings` | User app settings (theme, audio engine, shortcuts) | `plugin-settings` (feature service with store persistence) |
 | `ctx.theme` | Theme registry, token injection, dynamic theme management | `plugin-theme` (feature service with DOM/store sync) |
+| `ctx.share` | Metadata serialization, image steganography, track/playlist/album/lyrics sharing | `plugin-share` (headless service), `plugin-share-ui-desktop` (views) |
 | `ctx.logger` | Scoped diagnostic logging via Cordis | Core service / Cordis native |
 
 ---

@@ -391,4 +391,41 @@ External developers can create custom HTML/CSS/JS player skins and users can dyn
   - Supports direct JSON manifest paste or local `.json` file upload.
   - Validates required fields (`id`, `name`, `htmlContent`) and prevents collisions with built-in style IDs.
 
+---
+
+## 10. Share UI & Card Rendering Engine (`plugin-share-ui-desktop`)
+
+Rules and design standards governing music sharing modals, live canvas rendering, and visual steganography generation.
+
+### 10.1 Live Canvas Rendering Architecture (100% Dual-Engine Parity)
+- **Eliminating Dual-Engine Divergence**:
+  - Previews must **not** use HTML/CSS DOM trees if the final exported asset is a Canvas image. Flexbox layout, font baseline alignment, kerning, and subpixel rounding inevitably diverge between HTML DOM and Canvas 2D contexts.
+  - `ShareCardPreview` embeds a live `<canvas width={540} height={960} style={{ width: 252, height: 448 }} />` directly rendering via `drawTrackCard`, `drawPlaylistCard`, `drawAlbumCard`, and `drawLyricsCard`.
+  - The modal preview is mathematically identical (2x Retina sharpness) to the exported PNG image.
+
+### 10.2 Card Geometry & Typography Hierarchy
+- **Non-Distorting Center-Cropped Artwork (`drawImageCover`)**:
+  - Image artwork must never be stretched or aspect-ratio distorted. `drawImageCover(ctx, img, x, y, w, h)` performs center-crop object-fit cover based on source and destination aspect ratios.
+- **Adaptive Text Wrapping (`wrapText`)**:
+  - Titles, artists, composer metadata, and lyric lines wrap gracefully up to 3 lines (`maxLines = 3`).
+  - Ellipsis (`…`) is appended if text exceeds the third line.
+  - Uses binary search with CJK and Western word boundary detection.
+- **Typography Scale**:
+  - Card Title: `bold 26px`, line-height `34px`, crisp `#FFFFFF`.
+  - Artist / Subtitle: `500 18px`, line-height `26px`, secondary `#B3B9C9`.
+  - Lyrics: `bold 22px`, line-height `34px`, crisp `#FFFFFF`.
+- **Vertical Spacing & Logo Positioning**:
+  - The BBeBee brand logo (`110px` wide, ~`24px` high) is placed directly beneath the artist/subtitle/lyrics with a compact `10px` gap (`gapAboveLogo`).
+  - Bottom padding is strictly `18px` (`gapBelowLogo`).
+  - Card height adaptively wraps content (`cardH = naturalCardH`), eliminating large empty voids beneath the logo.
+
+### 10.3 Component Extraction & High-Cohesion Modals
+Share dialogs (`ShareTrackModal`, `SharePlaylistModal`, `ShareAlbumModal`, `ShareLyricsModal`) are factored into single-responsibility reusable components:
+- `ShareModalHeader`: Unified modal header bar with close button.
+- `BackgroundModeSelector`: Compact toggle capsule for "纯主题色" (Cover theme), "半高渐变" (50% transition to black), and "纯黑底色" (Black).
+- `LocalSourceWarning`: Red warning banner (`data-testid="local-source-warning"`) alerting that local-only tracks cannot be shared across devices.
+- `DisabledReasonToast`: Informative amber toast (`data-testid="copy-disabled-reason-toast"`) explaining why a disabled action cannot proceed when clicked.
+- `ShareActionButtons`: Encapsulates "复制" (Base64) and "保存图片" (PNG with LSB steganography), handling copying states, generation spinners, and disabled states.
+- `useShareModalState`: Unified hook encapsulating theme color extraction (`useImageColor`), artwork resolution (`useResolvedArtwork`), local source checks (`isLocalSource`), clipboard copy fallbacks, and toast timers.
+
 

@@ -847,7 +847,123 @@ export interface NowPlayingService {
 
 ---
 
-## 22. Where to go next
+## 22. `ctx.share` — sharing & steganography service
+
+**Purpose.** Cross-platform sharing of tracks, playlists, albums, and lyrics via structured metadata serialization, Base64 envelopes, and visual image steganography (LSB encoding).
+
+```ts
+export type ShareType = 'track' | 'playlist' | 'lyrics' | 'album'
+
+export interface PixelBuffer {
+  readonly width: number
+  readonly height: number
+  readonly data: Uint8ClampedArray | Uint8Array
+}
+
+export interface ShareMetadataEnvelope<T = unknown> {
+  version: 1
+  app: 'BBeBee'
+  type: ShareType
+  createdAt: number
+  data: T
+}
+
+export interface ShareTrackData {
+  urn: string
+  title: string
+  artist: string
+  albumTitle?: string
+  artwork?: string
+  duration?: number
+  source?: string
+  sourceUrn?: string
+  extra?: Record<string, unknown>
+}
+
+export interface SharePlaylistData {
+  urn: string
+  name: string
+  description?: string
+  artwork?: string
+  trackCount: number
+  tracks?: Array<{
+    urn: string
+    title: string
+    artist: string
+    albumTitle?: string
+    artwork?: string
+    duration?: number
+  }>
+  source?: string
+  extra?: Record<string, unknown>
+}
+
+export interface ShareAlbumData {
+  urn: string
+  title: string
+  artist?: string
+  artwork?: string
+  year?: number
+  trackCount: number
+  tracks?: Array<{
+    urn: string
+    title: string
+    artist: string
+    albumTitle?: string
+    artwork?: string
+    duration?: number
+  }>
+  source?: string
+  extra?: Record<string, unknown>
+}
+
+export interface ShareLyricsData {
+  trackUrn: string
+  title: string
+  artist: string
+  albumTitle?: string
+  artwork?: string
+  lines: string[]
+}
+
+export interface ShareService {
+  encodeMetadata<T extends ShareTrackData | SharePlaylistData | ShareLyricsData | ShareAlbumData>(
+    type: ShareType,
+    data: T,
+  ): string
+  decodeMetadata(base64: string): ShareMetadataEnvelope | null
+  encodeSteganography(buffer: PixelBuffer, payload: string): PixelBuffer
+  decodeSteganography(buffer: PixelBuffer): string | null
+  shareTrack(track: ShareableTrack): void
+  sharePlaylist(
+    playlist: { urn: string; name: string; description?: string; artwork?: string },
+    tracks?: readonly ShareableTrack[],
+  ): void
+  shareAlbum(
+    album: { urn: string; title: string; artist?: string; artwork?: string; year?: number; trackCount?: number },
+    tracks?: readonly ShareableTrack[],
+  ): void
+  shareLyrics(track: ShareableTrack, lines: string[]): void
+  openImport(): void
+}
+```
+
+| | Electron (Desktop) | Expo (Mobile) |
+|---|---|---|
+| Headless service | `@BBeBee/plugin-share` | `@BBeBee/plugin-share` |
+| UI implementation | `@BBeBee/plugin-share-ui-desktop` | Planned (`plugin-share-ui-mobile`) |
+| Steganography algorithm | Universal LSB (Least Significant Bit) RGBA encoder/decoder | Same |
+| Artwork fidelity | Preserves original remote HTTP/HTTPS artwork URL in steganography payload, with automatic local canvas fallback extraction on import | Same |
+| Card layout | Pure Canvas rendering with 100% live preview synchronization, non-distorting 1:1 center-cropped artwork, 3-line text wrapping, adaptive height | Planned mobile parity |
+
+- **LSB Steganography Payload**: Metadata is JSON-serialized, Base64-encoded, and embedded across the lowest bits of the image pixels, remaining completely invisible to the human eye while fully recoverable.
+- **Remote Artwork Preservation**: When sharing items with cached or local file paths, `plugin-share` preserves the original HTTP/HTTPS artwork URL in the steganography payload so recipients can fetch high-resolution artwork across devices.
+- **Local Fallback Extraction**: If an imported share card contains an unreachable or offline artwork URL, `ImportShareModal` extracts the cover directly from the uploaded share image canvas via bounding box coordinates.
+- **Local Source Restrictions**: Tracks, playlists, and albums with local-only URN schemes are protected with warning banners and disabled actions, preventing unplayable local files from being shared to other machines.
+
+---
+
+## 23. Where to go next
 
 [05 — Audio & Playback](../audio/playback.md) builds the playback engine and DSP chain on top of
 these services.
