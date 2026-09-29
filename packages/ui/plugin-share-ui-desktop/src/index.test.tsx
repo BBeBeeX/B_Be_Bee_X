@@ -42,6 +42,23 @@ class ShareStub extends Service {
   }
 }
 
+class PlayerStub extends Service {
+  public playedNowUrns: string[][] = []
+  public enqueuedUrns: string[][] = []
+
+  constructor(ctx: Context) {
+    super(ctx, 'player')
+  }
+
+  async playNow(urns: string[]) {
+    this.playedNowUrns.push(urns)
+  }
+
+  enqueueLast(urns: string[]) {
+    this.enqueuedUrns.push(urns)
+  }
+}
+
 describe('plugin-share-ui-desktop', () => {
   afterEach(() => {
     cleanup()
@@ -157,6 +174,43 @@ describe('plugin-share-ui-desktop', () => {
     expect(baseElement.textContent).toContain('读取 / 导入分享')
     expect(baseElement.textContent).toContain('拖放分享图片至此')
     expect(baseElement.textContent).toContain('或者直接粘贴 Base64 数据：')
+  })
+
+  it('handles play now and enqueue in ImportShareModal', async () => {
+    const ctx = new Context()
+    ctx.plugin(PlayerStub)
+    const { serviceOf } = await import('@BBeBee/ui-core')
+    const player = serviceOf<PlayerStub>(ctx, 'player')!
+
+    const { encodeMetadata } = await import('@BBeBee/plugin-share/metadata')
+    const b64 = encodeMetadata('track', {
+      urn: 'source:test:track:shared_99',
+      title: 'Shared Song',
+      artist: 'Shared Artist',
+    })
+
+    let closed = false
+    const { getByPlaceholderText, getByText } = render(
+      h(ImportShareModal, {
+        ctx,
+        open: true,
+        onClose: () => {
+          closed = true
+        },
+      }),
+    )
+
+    const input = getByPlaceholderText('粘贴 Base64 分享数据…')
+    fireEvent.change(input, { target: { value: b64 } })
+
+    expect(getByText('Shared Song')).toBeDefined()
+
+    const playNowBtn = getByText('立即播放')
+    fireEvent.click(playNowBtn)
+    await Promise.resolve()
+
+    expect(player.playedNowUrns).toEqual([['source:test:track:shared_99']])
+    expect(closed).toBe(true)
   })
 
   it('renders ShareAlbumModal with album details and actions', () => {

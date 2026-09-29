@@ -246,7 +246,8 @@ export async function generateTrackCardCanvas(
     const b64Payload = encodeMetadata("track", track)
     const imgData = ctx.getImageData(0, 0, width, height)
     const encoded = encodeSteganography(imgData, b64Payload)
-    ctx.putImageData(encoded as ImageData, 0, 0)
+    imgData.data.set(encoded.data)
+    ctx.putImageData(imgData, 0, 0)
   } catch (err) {
     throw new Error(`隐写数据嵌入失败: ${String(err)}`)
   }
@@ -344,7 +345,8 @@ export async function generatePlaylistCardCanvas(
     const b64Payload = encodeMetadata("playlist", playlist)
     const imgData = ctx.getImageData(0, 0, width, height)
     const encoded = encodeSteganography(imgData, b64Payload)
-    ctx.putImageData(encoded as ImageData, 0, 0)
+    imgData.data.set(encoded.data)
+    ctx.putImageData(imgData, 0, 0)
   } catch (err) {
     throw new Error(`隐写数据嵌入失败: ${String(err)}`)
   }
@@ -445,7 +447,8 @@ export async function generateAlbumCardCanvas(
     const b64Payload = encodeMetadata("album", album)
     const imgData = ctx.getImageData(0, 0, width, height)
     const encoded = encodeSteganography(imgData, b64Payload)
-    ctx.putImageData(encoded as ImageData, 0, 0)
+    imgData.data.set(encoded.data)
+    ctx.putImageData(imgData, 0, 0)
   } catch (err) {
     throw new Error(`隐写数据嵌入失败: ${String(err)}`)
   }
@@ -471,7 +474,7 @@ export async function generateLyricsCardCanvas(
 
   const lineCount = Math.max(1, Math.min(6, lyrics.lines.length))
   const cardW = 440
-  const cardH = Math.min(480, Math.max(370, 200 + lineCount * 42))
+  const cardH = Math.min(390, Math.max(220, 130 + lineCount * 36))
   const cardX = (width - cardW) / 2
   const cardY = Math.round((height - cardH) / 2)
   const cardRadius = 24
@@ -491,9 +494,9 @@ export async function generateLyricsCardCanvas(
   ctx.restore()
 
   // Top Section: Mini cover + Title + Artist
-  const miniCoverSize = 64
-  const miniX = cardX + 24
-  const miniY = cardY + 26
+  const miniCoverSize = 48
+  const miniX = cardX + 22
+  const miniY = cardY + 20
   const miniRadius = 8
 
   const coverImg = lyrics.artwork ? await loadImage(lyrics.artwork) : null
@@ -506,7 +509,7 @@ export async function generateLyricsCardCanvas(
     ctx.fillStyle = "#1e2230"
     ctx.fillRect(miniX, miniY, miniCoverSize, miniCoverSize)
     ctx.fillStyle = "rgba(255, 255, 255, 0.3)"
-    ctx.font = "bold 24px sans-serif"
+    ctx.font = "bold 20px sans-serif"
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
     ctx.fillText("♪", miniX + miniCoverSize / 2, miniY + miniCoverSize / 2)
@@ -516,42 +519,42 @@ export async function generateLyricsCardCanvas(
   // Title next to mini cover (crisp white)
   ctx.save()
   ctx.fillStyle = "#FFFFFF"
-  ctx.font = "bold 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  ctx.font = "bold 17px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
-  const metaX = miniX + miniCoverSize + 14
-  const maxMetaW = cardW - 48 - miniCoverSize - 14
-  fillTruncatedText(ctx, lyrics.title, metaX, miniY + 8, maxMetaW)
+  const metaX = miniX + miniCoverSize + 12
+  const maxMetaW = cardW - 44 - miniCoverSize - 12
+  fillTruncatedText(ctx, lyrics.title, metaX, miniY + 4, maxMetaW)
 
   // Artist (high contrast bright text)
   ctx.fillStyle = "rgba(255, 255, 255, 0.88)"
-  ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  fillTruncatedText(ctx, lyrics.artist, metaX, miniY + 34, maxMetaW)
+  ctx.font = "500 14px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  fillTruncatedText(ctx, lyrics.artist, metaX, miniY + 26, maxMetaW)
   ctx.restore()
 
   // Middle Section: Lyric Lines (Bold white text)
   ctx.save()
   ctx.fillStyle = "#FFFFFF"
-  ctx.font = "bold 23px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  ctx.font = "bold 21px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   ctx.textAlign = "left"
   ctx.textBaseline = "top"
-  const lyricStartX = cardX + 24
-  const lyricStartY = miniY + miniCoverSize + 28
-  const lineHeight = 40
+  const lyricStartX = cardX + 22
+  const lyricStartY = miniY + miniCoverSize + 16
+  const lineHeight = 34
 
   const linesToRender = lyrics.lines.slice(0, 6)
   linesToRender.forEach((line, idx) => {
-    fillTruncatedText(ctx, line, lyricStartX, lyricStartY + idx * lineHeight, cardW - 48)
+    fillTruncatedText(ctx, line, lyricStartX, lyricStartY + idx * lineHeight, cardW - 44)
   })
   ctx.restore()
 
-  // Bottom Section: BBeBee Logo (enlarged to 160px, bottom-left)
+  // Bottom Section: BBeBee Logo (bottom-left)
   const logoImg = await loadImage(BBEBEE_LOGO_DATA_URL)
   if (logoImg) {
-    const logoW = 160
+    const logoW = 140
     const logoH = (logoW / logoImg.width) * logoImg.height
-    const logoX = cardX + 22
-    const logoY = cardY + cardH - logoH - 16
+    const logoX = cardX + 20
+    const logoY = cardY + cardH - logoH - 14
     ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
   }
 
@@ -560,7 +563,8 @@ export async function generateLyricsCardCanvas(
     const b64Payload = encodeMetadata("lyrics", lyrics)
     const imgData = ctx.getImageData(0, 0, width, height)
     const encoded = encodeSteganography(imgData, b64Payload)
-    ctx.putImageData(encoded as ImageData, 0, 0)
+    imgData.data.set(encoded.data)
+    ctx.putImageData(imgData, 0, 0)
   } catch (err) {
     throw new Error(`隐写数据嵌入失败: ${String(err)}`)
   }

@@ -112,67 +112,88 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
 
   const handlePlayNow = async () => {
     if (!decoded) return
-    const player = serviceOf<PlayerService>(ctx, 'player')
-    if (!player) return
+    const player = serviceOf<PlayerService>(ctx, 'player') ?? (ctx as any).player as PlayerService | undefined
+    if (!player) {
+      setErrorMsg('播放器服务未就绪')
+      return
+    }
 
-    if (decoded.type === 'track') {
-      const track = decoded.data as ShareTrackData
-      await player.enqueueLast([track.urn])
-      await player.play()
-      handleClose()
-    } else if (decoded.type === 'playlist') {
-      const pl = decoded.data as SharePlaylistData
-      const urns = pl.tracks?.map((t) => t.urn) ?? [pl.urn]
-      await player.enqueueLast(urns)
-      await player.play()
-      handleClose()
-    } else if (decoded.type === 'album') {
-      const album = decoded.data as ShareAlbumData
-      const urns = album.tracks?.map((t) => t.urn) ?? [album.urn]
-      await player.enqueueLast(urns)
-      await player.play()
-      handleClose()
+    try {
+      if (decoded.type === 'track') {
+        const track = decoded.data as ShareTrackData
+        await player.playNow([track.urn])
+        handleClose()
+      } else if (decoded.type === 'playlist') {
+        const pl = decoded.data as SharePlaylistData
+        const urns = pl.tracks?.map((t) => t.urn) ?? [pl.urn]
+        await player.playNow(urns)
+        handleClose()
+      } else if (decoded.type === 'album') {
+        const album = decoded.data as ShareAlbumData
+        const urns = album.tracks?.map((t) => t.urn) ?? [album.urn]
+        await player.playNow(urns)
+        handleClose()
+      }
+    } catch (err) {
+      ctx.logger?.error(`Failed to play shared item: ${String(err)}`)
+      setErrorMsg(`播放失败: ${String(err)}`)
     }
   }
 
   const handleEnqueue = async () => {
     if (!decoded) return
-    const player = serviceOf<PlayerService>(ctx, 'player')
-    if (!player) return
+    const player = serviceOf<PlayerService>(ctx, 'player') ?? (ctx as any).player as PlayerService | undefined
+    if (!player) {
+      setErrorMsg('播放器服务未就绪')
+      return
+    }
 
-    if (decoded.type === 'track') {
-      const track = decoded.data as ShareTrackData
-      await player.enqueueLast([track.urn])
-      handleClose()
-    } else if (decoded.type === 'playlist') {
-      const pl = decoded.data as SharePlaylistData
-      const urns = pl.tracks?.map((t) => t.urn) ?? [pl.urn]
-      await player.enqueueLast(urns)
-      handleClose()
-    } else if (decoded.type === 'album') {
-      const album = decoded.data as ShareAlbumData
-      const urns = album.tracks?.map((t) => t.urn) ?? [album.urn]
-      await player.enqueueLast(urns)
-      handleClose()
+    try {
+      if (decoded.type === 'track') {
+        const track = decoded.data as ShareTrackData
+        player.enqueueLast([track.urn])
+        handleClose()
+      } else if (decoded.type === 'playlist') {
+        const pl = decoded.data as SharePlaylistData
+        const urns = pl.tracks?.map((t) => t.urn) ?? [pl.urn]
+        player.enqueueLast(urns)
+        handleClose()
+      } else if (decoded.type === 'album') {
+        const album = decoded.data as ShareAlbumData
+        const urns = album.tracks?.map((t) => t.urn) ?? [album.urn]
+        player.enqueueLast(urns)
+        handleClose()
+      }
+    } catch (err) {
+      ctx.logger?.error(`Failed to enqueue shared item: ${String(err)}`)
+      setErrorMsg(`加入队列失败: ${String(err)}`)
     }
   }
 
   const handleSaveToLibrary = async () => {
     if (!decoded) return
-    const library = serviceOf<LibraryService>(ctx, 'library')
-    if (!library) return
-
-    if (decoded.type === 'track') {
-      const track = decoded.data as ShareTrackData
-      await library.setSaved(track.urn, true)
-    } else if (decoded.type === 'playlist') {
-      const pl = decoded.data as SharePlaylistData
-      await library.setSaved(pl.urn, true)
-    } else if (decoded.type === 'album') {
-      const album = decoded.data as ShareAlbumData
-      await library.setSaved(album.urn, true)
+    const library = serviceOf<LibraryService>(ctx, 'library') ?? (ctx as any).library as LibraryService | undefined
+    if (!library) {
+      setErrorMsg('音乐库服务未就绪')
+      return
     }
-    handleClose()
+
+    try {
+      if (decoded.type === 'track') {
+        const track = decoded.data as ShareTrackData
+        await library.setSaved(track.urn, true)
+      } else if (decoded.type === 'playlist') {
+        const pl = decoded.data as SharePlaylistData
+        await library.setSaved(pl.urn, true)
+      } else if (decoded.type === 'album') {
+        const album = decoded.data as ShareAlbumData
+        await library.setSaved(album.urn, true)
+      }
+      handleClose()
+    } catch (err) {
+      ctx.logger?.error(`Failed to save to library: ${String(err)}`)
+      setErrorMsg(`收藏失败: ${String(err)}`)
+    }
   }
 
   if (!open) return null
@@ -422,6 +443,23 @@ export function ImportShareModal({ ctx, open, onClose }: ImportShareModalProps):
                 ),
               ),
             ),
+            // Action Error Message
+            errorMsg
+              ? h(
+                  'div',
+                  {
+                    key: 'action-error',
+                    style: {
+                      padding: '8px 12px',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      borderRadius: 8,
+                      color: '#F87171',
+                      fontSize: 12,
+                    },
+                  },
+                  errorMsg,
+                )
+              : null,
             // Actions
             h(
               'div',

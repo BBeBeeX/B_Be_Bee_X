@@ -72,16 +72,16 @@ export function ShareCardPreview({
           display: 'flex',
           flexDirection: 'column',
           boxShadow: '0 12px 30px rgba(0, 0, 0, 0.45)',
-          background: themeColor,
+          background: isLyricsMode ? themeColor : '#000000',
         },
       },
-      // Inner card container: in lyrics mode NO dark overlay, in track/playlist mode semi-transparent mask
+      // Inner card container
       h(
         'div',
         {
           style: {
-            background: isLyricsMode ? 'transparent' : '#000000',
-            padding: isLyricsMode ? '14px 14px 12px 14px' : 14,
+            background: 'transparent',
+            padding: isLyricsMode ? '12px 14px 8px 14px' : 14,
             display: 'flex',
             flexDirection: 'column',
             width: '100%',
@@ -93,17 +93,17 @@ export function ShareCardPreview({
           ? // Lyrics Card Content (bright cover theme color, crisp white text)
             h(
               'div',
-              { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+              { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
               // Mini Header
               h(
                 'div',
-                { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                { style: { display: 'flex', alignItems: 'center', gap: 8 } },
                 h(
                   'div',
                   {
                     style: {
-                      width: 36,
-                      height: 36,
+                      width: 32,
+                      height: 32,
                       borderRadius: 6,
                       overflow: 'hidden',
                       background: '#1a1e2b',
@@ -127,7 +127,7 @@ export function ShareCardPreview({
                             justifyContent: 'center',
                             height: '100%',
                             color: 'rgba(255,255,255,0.6)',
-                            fontSize: 14,
+                            fontSize: 13,
                           },
                         },
                         '♪',
@@ -171,10 +171,10 @@ export function ShareCardPreview({
                 'div',
                 {
                   style: {
-                    margin: '4px 0',
+                    margin: '2px 0',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 5,
+                    gap: 4,
                   },
                 },
                 lyrics!.slice(0, 5).map((line, idx) =>
@@ -185,7 +185,7 @@ export function ShareCardPreview({
                       style: {
                         color: '#FFFFFF',
                         fontWeight: 700,
-                        fontSize: 13,
+                        fontSize: 12,
                         lineHeight: 1.35,
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
@@ -196,12 +196,12 @@ export function ShareCardPreview({
                   ),
                 ),
               ),
-              // BBeBee Logo at bottom-left (proportional to canvas 160px: 76px)
+              // BBeBee Logo at bottom-left
               h('img', {
                 src: BBEBEE_LOGO_DATA_URL,
                 alt: 'BBeBee',
                 referrerPolicy: 'no-referrer',
-                style: { width: 76, height: 'auto', alignSelf: 'flex-start', marginTop: 6, marginLeft: 0 },
+                style: { width: 68, height: 'auto', alignSelf: 'flex-start', marginTop: 4, marginLeft: 0 },
               }),
             )
           : // Track / Playlist / Album Card Content
