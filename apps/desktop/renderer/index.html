@@ -360,45 +360,28 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 24px;
+        justify-content: center;
       }
 
       .splash-logo {
         width: 72px;
         height: 72px;
         object-fit: contain;
-        filter: drop-shadow(0 0 16px rgba(111, 155, 255, 0.4));
-        animation: splash-pulse 2s ease-in-out infinite;
-      }
-
-      .splash-spinner {
-        width: 120px;
-        height: 3px;
-        background: rgba(255, 255, 255, 0.08);
-        border-radius: 2px;
-        overflow: hidden;
-        position: relative;
-      }
-
-      .splash-spinner-bar {
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: 40%;
-        background: linear-gradient(90deg, transparent, #5F87FF, #91B0FF, transparent);
-        border-radius: 2px;
-        animation: splash-indeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        filter: drop-shadow(0 0 12px rgba(111, 155, 255, 0.15));
+        animation: splash-pulse 3.6s ease-in-out infinite;
       }
 
       @keyframes splash-pulse {
-        0%, 100% { transform: scale(1); opacity: 0.92; }
-        50% { transform: scale(1.04); opacity: 1; }
-      }
-
-      @keyframes splash-indeterminate {
-        0% { transform: translateX(-100%); }
-        100% { transform: translateX(250%); }
+        0%, 100% {
+          transform: scale(1);
+          opacity: 0.82;
+          filter: drop-shadow(0 0 12px rgba(111, 155, 255, 0.15));
+        }
+        50% {
+          transform: scale(1.025);
+          opacity: 0.96;
+          filter: drop-shadow(0 0 22px rgba(111, 155, 255, 0.28));
+        }
       }
 
       .is-lyrics-window #splash-screen,
@@ -412,9 +395,6 @@
       <div id="splash-screen">
         <div class="splash-content">
           <img src="./assets/logo-badge.png" class="splash-logo" alt="BBeBee Logo" />
-          <div class="splash-spinner">
-            <div class="splash-spinner-bar"></div>
-          </div>
         </div>
       </div>
     </div>
