@@ -6,24 +6,20 @@
  * - Left section (~46%): larger album artwork (up to 460px) with crisp white border &
  *   pronounced double-layer bottom-right shadow (12px 16px 5px + 20px 28px 56px)
  * - Right section: cursive/handwriting title, muted artist, cinematic subtitle-style
- *   synchronized lyrics, organic waveform + progress bar below lyrics
+ *   synchronized lyrics (`CinematicLyricsTemplate` from plugin-lyrics-ui-desktop —
+ *   scrollable, click-to-seek), organic waveform + progress bar below lyrics
  * - Title is not higher than cover top; waveform & progress bar are not lower than cover bottom
  * - Waveform is shorter than progress bar with fine tapered ends
  * - Timestamps are larger with text shadow
  * - No playback control buttons — pure cinematic immersion
  */
-import { createElement as h, useEffect, useMemo, useRef, type ReactElement } from 'react'
-import { formatDuration, parseLrc, type LyricLine, findActiveLyricIndex } from '@BBeBee/toolkit'
+import { createElement as h, useEffect, useRef, type ReactElement } from 'react'
+import { formatDuration } from '@BBeBee/toolkit'
 import { Slider } from '@BBeBee/ui-kit-desktop'
 import { tokens } from '@BBeBee/ui-tokens'
-import { serviceOf, useServiceState } from '@BBeBee/ui-core'
-import type { LyricsService, LyricsState } from '@BBeBee/protocol'
 import { CachedArtwork } from '../components/NowPlayingBar.js'
+import { CinematicLyricsTemplate, CURSIVE_FONT } from '@BBeBee/plugin-lyrics-ui-desktop'
 import type { NowPlayingLayoutProps } from './index.js'
-
-/* ── Cursive / handwriting font stack ───────────────────────────────────── */
-
-const CURSIVE_FONT = "'CinematicCursive', 'Caveat', 'Segoe Print', 'Bradley Hand', 'Chalkboard SE', 'Z003', 'URW Chancery L', cursive, sans-serif"
 
 /* ── Delicate Organic Waveform with Tapered Ends ────────────────────────── */
 
@@ -113,47 +109,9 @@ function WaveformCanvas({ isPlaying }: WaveformCanvasProps): ReactElement {
   })
 }
 
-const IDLE_LYRICS_STATE: LyricsState = { status: 'idle', offsetMs: 0 }
-
-/* ── Main Cinematic Layout Component ────────────────────────────────────── */
-
 export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
   const { ctx, state, displayPosition, duration, can, onSeekChange, onSeekCommit } = props
   const isPlaying = state.status === 'playing'
-
-  /* Synchronized lyrics query */
-  const lyricsService = serviceOf<LyricsService>(ctx, 'lyrics')
-  const lyricsState = useServiceState<LyricsState>(
-    ctx,
-    ['lyrics/changed'],
-    () => lyricsService?.state ?? IDLE_LYRICS_STATE,
-  )
-
-  const parsedLines = useMemo(() => {
-    if (!lyricsState?.lyrics?.content) return []
-    if (lyricsState.trackUrn && state.trackUrn && lyricsState.trackUrn !== state.trackUrn) {
-      return []
-    }
-    const parsed = parseLrc(lyricsState.lyrics.content, { offsetMs: lyricsState.offsetMs })
-    return parsed.lines
-  }, [lyricsState?.lyrics?.content, lyricsState?.offsetMs, lyricsState?.trackUrn, state.trackUrn])
-
-  const activeIndex = useMemo(() => {
-    if (parsedLines.length === 0) return -1
-    return findActiveLyricIndex(parsedLines, displayPosition, lyricsState?.offsetMs ?? 0)
-  }, [parsedLines, displayPosition, lyricsState?.offsetMs])
-
-  // Cinematic subtitle focus: show current line + surrounding lines
-  const visibleLyricSlots = useMemo(() => {
-    if (parsedLines.length === 0) return []
-    const slots: Array<{ line: LyricLine | null; offset: number }> = [
-      { line: parsedLines[activeIndex - 1] ?? null, offset: -1 },
-      { line: parsedLines[activeIndex] ?? null, offset: 0 },
-      { line: parsedLines[activeIndex + 1] ?? null, offset: 1 },
-      { line: parsedLines[activeIndex + 2] ?? null, offset: 2 },
-    ]
-    return slots
-  }, [parsedLines, activeIndex])
 
   // Actual track title and artist from real-time transport state
   const trackTitle = state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'No Surprises')
@@ -365,90 +323,16 @@ export function CinematicLayout(props: NowPlayingLayoutProps): ReactElement {
             ),
           ),
 
-          /* Synced Lyrics — centered in middle */
-          h(
-            'div',
-            {
-              'data-testid': 'cinematic-lyrics-block',
-              style: {
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 10,
-                width: '100%',
-                flex: 1,
-                minHeight: 100,
-              },
-            },
-            visibleLyricSlots.length > 0
-              ? visibleLyricSlots.map((slot, idx) => {
-                  if (!slot.line) return null
-                  const isCurrent = slot.offset === 0
-                  const isPrev = slot.offset === -1
-                  const opacity = isCurrent ? 1 : isPrev ? 0.32 : slot.offset === 1 ? 0.40 : 0.18
-                  const fontSize = isCurrent ? 24 : 16
-                  const fontWeight = isCurrent ? 500 : 400
-
-                  return h(
-                    'div',
-                    {
-                      key: idx,
-                      'data-active': isCurrent ? 'true' : undefined,
-                      style: {
-                        opacity,
-                        fontSize,
-                        fontWeight,
-                        color: '#FFFFFF',
-                        letterSpacing: isCurrent ? '1.5px' : '0.5px',
-                        lineHeight: 1.5,
-                        textAlign: 'center',
-                        textShadow: isCurrent ? '0 2px 12px rgba(0, 0, 0, 0.5)' : 'none',
-                        transition: 'all 0.4s cubic-bezier(0.2, 0, 0, 1)',
-                        maxWidth: '90%',
-                      },
-                    },
-                    h(
-                      'div',
-                      {
-                        style: {
-                          fontFamily: CURSIVE_FONT,
-                        },
-                      },
-                      slot.line.text,
-                    ),
-                    slot.line.translation
-                      ? h(
-                          'div',
-                          {
-                            style: {
-                              fontSize: isCurrent ? 18 : 14,
-                              fontStyle: 'italic',
-                              fontFamily: CURSIVE_FONT,
-                              opacity: 0.85,
-                              marginTop: 3,
-                              letterSpacing: '0.3px',
-                            },
-                          },
-                          slot.line.translation,
-                        )
-                      : null,
-                  )
-                })
-              : h(
-                  'div',
-                  {
-                    style: {
-                      fontSize: 20,
-                      opacity: 0.40,
-                      fontStyle: 'italic',
-                      fontFamily: CURSIVE_FONT,
-                      color: 'rgba(255, 255, 255, 0.7)',
-                    },
-                  },
-                  state.status === 'playing' ? '♪ 愿音乐治愈所有的伤痕 ♪' : 'No Surprises',
-                ),
-          ),
+          /* Synced Lyrics — scrollable cinematic template (click-to-seek),
+             fills the middle of the column */
+          h(CinematicLyricsTemplate, {
+            ctx,
+            displayPosition,
+            trackUrn: state.trackUrn,
+            isPlaying,
+            canSeek: can.canSeek,
+            onSeek: onSeekCommit,
+          }),
 
           /* Waveform + Progress Bar — at bottom of right column, not below cover bottom */
           h(

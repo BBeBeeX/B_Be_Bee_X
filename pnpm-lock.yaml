@@ -367,6 +367,9 @@ importers:
       '@BBeBee/plugin-settings-ui-mobile':
         specifier: workspace:*
         version: link:../../packages/ui/plugin-settings-ui-mobile
+      '@BBeBee/plugin-share':
+        specifier: workspace:*
+        version: link:../../packages/feature/plugin-share
       '@BBeBee/plugin-sleep-timer':
         specifier: workspace:*
         version: link:../../packages/feature/plugin-sleep-timer
@@ -2420,6 +2423,9 @@ importers:
       '@BBeBee/plugin-cache':
         specifier: workspace:*
         version: link:../../feature/plugin-cache
+      '@BBeBee/plugin-lyrics-ui-desktop':
+        specifier: workspace:*
+        version: link:../plugin-lyrics-ui-desktop
       '@BBeBee/plugin-now-playing':
         specifier: workspace:*
         version: link:../../feature/plugin-now-playing

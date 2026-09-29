@@ -8,8 +8,18 @@ import { createElement as h } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import { LyricsPanel, type LyricsPanelProps } from './LyricsPanel.js'
+import {
+  CinematicLyricsTemplate,
+  CURSIVE_FONT,
+  type CinematicLyricsTemplateProps,
+} from './CinematicLyricsTemplate.js'
 
 export { LyricsPanel, type LyricsPanelProps }
+export {
+  CinematicLyricsTemplate,
+  CURSIVE_FONT,
+  type CinematicLyricsTemplateProps,
+}
 
 export const name = 'plugin-lyrics-ui-desktop'
 export const inject = ['ui', 'lyrics', 'player']
