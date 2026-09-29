@@ -55,6 +55,7 @@
     "@BBeBee/plugin-settings": "workspace:*",
     "@BBeBee/plugin-settings-ui-mobile": "workspace:*",
     "@BBeBee/plugin-share": "workspace:*",
+    "@BBeBee/plugin-share-ui-mobile": "workspace:*",
     "@BBeBee/plugin-sleep-timer": "workspace:*",
     "@BBeBee/plugin-source-local": "workspace:*",
     "@BBeBee/plugin-source-runtime": "workspace:*",

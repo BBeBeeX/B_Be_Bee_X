@@ -1260,7 +1260,9 @@ describe('LocalMusicScreen', () => {
         playBtn.click()
         await tick()
       })
-      expect(player.calls.some((c) => c.startsWith('BBeBee:local:track:1'))).toBe(true)
+      // PlayerStub.playNow records `now:<urns>` — assert against that contract,
+      // the bare URN never appears at the head of a call string.
+      expect(player.calls.some((c) => c.startsWith('now:BBeBee:local:track:1'))).toBe(true)
 
       // Switch to "紧凑" mode
       await act(async () => {

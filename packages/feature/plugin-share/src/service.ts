@@ -36,7 +36,14 @@ export class Share extends Service implements ShareService {
   }
 
   decodeMetadata(base64: string): ShareMetadataEnvelope | null {
-    return decodeMetadata(base64)
+    const envelope = decodeMetadata(base64)
+    if (!envelope) {
+      // The one failure a share link can hit with no UI in sight: a card whose
+      // payload got corrupted in transit. Silent here would be an empty import
+      // dialog with nothing in the log file to explain it.
+      this.ctx.logger.warn("plugin-share: share payload did not decode — invalid or corrupted data")
+    }
+    return envelope
   }
 
   encodeSteganography(buffer: PixelBuffer, payload: string): PixelBuffer {
@@ -44,7 +51,12 @@ export class Share extends Service implements ShareService {
   }
 
   decodeSteganography(buffer: PixelBuffer): string | null {
-    return decodeSteganography(buffer)
+    const payload = decodeSteganography(buffer)
+    if (!payload) {
+      // Expected for any image that is not a share card; debug, not warn.
+      this.ctx.logger.debug("plugin-share: no steganography payload in image buffer")
+    }
+    return payload
   }
 
   shareTrack(track: ShareableTrack): void {
@@ -90,6 +102,7 @@ export class Share extends Service implements ShareService {
             : undefined,
     }
 
+    this.ctx.logger.debug(`plugin-share: opening track share for "${trackData.title}"`)
     this.ctx.emit("share/open", { type: "track", track: trackData })
   }
 
@@ -146,6 +159,7 @@ export class Share extends Service implements ShareService {
       tracks: playlistTracks,
     }
 
+    this.ctx.logger.debug(`plugin-share: opening playlist share for "${playlistData.name}"`)
     this.ctx.emit("share/open", { type: "playlist", playlist: playlistData })
   }
 
@@ -203,6 +217,7 @@ export class Share extends Service implements ShareService {
       tracks: albumTracks,
     }
 
+    this.ctx.logger.debug(`plugin-share: opening album share for "${albumData.title}"`)
     this.ctx.emit("share/open", { type: "album", album: albumData })
   }
 
@@ -238,10 +253,12 @@ export class Share extends Service implements ShareService {
       lines,
     }
 
+    this.ctx.logger.debug(`plugin-share: opening lyrics share for "${lyricsData.title}"`)
     this.ctx.emit("share/open", { type: "lyrics", lyrics: lyricsData })
   }
 
   openImport(): void {
+    this.ctx.logger.debug("plugin-share: opening share import reader")
     this.ctx.emit("share/import")
   }
 }

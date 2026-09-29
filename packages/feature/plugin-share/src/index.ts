@@ -21,6 +21,7 @@ export const name = "plugin-share"
  * Main plugin entry point.
  */
 export async function apply(ctx: Context, config: ShareConfig = {}) {
+  ctx.logger.info("plugin-share: loaded")
   const fiber = await ctx.plugin(Share, config)
 
   // Register command when ctx.ui is available

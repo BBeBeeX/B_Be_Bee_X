@@ -201,7 +201,7 @@ export const bundled: PluginRegistry = {
   },
   "@BBeBee/plugin-share": {
     load: () => import('@BBeBee/plugin-share'),
-    manifest: {"id":"@BBeBee/plugin-share","version":"0.0.0","displayName":"Share","description":"ctx.share — Song, playlist, and lyrics sharing with image steganography.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["share"]}},
+    manifest: {"id":"@BBeBee/plugin-share","version":"0.0.0","displayName":"Share","description":"ctx.share — Song, playlist, and lyrics sharing with image steganography.","engines":{"BBeBee":"^0.1.0"},"entry":{"main":"./dist/index.js","ui":{"desktop":"./dist/index.js","mobile":"./dist/index.js"}},"capabilities":[],"contributes":{"services":["share"]}},
     builtin: true,
   },
   "@BBeBee/plugin-share-ui-desktop": {

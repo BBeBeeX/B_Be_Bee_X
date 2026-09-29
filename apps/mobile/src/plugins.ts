@@ -104,6 +104,11 @@ export const ENABLED: NonNullable<AppConfig['plugins']> = {
   '@BBeBee/plugin-history-ui-mobile': {},
   '@BBeBee/plugin-settings': {},
   '@BBeBee/plugin-settings-ui-mobile': {},
+  // Share runs on both shells — the feature-parity gate (shells.test.ts)
+  // treats a one-sided feature as a split product. The service is headless;
+  // the mobile views are share codes, the desktop's are image cards.
+  '@BBeBee/plugin-share': {},
+  '@BBeBee/plugin-share-ui-mobile': {},
   '@BBeBee/plugin-sleep-timer': {},
   '@BBeBee/plugin-desktop-taskbar': {},
   '@BBeBee/plugin-dsp': {},
