@@ -4,7 +4,7 @@ import type { Context } from 'cordis'
 import type { ShareTrackData } from '@BBeBee/protocol'
 import { encodeMetadata } from '@BBeBee/plugin-share/metadata'
 import { Button, Sheet, tablerIcon, useImageColor } from '@BBeBee/ui-kit-desktop'
-import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
+import { useResolvedArtwork } from '../utils/useResolvedArtwork.js'
 import { tokens } from '@BBeBee/ui-tokens'
 import {
   type BackgroundMode,
