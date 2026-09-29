@@ -1,15 +1,15 @@
 /**
  * CinematicLyricsTemplate — the 映画 (cinematic) lyrics template.
  *
- * A reusable lyrics display template: the full synchronized lyric list in the
- * cinematic cursive type — active line centred, enlarged and glowing, the rest
- * fading out by distance, subtitle-style like an AMV.
+ * A reusable lyrics display template: the full lyric list in the cinematic
+ * cursive type — subtitle-style like an AMV.
  *
- * Interaction:
- * - The list scrolls; auto-follow re-centres the active line until the user
- *   scrolls manually, which pauses follow for a few seconds and offers a
- *   "回到当前歌词" button.
- * - Clicking a timed line seeks the player to it (gated by `canSeek`).
+ * Synced lyrics: the active line is centred, enlarged and glowing, the rest
+ * fading out by distance; the view follows playback; clicking a timed line
+ * seeks the player to it (gated by `canSeek`).
+ *
+ * Plain lyrics: rendered as a uniform sheet — no highlight, no playback
+ * follow, mouse-wheel scrolling with the scrollbar hidden.
  *
  * Data comes from the `lyrics` service, so a host needs only `ctx`, the sync
  * position, and optionally the transport's track URN to drop it in.
@@ -17,7 +17,7 @@
 import { createElement as h, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactElement } from 'react'
 import type { Context } from 'cordis'
-import { findActiveLyricIndex, parseLrc } from '@BBeBee/toolkit'
+import { findActiveLyricIndex, parseLrc, type ParsedLyrics } from '@BBeBee/toolkit'
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { serviceOf, useServiceState } from '@BBeBee/ui-core'
 import type { LyricsService, LyricsState } from '@BBeBee/protocol'
@@ -30,6 +30,9 @@ const IDLE_LYRICS_STATE: LyricsState = { status: 'idle', offsetMs: 0 }
 
 /** How long user scrolling suspends auto-follow before it resumes. */
 const USER_SCROLL_RESUME_MS = 5000
+
+/** Hides the scrollbar on plain lyrics; inline styles cannot reach the pseudo-element. */
+const HIDE_SCROLLBAR_RULE = '.cinematic-lyrics-plain-scroll::-webkit-scrollbar { display: none; }'
 
 export interface CinematicLyricsTemplateProps {
   ctx: Context
@@ -60,11 +63,14 @@ export function CinematicLyricsTemplate(props: CinematicLyricsTemplateProps): Re
     () => lyricsService?.state ?? IDLE_LYRICS_STATE,
   )
 
-  const lines = useMemo(() => {
-    if (!lyricsState?.lyrics?.content) return []
-    if (lyricsState.trackUrn && trackUrn && lyricsState.trackUrn !== trackUrn) return []
-    return parseLrc(lyricsState.lyrics.content, { offsetMs: lyricsState.offsetMs }).lines
+  const parsed = useMemo<ParsedLyrics | null>(() => {
+    if (!lyricsState?.lyrics?.content) return null
+    if (lyricsState.trackUrn && trackUrn && lyricsState.trackUrn !== trackUrn) return null
+    return parseLrc(lyricsState.lyrics.content, { offsetMs: lyricsState.offsetMs })
   }, [lyricsState?.lyrics?.content, lyricsState?.offsetMs, lyricsState?.trackUrn, trackUrn])
+
+  const lines = parsed?.lines ?? []
+  const isSynced = parsed?.synced ?? false
 
   const activeIndex = useMemo(() => {
     if (lines.length === 0) return -1
@@ -102,8 +108,9 @@ export function CinematicLyricsTemplate(props: CinematicLyricsTemplateProps): Re
   }, [])
 
   useEffect(() => {
-    if (!userScrolling && activeIndex >= 0) scrollToLine(activeIndex)
-  }, [activeIndex, userScrolling, scrollToLine])
+    // Plain lyrics have no timeline: highlight and playback follow are synced-only.
+    if (isSynced && !userScrolling && activeIndex >= 0) scrollToLine(activeIndex)
+  }, [isSynced, activeIndex, userScrolling, scrollToLine])
 
   const markUserScrolling = useCallback(() => {
     setUserScrolling(true)
@@ -144,12 +151,15 @@ export function CinematicLyricsTemplate(props: CinematicLyricsTemplateProps): Re
       },
     },
 
+    h('style', null, HIDE_SCROLLBAR_RULE),
+
     /* the full lyric list, scrollable */
     h(
       'div',
       {
         ref: containerRef,
         'data-testid': 'cinematic-lyrics-scroll',
+        className: isSynced ? undefined : 'cinematic-lyrics-plain-scroll',
         onWheel: () => markUserScrolling(),
         onTouchMove: () => markUserScrolling(),
         style: {
@@ -163,8 +173,8 @@ export function CinematicLyricsTemplate(props: CinematicLyricsTemplateProps): Re
           justifyContent: lines.length > 0 ? 'flex-start' : 'center',
           gap: 10,
           padding: '28% 0 34%',
-          scrollbarWidth: 'thin',
-          scrollbarColor: 'rgba(255, 255, 255, 0.25) transparent',
+          scrollbarWidth: isSynced ? 'thin' : 'none',
+          scrollbarColor: isSynced ? 'rgba(255, 255, 255, 0.25) transparent' : 'transparent',
           maskImage:
             'linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)',
           WebkitMaskImage:
@@ -186,69 +196,92 @@ export function CinematicLyricsTemplate(props: CinematicLyricsTemplateProps): Re
             },
             isPlaying ? '♪ 愿音乐治愈所有的伤痕 ♪' : 'No Surprises',
           )
-        : lines.map((line, idx) => {
-            const isCurrent = idx === activeIndex
-            const distance = isCurrent ? 0 : Math.abs(idx - activeIndex)
-            const opacity = isCurrent ? 1 : distance === 1 ? 0.42 : distance === 2 ? 0.3 : 0.18
-            const clickable = line.timeMs !== undefined && canSeek
+        : isSynced
+          ? lines.map((line, idx) => {
+              const isCurrent = idx === activeIndex
+              const distance = isCurrent ? 0 : Math.abs(idx - activeIndex)
+              const opacity = isCurrent ? 1 : distance === 1 ? 0.42 : distance === 2 ? 0.3 : 0.18
+              const clickable = line.timeMs !== undefined && canSeek
 
-            return h(
-              'div',
-              {
-                key: `${line.timeMs ?? 'plain'}-${idx}`,
-                ref: (el: HTMLElement | null) => {
-                  lineRefs.current[idx] = el
-                },
-                role: clickable ? 'button' : undefined,
-                tabIndex: clickable ? 0 : undefined,
-                'data-active': isCurrent ? 'true' : undefined,
-                'data-testid': clickable ? `cinematic-lyric-line-${idx}` : undefined,
-                'aria-label': clickable
-                  ? `${line.text}（${Math.floor((line.timeMs ?? 0) / 60000)}:${String(
-                      Math.floor(((line.timeMs ?? 0) % 60000) / 1000),
-                    ).padStart(2, '0')}）`
-                  : undefined,
-                onClick: clickable ? () => seekTo(line.timeMs as number) : undefined,
-                onKeyDown: clickable
-                  ? (e: { key: string; preventDefault: () => void }) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        seekTo(line.timeMs as number)
+              return h(
+                'div',
+                {
+                  key: `${line.timeMs ?? 'plain'}-${idx}`,
+                  ref: (el: HTMLElement | null) => {
+                    lineRefs.current[idx] = el
+                  },
+                  role: clickable ? 'button' : undefined,
+                  tabIndex: clickable ? 0 : undefined,
+                  'data-active': isCurrent ? 'true' : undefined,
+                  'data-testid': clickable ? `cinematic-lyric-line-${idx}` : undefined,
+                  'aria-label': clickable
+                    ? `${line.text}（${Math.floor((line.timeMs ?? 0) / 60000)}:${String(
+                        Math.floor(((line.timeMs ?? 0) % 60000) / 1000),
+                      ).padStart(2, '0')}）`
+                    : undefined,
+                  onClick: clickable ? () => seekTo(line.timeMs as number) : undefined,
+                  onKeyDown: clickable
+                    ? (e: { key: string; preventDefault: () => void }) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          seekTo(line.timeMs as number)
+                        }
                       }
-                    }
-                  : undefined,
-                style: {
-                  opacity,
-                  fontSize: isCurrent ? 24 : 16,
-                  fontWeight: isCurrent ? 500 : 400,
-                  letterSpacing: isCurrent ? '1.5px' : '0.5px',
-                  lineHeight: 1.5,
-                  textAlign: 'center',
-                  color: '#FFFFFF',
-                  textShadow: isCurrent ? '0 2px 12px rgba(0, 0, 0, 0.5)' : 'none',
-                  transition: 'all 0.4s cubic-bezier(0.2, 0, 0, 1)',
-                  maxWidth: '90%',
-                  cursor: clickable ? 'pointer' : 'default',
+                    : undefined,
+                  style: {
+                    opacity,
+                    fontSize: isCurrent ? 24 : 16,
+                    fontWeight: isCurrent ? 500 : 400,
+                    letterSpacing: isCurrent ? '1.5px' : '0.5px',
+                    lineHeight: 1.5,
+                    textAlign: 'center',
+                    color: '#FFFFFF',
+                    textShadow: isCurrent ? '0 2px 12px rgba(0, 0, 0, 0.5)' : 'none',
+                    transition: 'all 0.4s cubic-bezier(0.2, 0, 0, 1)',
+                    maxWidth: '90%',
+                    cursor: clickable ? 'pointer' : 'default',
+                  },
                 },
-              },
-              h('div', null, line.text),
-              line.translation
-                ? h(
-                    'div',
-                    {
-                      style: {
-                        fontSize: isCurrent ? 18 : 14,
-                        fontStyle: 'italic',
-                        opacity: 0.85,
-                        marginTop: 3,
-                        letterSpacing: '0.3px',
+                h('div', null, line.text),
+                line.translation
+                  ? h(
+                      'div',
+                      {
+                        style: {
+                          fontSize: isCurrent ? 18 : 14,
+                          fontStyle: 'italic',
+                          opacity: 0.85,
+                          marginTop: 3,
+                          letterSpacing: '0.3px',
+                        },
                       },
-                    },
-                    line.translation,
-                  )
-                : null,
-            )
-          }),
+                      line.translation,
+                    )
+                  : null,
+              )
+            })
+          : lines.map((line, idx) =>
+              h(
+                'div',
+                {
+                  key: `sheet-${idx}`,
+                  ref: (el: HTMLElement | null) => {
+                    lineRefs.current[idx] = el
+                  },
+                  style: {
+                    fontSize: 17,
+                    fontWeight: 400,
+                    letterSpacing: '0.3px',
+                    lineHeight: 1.6,
+                    textAlign: 'center',
+                    color: '#FFFFFF',
+                    opacity: 0.85,
+                    maxWidth: '90%',
+                  },
+                },
+                line.text,
+              ),
+            ),
     ),
 
     /* floating "back to current" pill while the user browses */

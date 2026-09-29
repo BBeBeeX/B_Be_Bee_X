@@ -76,6 +76,17 @@ const READY_LYRICS: LyricsState = {
   lyrics: { format: 'lrc', content: LRC, synced: true },
 }
 
+const PLAIN_LYRICS: LyricsState = {
+  status: 'ready',
+  trackUrn: TRACK_URN,
+  offsetMs: 0,
+  lyrics: {
+    format: 'plain',
+    content: 'First plain line\nSecond plain line\nThird plain line',
+    synced: false,
+  },
+}
+
 describe('CinematicLyricsTemplate', () => {
   it('renders the full list and marks the line at the sync position as active', async () => {
     const { ctx } = await harness({ lyrics: READY_LYRICS })
@@ -90,6 +101,7 @@ describe('CinematicLyricsTemplate', () => {
     const active = container.querySelectorAll('[data-active="true"]')
     expect(active).toHaveLength(1)
     expect(active[0]?.textContent).toContain('Second line')
+    expect(container.querySelector('.cinematic-lyrics-plain-scroll')).toBeNull()
   })
 
   it('seeks to a timed line when it is clicked', async () => {
@@ -168,5 +180,35 @@ describe('CinematicLyricsTemplate', () => {
 
     expect(container.textContent).not.toContain('First line')
     expect(container.textContent).toContain('♪ 愿音乐治愈所有的伤痕 ♪')
+  })
+
+  it('renders plain lyrics as a uniform sheet without highlight or click targets', async () => {
+    const { ctx, calls } = await harness({ lyrics: PLAIN_LYRICS })
+    const { container } = render(h(CinematicLyricsTemplate, { ctx, displayPosition: 20_000 }))
+
+    expect(container.textContent).toContain('First plain line')
+    expect(container.textContent).toContain('Second plain line')
+    expect(container.textContent).toContain('Third plain line')
+
+    // No active-line tracking on a sheet without timestamps.
+    expect(container.querySelectorAll('[data-active="true"]')).toHaveLength(0)
+    expect(container.querySelector('[data-testid="cinematic-lyric-line-0"]')).toBeNull()
+    expect(calls).not.toContain('seek:20000')
+  })
+
+  it('hides the scrollbar on plain lyrics and never follows playback', async () => {
+    const { ctx } = await harness({ lyrics: PLAIN_LYRICS })
+    const { container, getByTestId, queryByTestId } = render(
+      h(CinematicLyricsTemplate, { ctx, displayPosition: 20_000 }),
+    )
+
+    const scroller = getByTestId('cinematic-lyrics-scroll')
+    expect(scroller.className).toContain('cinematic-lyrics-plain-scroll')
+    expect(container.querySelector('style')?.textContent).toContain('::-webkit-scrollbar')
+
+    // Wheel scrolling is allowed, but plain lyrics never follow playback,
+    // so the return-to-current pill never appears.
+    fireEvent.wheel(scroller)
+    expect(queryByTestId('cinematic-lyrics-return')).toBeNull()
   })
 })

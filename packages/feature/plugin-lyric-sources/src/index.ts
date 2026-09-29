@@ -26,7 +26,7 @@ export const BUILTIN_LRCLIB_SOURCE: LyricSourceDefinition = {
   id: 'builtin-lrclib',
   name: 'LRCLIB (默认歌词源)',
   description: '基于公开开放的 LRCLIB 歌词数据库，支持全球海量百万同步 LRC 歌词搜索',
-  version: '1.3.0',
+  version: '1.4.0',
   author: 'LRCLIB Community / BBeBee',
   enabled: true,
   sortOrder: 0,
@@ -69,115 +69,90 @@ async function searchLyrics(query) {
     return null;
   }
 
+  function hasSynced(it) {
+    return !!(it && it.syncedLyrics && String(it.syncedLyrics).trim());
+  }
+
+  function hasPlain(it) {
+    return !!(it && it.plainLyrics && String(it.plainLyrics).trim());
+  }
+
+  function hasLyrics(it) {
+    return !!(hasSynced(it) || hasPlain(it) || (it && it.instrumental));
+  }
+
+  // Ranking policy: synced lyrics beat plain ones, then the closest duration
+  // wins. Candidates without a usable duration sort after timed ones.
+  const UNKNOWN_DURATION = Number.MAX_SAFE_INTEGER;
+
+  function tierOf(it) {
+    if (hasSynced(it)) return 0;
+    if (hasPlain(it)) return 1;
+    return 2;
+  }
+
+  function durationDelta(it) {
+    if (durationSec <= 0 || !it || !it.duration || it.duration <= 0) return UNKNOWN_DURATION;
+    return Math.abs(it.duration - durationSec);
+  }
+
+  function rank(a, b) {
+    const tier = tierOf(a) - tierOf(b);
+    if (tier !== 0) return tier;
+    return durationDelta(a) - durationDelta(b);
+  }
+
+  function pickBest(list) {
+    if (!Array.isArray(list) || list.length === 0) return null;
+    const candidates = list.filter(hasLyrics);
+    if (candidates.length === 0) return null;
+    return candidates.slice().sort(rank)[0];
+  }
+
+  function lyricsOf(it) {
+    if (!it) return null;
+    if (hasSynced(it)) return String(it.syncedLyrics);
+    if (hasPlain(it)) return String(it.plainLyrics);
+    if (it.instrumental) return '[00:00.00]纯音乐，请欣赏';
+    return null;
+  }
+
   let lastNetworkError = null;
+  let plainFallback = null;
 
-  // 1. Try exact match get endpoint
-  if (trimmedTitle && trimmedArtist) {
-    const titlesToTry = [trimmedTitle];
-    const cleaned = cleanTitle(trimmedTitle);
-    if (cleaned && cleaned !== trimmedTitle) {
-      titlesToTry.push(cleaned);
-    }
-
-    for (const curTitle of titlesToTry) {
-      try {
-        const getParams = {
-          track_name: curTitle,
-          artist_name: trimmedArtist,
-        };
-        if (durationSec > 0) {
-          getParams.duration = String(durationSec);
-        }
-
-        const res = await httpFetch('https://lrclib.net/api/get?' + toQueryString(getParams), {
-          headers,
-        });
-
-        if (res && res.status === 200) {
-          const data = await parseBody(res);
-          if (data) {
-            if (data.syncedLyrics && data.syncedLyrics.trim()) {
-              return data.syncedLyrics;
-            }
-            if (data.plainLyrics && data.plainLyrics.trim()) {
-              return data.plainLyrics;
-            }
-            if (data.instrumental) {
-              return '[00:00.00]纯音乐，请欣赏';
-            }
-          }
-        }
-      } catch (err) {
-        lastNetworkError = err;
-      }
+  // Search attempts, most precise first. A precise attempt that only yields
+  // plain lyrics is buffered while broader attempts still look for a synced one.
+  const searchTitle = cleanTitle(trimmedTitle) || trimmedTitle;
+  const attempts = [];
+  if (trimmedArtist) {
+    attempts.push({ track_name: searchTitle, artist_name: trimmedArtist });
+    if (searchTitle !== trimmedTitle) {
+      attempts.push({ track_name: trimmedTitle, artist_name: trimmedArtist });
     }
   }
-
-  // 2. Try keyword search endpoint
-  try {
-    const searchTitle = cleanTitle(trimmedTitle) || trimmedTitle;
-    const q = trimmedArtist ? (trimmedArtist + ' ' + searchTitle) : searchTitle;
-    const searchUrl = 'https://lrclib.net/api/search?' + toQueryString({ q });
-
-    const res = await httpFetch(searchUrl, { headers });
-    if (res && res.status === 200) {
-      const list = await parseBody(res);
-      if (Array.isArray(list) && list.length > 0) {
-        let match = null;
-
-        if (durationSec > 0) {
-          match = list.find((it) => it && it.syncedLyrics && Math.abs((it.duration || 0) - durationSec) <= 3);
-          if (!match) {
-            match = list.find((it) => it && it.syncedLyrics && Math.abs((it.duration || 0) - durationSec) <= 6);
-          }
-          if (!match) {
-            match = list.find((it) => it && it.plainLyrics && Math.abs((it.duration || 0) - durationSec) <= 4);
-          }
-        }
-
-        if (!match) {
-          match = list.find((it) => it && it.syncedLyrics);
-        }
-        if (!match) {
-          match = list.find((it) => it && it.plainLyrics);
-        }
-
-        if (match) {
-          if (match.syncedLyrics && match.syncedLyrics.trim()) {
-            return match.syncedLyrics;
-          }
-          if (match.plainLyrics && match.plainLyrics.trim()) {
-            return match.plainLyrics;
-          }
-          if (match.instrumental) {
-            return '[00:00.00]纯音乐，请欣赏';
-          }
-        }
-      }
-    }
-  } catch (err) {
-    lastNetworkError = err;
-  }
-
-  // 3. Fallback to title-only search if artist+title search returned nothing
+  attempts.push({ q: trimmedArtist ? trimmedArtist + ' ' + searchTitle : searchTitle });
   if (trimmedArtist && trimmedTitle) {
+    attempts.push({ q: trimmedTitle });
+  }
+
+  for (const params of attempts) {
     try {
-      const res = await httpFetch('https://lrclib.net/api/search?' + toQueryString({ q: trimmedTitle }), { headers });
-      if (res && res.status === 200) {
-        const list = await parseBody(res);
-        if (Array.isArray(list) && list.length > 0) {
-          const match = list.find((it) => it && (it.syncedLyrics || it.plainLyrics));
-          if (match) {
-            return match.syncedLyrics || match.plainLyrics || null;
-          }
-        }
-      }
+      const res = await httpFetch('https://lrclib.net/api/search?' + toQueryString(params), {
+        headers,
+      });
+      if (!res || res.status !== 200) continue;
+      const best = pickBest(await parseBody(res));
+      const lyrics = lyricsOf(best);
+      if (!lyrics) continue;
+      if (hasSynced(best)) return lyrics;
+      if (!plainFallback) plainFallback = lyrics;
     } catch (err) {
       lastNetworkError = err;
     }
   }
 
-  // If endpoints failed due to network/host exception, bubble up the error
+  if (plainFallback) return plainFallback;
+
   if (lastNetworkError) {
     throw lastNetworkError;
   }
