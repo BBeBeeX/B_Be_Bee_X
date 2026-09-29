@@ -1,7 +1,7 @@
 import { createElement as h, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { LibraryService, PlayMode, SourcesService, Track } from '@BBeBee/protocol'
+import type { LibraryService, PlayMode, ShareService, SourcesService, Track } from '@BBeBee/protocol'
 import { formatDuration } from '@BBeBee/toolkit'
 import { NOW_PLAYING_VIEWS } from '@BBeBee/plugin-now-playing/views'
 import {
@@ -676,6 +676,45 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying }: NowPlayin
                 isInLibrary
                   ? tablerIcon('heart-filled', { size: 16 })
                   : tablerIcon('plus', { size: 16 }),
+              )
+            : null,
+          currentTrack
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  'data-testid': 'track-share-action-btn',
+                  'aria-label': `分享歌曲 ${currentTrack.title}`,
+                  title: '分享歌曲',
+                  onClick: (e: React.MouseEvent) => {
+                    e.stopPropagation()
+                    const share = serviceOf<ShareService>(ctx, 'share')
+                    if (share) {
+                      share.shareTrack(currentTrack)
+                    }
+                  },
+                  style: {
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255, 255, 255, 0.75)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    transition: 'color 0.15s ease, transform 0.15s ease',
+                  },
+                  onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+                    e.currentTarget.style.color = '#FFFFFF'
+                    e.currentTarget.style.transform = 'scale(1.15)'
+                  },
+                  onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+                    e.currentTarget.style.color = 'rgba(255, 255, 255, 0.75)'
+                    e.currentTarget.style.transform = 'scale(1)'
+                  },
+                },
+                tablerIcon('share', { size: 16 }),
               )
             : null,
         ),

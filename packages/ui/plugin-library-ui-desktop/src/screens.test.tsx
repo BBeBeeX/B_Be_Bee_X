@@ -1206,8 +1206,8 @@ describe('LocalMusicScreen', () => {
       { urn: 'BBeBee:local:album:a', title: 'AAA', trackCount: 2, year: 2020 },
     ]
     sources.tracks = [
-      { urn: 'BBeBee:local:track:1', title: 'T1', albumUrn: 'BBeBee:local:album:a', albumTitle: 'AAA' },
-      { urn: 'BBeBee:local:track:2', title: 'T2', albumUrn: 'BBeBee:local:album:a', albumTitle: 'AAA' },
+      { urn: 'BBeBee:local:track:1', title: 'T1', artists: [], albumUrn: 'BBeBee:local:album:a', albumTitle: 'AAA' },
+      { urn: 'BBeBee:local:track:2', title: 'T2', artists: [], albumUrn: 'BBeBee:local:album:a', albumTitle: 'AAA' },
     ]
 
     await withListLayout(async () => {

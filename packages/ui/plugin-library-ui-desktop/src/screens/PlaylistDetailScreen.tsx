@@ -1,10 +1,10 @@
 import { createElement as h, useMemo, useState } from 'react'
 import type { ChangeEvent, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { ArtworkRef, PlaylistItem, Track } from '@BBeBee/protocol'
+import type { ArtworkRef, PlaylistItem, ShareService, Track } from '@BBeBee/protocol'
 import { usePlaylist } from '@BBeBee/plugin-library/hooks'
 import { useTracksByUrn } from '@BBeBee/plugin-player/hooks'
-import type { MenuAnchor } from '@BBeBee/ui-core'
+import { serviceOf, type MenuAnchor } from '@BBeBee/ui-core'
 import { sortMenuItems, useTrackMenu } from '@BBeBee/ui-menus'
 import { ContextMenu, DetailHero, DetailPlayButton, DetailTableHeader, type DetailColumnSpec, EmptyState, List, SaveToPlaylistPopover, StickyDetailBar, Text, tablerIcon, useDetailBarCollapse, useImageColor, headerGradient, viewModeMenuItems, useViewMode } from '@BBeBee/ui-kit-desktop'
 import { useResolvedArtwork } from '@BBeBee/plugin-cache/hooks'
@@ -245,6 +245,37 @@ export function PlaylistDetailScreen({ ctx, urn }: { ctx: Context; urn?: string 
             style: { background: 'none', border: 'none', color: '#b3b3b3', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
           },
           tablerIcon('download', { size: 24 }),
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            title: '分享歌单',
+            'aria-label': '分享歌单',
+            onClick: () => {
+              const share = serviceOf<ShareService>(ctx, 'share')
+              if (share && detail) {
+                const resolvedTracks = Array.from(tracks.values())
+                share.sharePlaylist(
+                  {
+                    urn: detail.urn,
+                    name: detail.name,
+                    description: detail.description,
+                    artwork: resolvedCover?.sourceUrl,
+                  },
+                  resolvedTracks.length > 0 ? resolvedTracks : undefined,
+                )
+              }
+            },
+            style: { background: 'none', border: 'none', color: '#b3b3b3', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s ease' },
+            onMouseEnter: (e: { currentTarget: HTMLElement }) => {
+              e.currentTarget.style.color = '#FFFFFF'
+            },
+            onMouseLeave: (e: { currentTarget: HTMLElement }) => {
+              e.currentTarget.style.color = '#b3b3b3'
+            },
+          },
+          tablerIcon('share', { size: 24 }),
         ),
         h(
           'button',
