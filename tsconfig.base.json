@@ -26,7 +26,14 @@
     // packages/kernel/src/fiber-state.ts), but leaving this off keeps the
     // door open and matches what esbuild/Metro actually do at build time.
     "isolatedModules": true,
-    "useDefineForClassFields": true
+    "useDefineForClassFields": true,
+
+    // Typecheck (`tsc -p tsconfig.json --noEmit`) and build
+    // (`tsc -p tsconfig.build.json`) each get their own .tsbuildinfo, named
+    // after the config that wrote it, so the two never thrash one cache. The
+    // files land beside the tsconfig that produced them and are already
+    // covered by the `*.tsbuildinfo` gitignore entry and `pnpm clean`.
+    "incremental": true
   },
   "exclude": ["node_modules", "dist"]
 }

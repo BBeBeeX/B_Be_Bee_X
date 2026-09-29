@@ -10,9 +10,9 @@
   "scripts": {
     "check": "pnpm typecheck && pnpm lint && pnpm test",
     "check:changed": "node --experimental-strip-types packages/tooling/tooling-check-changed/src/cli.ts",
-    "typecheck": "pnpm -r typecheck",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "typecheck": "pnpm -r --no-sort typecheck",
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/.eslintcache --cache-strategy content",
+    "lint:fix": "eslint . --cache --cache-location node_modules/.cache/eslint/.eslintcache --cache-strategy content --fix",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

@@ -1,0 +1,113 @@
+# The four checks of `pnpm check` plus the codegen gate, run as parallel jobs
+# rather than the serial `&&` chain the local script uses. They share nothing
+# but the checkout: lint reads configs, typecheck reads types, the test shards
+# run independent slices of the suite, and codegen compares its output against
+# the committed files. Making one faster therefore never waits on another.
+#
+# Caches worth noting:
+#   - `tsbuildinfo-*`: the per-package .tsbuildinfo files written because
+#     tsconfig.base.json sets `incremental`. Restored from the previous run of
+#     this branch (or main), they let warm `tsc --noEmit` runs skip unchanged
+#     programs. Safe to reuse across commits — tsc hashes every input file and
+#     falls back to a full check whenever a hash disagrees.
+#   - `eslint-*`: the content-strategy cache from `pnpm lint`. Keyed on the
+#     ESLint config so a rule change invalidates it wholesale.
+#   - the pnpm store, via actions/setup-node's `cache: pnpm`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same ref supersedes the old run: the checks about to run
+# would be checks of a commit that is no longer the tip.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/eslint
+          key: eslint-${{ runner.os }}-${{ hashFiles('eslint.config.js') }}
+          restore-keys: eslint-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: '**/*.tsbuildinfo'
+          key: tsbuildinfo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ github.ref_name }}-
+            tsbuildinfo-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  codegen:
+    name: Codegen is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Regenerating must be a no-op: the committed plugins.ts files are the
+      # source of truth for the shell composition roots, and a diff here means
+      # a plugin was added or removed without running `pnpm gen:plugins`.
+      - run: |
+          pnpm gen:plugins
+          git diff --exit-code
+
+  test:
+    # The suite is one vitest run over every package (a single root config, so
+    # one transform pipeline and one temp root per worker). Sharding splits the
+    # same run across four runners; each shard is a pass/fail gate of its own,
+    # so the job as a whole is green only when every slice is.
+    name: Test (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec vitest run --shard=${{ matrix.shard }}/${{ strategy.job-total }}

@@ -86,6 +86,30 @@ this section is required reading until something goes wrong.
 
 Run a single package's tests by path — `pnpm test packages/core/core-fs-node` — or a single file.
 
+### Why the gate is fast (and what each cache is)
+
+The gate is read-only work — nothing `check` runs consumes another check's output — so its parts
+are made independent, parallel, and cached rather than run as one serial chain:
+
+- **`pnpm typecheck` runs unsorted, 8 workers wide.** `tsc --noEmit` resolves imports from
+  *source* (exports point at `src/index.ts` by design — [§4](#4-build-pipelines)) and writes
+  nothing but its own `.tsbuildinfo`, so no package waits for another: `.npmrc` sets
+  `workspace-concurrency=8` and the root script passes `--no-sort`. `pnpm build` keeps the
+  topological sort, which emit actually needs.
+- **`incremental: true` in tsconfig.base.json.** Each package's typecheck and build keeps its own
+  `.tsbuildinfo` (named after the tsconfig that wrote it, so the two never share one), gitignored
+  and removed by `pnpm clean`. This matters most per package: typechecking `plugin-player`
+  re-reads 86 workspace files — 55 of them from protocol — because imports resolve to source, so
+  without it a one-package edit still re-pays the whole upstream graph on the next run.
+- **`pnpm lint` caches by content**, in `node_modules/.cache/eslint/`. Content strategy, not
+  mtime, so a fresh clone or CI checkout still gets a warm run if the cache was restored.
+- **CI runs the gate as parallel jobs** ([.github/workflows/ci.yml](../../.github/workflows/ci.yml)):
+  lint, typecheck, codegen currency, and the test suite split into four `--shard` slices, each
+  shard a pass/fail gate of its own. The workflows restore the caches above, keyed on the ESLint
+  config and on the branch's last saved `.tsbuildinfo` files — tsc re-hashes every input and
+  falls back to a full check whenever a hash disagrees, so a stale restore can only cost time,
+  never pass a broken file.
+
 ### Running the apps
 
 | Command | What it does | What it needs |
