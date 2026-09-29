@@ -20,6 +20,18 @@
  */
 
 import { createApp, type App } from '@BBeBee/kernel'
+import { Service, type Context, type Fiber } from 'cordis'
+import type {
+  AppSettings,
+  AudioService,
+  AudioSourceHandle,
+  Disposable,
+  InterruptionEvent,
+  LoadOptions,
+  OutputDevice,
+  RouteChangeEvent,
+  Uri,
+} from '@BBeBee/protocol'
 // The renderer is sandboxed, so these are IPC clients over the main-process
 // host — not the node implementations, which cannot load here (docs/02 §2).
 import {
@@ -38,7 +50,8 @@ import { SecretsNode } from '@BBeBee/core-secrets-node'
 import { JsQuickJsNode } from '@BBeBee/core-js-quickjs-node'
 import { CodecNode } from '@BBeBee/core-codec-node'
 import { HttpNode } from '@BBeBee/core-http-node'
-import { AudioWebAudio } from '@BBeBee/core-audio-webaudio'
+import { AudioWebAudio, type AudioWebAudioConfig } from '@BBeBee/core-audio-webaudio'
+import { AudioWasapi, type AudioWasapiConfig } from '@BBeBee/core-audio-wasapi'
 /*
  * The logs layer (Layer 3). Imported here rather than enabled through the
  * registry because it has to be *running* before the feature plugins whose
@@ -167,6 +180,291 @@ function decodableFormats(): string[] {
   return supported
 }
 
+export interface DesktopAudioConfig {
+  initialEngine?: 'wasapi' | 'webaudio'
+  fetchBytes: (
+    src: string,
+    opts: { headers?: Record<string, string>; signal?: AbortSignal },
+  ) => Promise<ArrayBuffer>
+  bridgeCall?: (service: string, method: string, args: unknown[]) => Promise<unknown>
+  enableExclusive?: boolean
+}
+
+export class DesktopAudioService extends Service implements AudioService {
+  static inject = []
+
+  private activeEngineKey: 'wasapi' | 'webaudio' = 'webaudio'
+  private activeEngine!: AudioService
+  private activeFiber?: Fiber
+  private currentVolume = 1
+  private currentMuted = false
+  private currentDeviceId = 'default'
+
+  private readonly interruptionListeners = new Set<(e: InterruptionEvent) => void>()
+  private readonly routeListeners = new Set<(e: RouteChangeEvent) => void>()
+  private offActiveInterruption?: Disposable
+  private offActiveRoute?: Disposable
+  private isSwitching = false
+
+  constructor(
+    ctx: Context,
+    private readonly config: DesktopAudioConfig,
+  ) {
+    super(ctx, 'audio')
+  }
+
+  async [Service.init]() {
+    const target = this.config.initialEngine ?? 'webaudio'
+    await this.mountEngine(target)
+
+    return async () => {
+      this.ctx.logger?.info('desktop-audio: disposing desktop audio service')
+      this.offActiveInterruption?.()
+      this.offActiveRoute?.()
+      this.interruptionListeners.clear()
+      this.routeListeners.clear()
+      if (this.activeFiber) {
+        await this.activeFiber.dispose().catch(() => undefined)
+        this.activeFiber = undefined
+      }
+    }
+  }
+
+  get activeEngineName(): 'wasapi' | 'webaudio' {
+    return this.activeEngineKey
+  }
+
+  get engine(): 'wasapi' | 'webaudio' {
+    return this.activeEngineKey
+  }
+
+  get context(): BaseAudioContext {
+    return this.activeEngine.context
+  }
+
+  get destination(): AudioNode {
+    return this.activeEngine.destination
+  }
+
+  get sampleRate(): number {
+    return this.activeEngine.sampleRate
+  }
+
+  get outputLatencyMs(): number {
+    return this.activeEngine.outputLatencyMs
+  }
+
+  get chainInput(): AudioNode {
+    return this.activeEngine.chainInput
+  }
+
+  get chainOutput(): AudioNode | undefined {
+    return this.activeEngine.chainOutput
+  }
+
+  async dipVolume(durationMs = 20): Promise<Disposable> {
+    if (typeof this.activeEngine?.dipVolume === 'function') {
+      return this.activeEngine.dipVolume(durationMs)
+    }
+    return () => {}
+  }
+
+  load(src: string | Uri, opts: LoadOptions): Promise<AudioSourceHandle> {
+    return this.activeEngine.load(src, opts)
+  }
+
+  setVolume(v: number): void {
+    this.currentVolume = Math.max(0, Math.min(1, v))
+    this.activeEngine?.setVolume(this.currentVolume)
+  }
+
+  setMuted(m: boolean): void {
+    this.currentMuted = m
+    this.activeEngine?.setMuted(m)
+  }
+
+  listOutputDevices(): Promise<OutputDevice[]> {
+    return this.activeEngine.listOutputDevices()
+  }
+
+  async setOutputDevice(id: string): Promise<void> {
+    this.currentDeviceId = id
+    await this.activeEngine.setOutputDevice(id)
+  }
+
+  onInterruption(cb: (e: InterruptionEvent) => void): Disposable {
+    this.interruptionListeners.add(cb)
+    return () => {
+      this.interruptionListeners.delete(cb)
+    }
+  }
+
+  onRouteChange(cb: (e: RouteChangeEvent) => void): Disposable {
+    this.routeListeners.add(cb)
+    return () => {
+      this.routeListeners.delete(cb)
+    }
+  }
+
+  private dispatchInterruption(e: InterruptionEvent): void {
+    for (const listener of this.interruptionListeners) {
+      try {
+        listener(e)
+      } catch (err) {
+        this.ctx.logger?.error('desktop-audio: interruption listener error: %s', String(err))
+      }
+    }
+  }
+
+  private dispatchRouteChange(e: RouteChangeEvent): void {
+    for (const listener of this.routeListeners) {
+      try {
+        listener(e)
+      } catch (err) {
+        this.ctx.logger?.error('desktop-audio: route change listener error: %s', String(err))
+      }
+    }
+  }
+
+  private async mountEngine(engineKey: 'wasapi' | 'webaudio'): Promise<void> {
+    this.ctx.logger?.info('desktop-audio: mounting backend engine [%s]', engineKey)
+    const scoped = this.ctx.isolate('audio')
+
+    let fiber: Fiber
+    try {
+      if (engineKey === 'wasapi') {
+        const wasapiConfig: AudioWasapiConfig = {
+          fetchBytes: this.config.fetchBytes,
+          bridgeCall: this.config.bridgeCall,
+          enableExclusive: this.config.enableExclusive,
+        }
+        fiber = await scoped.plugin(AudioWasapi, wasapiConfig)
+      } else {
+        const webAudioConfig: AudioWebAudioConfig = {
+          fetchBytes: this.config.fetchBytes,
+        }
+        fiber = await scoped.plugin(AudioWebAudio, webAudioConfig)
+      }
+    } catch (err) {
+      if (engineKey === 'wasapi') {
+        this.ctx.logger?.warn('desktop-audio: failed mounting wasapi, falling back to webaudio: %s', String(err))
+        return this.mountEngine('webaudio')
+      }
+      throw err
+    }
+
+    this.activeEngine = (scoped as unknown as { audio: AudioService }).audio
+    this.activeFiber = fiber
+    this.activeEngineKey = engineKey
+
+    // Bind event propagation
+    this.offActiveInterruption?.()
+    this.offActiveRoute?.()
+    this.offActiveInterruption = this.activeEngine.onInterruption((e) => this.dispatchInterruption(e))
+    this.offActiveRoute = this.activeEngine.onRouteChange((e) => this.dispatchRouteChange(e))
+
+    // Restore volume and device preferences
+    this.activeEngine.setVolume(this.currentVolume)
+    this.activeEngine.setMuted(this.currentMuted)
+    if (this.currentDeviceId && this.currentDeviceId !== 'default') {
+      await this.activeEngine.setOutputDevice(this.currentDeviceId).catch(() => {})
+    }
+  }
+
+  async switchEngine(targetEngine: 'wasapi' | 'webaudio'): Promise<void> {
+    if (this.isSwitching) {
+      this.ctx.logger?.warn('desktop-audio: switchEngine already in progress, skipping')
+      return
+    }
+    if (this.activeEngineKey === targetEngine) {
+      this.ctx.logger?.info('desktop-audio: already running engine [%s], no switch needed', targetEngine)
+      return
+    }
+
+    this.isSwitching = true
+    this.ctx.logger?.info(
+      'desktop-audio: switching audio backend from [%s] to [%s]',
+      this.activeEngineKey,
+      targetEngine,
+    )
+
+    try {
+      // 1. Dip volume smoothly to avoid clicks
+      try {
+        await this.dipVolume(20)
+      } catch {
+        // ignore
+      }
+
+      // 2. Unbind active engine listeners
+      this.offActiveInterruption?.()
+      this.offActiveInterruption = undefined
+      this.offActiveRoute?.()
+      this.offActiveRoute = undefined
+
+      // 3. Dispose old fiber and context
+      if (this.activeFiber) {
+        await this.activeFiber.dispose().catch((err) => {
+          this.ctx.logger?.warn('desktop-audio: failed disposing previous fiber: %s', String(err))
+        })
+        this.activeFiber = undefined
+      }
+
+      // 4. Mount target engine
+      await this.mountEngine(targetEngine)
+
+      this.ctx.logger?.info('desktop-audio: successfully switched backend to [%s]', targetEngine)
+
+      // 5. Emit 'audio/engine-changed' so DSP, Visualizer, and Player can synchronize with new AudioContext
+      this.ctx.emit('audio/engine-changed', { engine: targetEngine })
+    } finally {
+      this.isSwitching = false
+    }
+  }
+}
+
+function createAudioFetchBytes(
+  transport?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+) {
+  return async (
+    src: string,
+    opts: { headers?: Record<string, string>; signal?: AbortSignal },
+  ) => {
+    const isLocal =
+      src.startsWith('file:') ||
+      src.startsWith('bbebee-file:') ||
+      src.startsWith('/') ||
+      /^[a-zA-Z]:[\\/]/.test(src)
+    if (isLocal) {
+      opts?.signal?.throwIfAborted()
+      const bridge = window.BBeBeeBridge
+      if (bridge) {
+        try {
+          const fsUri = src.startsWith('bbebee-file:')
+            ? src.replace(/^bbebee-file:\/*/, 'file:///')
+            : src
+          const raw = await bridge.call('fs', 'readBytes', [fsUri])
+          opts?.signal?.throwIfAborted()
+          if (raw instanceof ArrayBuffer) return raw
+          const bytes = raw as Uint8Array
+          return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+        } catch {
+          // Fall through to window.fetch if bridge readBytes rejects
+        }
+      }
+      if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+        const response = await window.fetch(src, { signal: opts?.signal })
+        if (!response.ok) throw new Error(`audio: ${response.status} loading ${src}`)
+        return response.arrayBuffer()
+      }
+    }
+    const fetchFn = transport ?? fetch
+    const response = await fetchFn(src, { headers: opts?.headers, signal: opts?.signal })
+    if (!response.ok) throw new Error(`audio: ${response.status} loading ${src}`)
+    return response.arrayBuffer()
+  }
+}
+
 export async function boot(): Promise<App> {
   // Resolved once: the bridge is either there or it is not.
   const keychain = safeStorageCodec()
@@ -186,6 +484,22 @@ export async function boot(): Promise<App> {
    * the renderer's own `fetch`, which is worse but is not a boot failure.
    */
   const transport = bridgeFetch()
+
+  // Determine initial audio engine: check persisted settings in store.json
+  let initialEngine: 'wasapi' | 'webaudio' = hostPlatform() === 'windows' ? 'wasapi' : 'webaudio'
+  try {
+    const storeUri = `${pathSnapshot.appData}/store.json`
+    const raw = await window.BBeBeeBridge?.call('fs', 'readUtf8', [storeUri])
+    if (raw && typeof raw === 'string') {
+      const data = JSON.parse(raw) as Record<string, unknown>
+      const prefs = data['preferences'] as { audioOutputEngine?: 'wasapi' | 'webaudio' } | undefined
+      if (prefs?.audioOutputEngine === 'wasapi' || prefs?.audioOutputEngine === 'webaudio') {
+        initialEngine = prefs.audioOutputEngine
+      }
+    }
+  } catch {
+    // fallback to platform default
+  }
 
   const app = createApp({
     target: 'desktop',
@@ -231,66 +545,17 @@ export async function boot(): Promise<App> {
       [CodecNode, { supportedFormats: decodableFormats() }],
       [HttpNode, transport ? { fetch: transport } : {}],
       /*
-       * `ctx.audio`. The renderer's own `AudioContext` satisfies the ADR-4
-       * contract, which *is* the standard Web Audio API — so this is the same
-       * package mobile loads, with a different context factory (docs/05 §1).
-       *
-       * `fetchBytes` bridges local and remote audio data:
-       *  - For `file:` or local disk paths, fetching through the renderer's `fetch`
-       *    violates CSP and Chromium Fetch API restrictions. It reads bytes directly
-       *    from `main` via `BBeBeeBridge.call('fs', 'readBytes', ...)`.
-       *  - For remote streams, `transport` (`bridgeFetch()`) routes through `main`
-       *    to bypass renderer CORS restrictions and support custom headers.
+       * `ctx.audio`. Desktop switchable audio service:
+       * Supports hot-switching between WASAPI Exclusive (bit-perfect Hi-Res)
+       * and WebAudio (system shared mixer) driven by settings.
        */
-       [
-        AudioWebAudio,
+      [
+        DesktopAudioService,
         {
-          fetchBytes: async (
-            src: string,
-            opts: { headers?: Record<string, string>; signal?: AbortSignal },
-          ) => {
-            const isLocal =
-              src.startsWith('file:') ||
-              src.startsWith('bbebee-file:') ||
-              src.startsWith('/') ||
-              /^[a-zA-Z]:[\\/]/.test(src)
-            if (isLocal) {
-              opts?.signal?.throwIfAborted()
-              const bridge = window.BBeBeeBridge
-              if (bridge) {
-                try {
-                  const fsUri = src.startsWith('bbebee-file:')
-                    ? src.replace(/^bbebee-file:\/*/, 'file:///')
-                    : src
-                  const raw = await bridge.call('fs', 'readBytes', [fsUri])
-                  opts?.signal?.throwIfAborted()
-                  if (raw instanceof ArrayBuffer) return raw
-                  const bytes = raw as Uint8Array
-                  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-                } catch {
-                  // Fall through to window.fetch if bridge readBytes rejects
-                }
-              }
-              if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
-                const response = await window.fetch(src, { signal: opts?.signal })
-                if (!response.ok) throw new Error(`audio: ${response.status} loading ${src}`)
-                return response.arrayBuffer()
-              }
-            }
-            const fetchFn = transport ?? fetch
-            const response = await fetchFn(src, { headers: opts?.headers, signal: opts?.signal })
-            if (!response.ok) throw new Error(`audio: ${response.status} loading ${src}`)
-            return response.arrayBuffer()
-          },
-          /*
-           * The renderer has no other interruption surface: there is no
-           * `AudioManager` here, so the `AudioContext`'s own state
-           * transitions are what reports device loss and post-sleep
-           * suspension. Translating them into interruption events is what
-           * makes a suspended context a logged, cleanly paused playback
-           * instead of silence under a `playing` transport (docs/05 §5).
-           */
-          emitContextInterruptions: true,
+          initialEngine,
+          bridgeCall: window.BBeBeeBridge?.call,
+          enableExclusive: hostPlatform() === 'windows',
+          fetchBytes: createAudioFetchBytes(transport),
         },
       ],
 
@@ -333,34 +598,35 @@ export async function boot(): Promise<App> {
    */
   await app.ready([...BOOTSTRAP_SERVICES], { timeoutMs: 15_000 })
 
-  // Sync closeToTray, proxy, and audio output device preference
+  // Sync closeToTray, proxy, audio engine, and audio output device preference
   app.ctx.inject(['settings', 'audio'], (scoped) => {
-    void scoped.settings.get().then((s) => {
-      if (s) {
-        if (s.closeToTray !== undefined) {
-          void window.BBeBee?.window?.setCloseToTray?.(s.closeToTray)
-        }
-        if (s.proxy) {
-          void window.BBeBee?.proxy?.set?.(s.proxy)
-        }
-        if (s.audioOutputDeviceId) {
-          void scoped.audio?.setOutputDevice?.(s.audioOutputDeviceId).catch(() => {})
+    const syncSettings = (s: AppSettings | undefined) => {
+      if (!s) return
+      if (s.closeToTray !== undefined) {
+        void window.BBeBee?.window?.setCloseToTray?.(s.closeToTray)
+      }
+      if (s.proxy) {
+        void window.BBeBee?.proxy?.set?.(s.proxy)
+      }
+      if (s.audioOutputEngine && typeof scoped.audio?.switchEngine === 'function') {
+        const currentActive = scoped.audio.activeEngineName
+        if (currentActive && currentActive !== s.audioOutputEngine) {
+          scoped.logger?.info(
+            'boot: switching audio engine to "%s" per settings',
+            s.audioOutputEngine,
+          )
+          void scoped.audio.switchEngine(s.audioOutputEngine).catch((err) => {
+            scoped.logger?.error('boot: failed to switch audio engine: %s', String(err))
+          })
         }
       }
-    })
-    scoped.on('settings/changed', (s) => {
-      if (s) {
-        if (s.closeToTray !== undefined) {
-          void window.BBeBee?.window?.setCloseToTray?.(s.closeToTray)
-        }
-        if (s.proxy) {
-          void window.BBeBee?.proxy?.set?.(s.proxy)
-        }
-        if (s.audioOutputDeviceId) {
-          void scoped.audio?.setOutputDevice?.(s.audioOutputDeviceId).catch(() => {})
-        }
+      if (s.audioOutputDeviceId) {
+        void scoped.audio?.setOutputDevice?.(s.audioOutputDeviceId).catch(() => {})
       }
-    })
+    }
+
+    void scoped.settings.get().then(syncSettings)
+    scoped.on('settings/changed', syncSettings)
   })
 
   return app

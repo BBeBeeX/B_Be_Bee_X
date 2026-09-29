@@ -94,15 +94,22 @@ export function PlaybackSection({
       void fetchDevices('devicechange')
     }
 
+    const offEngineChange = ctx.on('audio/engine-changed', () => {
+      ctx.logger?.info('playback-settings: audio engine-changed event received')
+      void fetchDevices('engine-changed')
+    })
+
     if (media?.addEventListener && media?.removeEventListener) {
       media.addEventListener('devicechange', onDeviceChange)
       return () => {
         offRouteChange?.()
+        offEngineChange()
         media.removeEventListener?.('devicechange', onDeviceChange)
       }
     }
     return () => {
       offRouteChange?.()
+      offEngineChange()
     }
   }, [ctx, fetchDevices])
 

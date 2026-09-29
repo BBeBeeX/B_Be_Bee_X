@@ -77,9 +77,17 @@ export class VisualizerPlugin extends Service implements VisualizerService {
     // 2. Attach Web Audio analyser node
     this.attachAnalyser()
 
+    // Re-attach analyser when audio engine changes
+    const offEngine = this.ownCtx.on('audio/engine-changed', () => {
+      this.ownCtx.logger.info('plugin-visualizer: audio engine changed, re-attaching analyser')
+      this.detachAnalyser()
+      this.attachAnalyser()
+    })
+
     // Teardown
     return () => {
       this.ownCtx.logger.info('plugin-visualizer: disposing')
+      offEngine()
       this.detachAnalyser()
     }
   }

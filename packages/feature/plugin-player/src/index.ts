@@ -248,7 +248,7 @@ export class Player extends Service implements PlayerService {
         // idle (desktop powers down, nothing playing) is not a pause, and a
         // line saying "pausing" that paused nothing reads as a lost cause.
         if (isPlayingLike(this.transport.status)) {
-          this.ownCtx.logger.info('player: audio interruption began, pausing')
+        this.ownCtx.logger.info('player: audio interruption began, pausing')
           this.pause()
           this.pausedByInterruption = true
         }
@@ -271,6 +271,22 @@ export class Player extends Service implements PlayerService {
         this.ownCtx.logger.info('player: audio route changed (device-removed), pausing')
         this.pause()
         this.pausedByInterruption = false
+      }
+    })
+
+    const offEngine = this.ownCtx.on('audio/engine-changed', async () => {
+      this.ownCtx.logger.info('player: audio engine changed, migrating playback')
+      const wasPlaying = isPlayingLike(this.transport.status)
+      const currentPos = this.transport.positionMs
+      this.detachSource()
+      if (wasPlaying && this.transport.currentItemId) {
+        this.set({ status: 'loading' })
+        const current = this.model.entry(this.transport.currentItemId)
+        if (current) {
+          await this.start(current, { positionMs: currentPos, autoplay: true }).catch((err) => {
+            this.ownCtx.logger.error('player: failed to resume track on new audio engine: %s', String(err))
+          })
+        }
       }
     })
 
@@ -408,6 +424,7 @@ export class Player extends Service implements PlayerService {
       if (this.ticker) clearInterval(this.ticker)
       offInterruption()
       offRoute()
+      offEngine()
       this.cancelPrefetch()
       this.clearFading()
       await this.finishPlay({ completed: false, skipped: false })
