@@ -9,7 +9,8 @@
  * seeks the player to it (gated by `canSeek`).
  *
  * Plain lyrics: rendered as a uniform sheet — no highlight, no playback
- * follow, mouse-wheel scrolling with the scrollbar hidden.
+ * follow, mouse-wheel scrolling only. Both modes scroll with the scrollbar
+ * hidden; the list is the stage, not a document.
  *
  * Data comes from the `lyrics` service, so a host needs only `ctx`, the sync
  * position, and optionally the transport's track URN to drop it in.
@@ -31,8 +32,8 @@ const IDLE_LYRICS_STATE: LyricsState = { status: 'idle', offsetMs: 0 }
 /** How long user scrolling suspends auto-follow before it resumes. */
 const USER_SCROLL_RESUME_MS = 5000
 
-/** Hides the scrollbar on plain lyrics; inline styles cannot reach the pseudo-element. */
-const HIDE_SCROLLBAR_RULE = '.cinematic-lyrics-plain-scroll::-webkit-scrollbar { display: none; }'
+/** Hides the scrollbar on the lyric list; inline styles cannot reach the pseudo-element. */
+const HIDE_SCROLLBAR_RULE = '.cinematic-lyrics-scroll::-webkit-scrollbar { display: none; }'
 
 export interface CinematicLyricsTemplateProps {
   ctx: Context
@@ -159,7 +160,7 @@ export function CinematicLyricsTemplate(props: CinematicLyricsTemplateProps): Re
       {
         ref: containerRef,
         'data-testid': 'cinematic-lyrics-scroll',
-        className: isSynced ? undefined : 'cinematic-lyrics-plain-scroll',
+        className: 'cinematic-lyrics-scroll',
         onWheel: () => markUserScrolling(),
         onTouchMove: () => markUserScrolling(),
         style: {
@@ -173,8 +174,8 @@ export function CinematicLyricsTemplate(props: CinematicLyricsTemplateProps): Re
           justifyContent: lines.length > 0 ? 'flex-start' : 'center',
           gap: 10,
           padding: '28% 0 34%',
-          scrollbarWidth: isSynced ? 'thin' : 'none',
-          scrollbarColor: isSynced ? 'rgba(255, 255, 255, 0.25) transparent' : 'transparent',
+          scrollbarWidth: 'none',
+          scrollbarColor: 'transparent',
           maskImage:
             'linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)',
           WebkitMaskImage:

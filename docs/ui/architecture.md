@@ -505,7 +505,11 @@ The desktop shell organizes primary navigation between the left sidebar and the 
 
 4. **Safe Service Access in UI Hooks**:
    - Cordis Context instances are strictly scoped (`ctx.inject`). Accessing an un-injected property throws an error at runtime (`cannot get property "<name>" without inject`).
-   - Hooks in UI view layers inspecting optional services (e.g., `useSources`, `useLiveSourceIds`, and `useSearchSourceOptions`) must always access service instances safely using `serviceOf<T>(ctx, key)` instead of raw member access `(ctx as any)[key]`.
+   - Hooks in UI view layers inspecting optional services (e.g., `useSources`, `useLiveSourceIds`, `useSearchSourceOptions`) must always access service instances safely using `serviceOf<T>(ctx, key)` instead of raw member access `(ctx as any)[key]`.
+
+5. **Fullscreen Play Page & Queue Drawer Layering**:
+   - The fullscreen play page (`now-playing.view`) is an **overlay stacked on the shell, not a branch swap**: the shell — and every cached page in it — stays mounted underneath (the overlay is `position: fixed`, opaque, z-index 100, rendered as a late child of the shell root). Returning from the play page therefore finds each page exactly as it was left: local state, scroll position and subscriptions intact. Do not reintroduce the early-return branch swap — it unmounted every cached page and was the reason page state evaporated.
+   - The **queue drawer floats above the play page**: `ui/navigate 'queue.view'` only toggles the drawer (`isQueueOpen`), never the fullscreen flag, and the drawer renders at z-index 120 while the play page is open (40 otherwise) so it slides over the overlay. Toggling again closes the drawer in place. Above the drawer sit only the share modals (130, via a stacking-context wrapper around `share.host`) and the desktop lyrics window (9999); the queue splitter rides at 125 so the drawer stays resizable over the play page.
 
 ### 7.2 Secondary Windows and Single-Kernel Preservation
 

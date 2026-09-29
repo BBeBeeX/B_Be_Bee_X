@@ -101,7 +101,10 @@ describe('CinematicLyricsTemplate', () => {
     const active = container.querySelectorAll('[data-active="true"]')
     expect(active).toHaveLength(1)
     expect(active[0]?.textContent).toContain('Second line')
-    expect(container.querySelector('.cinematic-lyrics-plain-scroll')).toBeNull()
+    // Synced lyrics scroll without a scrollbar too.
+    const scroller = container.querySelector('[data-testid="cinematic-lyrics-scroll"]') as HTMLElement
+    expect(scroller.className).toContain('cinematic-lyrics-scroll')
+    expect(scroller.style.scrollbarWidth).toBe('none')
   })
 
   it('seeks to a timed line when it is clicked', async () => {
@@ -203,7 +206,7 @@ describe('CinematicLyricsTemplate', () => {
     )
 
     const scroller = getByTestId('cinematic-lyrics-scroll')
-    expect(scroller.className).toContain('cinematic-lyrics-plain-scroll')
+    expect(scroller.className).toContain('cinematic-lyrics-scroll')
     expect(container.querySelector('style')?.textContent).toContain('::-webkit-scrollbar')
 
     // Wheel scrolling is allowed, but plain lyrics never follow playback,

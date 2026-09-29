@@ -230,6 +230,84 @@ describe('the desktop shell', () => {
     expect(container.textContent).toContain('queue view')
   })
 
+  it('opens the queue drawer over the fullscreen play page without leaving it', async () => {
+    const { container, ctx } = await mount((ui) => {
+      ui.routes = [route('home', 'Home'), route('now-playing.view', 'Now playing')]
+      ui.views.set('home', () => h('p', null, 'home view'))
+      ui.views.set('now-playing.view', () => h('p', null, 'now playing fullscreen view'))
+      ui.views.set('queue.view', () => h('div', { 'data-testid': 'queue-content' }, 'Queue Aside Content'))
+      ui.views.set('now-playing.bar', () => h('div', null, 'Player Bar'))
+    })
+
+    await act(async () => {
+      ctx.emit('ui/navigate', 'now-playing.view')
+    })
+    expect(container.querySelector('[data-testid="fullscreen-now-playing"]')).not.toBeNull()
+
+    // Opening the queue from the play page floats the drawer above it —
+    // it must not eject the user out of the play page.
+    await act(async () => {
+      ctx.emit('ui/navigate', 'queue.view')
+    })
+    expect(container.querySelector('[data-testid="fullscreen-now-playing"]')).not.toBeNull()
+    const aside = container.querySelector('[data-testid="queue-sidebar-panel"]') as HTMLElement
+    expect(aside).not.toBeNull()
+    expect(Number(aside.style.zIndex)).toBeGreaterThan(100)
+    expect(container.textContent).toContain('now playing fullscreen view')
+
+    // A second toggle closes the drawer and still keeps the play page.
+    await act(async () => {
+      ctx.emit('ui/navigate', 'queue.view')
+    })
+    expect(container.querySelector('[data-testid="queue-sidebar-panel"]')).toBeNull()
+    expect(container.querySelector('[data-testid="fullscreen-now-playing"]')).not.toBeNull()
+  })
+
+  it('keeps page state intact across a fullscreen now-playing round trip', async () => {
+    function StatefulPage() {
+      const [count, setCount] = useState(0)
+      return h(
+        'button',
+        { 'data-testid': 'stateful-page-btn', onClick: () => setCount(count + 1) },
+        `clicked ${count}`,
+      )
+    }
+
+    const { container, ctx } = await mount((ui) => {
+      ui.routes = [route('home', 'Home'), route('now-playing.view', 'Now playing')]
+      ui.views.set('home', StatefulPage)
+      ui.views.set('now-playing.view', () => h('p', null, 'now playing fullscreen view'))
+      ui.views.set('now-playing.bar', () => h('div', null, 'Player Bar'))
+    })
+
+    const btn = () => container.querySelector('[data-testid="stateful-page-btn"]') as HTMLButtonElement
+    await act(async () => {
+      btn().click()
+    })
+    await act(async () => {
+      btn().click()
+    })
+    expect(btn().textContent).toBe('clicked 2')
+
+    // Into the play page…
+    await act(async () => {
+      ctx.emit('ui/navigate', 'now-playing.view')
+    })
+    expect(container.querySelector('[data-testid="fullscreen-now-playing"]')).not.toBeNull()
+
+    // …and back out via the top bar's close button.
+    const closeBtn = container.querySelector(
+      'button[aria-label="Close now playing"]',
+    ) as HTMLButtonElement
+    await act(async () => {
+      closeBtn.click()
+    })
+    expect(container.querySelector('[data-testid="fullscreen-now-playing"]')).toBeNull()
+
+    // The page behind was never unmounted, so its state survived the trip.
+    expect(btn().textContent).toBe('clicked 2')
+  })
+
   it('renders in-app Spotify-style top bar with controls', async () => {
     const minimizeMock = vi.fn()
     const maximizeMock = vi.fn().mockResolvedValue(true)

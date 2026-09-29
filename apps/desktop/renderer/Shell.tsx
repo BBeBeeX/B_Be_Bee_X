@@ -172,6 +172,7 @@ function Splitter({
   onMouseDown,
   onDoubleClick,
   top = 8,
+  zIndex = 25,
   'data-testid': testId,
 }: {
   position: { left?: number | string; right?: number | string }
@@ -180,6 +181,8 @@ function Splitter({
   onDoubleClick?: () => void
   /** Vertical start; the queue splitter stops at the drawer's top edge. */
   top?: number
+  /** The queue splitter rises above the fullscreen play-page overlay. */
+  zIndex?: number
   'data-testid'?: string
 }): ReactElement {
   const [hovered, setHovered] = useState(false)
@@ -201,7 +204,7 @@ function Splitter({
         ...position,
         width: 8,
         cursor: 'col-resize',
-        zIndex: 25,
+        zIndex,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -419,7 +422,9 @@ export function Shell({ ctx }: { ctx: Context }) {
       if (routeId === 'now-playing.view') {
         setIsFullscreenNowPlaying(true)
       } else if (routeId === 'queue.view') {
-        setIsFullscreenNowPlaying(false)
+        // The queue drawer floats above whatever is on screen — the shell or
+        // the fullscreen play page — so opening it never leaves the page it
+        // was opened from.
         setIsQueueOpen((prev) => !prev)
       } else {
         navigateTo(routeId, params)
@@ -537,15 +542,21 @@ export function Shell({ ctx }: { ctx: Context }) {
       }>
     | undefined
 
-  if (isFullscreenNowPlaying) {
-    const NowPlayingView = ctx.ui.viewFor('now-playing.view') as
-      | ComponentType<{ ctx: Context; onClose?: () => void }>
-      | undefined
+  // The fullscreen play page is an overlay stacked on the shell, not a branch
+  // swap: the shell — and every cached page in it — stays mounted underneath,
+  // so coming back from the play page finds each page exactly as it was left,
+  // local state, scroll and subscriptions intact.
+  const NowPlayingView = isFullscreenNowPlaying
+    ? (ctx.ui.viewFor('now-playing.view') as
+        | ComponentType<{ ctx: Context; onClose?: () => void }>
+        | undefined)
+    : undefined
 
-    return h(
-      'div',
-      {
-        'data-testid': 'fullscreen-now-playing',
+  const fullscreenNowPlaying = isFullscreenNowPlaying
+    ? h(
+        'div',
+        {
+          'data-testid': 'fullscreen-now-playing',
         onMouseMove: handleFullscreenMouseMove,
         onMouseLeave: () => {
           scheduleTopBarHide(300)
@@ -740,10 +751,8 @@ export function Shell({ ctx }: { ctx: Context }) {
             ),
           )
         : null,
-      DesktopLyrics ? h(DesktopLyrics, { ctx }) : null,
-      ShareHost ? h(ShareHost, { ctx }) : null,
     )
-  }
+  : null
 
   const sidebarCol =
     libraryMode === 'expanded'
@@ -1061,12 +1070,15 @@ export function Shell({ ctx }: { ctx: Context }) {
               style: {
                 // A drawer overlaying the content, not a grid column: below
                 // the 48px top bar so the window controls stay reachable.
+                // Above the fullscreen play-page overlay (z 100) so the queue
+                // can be opened from the play page without leaving it; still
+                // below the share modals (130) and the desktop lyrics (9999).
                 position: 'absolute',
                 top: 64,
                 right: 8,
                 bottom: 8,
                 width: queueWidth ?? QUEUE_DRAWER_WIDTH,
-                zIndex: 40,
+                zIndex: isFullscreenNowPlaying ? 120 : 40,
                 borderRadius: 8,
                 background: 'var(--bg-primary, #080A12)',
                 border: '1px solid var(--border-subtle, rgba(148,163,184,0.08))',
@@ -1121,6 +1133,7 @@ export function Shell({ ctx }: { ctx: Context }) {
               right: 8 + (queueWidth ?? QUEUE_DRAWER_WIDTH),
             },
             isDragging: isDragging === 'queue',
+            zIndex: isFullscreenNowPlaying ? 125 : undefined,
             onMouseDown: handleQueueMouseDown,
             onDoubleClick: () => setQueueWidth(null),
           })
@@ -1150,7 +1163,19 @@ export function Shell({ ctx }: { ctx: Context }) {
           }),
         )
       : null,
+    // The fullscreen play-page overlay rides on the always-mounted shell.
+    // DesktopLyrics and ShareHost stay after it so their fixed surfaces stack
+    // above the overlay, exactly as they did when the two were branch swaps.
+    fullscreenNowPlaying,
     DesktopLyrics ? h(DesktopLyrics, { ctx }) : null,
-    ShareHost ? h(ShareHost, { ctx }) : null,
+    ShareHost
+      ? h(
+          // A stacking context above the queue drawer (120): a share modal
+          // opened from the play page must not slide behind the drawer.
+          'div',
+          { style: { position: 'relative', zIndex: 130 } },
+          h(ShareHost, { ctx }),
+        )
+      : null,
   )
 }
