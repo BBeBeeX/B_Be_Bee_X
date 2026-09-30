@@ -126,7 +126,8 @@ export function PlaybackSection({
     return (ctx.ui?.viewFor?.('visualizer.settings') as React.ComponentType<{ ctx: Context }> | undefined) ?? null
   })
 
-  const currentEngine = settings.audioOutputEngine ?? 'wasapi'
+  const currentEngine = settings.audioOutputEngine ?? 'mpv'
+  const isMpv = currentEngine === 'mpv' || currentEngine === 'wasapi'
   const currentDeviceId = settings.audioOutputDeviceId ?? 'default'
 
   useEffect(() => {
@@ -245,20 +246,20 @@ export function PlaybackSection({
       h(SettingsRow, {
         title: '音频输出驱动 (Audio Backend)',
         description:
-          currentEngine === 'wasapi'
-            ? '当前：WASAPI（高保真解码与原生采样率自适应，操作系统共享混音）'
+          isMpv
+            ? '当前：MPV（独立原生引擎，WASAPI 直通输出与原生 DSP/EQ）'
             : '当前：WebAudio（标准 Web Audio 共享混音）',
         action: h(
           'div',
           { style: { display: 'flex', gap: 6 } },
           h(Button, {
-            variant: currentEngine === 'wasapi' ? 'primary' : 'secondary',
+            variant: isMpv ? 'primary' : 'secondary',
             onPress: () => {
-              ctx.logger?.info('playback-settings: user clicked backend switch -> wasapi')
-              void update({ audioOutputEngine: 'wasapi' })
+              ctx.logger?.info('playback-settings: user clicked backend switch -> mpv')
+              void update({ audioOutputEngine: 'mpv' })
               void fetchDevices('engine-switch')
             },
-            children: 'WASAPI Hi-Fi',
+            children: 'MPV Hi-Fi',
           }),
           h(Button, {
             variant: currentEngine === 'webaudio' ? 'primary' : 'secondary',

@@ -6,7 +6,7 @@ import type { MediaElementLike } from '@BBeBee/core-audio-webaudio'
 import type { BridgeCall } from '@BBeBee/core-audio-webaudio'
 import type { FakeAudioContext } from '@BBeBee/core-audio-webaudio/testing'
 import { createFakeAudioContext } from '@BBeBee/core-audio-webaudio/testing'
-import plugin, { AudioWasapi, type AudioWasapiConfig } from './index.js'
+import plugin, { AudioMpv, type AudioMpvConfig } from './index.js'
 
 /** Structural `MediaElementLike` for the degradation-path tests. */
 class FakeMediaElement implements MediaElementLike {
@@ -60,10 +60,10 @@ function workingBridge(calls: string[] = []): BridgeCall {
 }
 
 async function harness(
-  extraConfig: Partial<AudioWasapiConfig> = {},
+  extraConfig: Partial<AudioMpvConfig> = {},
 ): Promise<{
   ctx: Context
-  audio: AudioWasapi
+  audio: AudioMpv
   engine: FakeAudioContext
   elements: FakeMediaElement[]
 }> {
@@ -80,13 +80,13 @@ async function harness(
     },
     ...extraConfig,
   })
-  return { ctx, audio: ctx.audio as AudioWasapi, engine, elements }
+  return { ctx, audio: ctx.audio as AudioMpv, engine, elements }
 }
 
-describe('core-audio-wasapi', () => {
+describe('core-audio-mpv', () => {
   it('activates and claims ctx.audio', async () => {
     const { ctx } = await harness()
-    expect(ctx.audio).toBeInstanceOf(AudioWasapi)
+    expect(ctx.audio).toBeInstanceOf(AudioMpv)
   })
 
   it('passes the audio conformance suite', async () => {
@@ -351,9 +351,9 @@ describe('core-audio-wasapi', () => {
               }
             : undefined,
     })
-    const audio = ctx.audio as AudioWasapi
+    const audio = ctx.audio as AudioMpv
     ctx.on('audio/context-rebuilt', () => {
-      rebuiltRates.push((ctx.audio as AudioWasapi).context.sampleRate)
+      rebuiltRates.push((ctx.audio as AudioMpv).context.sampleRate)
     })
 
     const handle = await audio.load('file:///music/hires.flac', { strategy: 'buffer' })
@@ -386,7 +386,7 @@ describe('core-audio-wasapi', () => {
         return undefined
       },
     })
-    const audio = ctx.audio as AudioWasapi
+    const audio = ctx.audio as AudioMpv
     await audio.load('file:///music/hires.flac', { strategy: 'buffer' })
 
     expect(audio.sampleRate).toBe(96_000)
@@ -395,7 +395,7 @@ describe('core-audio-wasapi', () => {
   })
 })
 
-describe('core-audio-wasapi context state', () => {
+describe('core-audio-mpv context state', () => {
   it('publishes an interruption when a running context is suspended, and ends it on recovery', async () => {
     // The desktop case: the OS (sleep, device loss) suspends the context out
     // from under a playing source. Without this translation the transport
@@ -425,7 +425,7 @@ describe('core-audio-wasapi context state', () => {
       bridgeCall: workingBridge(),
       emitContextInterruptions: true,
     })
-    const audio = ctx.audio as AudioWasapi
+    const audio = ctx.audio as AudioMpv
     const seen: InterruptionEvent[] = []
     audio.onInterruption((e) => void seen.push(e))
 
@@ -498,7 +498,7 @@ describe('core-audio-wasapi context state', () => {
             : undefined,
       emitContextInterruptions: true,
     })
-    const audio = ctx.audio as AudioWasapi
+    const audio = ctx.audio as AudioMpv
     expect(contexts[0]!.countStateListeners()).toBe(1)
 
     await audio.load('file:///music/hires.flac', { strategy: 'buffer' })
@@ -544,7 +544,7 @@ describe('core-audio-wasapi context state', () => {
               }
             : undefined,
     })
-    const audio = ctx.audio as AudioWasapi
+    const audio = ctx.audio as AudioMpv
 
     await audio.setOutputDevice('dev-dac')
     expect(sinkCalls).toEqual(['dev-dac'])
@@ -553,3 +553,78 @@ describe('core-audio-wasapi context state', () => {
     expect(sinkCalls, 'the rebuilt context got the selection back').toEqual(['dev-dac', 'dev-dac'])
   })
 })
+
+describe('core-audio-mpv native engine features', () => {
+  it('loads via native audio-engine mpvLoad and handles transport controls', async () => {
+    const calls: { method: string; args: unknown[] }[] = []
+    const bridgeCall = async (_service: string, method: string, args: unknown[]) => {
+      calls.push({ method, args })
+      if (method === 'mpvLoad') {
+        return { durationMs: 120_000 }
+      }
+      return undefined
+    }
+
+    const { audio } = await harness({ bridgeCall })
+    const handle = await audio.load('file:///music/song.flac', { strategy: 'stream' })
+    expect(handle.durationMs).toBe(120_000)
+
+    handle.play(5000)
+    expect(calls.some((c) => c.method === 'mpvPlay' && c.args[0] === 5000)).toBe(true)
+
+    handle.pause()
+    expect(calls.some((c) => c.method === 'mpvPause')).toBe(true)
+
+    handle.seek?.(20000)
+    expect(calls.some((c) => c.method === 'mpvSeek' && c.args[0] === 20000)).toBe(true)
+
+    handle.stop()
+    expect(calls.some((c) => c.method === 'mpvStop')).toBe(true)
+    handle.dispose()
+  })
+
+  it('synchronizes native DSP/EQ parameters on dsp/chain-changed', async () => {
+    let capturedDspConfig: unknown = null
+    const bridgeCall = async (_service: string, method: string, args: unknown[]) => {
+      if (method === 'mpvSetDspConfig') {
+        capturedDspConfig = args[0]
+      }
+      return undefined
+    }
+
+    const { ctx } = await harness({ bridgeCall })
+    ;(ctx as unknown as { dsp: unknown }).dsp = {
+      getParams: (id: string) => {
+        if (id === 'eq10') return { gains: [3, 2, 1, 0, -1, -2, -1, 0, 1, 2] }
+        if (id === 'preamp') return { gainDb: 4 }
+        return undefined
+      },
+    }
+
+    ctx.emit('dsp/chain-changed', [])
+    // Wait for event handler microtask
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(capturedDspConfig).toEqual({
+      eq: { enabled: true, gains: [3, 2, 1, 0, -1, -2, -1, 0, 1, 2] },
+      preamp: { enabled: true, gainDb: 4 },
+      compressor: undefined,
+    })
+  })
+
+  it('retrieves FFT spectrum frames for visualizer', async () => {
+    const mockFrame = {
+      frequencyData: [120, 150, 180, 210],
+      timeDomainData: [128, 130, 126, 128],
+    }
+    const bridgeCall = async (_service: string, method: string) => {
+      if (method === 'mpvGetFftFrame') return mockFrame
+      return undefined
+    }
+
+    const { audio } = await harness({ bridgeCall })
+    const frame = await audio.getFftSpectrum()
+    expect(frame).toEqual(mockFrame)
+  })
+})
+

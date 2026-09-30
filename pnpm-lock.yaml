@@ -39,9 +39,9 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@BBeBee/core-audio-wasapi':
+      '@BBeBee/core-audio-mpv':
         specifier: workspace:*
-        version: link:../../packages/core/core-audio-wasapi
+        version: link:../../packages/core/core-audio-mpv
       '@BBeBee/core-audio-webaudio':
         specifier: workspace:*
         version: link:../../packages/core/core-audio-webaudio
@@ -450,7 +450,7 @@ importers:
         specifier: ~57.0.9
         version: 57.0.10(@babel/core@7.29.7(supports-color@8.1.1))(@babel/runtime@7.29.7)(expo@57.0.20)(react-refresh@0.18.0)(supports-color@8.1.1)
 
-  packages/core/core-audio-wasapi:
+  packages/core/core-audio-mpv:
     dependencies:
       '@BBeBee/core-audio-webaudio':
         specifier: workspace:*

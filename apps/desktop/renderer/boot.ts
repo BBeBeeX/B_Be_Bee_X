@@ -51,7 +51,7 @@ import { JsQuickJsNode } from '@BBeBee/core-js-quickjs-node'
 import { CodecNode } from '@BBeBee/core-codec-node'
 import { HttpNode } from '@BBeBee/core-http-node'
 import { AudioWebAudio, type AudioWebAudioConfig } from '@BBeBee/core-audio-webaudio'
-import { AudioWasapi, type AudioWasapiConfig } from '@BBeBee/core-audio-wasapi'
+import { AudioMpv, type AudioMpvConfig } from '@BBeBee/core-audio-mpv'
 /*
  * The logs layer (Layer 3). Imported here rather than enabled through the
  * registry because it has to be *running* before the feature plugins whose
@@ -183,7 +183,7 @@ function decodableFormats(): string[] {
 }
 
 export interface DesktopAudioConfig {
-  initialEngine?: 'wasapi' | 'webaudio'
+  initialEngine?: 'mpv' | 'wasapi' | 'webaudio'
   fetchBytes: (
     src: string,
     opts: { headers?: Record<string, string>; signal?: AbortSignal },
@@ -194,7 +194,7 @@ export interface DesktopAudioConfig {
 export class DesktopAudioService extends Service implements AudioService {
   static inject = []
 
-  private activeEngineKey: 'wasapi' | 'webaudio' = 'webaudio'
+  private activeEngineKey: 'mpv' | 'wasapi' | 'webaudio' = 'webaudio'
   private activeEngine!: AudioService
   private activeFiber?: Fiber
   private currentVolume = 0.8
@@ -231,11 +231,11 @@ export class DesktopAudioService extends Service implements AudioService {
     }
   }
 
-  get activeEngineName(): 'wasapi' | 'webaudio' {
+  get activeEngineName(): 'mpv' | 'wasapi' | 'webaudio' {
     return this.activeEngineKey
   }
 
-  get engine(): 'wasapi' | 'webaudio' {
+  get engine(): 'mpv' | 'wasapi' | 'webaudio' {
     return this.activeEngineKey
   }
 
@@ -349,22 +349,19 @@ export class DesktopAudioService extends Service implements AudioService {
     }
   }
 
-  private async mountEngine(engineKey: 'wasapi' | 'webaudio'): Promise<void> {
+  private async mountEngine(engineKey: 'mpv' | 'wasapi' | 'webaudio'): Promise<void> {
     this.ctx.logger?.info('desktop-audio: mounting backend engine [%s]', engineKey)
     const scoped = this.ctx.isolate('audio')
 
     let fiber: Fiber
+    const effectiveKey = engineKey === 'wasapi' ? 'mpv' : engineKey
     try {
-      // `emitContextInterruptions`: desktop opts in — it has no other
-      // interruption surface, and Chromium reports device loss and post-sleep
-      // recovery through the context's own `state` (mobile wires
-      // `AudioManager` instead and keeps this off).
-      if (engineKey === 'wasapi') {
-        const wasapiConfig: AudioWasapiConfig = {
+      if (effectiveKey === 'mpv') {
+        const mpvConfig: AudioMpvConfig = {
           bridgeCall: this.config.bridgeCall,
           emitContextInterruptions: true,
         }
-        fiber = await scoped.plugin(AudioWasapi, wasapiConfig)
+        fiber = await scoped.plugin(AudioMpv, mpvConfig)
       } else {
         const webAudioConfig: AudioWebAudioConfig = {
           fetchBytes: this.config.fetchBytes,
@@ -374,8 +371,8 @@ export class DesktopAudioService extends Service implements AudioService {
         fiber = await scoped.plugin(AudioWebAudio, webAudioConfig)
       }
     } catch (err) {
-      if (engineKey === 'wasapi') {
-        this.ctx.logger?.warn('desktop-audio: failed mounting wasapi, falling back to webaudio: %s', String(err))
+      if (effectiveKey === 'mpv') {
+        this.ctx.logger?.warn('desktop-audio: failed mounting mpv, falling back to webaudio: %s', String(err))
         return this.mountEngine('webaudio')
       }
       throw err
@@ -408,7 +405,7 @@ export class DesktopAudioService extends Service implements AudioService {
     }
   }
 
-  async switchEngine(targetEngine: 'wasapi' | 'webaudio'): Promise<void> {
+  async switchEngine(targetEngine: 'mpv' | 'wasapi' | 'webaudio'): Promise<void> {
     if (this.isSwitching) {
       this.ctx.logger?.warn('desktop-audio: switchEngine already in progress, skipping')
       return
@@ -523,7 +520,7 @@ export async function boot(): Promise<App> {
   const transport = bridgeFetch()
 
   // Determine initial audio engine: check persisted settings in store.json
-  let initialEngine: 'wasapi' | 'webaudio' = hostPlatform() === 'windows' ? 'wasapi' : 'webaudio'
+  let initialEngine: 'mpv' | 'wasapi' | 'webaudio' = hostPlatform() === 'windows' ? 'mpv' : 'webaudio'
   let preloadedUserAgent: string | undefined
   let preloadedStoreData: Record<string, unknown> | undefined
   try {
@@ -532,10 +529,10 @@ export async function boot(): Promise<App> {
     if (raw && typeof raw === 'string') {
       preloadedStoreData = JSON.parse(raw) as Record<string, unknown>
       const prefs = preloadedStoreData['preferences'] as
-        | { audioOutputEngine?: 'wasapi' | 'webaudio'; userAgent?: string }
+        | { audioOutputEngine?: 'mpv' | 'wasapi' | 'webaudio'; userAgent?: string }
         | undefined
-      if (prefs?.audioOutputEngine === 'wasapi' || prefs?.audioOutputEngine === 'webaudio') {
-        initialEngine = prefs.audioOutputEngine
+      if (prefs?.audioOutputEngine === 'mpv' || prefs?.audioOutputEngine === 'wasapi' || prefs?.audioOutputEngine === 'webaudio') {
+        initialEngine = prefs.audioOutputEngine === 'wasapi' ? 'mpv' : prefs.audioOutputEngine
       }
       if (typeof prefs?.userAgent === 'string') preloadedUserAgent = prefs.userAgent
     }

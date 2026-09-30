@@ -1,8 +1,8 @@
 {
-  "id": "@BBeBee/core-audio-wasapi",
+  "id": "@BBeBee/core-audio-mpv",
   "version": "0.0.0",
-  "displayName": "Audio (Desktop WASAPI)",
-  "description": "ctx.audio — Web Audio DSP with FFmpeg decoding and sample rate matching.",
+  "displayName": "Audio (Desktop MPV)",
+  "description": "ctx.audio — libmpv audio engine with native audio-engine crash isolation, direct WASAPI output, native DSP/EQ, and FFT visualizer.",
   "platforms": [
     "desktop"
   ],

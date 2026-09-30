@@ -116,8 +116,8 @@ export interface AudioService {
   emitRouteChange(e: RouteChangeEvent): void
 
   /** Desktop-only: dynamic audio engine hot-switching. */
-  switchEngine?(engine: 'wasapi' | 'webaudio'): Promise<void>
-  readonly activeEngineName?: 'wasapi' | 'webaudio'
+  switchEngine?(engine: 'mpv' | 'wasapi' | 'webaudio'): Promise<void>
+  readonly activeEngineName?: 'mpv' | 'wasapi' | 'webaudio'
 
   /** Active hardware output specifications negotiated with physical audio DAC. */
   readonly hardwareBitDepth?: number

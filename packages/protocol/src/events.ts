@@ -42,7 +42,7 @@ import type { AuthStatus } from './services/sources.js'
 import type { CheckReport } from './services/source-document.js'
 import type { SourceError } from './errors.js'
 import type { ScanSpecifiedDir, ScanSummary } from './services/scanner.js'
-import type { AppSettings } from './services/settings.js'
+import type { AppSettings, AudioOutputEngine } from './services/settings.js'
 import type { SleepTimerState } from './services/sleep-timer.js'
 import type { DesktopLyricsState, LyricsState } from './services/lyrics.js'
 import type { MiniPlayerServiceState } from './services/mini-player.js'
@@ -56,7 +56,7 @@ declare module 'cordis' {
   interface Events {
     'settings/changed'(settings: AppSettings): void
     /* ── audio ────────────────────────────────────────── emit ── */
-    'audio/engine-changed'(payload: { engine: 'wasapi' | 'webaudio' }): void
+    'audio/engine-changed'(payload: { engine: AudioOutputEngine }): void
     'audio/context-rebuilt'(): void
     /* ── theme ───────────────────────────────────────── emit ── */
     'theme/changed'(theme: ThemeDefinition): void

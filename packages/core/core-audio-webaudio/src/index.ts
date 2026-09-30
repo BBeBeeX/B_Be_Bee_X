@@ -52,7 +52,7 @@ import {
 } from './shared.js'
 
 /**
- * Shared engine machinery, public so `core-audio-wasapi` — which is built on
+ * Shared engine machinery, public so `core-audio-mpv` — which is built on
  * this package — can reuse it instead of forking it.
  */
 export {
@@ -289,7 +289,7 @@ const STALL_EVENTS = ['waiting', 'stalled'] as const
 const RECOVER_EVENTS = ['playing', 'canplaythrough'] as const
 
 /**
- * The streaming handle, shared with `core-audio-wasapi`: the WASAPI service
+ * The streaming handle, shared with `core-audio-mpv`: the MPV service
  * reaches the element path through the exact same class rather than a fork,
  * so stall/seek semantics cannot drift between the two `ctx.audio`
  * implementations (the same sharing pattern as `core-http-rn` ←

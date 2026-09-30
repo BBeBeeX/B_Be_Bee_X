@@ -91,4 +91,44 @@ describe('plugin-visualizer', () => {
     expect(typeof dispose).toBe('function')
     dispose()
   })
+
+  it('attaches NativeMpvImpl when active engine is mpv', async () => {
+    const mockSpectrum = {
+      frequencyData: [50, 100, 150, 200],
+      timeDomainData: [128, 140, 128, 120],
+    }
+
+    const mockCtx = new CordisContext() as unknown as Context
+    const untyped = mockCtx as unknown as Record<string, unknown>
+    untyped['audio'] = {
+      activeEngineName: 'mpv',
+      getFftSpectrum: vi.fn(async () => mockSpectrum),
+    }
+    untyped['settings'] = {
+      getSync: vi.fn(() => ({ visualizer: DEFAULT_VISUALIZER_SETTINGS })),
+      get: vi.fn(async () => ({ visualizer: DEFAULT_VISUALIZER_SETTINGS })),
+      update: vi.fn(),
+    }
+
+    const plugin = new VisualizerPlugin(mockCtx)
+    await plugin[VisualizerPlugin.init]()
+
+    expect(plugin.currentAnalyser).toBeDefined()
+    expect(plugin.analyserNode).toBeNull() // No Web Audio AnalyserNode in MPV mode
+
+    // Manually feed a frame to NativeMpvImpl
+    ;(plugin.currentAnalyser as unknown as { feedFrame(f: unknown): void }).feedFrame(mockSpectrum)
+
+    const freq = new Uint8Array(4)
+    plugin.getFrequencyData(freq)
+    expect(freq.length).toBe(4)
+    // Non-zero frequency data returned
+    expect(freq[0]).toBeGreaterThan(0)
+
+    const wave = new Uint8Array(4)
+    plugin.getTimeDomainData(wave)
+    expect(wave.length).toBe(4)
+
+    plugin.currentAnalyser?.dispose()
+  })
 })

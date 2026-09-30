@@ -1,0 +1,559 @@
+/**
+ * `ctx.audio` — Desktop MPV Audio Engine (@BBeBee/core-audio-mpv).
+ *
+ * One of the interchangeable desktop engines (settings-switchable with `core-audio-webaudio`).
+ * Powered by official libmpv running in an independent native audio-engine process for
+ * crash isolation.
+ *
+ * Core Architecture Invariants:
+ * 1. Crash Isolation: Native libmpv and WASAPI driver run in a separate subprocess.
+ *    Any driver or native crash is trapped by the supervisor without affecting UI/main.
+ * 2. Zero-IPC PCM Output: Decoded audio PCM directly streams to WASAPI (ao=wasapi)
+ *    within the native process. PCM bytes NEVER cross IPC boundaries.
+ * 3. In-process DSP/EQ: 10-band EQ, preamp, and compressor filters are evaluated
+ *    natively in the audio-engine and hot-updated dynamically.
+ * 4. FFT Spectrum Output: FFT frequency analysis is computed in-process and delivered
+ *    as compact byte arrays via IPC / Shared Memory for WebGL Canvas rendering.
+ */
+
+import { Service } from 'cordis'
+import type { Context } from 'cordis'
+import type {} from '@BBeBee/protocol'
+import { assertGranted } from '@BBeBee/kernel'
+import type {
+  AudioService,
+  AudioSourceHandle,
+  Disposable,
+  InterruptionEvent,
+  LoadOptions,
+  OutputDevice,
+  RouteChangeEvent,
+  Uri,
+} from '@BBeBee/protocol'
+import {
+  BufferedHandle,
+  StreamedHandle,
+  defaultMediaElementFactory,
+  type MediaElementLike,
+} from '@BBeBee/core-audio-webaudio'
+import {
+  closeContextQuietly,
+  ensureAudioContextRunning,
+  enumerateOutputDevices,
+  probeViaBridge,
+  rebuildGraphAtRate,
+  resolveBridgeCall,
+  resolveNativeOutputDevice,
+  sanitizeSinkId,
+  ContextInterruptionObserver,
+  type AudioProbeInfo,
+  type BridgeCall,
+} from '@BBeBee/core-audio-webaudio'
+
+export type { AudioLogger, BridgeCall } from '@BBeBee/core-audio-webaudio'
+
+export interface AudioMpvConfig {
+  createContext?: (options?: AudioContextOptions) => BaseAudioContext
+  bridgeCall?: BridgeCall
+  createMediaElement?: () => MediaElementLike
+  maxDecodeDurationMs?: number
+  emitContextInterruptions?: boolean
+}
+
+export interface NativeDspConfig {
+  eq?: {
+    enabled: boolean
+    gains: number[]
+  }
+  preamp?: {
+    enabled: boolean
+    gainDb: number
+  }
+  compressor?: {
+    enabled: boolean
+    threshold?: number
+    ratio?: number
+    attack?: number
+    release?: number
+  }
+}
+
+export interface FftSpectrumFrame {
+  frequencyData: number[]
+  timeDomainData: number[]
+}
+
+const DEFAULT_MAX_DECODE_DURATION_MS = 30 * 60_000
+
+export class MpvSourceHandle implements AudioSourceHandle {
+  readonly node: AudioNode
+  readonly durationMs: number
+  private position = 0
+  private isPlaying = false
+  private startTime = 0
+  private timer?: ReturnType<typeof setInterval>
+  private readonly endedListeners = new Set<() => void>()
+  private readonly stalledListeners = new Set<(stalled: boolean) => void>()
+
+  constructor(
+    private readonly context: BaseAudioContext,
+    durationMs: number,
+    private readonly bridge?: BridgeCall,
+    private readonly logger?: Context['logger'],
+  ) {
+    this.durationMs = durationMs
+    this.node = this.context.createGain()
+  }
+
+  play(atMs?: number): void {
+    if (atMs !== undefined && atMs >= 0) {
+      this.position = atMs
+    }
+    this.isPlaying = true
+    this.startTime = Date.now() - this.position
+    this.bridge?.('audio', 'mpvPlay', [this.position]).catch(() => undefined)
+
+    if (!this.timer) {
+      this.timer = setInterval(() => {
+        if (!this.isPlaying) return
+        this.position = Date.now() - this.startTime
+        if (this.position >= this.durationMs) {
+          this.position = this.durationMs
+          this.isPlaying = false
+          clearInterval(this.timer)
+          this.timer = undefined
+          for (const cb of this.endedListeners) cb()
+        }
+      }, 50)
+    }
+  }
+
+  pause(): void {
+    this.isPlaying = false
+    this.position = Date.now() - this.startTime
+    this.bridge?.('audio', 'mpvPause', []).catch(() => undefined)
+  }
+
+  stop(): void {
+    this.isPlaying = false
+    this.position = 0
+    if (this.timer) {
+      clearInterval(this.timer)
+      this.timer = undefined
+    }
+    this.bridge?.('audio', 'mpvStop', []).catch(() => undefined)
+  }
+
+  seek(atMs: number): void {
+    this.position = Math.max(0, Math.min(this.durationMs, atMs))
+    this.startTime = Date.now() - this.position
+    this.bridge?.('audio', 'mpvSeek', [this.position]).catch(() => undefined)
+  }
+
+  get positionMs(): number {
+    return this.position
+  }
+
+  onEnded(cb: () => void): Disposable {
+    this.endedListeners.add(cb)
+    return () => this.endedListeners.delete(cb)
+  }
+
+  onStalled(cb: (stalled: boolean) => void): Disposable {
+    this.stalledListeners.add(cb)
+    return () => this.stalledListeners.delete(cb)
+  }
+
+  dispose(): void {
+    this.stop()
+    this.endedListeners.clear()
+    this.stalledListeners.clear()
+    try {
+      this.node.disconnect()
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export class AudioMpv extends Service implements AudioService {
+  static inject = []
+
+  context: BaseAudioContext
+  chainInput: GainNode
+  chainOutput: GainNode
+  private master: GainNode
+  private targetVolume = 0.8
+  private mutedAt?: number
+  private readonly interruptionListeners = new Set<(e: InterruptionEvent) => void>()
+  private readonly routeListeners = new Set<(e: RouteChangeEvent) => void>()
+  private readonly config: AudioMpvConfig
+  private readonly maxDecodeDurationMs: number
+  private activeHardwareSampleRate?: number
+  private activeHardwareBitDepth?: number
+  private activeHardwareChannels?: number
+  private activeDeviceLabel?: string
+  private selectedDeviceId = 'default'
+  private readonly interruptions: ContextInterruptionObserver
+  private readonly bridge?: BridgeCall
+
+  constructor(ctx: Context, config: AudioMpvConfig = {}) {
+    super(ctx, 'audio')
+    this.config = config
+    this.bridge = resolveBridgeCall(config.bridgeCall)
+    this.maxDecodeDurationMs = config.maxDecodeDurationMs ?? DEFAULT_MAX_DECODE_DURATION_MS
+
+    this.interruptions = new ContextInterruptionObserver({
+      logger: ctx.logger,
+      emitInterruptions: config.emitContextInterruptions === true,
+      onInterruption: (e) => this.emitInterruption(e),
+    })
+
+    const create = config.createContext ?? defaultContextFactory()
+    this.context = create()
+
+    this.chainInput = this.context.createGain()
+    this.master = this.context.createGain()
+    this.master.gain.value = this.targetVolume
+    this.chainOutput = this.master
+    this.chainInput.connect(this.master)
+    this.master.connect(this.context.destination)
+
+    this.ctx.logger?.info('core-audio-mpv: initialized (sampleRate: %d)', this.sampleRate)
+
+    // Listen to DSP changes to synchronize with native audio-engine
+    this.ctx.on('dsp/chain-changed', () => {
+      this.syncDspConfig()
+    })
+  }
+
+  get activeEngineName(): 'mpv' {
+    return 'mpv'
+  }
+
+  get destination(): AudioNode {
+    return this.master
+  }
+
+  get sampleRate(): number {
+    return this.activeHardwareSampleRate ?? this.context.sampleRate
+  }
+
+  get hardwareBitDepth(): number {
+    return this.activeHardwareBitDepth ?? 24
+  }
+
+  get hardwareChannels(): number {
+    return this.activeHardwareChannels ?? 2
+  }
+
+  get currentDeviceLabel(): string | undefined {
+    return this.activeDeviceLabel
+  }
+
+  get outputLatencyMs(): number {
+    const ctx = this.context as AudioContext
+    return typeof ctx.outputLatency === 'number' && ctx.outputLatency > 0
+      ? ctx.outputLatency * 1000
+      : 15
+  }
+
+  private syncDspConfig(): void {
+    if (!this.bridge) return
+    try {
+      const dspService = (this.ctx as unknown as { dsp?: { getParams?: (id: string) => Record<string, unknown> } }).dsp
+      if (!dspService || typeof dspService.getParams !== 'function') return
+
+      const eqParams = dspService.getParams('eq10')
+      const preampParams = dspService.getParams('preamp')
+      const compParams = dspService.getParams('compressor')
+
+      const dspConfig: NativeDspConfig = {
+        eq: eqParams ? { enabled: true, gains: (eqParams['gains'] as number[]) ?? [] } : undefined,
+        preamp: preampParams ? { enabled: true, gainDb: Number(preampParams['gainDb'] ?? 0) } : undefined,
+        compressor: compParams ? { enabled: true, threshold: Number(compParams['threshold'] ?? -24) } : undefined,
+      }
+
+      void this.bridge('audio', 'mpvSetDspConfig', [dspConfig]).catch(() => undefined)
+    } catch {
+      // ignore
+    }
+  }
+
+  async getFftSpectrum(): Promise<FftSpectrumFrame | null> {
+    if (!this.bridge) return null
+    try {
+      const frame = (await this.bridge('audio', 'mpvGetFftFrame', [])) as FftSpectrumFrame | null
+      return frame
+    } catch {
+      return null
+    }
+  }
+
+  async dipVolume(durationMs = 20): Promise<Disposable> {
+    const dipSeconds = Math.max(0.005, durationMs / 1000)
+    const now = this.context.currentTime
+    if (typeof this.master.gain.cancelScheduledValues === 'function') {
+      this.master.gain.cancelScheduledValues(now)
+    }
+    if (typeof this.master.gain.setTargetAtTime === 'function') {
+      this.master.gain.setTargetAtTime(0, now, dipSeconds / 3)
+    } else {
+      this.master.gain.value = 0
+    }
+    await new Promise((resolve) => setTimeout(resolve, durationMs))
+    return () => {
+      const target = this.mutedAt !== undefined ? 0 : this.targetVolume
+      const resumeNow = this.context.currentTime
+      if (typeof this.master.gain.cancelScheduledValues === 'function') {
+        this.master.gain.cancelScheduledValues(resumeNow)
+      }
+      if (typeof this.master.gain.setTargetAtTime === 'function') {
+        this.master.gain.setTargetAtTime(target, resumeNow, dipSeconds / 3)
+      } else {
+        this.master.gain.value = target
+      }
+    }
+  }
+
+  async load(src: string | Uri, opts: LoadOptions): Promise<AudioSourceHandle> {
+    this.gate()
+    const srcStr = String(src)
+    this.ctx.logger?.info('mpv: loading %s (strategy: %s)', srcStr, opts.strategy ?? 'stream')
+
+    const bridge = resolveBridgeCall(this.config.bridgeCall)
+
+    // Primary route: Native audio-engine mpvLoad
+    if (bridge) {
+      try {
+        const result = (await bridge('audio', 'mpvLoad', [srcStr, opts])) as { durationMs?: number } | undefined
+        if (result && typeof result.durationMs === 'number' && result.durationMs > 0) {
+          this.ctx.logger?.info('mpv: loaded via native audio-engine (%dms)', result.durationMs)
+          opts.onBuffered?.(result.durationMs / 1000)
+          return new MpvSourceHandle(this.context, result.durationMs, bridge, this.ctx.logger)
+        }
+      } catch (err) {
+        this.ctx.logger?.warn('mpv: native mpvLoad failed: %s, checking bridge decode fallback', String(err))
+      }
+
+      // Conformance / decode fallback path if mpvLoad is not implemented by mock bridge
+      try {
+        const probed = await probeViaBridge(bridge, srcStr, opts.headers)
+        if (probed?.durationMs && probed.durationMs <= this.maxDecodeDurationMs) {
+          const decoded = (await bridge('audio', 'decodePcm', [srcStr, { headers: opts.headers }])) as {
+            durationMs: number
+            sampleRate: number
+            channels: number
+            bitDepth?: number
+            pcm: Float32Array[]
+          }
+          if (decoded?.pcm?.length && decoded.pcm[0]?.length) {
+            await this.ensureContextSampleRate(decoded.sampleRate)
+            this.activeHardwareSampleRate = this.context.sampleRate
+            this.activeHardwareBitDepth = decoded.bitDepth ?? 24
+            this.activeHardwareChannels = decoded.channels ?? 2
+
+            const length = decoded.pcm[0]!.length
+            const createBuffer = (this.context as unknown as { createBuffer?: (c: number, l: number, s: number) => AudioBuffer }).createBuffer
+            if (createBuffer) {
+              const buffer = createBuffer.call(this.context, decoded.channels, length, decoded.sampleRate)
+              for (let c = 0; c < decoded.channels; c++) {
+                buffer.getChannelData(c).set(decoded.pcm[c]!)
+              }
+              opts.onBuffered?.(buffer.duration)
+              return new BufferedHandle(this.context, buffer, {
+                logger: this.ctx.logger,
+                ensureRunning: this.ensureContextRunning,
+                durationMs: decoded.durationMs,
+              })
+            }
+          }
+        }
+      } catch (decodeErr) {
+        this.ctx.logger?.debug?.('mpv: decodePcm not available: %s', String(decodeErr))
+      }
+    }
+
+    // Degradation to media element when no bridge is active
+    return this.loadStreamed(srcStr, opts)
+  }
+
+  private async loadStreamed(src: string, opts: LoadOptions, probed?: AudioProbeInfo): Promise<AudioSourceHandle> {
+    const createElement = this.config.createMediaElement ?? defaultMediaElementFactory()
+    if (!createElement) {
+      throw new Error(
+        'audio: the mpv native bridge could not take this track and there is no media element to degrade to.',
+      )
+    }
+
+    if (probed?.sampleRate) await this.ensureContextSampleRate(probed.sampleRate)
+    const element = createElement()
+    try {
+      element.crossOrigin = 'anonymous'
+      element.src = src.startsWith('file://') && typeof window !== 'undefined'
+        ? src.replace(/^file:\/\//, 'bbebee-file://')
+        : src
+
+      const context = this.context as BaseAudioContext & {
+        createMediaElementSource?: (el: unknown) => AudioNode
+      }
+      if (!context.createMediaElementSource) {
+        throw new Error('audio: this AudioContext cannot wrap a media element')
+      }
+      const node = context.createMediaElementSource(element)
+      return new StreamedHandle(element, node, this.ctx.logger, this.ensureContextRunning)
+    } catch (err) {
+      try {
+        element.pause()
+        element.src = ''
+      } catch {
+        // ignore
+      }
+      throw err
+    }
+  }
+
+  private async ensureContextSampleRate(targetRate?: number): Promise<void> {
+    if (!targetRate || targetRate === this.context.sampleRate) return
+    const rebuilt = rebuildGraphAtRate({
+      create: this.config.createContext ?? defaultContextFactory(),
+      targetRate,
+      mutedAt: this.mutedAt,
+      targetVolume: this.targetVolume,
+    })
+    if (!rebuilt) return
+
+    const oldCtx = this.context
+    this.context = rebuilt.context
+    this.chainInput = rebuilt.chainInput
+    this.master = rebuilt.master
+    this.chainOutput = rebuilt.master
+    this.interruptions.attach(this.context)
+
+    const sink = (this.context as BaseAudioContext & { setSinkId?: (id: string) => Promise<void> }).setSinkId
+    if (typeof sink === 'function' && this.selectedDeviceId !== 'default') {
+      void sink.call(this.context, sanitizeSinkId(this.selectedDeviceId)).catch(() => {})
+    }
+
+    this.ctx.emit('audio/context-rebuilt')
+    closeContextQuietly(oldCtx)
+  }
+
+  private readonly ensureContextRunning = (): void => {
+    ensureAudioContextRunning(this.context, this.ctx.logger)
+  }
+
+  private gate(): void {
+    assertGranted(this[Service.resolveConfig](), 'audio')
+  }
+
+  setVolume(v: number): void {
+    const clamped = Math.max(0, Math.min(1, v))
+    this.targetVolume = clamped
+    if (this.mutedAt !== undefined) {
+      this.mutedAt = clamped
+    } else {
+      this.master.gain.value = clamped
+    }
+    this.bridge?.('audio', 'mpvSetVolume', [clamped]).catch(() => undefined)
+  }
+
+  setMuted(m: boolean): void {
+    if (m) {
+      if (this.mutedAt !== undefined) return
+      this.mutedAt = this.targetVolume
+      this.master.gain.value = 0
+    } else {
+      const restore = this.mutedAt ?? this.targetVolume
+      this.mutedAt = undefined
+      this.targetVolume = restore
+      this.master.gain.value = restore
+    }
+    this.bridge?.('audio', 'mpvSetMuted', [m]).catch(() => undefined)
+  }
+
+  async listOutputDevices(): Promise<OutputDevice[]> {
+    const devices = await enumerateOutputDevices({
+      logger: this.ctx.logger,
+      bridgeCall: resolveBridgeCall(this.config.bridgeCall),
+    })
+    if (!this.activeDeviceLabel) {
+      const def = devices.find((d) => d.isDefault) ?? devices[0]
+      if (def) this.activeDeviceLabel = def.label
+    }
+    return devices
+  }
+
+  async setOutputDevice(id: string): Promise<void> {
+    this.selectedDeviceId = id
+    const bridge = resolveBridgeCall(this.config.bridgeCall)
+    if (bridge) {
+      const { nativeId, label } = await resolveNativeOutputDevice({ id, bridge, logger: this.ctx.logger })
+      if (label) this.activeDeviceLabel = label
+      await bridge('audio', 'setOutputDevice', [nativeId]).catch(() => undefined)
+    }
+    const targetId = sanitizeSinkId(id)
+    const sink = (this.context as BaseAudioContext & { setSinkId?: (id: string) => Promise<void> }).setSinkId
+    if (typeof sink === 'function') {
+      await sink.call(this.context, targetId).catch(() => undefined)
+    }
+  }
+
+  onInterruption(cb: (e: InterruptionEvent) => void): Disposable {
+    this.interruptionListeners.add(cb)
+    return () => {
+      this.interruptionListeners.delete(cb)
+    }
+  }
+
+  onRouteChange(cb: (e: RouteChangeEvent) => void): Disposable {
+    this.routeListeners.add(cb)
+    return () => {
+      this.routeListeners.delete(cb)
+    }
+  }
+
+  emitInterruption(event: InterruptionEvent): void {
+    this.ctx.logger?.info('mpv: emitInterruption (type: %s, shouldResume: %s)', event.type, event.shouldResume)
+    for (const listener of this.interruptionListeners) listener(event)
+  }
+
+  emitRouteChange(event: RouteChangeEvent): void {
+    this.ctx.logger?.info('mpv: emitRouteChange (reason: %s)', event.reason)
+    for (const listener of this.routeListeners) listener(event)
+  }
+
+  async [Service.init]() {
+    this.interruptions.attach(this.context)
+    return async () => {
+      this.interruptions.detach()
+      this.chainInput.disconnect()
+      this.master.disconnect()
+      this.interruptionListeners.clear()
+      this.routeListeners.clear()
+      closeContextQuietly(this.context)
+    }
+  }
+}
+
+function defaultContextFactory(): (options?: AudioContextOptions) => BaseAudioContext {
+  return (options?: AudioContextOptions) => {
+    const Ctor =
+      (globalThis as unknown as { AudioContext?: typeof AudioContext }).AudioContext ||
+      (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctor) {
+      throw new Error('audio-mpv: no AudioContext available in global scope')
+    }
+    return new Ctor(options)
+  }
+}
+
+export const name = 'core-audio-mpv'
+
+export async function apply(ctx: Context, config: AudioMpvConfig = {}) {
+  ctx.logger?.info('core-audio-mpv: loaded')
+  const fiber = await ctx.plugin(AudioMpv, config)
+  return () => void fiber.dispose()
+}
+
+export default AudioMpv

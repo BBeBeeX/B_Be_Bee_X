@@ -92,15 +92,15 @@ flowchart LR
 `ctx.audio.load(src, { strategy })` 实现了双通道加载路径：
 - **`strategy: 'buffer'`**：拉取二进制流到 `ArrayBuffer` 并解码为 `AudioBuffer`，挂载至 `chainInput`。为本地音频与 Gapless 无缝换曲提供样本级精确调度。
 - **`strategy: 'stream'`**：通过 `context.createMediaElementSource()` 挂载至媒体元素，保持内存占用恒定。
-- **高位深与 ALAC 解码回退 (FFmpeg Bridge)**：Chromium 原生 `decodeAudioData()` 无法解码 Apple Lossless (ALAC) 格式或某些 24-bit/32-bit Hi-Res 音频。桌面端 `core-audio-webaudio` 与 `core-audio-wasapi` 自动调用主进程的 FFmpeg 解码器 (`audio.decodePcm`)，将音频精确解算为 Float32 PCM 声道并直接灌入 `AudioBuffer`，实现无损兼容。
-- **桌面端高保真引擎 (`@BBeBee/core-audio-wasapi`)**：
-  - **桥接优先解码 (`strategy: 'buffer'`)**：不同于 Chromium 原生 `decodeAudioData`（其无法解码某些缺少授权的格式如 ALAC，或对部分高位深音频强制降采样），`core-audio-wasapi` 优先调用主进程的 FFmpeg 解码管道。主进程直接将音频解算为 32-bit Float PCM 数组，渲染进程以曲目原生采样率载入 `AudioBuffer`。
-  - **原生采样率自适应重建**：录制于 96 kHz 或 192 kHz 的高解析度音频若直接推入 44.1 kHz 的 `AudioContext` 将发生有损重采样。当 `AudioWasapi` 检测到曲目采样率与当前上下文不同时，会动态新建 `AudioContext({ sampleRate })`，重新连接完整 DSP 链路，并派发 `audio/context-rebuilt` 事件，令下游插件（`plugin-dsp`、`plugin-visualizer`）在平滑销毁旧上下文前重新绑定新节点。
-  - **媒体流播放 (`strategy: 'stream'`)**：WASAPI 引擎通过 `createMediaElementSource` 包装 `HTMLMediaElement` 并连接至 `chainInput`，使长音频流与解码缓冲区享受完全一致的 DSP 处理链路，内存占用保持平稳。
-  - **引擎差异（Windows 默认 WASAPI，其余平台 WebAudio）**：两种引擎均通过操作系统共享混音器输出——其核心差异在于解码策略（桥接优先 vs 失败回退）与采样率自适应匹配，而非独占端点。
+- **高位深与 ALAC 解码回退 (FFmpeg Bridge)**：Chromium 原生 `decodeAudioData()` 无法解码 Apple Lossless (ALAC) 格式或某些 24-bit/32-bit Hi-Res 音频。桌面端 `core-audio-webaudio` 与 `core-audio-mpv` 自动调用主进程的解码器，将音频精确解算为 Float32 PCM 声道并直接灌入，实现无损兼容。
+- **桌面端原生高保真引擎 (`@BBeBee/core-audio-mpv`)**：
+  - **崩溃隔离原生进程 (Crash Isolation)**：基于官方 libmpv 与独立 native `audio-engine` 子进程架构。任何底层驱动崩溃、音频设备热插拔异常或 native 信号错误均由独立子进程隔离，保证主进程与渲染界面丝滑稳定。
+  - **PCM 不走 IPC 与 WASAPI 直通 (Zero-IPC for PCM)**：音频解码后的高采样率 PCM 流在原生子进程内直接送入 WASAPI 输出端点（`ao=wasapi`），严禁跨进程高带宽低效传输 PCM 原始数据。
+  - **原生 DSP/EQ 链**：原生引擎内部直接实现 10 段均衡器（10-band EQ）、前级增益（Preamp）与压限器，监听 `dsp/chain-changed` 动态热更新音频滤镜管线。
+  - **统一 AudioAnalyser 与 WebGL 频谱画布**：`audio-engine` 内部就地计算 FFT 频谱，经由极轻量 IPC 将频域帧推送到渲染进程，通过统一的 `AudioAnalyser`（`NativeMpvImpl` / `WebAudioImpl`）抽象供给渲染层，在 WebGL Canvas 上利用 GPU 着色器实现高性能流畅渲染。
 - **设置中的音频输出引擎与设备选择 (`audioOutputEngine`, `audioOutputDeviceId`)**：
   用户可在桌面端设置界面的「音频输出引擎与设备」中自由配置驱动与物理设备：
-  - **WASAPI Hi-Fi（Windows 默认）**：FFmpeg 桥接优先解码与曲目原生采样率自适应。
+  - **MPV Hi-Fi（Windows 默认）**：独立 native 原生引擎，WASAPI 直通输出、原生 DSP/EQ 与 FFT 可视化。
   - **WebAudio**：标准 Web Audio 共享混音图。
   - **可选择的音频输出设备**：
     - **系统硬件设备全量探测**：Electron 主进程通过授予 `'speaker-selection'` 与 `'media'` 权限解除 Chromium 设备标签屏蔽，并配合底层 OS 查询通道（Windows 注册表与 CIM MMDevices、macOS System Profiler、Linux pactl/aplay），精准获取当前系统中所有物理扬声器、耳机和外接 USB DAC 的真实友好名称（Friendly Name）。

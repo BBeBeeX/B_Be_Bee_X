@@ -2,7 +2,7 @@
  * `plugin-visualizer` — real-time audio visualization service.
  *
  * Implements `ctx.visualizer`:
- * - Connects an AnalyserNode to the audio graph output.
+ * - Uses unified `AudioAnalyser` abstraction (WebAudioImpl for Web Audio, NativeMpvImpl for libmpv FFT).
  * - Extracts real-time frequency spectrum and waveform buffers.
  * - Persists and synchronizes visualization preferences.
  */
@@ -16,7 +16,14 @@ import type {
   VisualizerSettings,
 } from '@BBeBee/protocol'
 import { DEFAULT_VISUALIZER_SETTINGS } from '@BBeBee/protocol'
+import {
+  type AudioAnalyser,
+  type FftFrame,
+  NativeMpvImpl,
+  WebAudioImpl,
+} from './analyser.js'
 
+export * from './analyser.js'
 export * from './views.js'
 export * from './hooks.js'
 
@@ -26,8 +33,7 @@ export class VisualizerPlugin extends Service implements VisualizerService {
 
   private readonly ownCtx: Context
   private currentSettings: VisualizerSettings = { ...DEFAULT_VISUALIZER_SETTINGS }
-  private analyser: AnalyserNode | null = null
-  private connectedSource: AudioNode | null = null
+  private analyser: AudioAnalyser | null = null
 
   constructor(ctx: Context) {
     super(ctx, 'visualizer')
@@ -39,6 +45,13 @@ export class VisualizerPlugin extends Service implements VisualizerService {
   }
 
   get analyserNode(): AnalyserNode | null {
+    if (this.analyser instanceof WebAudioImpl) {
+      return this.analyser.rawNode
+    }
+    return null
+  }
+
+  get currentAnalyser(): AudioAnalyser | null {
     return this.analyser
   }
 
@@ -74,7 +87,7 @@ export class VisualizerPlugin extends Service implements VisualizerService {
       })
     }
 
-    // 2. Attach Web Audio analyser node
+    // 2. Attach unified audio analyser
     this.attachAnalyser()
 
     // Re-attach analyser when audio engine changes or AudioContext is dynamically rebuilt
@@ -101,50 +114,55 @@ export class VisualizerPlugin extends Service implements VisualizerService {
 
   private attachAnalyser(): void {
     try {
-      const audioCtx = this.ownCtx.audio?.context
-      if (!audioCtx || typeof audioCtx.createAnalyser !== 'function') {
-        this.ownCtx.logger.debug('visualizer: AudioContext does not support createAnalyser')
+      const activeEngine = this.ownCtx.audio?.activeEngineName
+      const getFftSpectrum = (
+        this.ownCtx.audio as unknown as {
+          getFftSpectrum?: () => Promise<FftFrame | null>
+        }
+      )?.getFftSpectrum
+
+      // If active engine is native MPV and provides in-process FFT frames:
+      if (activeEngine === 'mpv' && typeof getFftSpectrum === 'function') {
+        this.analyser = new NativeMpvImpl({
+          fftSize: this.currentSettings.fftSize || 128,
+          smoothingTimeConstant: 0.82,
+          fetchSpectrum: () => getFftSpectrum.call(this.ownCtx.audio),
+        })
+        this.ownCtx.logger.info('visualizer: attached NativeMpvImpl spectrum analyser')
         return
       }
 
-      this.analyser = audioCtx.createAnalyser()
-      this.updateAnalyserConfig()
-
-      const source = this.ownCtx.audio.chainOutput ?? this.ownCtx.audio.chainInput
-      if (source && typeof source.connect === 'function') {
-        source.connect(this.analyser)
-        this.connectedSource = source
-        this.ownCtx.logger.debug('visualizer: AnalyserNode connected to audio output tap')
+      // Default: Web Audio AnalyserNode
+      const audioCtx = this.ownCtx.audio?.context
+      if (audioCtx && typeof audioCtx.createAnalyser === 'function') {
+        const node = audioCtx.createAnalyser()
+        const source = this.ownCtx.audio.chainOutput ?? this.ownCtx.audio.chainInput
+        if (source && typeof source.connect === 'function') {
+          source.connect(node)
+        }
+        this.analyser = new WebAudioImpl(node, source)
+        this.updateAnalyserConfig()
+        this.ownCtx.logger.info('visualizer: attached WebAudioImpl AnalyserNode')
+      } else {
+        this.ownCtx.logger.debug('visualizer: AudioContext does not support createAnalyser')
       }
     } catch (err) {
-      this.ownCtx.logger.warn('visualizer: failed to create or attach AnalyserNode', err)
+      this.ownCtx.logger.warn('visualizer: failed to create or attach AudioAnalyser', err)
     }
   }
 
   private updateAnalyserConfig(): void {
     if (!this.analyser) return
     const targetFftSize = this.currentSettings.fftSize || 128
-    // fftSize must be power of 2 between 32 and 32768
-    if (this.analyser.fftSize !== targetFftSize) {
-      try {
-        this.analyser.fftSize = targetFftSize
-      } catch {
-        // ignore invalid fft size
-      }
-    }
+    this.analyser.setFftSize(targetFftSize)
     this.analyser.smoothingTimeConstant = 0.82
   }
 
   private detachAnalyser(): void {
-    if (this.connectedSource && this.analyser) {
-      try {
-        this.connectedSource.disconnect(this.analyser)
-      } catch {
-        // ignore disconnect failure in test or mock environments
-      }
+    if (this.analyser) {
+      this.analyser.dispose()
+      this.analyser = null
     }
-    this.connectedSource = null
-    this.analyser = null
   }
 
   getFrequencyData(array: Uint8Array): void {
@@ -152,7 +170,7 @@ export class VisualizerPlugin extends Service implements VisualizerService {
       array.fill(0)
       return
     }
-    this.analyser.getByteFrequencyData(array as unknown as Uint8Array<ArrayBuffer>)
+    this.analyser.getByteFrequencyData(array)
     // Apply sensitivity multiplier if needed
     const mult = this.currentSettings.sensitivity ?? 1.0
     if (mult !== 1.0) {
@@ -167,7 +185,7 @@ export class VisualizerPlugin extends Service implements VisualizerService {
       array.fill(128)
       return
     }
-    this.analyser.getByteTimeDomainData(array as unknown as Uint8Array<ArrayBuffer>)
+    this.analyser.getByteTimeDomainData(array)
     const mult = this.currentSettings.sensitivity ?? 1.0
     if (mult !== 1.0) {
       for (let i = 0; i < array.length; i++) {

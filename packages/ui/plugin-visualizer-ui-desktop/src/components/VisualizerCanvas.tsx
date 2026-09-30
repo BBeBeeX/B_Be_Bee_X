@@ -17,6 +17,7 @@ import type { VisualizerColorTheme, VisualizerStyle } from '@BBeBee/protocol'
 import { useTransport } from '@BBeBee/plugin-player/hooks'
 import { useAudioData, useVisualizer } from '@BBeBee/plugin-visualizer/hooks'
 import { tokens } from '@BBeBee/ui-tokens'
+import { WebGlVisualizer } from './webgl-visualizer.js'
 
 export interface VisualizerCanvasProps {
   ctx: Context
@@ -108,17 +109,25 @@ export function VisualizerCanvas({
       }
     }
 
+    const webgl = activeStyle === 'bars' ? new WebGlVisualizer(canvas) : null
+
     // Animation render loop
     const render = () => {
-      const g = canvas.getContext('2d')
-      if (!g) return
-
       const w = canvas.width
       const h = canvas.height
-      g.clearRect(0, 0, w, h)
 
       const freq = frequencyDataRef.current
       const wave = timeDomainDataRef.current
+
+      // GPU WebGL path for spectrum bars
+      if (webgl && webgl.isSupported) {
+        const rendered = webgl.render(freq, wave, activeStyle, activeTheme, w, h)
+        if (rendered) return
+      }
+
+      const g = canvas.getContext('2d')
+      if (!g) return
+      g.clearRect(0, 0, w, h)
 
       if (activeStyle === 'bars') {
         const binCount = freq ? freq.length : 32
@@ -268,6 +277,7 @@ export function VisualizerCanvas({
     return () => {
       observer?.disconnect()
       if (animId) cancelAnimationFrame(animId)
+      webgl?.dispose()
     }
   }, [isPlaying, activeStyle, activeTheme, height, frequencyDataRef, timeDomainDataRef])
 
@@ -290,6 +300,7 @@ export function VisualizerCanvas({
       position: 'relative',
     },
     children: h('canvas', {
+      key: activeStyle === 'bars' ? 'webgl-canvas' : '2d-canvas',
       ref: canvasRef,
       style: {
         width: '100%',

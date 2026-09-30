@@ -82,7 +82,7 @@ export interface VisualizerSettings {
   sensitivity: number
 }
 
-export type AudioOutputEngine = 'webaudio' | 'wasapi'
+export type AudioOutputEngine = 'webaudio' | 'mpv' | 'wasapi'
 
 export interface AppSettings {
   /** Visual appearance theme mode. */
