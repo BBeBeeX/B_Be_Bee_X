@@ -266,6 +266,11 @@ immediately and the pending batch is flushed by the plugin's disposer.
 A corrupt store is quarantined (renamed aside) and the app starts with an empty one: settings are
 recoverable, an unbootable app is not.
 
+To eliminate redundant startup reads, `StoreConfig` supports optional `initialData: Record<string, unknown>`.
+When the host composition root pre-reads `store.json` at boot (for example, to inspect persisted audio
+engine preferences before creating services), passing `initialData` seeds the document in memory and
+marks it loaded, completely skipping secondary disk I/O.
+
 ---
 
 ## 5. `ctx.db` — SQL
@@ -696,6 +701,9 @@ Rules the contract is built around, each of which a naive embedding gets wrong:
   `expose`d by name, which is what makes the host surface in
   [06 §8](../sources/runtime.md#8-trust-what-an-imported-source-can-and-cannot-do) an exhaustive
   list rather than a summary.
+- **Lazy WASM compilation.** In `core-js-quickjs-node`, `[Service.init]()` returns immediately;
+  the QuickJS WASM module is compiled and cached on demand on the first `createRealm()` call,
+  preventing WebAssembly compilation from adding 100~300ms to initial app startup.
 - **Values cross by cloning, never by reference.** Nothing inside the realm can retain a live
   object from the host, so it cannot walk the object graph to reach a service — the failure that
   makes same-realm "sandboxes" worthless.

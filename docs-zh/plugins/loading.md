@@ -39,6 +39,12 @@ export const bundled: PluginRegistry = {
 配置决定其中哪些真正被实例化、用什么设置。加载器在启动时按需执行 `load()` 进行动态加载，未启用的插件不会被加载或求值。生成的文件会被提交入库，因此干净的检出无需先跑
 codegen 即可构建。
 
+#### 并发加载与首帧后延时启动
+为最大化启动性能，同时保持 Cordis 依赖注入生命周期的完整性：
+- **并发 `loadPlugins`**：启用的插件通过 `Promise.all` 并发实例化，而非逐个串行执行。Cordis 原生依靠 `inject` 声明与 `PENDING` 机制解析依赖，天然支持乱序就绪。原先 1.3s 的插件串行段被压缩至“最慢单个插件”的加载耗时。核心服务 `bootstrap` 数组则维持串行有序不动。
+- **首帧后延后启动（Deferred Loading）**：对首屏绘制非必须的插件（如 `plugin-local-scanner`、`plugin-download`、`plugin-share`、`plugin-visualizer`、`plugin-sleep-timer`、`plugin-history`）从 `INITIAL_ENABLED` 中拆离。在 Shell 首帧渲染后，应用通过 `requestIdleCallback`（降级 `setTimeout`）在空闲期调用 `app.loadPlugin(id)` 逐一加载。当延后插件激活并在 `ctx.ui` 注册路由/视图时，触发 `ui/changed` 事件并平滑更新导航与界面，杜绝启动阻塞。
+
+
 ### 6.2 桌面端的附加设计 —— `plugin-loader-dynamic`
 
 > **已搁置，未构建。** 下述内容没有在任何外壳中注册。保留它是因为 ADR-1 的修订是一次范围

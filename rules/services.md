@@ -60,3 +60,12 @@ Declared in `packages/protocol/src/services/` and augmented onto `Context`:
   `plugin-log-file` writes rotating log files via `ctx.fs`.
 - Feature and UI plugins MUST log through `ctx.logger.info(...)`, `ctx.logger.warn(...)`, `ctx.logger.error(...)`.
 - `console.log` in Layer 4 and 5 is an ESLint build error.
+
+---
+
+## 5. Startup & Initialization Performance
+
+- **Preloaded Store data:** If the composition root pre-reads `store.json` at boot (e.g. to inspect audio output engine preferences before service instantiation), pass `StoreConfig.initialData` to seed the in-memory document, eliminating duplicate disk reads.
+- **Lazy WASM compilation in `core-js-quickjs-node`:** `[Service.init]()` returns immediately; WASM is compiled on first `createRealm()` invocation.
+- **Non-blocking background tasks:** Heavy I/O initialization such as initial cache sweep in `plugin-cache` must be deferred to background timers (e.g. 5s post-boot) rather than blocking `init()`.
+

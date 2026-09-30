@@ -381,12 +381,18 @@ sequenceDiagram
 
 Points worth internalising:
 
-- **Nobody sequences the plugin list.** `ctx.plugin()` is called for every enabled plugin in
-  whatever order the manifest yields. Cordis holds each fiber in `PENDING` until the services
-  named in its `inject` exist, then transitions it to `ACTIVE`. A dependency cycle simply means
-  neither plugin ever activates — which is a diagnosable state, not a crash.
+- **Nobody sequences the plugin list.** `loadPlugins()` instantiates all enabled plugins concurrently
+  via `Promise.all`. Cordis holds each fiber in `PENDING` until the services named in its `inject`
+  exist, then transitions it to `ACTIVE`. A dependency cycle simply means neither plugin ever
+  activates — which is a diagnosable state, not a crash.
 - **The shell waits on a service, not on a timer.** `apps/*` mounts its React tree inside
   `ctx.inject(['ui'], …)`, so the UI cannot render before the registry it reads from exists.
+- **Non-critical plugins are deferred.** Plugins not required for the initial screen (e.g. scanner,
+  download, share, visualizer, sleep-timer, history) are loaded after the first frame via `app.loadPlugin()`
+  during idle intervals (`requestIdleCallback`), preventing startup contention.
+- **Desktop startup parallelization & perception.** Electron's `createWindow()` runs before `createHost()`,
+  presenting a lightweight pure CSS splash screen immediately inside the window (`show: false` + `ready-to-show`),
+  completely eliminating blank black window flashes while main and renderer boot concurrently.
 - **The boot is re-entrant.** Because unloading a plugin disposes its fiber and everything it
   registered, a config change can tear down and rebuild an arbitrary subtree at runtime. This is
   the same mechanism dev-time hot reload uses.

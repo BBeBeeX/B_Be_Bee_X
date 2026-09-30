@@ -775,7 +775,8 @@ cover updates `last_access_at`, which is the LRU clock.
 Eviction is LRU **within a class**, each with its own quota, because the classes have very
 different value: evicting artwork costs a re-fetch and a visible flicker; evicting a stream costs
 the user a re-download. Defaults — artwork 512 MB desktop / 128 MB mobile, HTTP 64 MB, stream
-cache 1 GB / 256 MB — all configurable. A sweep runs on boot and hourly, and in the same pass
+cache 1 GB / 256 MB — all configurable. The initial sweep is deferred to a 5-second background task
+after boot (avoiding disk I/O contention during cold start) and runs hourly thereafter; in the same pass
 files no row names are deleted and `cache_entries` rows whose file is gone are pruned. A file the
 user downloaded is a `media_bindings` row instead (docs/07 §4.5) and is never evicted.
 

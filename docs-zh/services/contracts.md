@@ -236,6 +236,8 @@ export interface StoreService {
 损坏的 store 会被隔离（改名挪到一旁），应用以空 store 启动：设置是可以重建的，无法启动的
 应用不行。
 
+为了消除启动时的重复磁盘 I/O，`StoreConfig` 支持可选的 `initialData: Record<string, unknown>`。当宿主组合根在启动初预先读取了 `store.json`（例如在注册服务前预检持久化的音频输出引擎偏好设置）时，将该数据传入即可直接填充内存文档并标记已加载，彻底跳过二次读盘。
+
 ---
 
 ## 5. `ctx.db` —— SQL
@@ -632,6 +634,7 @@ export class JsMemoryError extends Error {}
   `expose`，这正是让
   [06 §8](../sources/runtime.md#8-信任导入的源能做什么不能做什么) 的宿主面
   成为一份穷尽清单而非摘要的原因。
+- **惰性 WASM 编译。** 在 `core-js-quickjs-node` 中，`[Service.init]()` 立即返回；QuickJS WASM 模块会在首次调用 `createRealm()` 时按需编译并缓存，防止 WebAssembly 编译在应用冷启动阶段增加 100~300ms 耗时。
 - **值靠克隆跨越，绝不靠引用。** realm 里的任何东西都无法保留来自宿主的活对象，因此它无法
   遍历对象图去够到某个服务 —— 这正是让同 realm "沙箱"一文不值的那个失败点。
 - **限制由引擎强制执行，而不是靠约定。** `while (true)` 会被中断，而不是被等待。这正是要

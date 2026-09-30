@@ -41,6 +41,21 @@ dynamically invokes `load()` on demand at startup, ensuring that unconfigured pl
 fetched nor evaluated. The generated file is committed so a clean checkout builds without running
 codegen first.
 
+#### Concurrent Loading & Deferred Startup
+To maximize startup performance without breaking Cordis DI lifecycle:
+- **Concurrent `loadPlugins`**: Enabled plugins are instantiated concurrently with `Promise.all`
+  rather than serialized one by one. Cordis resolves inter-plugin dependencies through `inject`
+  declarations and tracks `PENDING` states, which natively supports out-of-order resolution.
+  The serial plugin loading phase is compressed to the duration of the slowest single plugin.
+  The `bootstrap` core services array remains strictly sequential.
+- **Post-first-frame Deferred Loading**: Plugins non-essential to the initial UI frame (such as
+  `plugin-local-scanner`, `plugin-download`, `plugin-share`, `plugin-visualizer`, `plugin-sleep-timer`,
+  and `plugin-history`) are excluded from `INITIAL_ENABLED`. After the Shell mounts its first paint,
+  the app invokes `app.loadPlugin(id)` during `requestIdleCallback` (or `setTimeout` fallback).
+  As deferred plugins activate and register their views/routes onto `ctx.ui`, `ui/changed` fires and
+  dynamically populates navigation entries without blocking the initial screen.
+
+
 ### 6.2 Desktop additions — `plugin-loader-dynamic`
 
 > **Shelved, not built.** Nothing below is registered in either shell. It is kept because ADR-1's
