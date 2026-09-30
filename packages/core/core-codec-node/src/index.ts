@@ -67,12 +67,9 @@ export class CodecNode extends Service implements CodecService {
   }
 
   async readMetadata(uri: Uri): Promise<AudioMetadata> {
-    // Covers are *parsed* but not returned: `hasArtwork` is what the scanner
-    // branches on, and skipping covers would make it permanently false, so no
-    // file would ever have its artwork imported. The cover lives in the same
-    // head window as the rest of the tag, so this costs nothing extra.
+    const { size } = await this.ctx.fs.stat(uri)
     const parsed = await this.parse(uri, { duration: false, skipCovers: false })
-    return toAudioMetadata(parsed, uri)
+    return toAudioMetadata(parsed, uri, size)
   }
 
   async readArtwork(uri: Uri): Promise<Uint8Array | undefined> {
@@ -270,10 +267,30 @@ function mimeFor(uri: string): string | undefined {
 }
 
 /** `music-metadata`'s shape → the contract's. */
-export function toAudioMetadata(parsed: IAudioMetadata, uri: string): AudioMetadata {
+export function toAudioMetadata(
+  parsed: IAudioMetadata,
+  uri: string,
+  fileSize?: number,
+): AudioMetadata {
   const { common, format } = parsed
   const gain = common.replaygain_track_gain
   const albumGain = common.replaygain_album_gain
+
+  const durationSec =
+    format.duration ??
+    (format.numberOfSamples && format.sampleRate ? format.numberOfSamples / format.sampleRate : undefined)
+
+  let bitrateKbps: number | undefined
+  if (format.bitrate && format.bitrate >= 32000) {
+    bitrateKbps = Math.round(format.bitrate / 1000)
+  } else if (fileSize && durationSec && durationSec > 0) {
+    const computed = Math.round((fileSize * 8) / (durationSec * 1000))
+    if (computed >= 32) {
+      bitrateKbps = computed
+    }
+  } else if (format.bitrate && format.bitrate > 0) {
+    bitrateKbps = Math.round(format.bitrate / 1000)
+  }
 
   return {
     ...(common.title ? { title: common.title } : {}),
@@ -284,8 +301,8 @@ export function toAudioMetadata(parsed: IAudioMetadata, uri: string): AudioMetad
     ...(common.disk?.no ? { discNo: common.disk.no } : {}),
     ...(common.year ? { year: common.year } : {}),
     ...(common.genre?.length ? { genre: common.genre } : {}),
-    ...(format.duration ? { durationMs: Math.round(format.duration * 1000) } : {}),
-    ...(format.bitrate ? { bitrateKbps: Math.round(format.bitrate / 1000) } : {}),
+    ...(durationSec ? { durationMs: Math.round(durationSec * 1000) } : {}),
+    ...(bitrateKbps ? { bitrateKbps } : {}),
     ...(format.sampleRate ? { sampleRate: format.sampleRate } : {}),
     ...(format.numberOfChannels ? { channels: format.numberOfChannels } : {}),
     ...(format.bitsPerSample ? { bitDepth: format.bitsPerSample } : {}),

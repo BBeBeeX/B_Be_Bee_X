@@ -155,7 +155,7 @@ export class Player extends Service implements PlayerService {
   private sourceStalled?: Disposable
   /** Runs while `status === 'stalled'`; firing turns the stall into an error. */
   private stallTimer?: ReturnType<typeof setTimeout>
-  private prefetched?: { itemId: string; handle: AudioSourceHandle }
+  private prefetched?: { itemId: string; handle: AudioSourceHandle; streamHandle?: StreamHandle }
   private prefetchAbort?: AbortController
   private prefetching = false
   private crossfading = false
@@ -965,11 +965,11 @@ export class Player extends Service implements PlayerService {
     const ready = this.takePrefetched(entry.item.id)
     if (ready) {
       if (this.disposed || this.startToken !== token) {
-        ready.dispose()
+        ready.handle.dispose()
         return
       }
       this.ownCtx.logger.info('player: using prefetched source for %s', entry.item.trackUrn)
-      this.attach(ready, entry, opts)
+      this.attach(ready.handle, entry, opts, ready.streamHandle)
       return
     }
 
@@ -1244,7 +1244,7 @@ export class Player extends Service implements PlayerService {
         source.dispose()
         return
       }
-      this.prefetched = { itemId: next.item.id, handle: source }
+      this.prefetched = { itemId: next.item.id, handle: source, streamHandle: handle }
       this.ownCtx.logger.debug('player: prefetched %s', next.item.trackUrn)
     } catch {
       // A prefetch that fails is not an error the user should see: the track
@@ -1273,8 +1273,8 @@ export class Player extends Service implements PlayerService {
     // Equal-power in spirit: the outgoing node fades out while the incoming
     // one fades in over the same window, so the sum stays roughly constant.
     ramp(outgoing?.node, 1, 0, seconds, this.ownCtx.audio.context.currentTime)
-    incoming.node.connect(this.ownCtx.audio.chainInput)
-    ramp(incoming.node, 0, 1, seconds, this.ownCtx.audio.context.currentTime)
+    incoming.handle.node.connect(this.ownCtx.audio.chainInput)
+    ramp(incoming.handle.node, 0, 1, seconds, this.ownCtx.audio.context.currentTime)
 
     await this.finishPlay({ completed: true, skipped: false })
 
@@ -1304,7 +1304,7 @@ export class Player extends Service implements PlayerService {
     })
     this.ownCtx.emit('player/track-changed', next.item.trackUrn, previousUrn)
 
-    this.attach(incoming, next, { autoplay: true })
+    this.attach(incoming.handle, next, { autoplay: true }, incoming.streamHandle)
     this.crossfading = false
   }
 
@@ -1324,12 +1324,14 @@ export class Player extends Service implements PlayerService {
     this.fading = undefined
   }
 
-  private takePrefetched(itemId: string): AudioSourceHandle | undefined {
+  private takePrefetched(
+    itemId: string,
+  ): { handle: AudioSourceHandle; streamHandle?: StreamHandle } | undefined {
     if (!this.prefetched) return undefined
     if (this.prefetched.itemId !== itemId) return undefined
-    const { handle } = this.prefetched
+    const ready = this.prefetched
     this.prefetched = undefined
-    return handle
+    return { handle: ready.handle, streamHandle: ready.streamHandle }
   }
 
   private cancelPrefetch(): void {

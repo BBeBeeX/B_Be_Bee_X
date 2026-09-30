@@ -290,6 +290,7 @@ describe('TrackInfoModal', () => {
     expect(getByText('D:/Music/MySong.flac')).toBeTruthy()
     expect(getByText('23.84 MB')).toBeTruthy()
     expect(getByText('FLAC')).toBeTruthy()
+    expect(getByText('1,000 kbps')).toBeTruthy()
   })
 
   it('calculates third-party bitrate dynamically and renders WASAPI output specs', async () => {
@@ -318,6 +319,39 @@ describe('TrackInfoModal', () => {
     expect(getByText('96,000 Hz')).toBeTruthy()
     expect(getByText('24-bit PCM (点对点硬件直推)')).toBeTruthy()
     expect(getByText('4,608 kbps (未压缩 PCM 带宽)')).toBeTruthy()
+  })
+
+  it('corrects abnormal truncated bitrate (< 32 kbps) using physical file calculation', async () => {
+    const ctx = new Context()
+    const db = new DbStub(ctx)
+    db.data['binding'] = {
+      uri: 'file:///Music/HiRes.flac',
+      format: 'flac',
+      bitrate_kbps: 8, // Abnormal artifact from 256KB truncated buffer
+      size_bytes: 40000000,
+    }
+    const codec = new CodecStub(ctx)
+    codec.meta = {
+      codec: 'FLAC',
+      bitrateKbps: 8, // Abnormal artifact
+      sampleRate: 96000,
+      channels: 2,
+    }
+    new PlayerStub(ctx)
+
+    const track: Track = {
+      urn: 'BBeBee:local:track:hires-1',
+      title: 'HiRes Song',
+      artists: makeArtists('Artist'),
+      durationMs: 240000, // 4 minutes -> (40,000,000 * 8) / 240,000 = 1,333 kbps
+    }
+
+    const { findByText, getByText } = render(
+      h(TrackInfoModal, { ctx, track, open: true, onClose: () => {} }),
+    )
+
+    expect(await findByText('HiRes Song')).toBeTruthy()
+    expect(getByText('1,333 kbps')).toBeTruthy()
   })
 })
 

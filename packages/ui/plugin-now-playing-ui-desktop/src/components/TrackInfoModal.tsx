@@ -248,6 +248,30 @@ export function TrackInfoModal({
             else if (fmt.includes('wav')) tagType = 'RIFF INFO / ID3'
             else tagType = '内置音频标签'
           }
+
+          // Physical calculation fallback: if bitrate is missing or abnormal (< 32 kbps)
+          const currentKbps = bitrate ? parseInt(bitrate.replace(/[^0-9]/g, ''), 10) : 0
+          if ((!bitrate || currentKbps < 32) && durationMs > 0) {
+            const rawBytes = binding?.size_bytes ?? scanEntry?.size ?? stream?.byteLength
+            let bytesNum = rawBytes ? Number(rawBytes) : 0
+            if (!bytesNum && rawUri) {
+              const fs = serviceOf<FsService>(ctx, 'fs')
+              if (fs?.stat) {
+                try {
+                  const st = await fs.stat(rawUri)
+                  if (st?.size) bytesNum = Number(st.size)
+                } catch {
+                  // ignore
+                }
+              }
+            }
+            if (bytesNum > 0) {
+              const calcKbps = Math.round((bytesNum * 8) / durationMs)
+              if (calcKbps >= 32) {
+                bitrate = `${calcKbps.toLocaleString()} kbps`
+              }
+            }
+          }
         } else {
           // Third-party source
           if (stream) {
@@ -258,12 +282,12 @@ export function TrackInfoModal({
             if (stream.byteLength) fileSize = formatBytes(stream.byteLength)
 
             // Bitrate calculation
-            if (stream.bitrateKbps) {
+            if (stream.bitrateKbps && stream.bitrateKbps >= 32) {
               bitrate = `${stream.bitrateKbps} kbps`
             } else if (stream.byteLength && durationMs > 0) {
-              const calcKbps = Math.round((stream.byteLength * 8) / (durationMs / 1000))
-              if (calcKbps > 0 && calcKbps < 10000) {
-                bitrate = `${calcKbps} kbps`
+              const calcKbps = Math.round((stream.byteLength * 8) / durationMs)
+              if (calcKbps >= 32 && calcKbps < 100000) {
+                bitrate = `${calcKbps.toLocaleString()} kbps`
               }
             } else if (stream.quality) {
               const qualityMap: Record<string, string> = {
