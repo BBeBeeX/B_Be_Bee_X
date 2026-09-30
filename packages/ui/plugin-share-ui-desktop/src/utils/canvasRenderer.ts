@@ -36,6 +36,7 @@ export interface RenderLyricsCardOptions {
   themeColor: string
   backgroundMode: BackgroundMode
   renderArtwork?: string
+  cardOnly?: boolean
 }
 
 /** Helper to safely load an image URL with CORS and fallback */
@@ -635,27 +636,24 @@ export async function drawLyricsCard(
   canvas: HTMLCanvasElement,
   options: RenderLyricsCardOptions,
 ): Promise<void> {
-  const { lyrics, themeColor, backgroundMode } = options
-  const width = 540
-  const height = 960
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext("2d", { willReadFrequently: true })
-  if (!ctx) return
+  const { lyrics, themeColor, backgroundMode, cardOnly = false } = options
 
   const cardW = 440
   const miniCoverSize = 52
   const miniRadius = 10
   const maxMetaW = cardW - 44 - miniCoverSize - 14
 
+  const measureCtx = canvas.getContext("2d", { willReadFrequently: true })
+  if (!measureCtx) return
+
   // Wrap title & artist (up to 3 lines each)
-  ctx.font = "bold 19px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  const titleLines = wrapText(ctx, lyrics.title, maxMetaW, 3)
+  measureCtx.font = "bold 19px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const titleLines = wrapText(measureCtx, lyrics.title, maxMetaW, 3)
   const titleLineH = 25
   const titleTotalH = Math.max(1, titleLines.length) * titleLineH
 
-  ctx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-  const artistLines = wrapText(ctx, lyrics.artist, maxMetaW, 3)
+  measureCtx.font = "500 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  const artistLines = wrapText(measureCtx, lyrics.artist, maxMetaW, 3)
   const artistLineH = 21
   const artistTotalH = Math.max(1, artistLines.length) * artistLineH
 
@@ -663,11 +661,11 @@ export async function drawLyricsCard(
   const headerH = Math.max(miniCoverSize, headerTextH)
 
   // Measure lyric lines (wrap each line up to 3 lines)
-  ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+  measureCtx.font = "bold 22px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
   const lyricLineH = 34
   const lyricMaxW = cardW - 44
   const linesToRender = lyrics.lines.slice(0, 6)
-  const wrappedParagraphs = linesToRender.map((line) => wrapText(ctx, line, lyricMaxW, 3))
+  const wrappedParagraphs = linesToRender.map((line) => wrapText(measureCtx, line, lyricMaxW, 3))
   const totalLyricLineCount = wrappedParagraphs.reduce((acc, lines) => acc + lines.length, 0)
   const paragraphSpacing = 10
   const totalLyricsH = totalLyricLineCount * lyricLineH + Math.max(0, wrappedParagraphs.length - 1) * paragraphSpacing
@@ -684,23 +682,41 @@ export async function drawLyricsCard(
   // Calculate natural height for lyrics card: tight padding around logo
   const naturalCardH = 22 + headerH + gapHeaderLyrics + totalLyricsH + gapAboveLogo + logoH + gapBelowLogo
   const cardH = naturalCardH
-  const cardX = (width - cardW) / 2
-  const cardY = Math.round((height - cardH) / 2)
-  const cardRadius = 24
+
+  const width = cardOnly ? cardW : 540
+  const height = cardOnly ? cardH : 960
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })
+  if (!ctx) return
+
+  const cardX = cardOnly ? 0 : (width - cardW) / 2
+  const cardY = cardOnly ? 0 : Math.round((height - cardH) / 2)
+  const cardRadius = cardOnly ? 20 : 24
   const contentMidY = Math.round(cardY + cardH * 0.5)
 
-  // 1. Draw overall background
-  renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
+  if (!cardOnly) {
+    // 1. Draw overall background
+    renderBackground(ctx, width, height, themeColor, backgroundMode, contentMidY)
 
-  // 2. Draw Floating Card with bright cover theme color
-  ctx.save()
-  ctx.shadowColor = "rgba(0, 0, 0, 0.45)"
-  ctx.shadowBlur = 40
-  ctx.shadowOffsetY = 16
-  ctx.fillStyle = themeColor
-  drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardRadius)
-  ctx.fill()
-  ctx.restore()
+    // 2. Draw Floating Card with bright cover theme color
+    ctx.save()
+    ctx.shadowColor = "rgba(0, 0, 0, 0.45)"
+    ctx.shadowBlur = 40
+    ctx.shadowOffsetY = 16
+    ctx.fillStyle = themeColor
+    drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardRadius)
+    ctx.fill()
+    ctx.restore()
+  } else {
+    // 2. Draw Pure Card with bright cover theme color
+    ctx.save()
+    ctx.fillStyle = themeColor
+    drawRoundRect(ctx, 0, 0, cardW, cardH, cardRadius)
+    ctx.fill()
+    ctx.restore()
+  }
 
   // 3. Top Section: Mini cover + Title + Artist
   const miniX = cardX + 22

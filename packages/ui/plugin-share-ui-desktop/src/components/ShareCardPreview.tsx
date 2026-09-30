@@ -16,6 +16,7 @@ export interface ShareCardPreviewProps {
   backgroundMode: BackgroundMode
   lyrics?: string[]
   type?: 'track' | 'playlist' | 'album' | 'lyrics'
+  cardOnly?: boolean
 }
 
 export function normalizeArtworkUrl(src?: string): string | undefined {
@@ -34,6 +35,7 @@ export function ShareCardPreview({
   backgroundMode,
   lyrics,
   type = 'track',
+  cardOnly = false,
 }: ShareCardPreviewProps): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isLyricsMode = Boolean((lyrics && lyrics.length > 0) || type === 'lyrics')
@@ -58,6 +60,7 @@ export function ShareCardPreview({
             },
             themeColor,
             backgroundMode,
+            cardOnly,
           })
         } else if (type === 'playlist') {
           await drawPlaylistCard(canvas!, {
@@ -105,36 +108,40 @@ export function ShareCardPreview({
     return () => {
       active = false
     }
-  }, [title, subtitle, displayArtwork, themeColor, backgroundMode, lyrics, isLyricsMode, type])
+  }, [title, subtitle, displayArtwork, themeColor, backgroundMode, lyrics, isLyricsMode, type, cardOnly])
 
   return h(
     'div',
     {
       style: {
         width: 252,
-        height: 448,
-        borderRadius: 20,
+        height: cardOnly ? 'auto' : 448,
+        maxHeight: 448,
+        borderRadius: cardOnly ? 14 : 20,
         background: 'transparent',
         position: 'relative',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden',
-        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 0, 0, 0.4)',
+        boxShadow: cardOnly
+          ? '0 12px 28px rgba(0, 0, 0, 0.5)'
+          : '0 20px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 0, 0, 0.4)',
         boxSizing: 'border-box',
         userSelect: 'none',
       },
     },
-    // The live Canvas, rendered at 540x960 and displayed at 252x448 with 2x Retina sharpness
+    // The live Canvas, rendered at 540x960 (or 440xH) and displayed sharply
     h('canvas', {
       ref: canvasRef,
       width: 540,
       height: 960,
       style: {
         width: 252,
-        height: 448,
+        height: cardOnly ? 'auto' : 448,
+        maxHeight: 448,
         display: 'block',
-        borderRadius: 20,
+        borderRadius: cardOnly ? 14 : 20,
       },
     }),
     // Accessible text for screen readers and unit tests

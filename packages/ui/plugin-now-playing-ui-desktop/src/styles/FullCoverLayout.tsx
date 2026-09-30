@@ -124,7 +124,7 @@ export function FullCoverLayout(props: NowPlayingLayoutProps): ReactElement {
           { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: tokens.space[1], textAlign: 'center' } },
           h(Text, {
             variant: 'xl',
-            numberOfLines: 1,
+            numberOfLines: 2,
             children: state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'Nothing playing'),
           }),
           state.nowPlaying?.artist

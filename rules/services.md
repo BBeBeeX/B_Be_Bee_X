@@ -69,3 +69,11 @@ Declared in `packages/protocol/src/services/` and augmented onto `Context`:
 - **Lazy WASM compilation in `core-js-quickjs-node`:** `[Service.init]()` returns immediately; WASM is compiled on first `createRealm()` invocation.
 - **Non-blocking background tasks:** Heavy I/O initialization such as initial cache sweep in `plugin-cache` must be deferred to background timers (e.g. 5s post-boot) rather than blocking `init()`.
 
+---
+
+## 6. Live Audio Stream & Metadata Introspection
+
+- **`ctx.codec.readMetadata(uri)` returns `tagTypes`:** Tag readers populate `AudioMetadata.tagTypes` (e.g. `['ID3v2.3']`, `['Vorbis']`, `['APEv2']`), allowing the UI to present authentic tag formats to the user without redundant parsing.
+- **`ctx.player.currentStream`:** The player service exposes the active stream handle (`StreamHandle`) for the currently attached source (carrying format, codec, sample rate, channels, bitrate, and byte length). This allows UI components like `TrackInfoModal` to display technical specifications for third-party network streams that lack local filesystem bindings.
+
+

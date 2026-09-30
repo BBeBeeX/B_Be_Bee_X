@@ -299,6 +299,7 @@ export function toAudioMetadata(parsed: IAudioMetadata, uri: string): AudioMetad
       ? { musicbrainzTrackId: common.musicbrainz_recordingid }
       : {}),
     ...(common.lyrics?.[0]?.text ? { lyrics: common.lyrics[0].text } : {}),
+    ...(format.tagTypes?.length ? { tagTypes: format.tagTypes } : {}),
     hasArtwork: (common.picture?.length ?? 0) > 0,
   }
 }

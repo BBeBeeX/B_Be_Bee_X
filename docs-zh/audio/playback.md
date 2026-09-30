@@ -33,6 +33,7 @@ export interface TransportState {
 
 export interface PlayerService {
   readonly state: Readonly<TransportState>
+  readonly currentStream?: Readonly<StreamHandle>
 
   play(): Promise<void>
   pause(): void

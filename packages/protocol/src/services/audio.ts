@@ -22,6 +22,7 @@ import type {
   RepeatMode,
   TransportState,
 } from '../entities/playback.js'
+import type { StreamHandle } from '../entities/media.js'
 
 /* ── ctx.audio ──────────────────────────────────────────────────────────── */
 
@@ -128,6 +129,7 @@ export interface PlayNowOptions {
 
 export interface PlayerService {
   readonly state: Readonly<TransportState>
+  readonly currentStream?: Readonly<StreamHandle>
 
   play(): Promise<void>
   pause(): void

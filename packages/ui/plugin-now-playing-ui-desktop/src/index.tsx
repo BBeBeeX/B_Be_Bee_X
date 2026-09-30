@@ -38,6 +38,10 @@ export {
   StyleSwitcher,
   type StyleSwitcherProps,
 } from './components/StyleSwitcher.js'
+export {
+  TrackInfoModal,
+  type TrackInfoModalProps,
+} from './components/TrackInfoModal.js'
 export { type NowPlayingLayoutProps, NOW_PLAYING_LAYOUT_MAP } from './styles/index.js'
 
 /* ── the plugin entry ──────────────────────────────────────────────────── */

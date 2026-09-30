@@ -1,4 +1,5 @@
-import { createElement as h, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, createElement as h, useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
 import type { LibraryService, PlayMode, SourcesService, Track } from '@BBeBee/protocol'
@@ -296,35 +297,125 @@ export function VolumeControl({
   ctx,
   volume,
   muted,
+  portal = false,
 }: {
   ctx: Context
   volume: number
   muted: boolean
+  portal?: boolean
 }): ReactElement {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const [coords, setCoords] = useState<{ left: number; bottom: number } | null>(null)
+
+  const updateCoords = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect()
+      setCoords({
+        left: Math.round(rect.left + rect.width / 2),
+        bottom: Math.round(window.innerHeight - rect.top + 8),
+      })
+    }
+  }, [])
 
   useEffect(() => {
     if (!open) return
+    if (portal) {
+      updateCoords()
+    }
     const onDown = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
+      const target = e.target as Node
+      if (
+        (containerRef.current && containerRef.current.contains(target)) ||
+        (popoverRef.current && popoverRef.current.contains(target))
+      ) {
+        return
       }
+      setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
+    const onResize = () => {
+      if (portal) updateCoords()
+    }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', onResize)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', onResize)
     }
-  }, [open])
+  }, [open, portal, updateCoords])
 
   const percent = Math.round(volume * 100)
 
-  return h(
+  const popover = open
+    ? h(
+        'div',
+        {
+          ref: popoverRef,
+          role: 'dialog',
+          'aria-label': 'Volume control popover',
+          style: {
+            position: portal && coords ? 'fixed' : 'absolute',
+            ...(portal && coords
+              ? { left: coords.left, bottom: coords.bottom, transform: 'translateX(-50%)' }
+              : { bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 10 }),
+            width: 44,
+            padding: '10px 4px 8px',
+            borderRadius: 10,
+            backgroundColor: 'var(--surface-2, #111522)',
+            border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.14))',
+            boxShadow: 'var(--shadow-dropdown, 0 8px 24px rgba(0, 0, 0, 0.65))',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 8,
+            zIndex: 1000,
+          },
+        },
+        h(
+          'span',
+          { style: { fontSize: 11, color: '#A0A0AE', userSelect: 'none', minHeight: 14 } },
+          `${percent}%`,
+        ),
+        h(VerticalSlider, {
+          value: percent,
+          onChange: (val) => {
+            if (muted) ctx.player.setMuted(false)
+            ctx.player.setVolume(val / 100)
+          },
+        }),
+        h(
+          'button',
+          {
+            type: 'button',
+            'aria-label': muted ? '恢复声音' : '静音',
+            title: muted ? '恢复声音' : '静音',
+            onClick: () => ctx.player.setMuted(!muted),
+            style: {
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 28,
+              height: 28,
+              borderRadius: tokens.radius.pill,
+              border: 'none',
+              background: muted ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
+              color: muted ? '#F87171' : 'rgba(255, 255, 255, 0.7)',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            },
+          },
+          renderVolumeIcon(volume, muted, 16),
+        ),
+      )
+    : null
+
+  const trigger = h(
     'div',
     {
       ref: containerRef,
@@ -362,69 +453,14 @@ export function VolumeControl({
       },
       renderVolumeIcon(volume, muted),
     ),
-    open
-      ? h(
-          'div',
-          {
-            role: 'dialog',
-            'aria-label': 'Volume control popover',
-            style: {
-              position: 'absolute',
-              bottom: '100%',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              marginBottom: 10,
-              width: 44,
-              padding: '10px 4px 8px',
-              borderRadius: 10,
-              backgroundColor: 'var(--surface-2, #111522)',
-              border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.14))',
-              boxShadow: 'var(--shadow-dropdown, 0 8px 24px rgba(0, 0, 0, 0.65))',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 8,
-              zIndex: 100,
-            },
-          },
-          h(
-            'span',
-            { style: { fontSize: 11, color: '#A0A0AE', userSelect: 'none', minHeight: 14 } },
-            `${percent}%`,
-          ),
-          h(VerticalSlider, {
-            value: percent,
-            onChange: (val) => {
-              if (muted) ctx.player.setMuted(false)
-              ctx.player.setVolume(val / 100)
-            },
-          }),
-          h(
-            'button',
-            {
-              type: 'button',
-              'aria-label': muted ? '恢复声音' : '静音',
-              title: muted ? '恢复声音' : '静音',
-              onClick: () => ctx.player.setMuted(!muted),
-              style: {
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 28,
-                height: 28,
-                borderRadius: tokens.radius.pill,
-                border: 'none',
-                background: muted ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
-                color: muted ? '#F87171' : 'rgba(255, 255, 255, 0.7)',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              },
-            },
-            renderVolumeIcon(volume, muted, 16),
-          ),
-        )
-      : null,
+    !portal ? popover : null,
   )
+
+  if (portal && typeof document !== 'undefined' && popover) {
+    return h(Fragment, null, trigger, createPortal(popover, document.body))
+  }
+
+  return trigger
 }
 
 export interface NowPlayingBarProps {
@@ -717,7 +753,7 @@ export function NowPlayingBar({ ctx, currentRoute, onOpenNowPlaying, portalMenus
           disabled: !can.canNext,
           onPress: () => void ctx.player.next(),
         }),
-        h(VolumeControl, { ctx, volume: state.volume, muted: state.muted }),
+        h(VolumeControl, { ctx, volume: state.volume, muted: state.muted, portal: portalMenus }),
       ),
       h(
         'div',

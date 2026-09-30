@@ -117,6 +117,7 @@ export interface AudioMetadata {
   isrc?: string
   musicbrainzTrackId?: string
   lyrics?: string
+  tagTypes?: string[]
   hasArtwork: boolean
 }
 

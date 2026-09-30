@@ -31,6 +31,7 @@ export function ShareLyricsModal({
   onClose,
 }: ShareLyricsModalProps): ReactElement | null {
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('cover')
+  const [imageScope, setImageScope] = useState<'full' | 'card'>('full')
   const [selectedIndices, setSelectedIndices] = useState<number[]>(() => {
     return lyrics.lines.slice(0, 4).map((_, i) => i)
   })
@@ -103,20 +104,24 @@ export function ShareLyricsModal({
         artwork: httpArtwork ?? lyrics.artwork,
         lines: activeLines,
       }
+      const isCardOnly = imageScope === 'card'
       const canvas = await generateLyricsCardCanvas({
         lyrics: lyricsData,
         renderArtwork: resolvedArtwork,
         themeColor,
         backgroundMode,
+        cardOnly: isCardOnly,
       })
-      const filename = `${lyrics.artist} - ${lyrics.title} (歌词分享).png`
+      const filename = isCardOnly
+        ? `${lyrics.artist} - ${lyrics.title} (歌词卡片).png`
+        : `${lyrics.artist} - ${lyrics.title} (歌词分享).png`
       downloadCanvasAsPng(canvas, filename)
     } catch (err) {
       ctx.logger?.error(`Failed to download lyrics share image: ${String(err)}`)
     } finally {
       setDownloading(false)
     }
-  }, [ctx, lyrics, httpArtwork, resolvedArtwork, activeLines, themeColor, backgroundMode])
+  }, [ctx, lyrics, httpArtwork, resolvedArtwork, activeLines, themeColor, backgroundMode, imageScope])
 
   if (!open) return null
 
@@ -144,6 +149,7 @@ export function ShareLyricsModal({
         backgroundMode,
         lyrics: activeLines,
         type: 'lyrics',
+        cardOnly: imageScope === 'card',
       }),
       // Line selection chips if more than 1 line exists
       lyrics.lines.length > 1
@@ -222,11 +228,69 @@ export function ShareLyricsModal({
             ),
           )
         : null,
-      h(BackgroundModeSelector, {
-        mode: backgroundMode,
-        onChange: setBackgroundMode,
-        compact: true,
-      }),
+      h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            width: '100%',
+            background: 'rgba(255, 255, 255, 0.05)',
+            padding: 3,
+            borderRadius: 8,
+            boxSizing: 'border-box',
+          },
+        },
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: () => setImageScope('full'),
+            style: {
+              flex: 1,
+              padding: '6px 8px',
+              borderRadius: 6,
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 500,
+              background: imageScope === 'full' ? 'var(--color-primary, #5F87FF)' : 'transparent',
+              color: imageScope === 'full' ? '#FFFFFF' : 'var(--text-secondary, #8B95B0)',
+              transition: 'all 0.15s ease',
+            },
+          },
+          '整张海报 (大图)',
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: () => setImageScope('card'),
+            style: {
+              flex: 1,
+              padding: '6px 8px',
+              borderRadius: 6,
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 500,
+              background: imageScope === 'card' ? 'var(--color-primary, #5F87FF)' : 'transparent',
+              color: imageScope === 'card' ? '#FFFFFF' : 'var(--text-secondary, #8B95B0)',
+              transition: 'all 0.15s ease',
+            },
+          },
+          '仅内部卡片 (小图)',
+        ),
+      ),
+      imageScope === 'full'
+        ? h(BackgroundModeSelector, {
+            mode: backgroundMode,
+            onChange: setBackgroundMode,
+            compact: true,
+          })
+        : null,
       h(DisabledReasonToast, { message: disabledReason }),
       h(ShareActionButtons, {
         canCopy,

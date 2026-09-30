@@ -398,6 +398,22 @@ External developers can create custom HTML/CSS/JS player skins and users can dyn
   - Supports direct JSON manifest paste or local `.json` file upload.
   - Validates required fields (`id`, `name`, `htmlContent`) and prevents collisions with built-in style IDs.
 
+### 9.4 Track Playback Info Modal & Metadata Inspection (`TrackInfoModal`)
+- **Right-Click Context Menu ("查看播放内容")**:
+  - The now-playing surface hooks `useTrackMenu(ctx, { onShowTrackInfo })` providing a `track-info` item with icon `info-circle`.
+  - Opens `TrackInfoModal` (`Sheet`) aggregating technical specifications and storage origin:
+    - **Local Tracks**: Title, artist, album, storage category (`本地音乐文件`), filename, absolute filesystem path (with 1-click clipboard copy + feedback), formatted file size, and last modified timestamp.
+    - **Third-Party Tracks**: `sourceId` (e.g. `bilibili`), `sourceTrackId` (parsed from track URN).
+    - **Audio Technical Specs**: Track duration, sample rate (e.g. `44,100 Hz`), channels (e.g. `2 (立体声 Stereo)`), bitrate (e.g. `920 kbps`), codec (e.g. `FLAC`, `M4A`), tag types (e.g. `Vorbis, ID3v2.3`, `ID3v2` or `在线流媒体`).
+  - Read sources: `ctx.db` (`media_bindings`, `scan_entries`), `ctx.codec.readMetadata`, and live `ctx.player.currentStream`.
+
+### 9.5 Adaptive Title Wrapping & Chrome Clipping Preventions
+- **Two-Line Title Wrapping**:
+  - Across all built-in layouts (`ClassicLayout`, `FullCoverLayout`, `VinylLayout`, `CinematicLayout`), track titles wrap adaptively up to 2 lines (`numberOfLines: 2` or `-webkit-line-clamp: 2`). Longer titles truncate with ellipsis at the end of line 2, preventing horizontal overflow or collision with playback controls.
+- **Volume Popover Portal Pattern**:
+  - `VolumeControl` in `NowPlayingBar` supports `portal: true`. When active, it computes the trigger button's screen coordinates via `getBoundingClientRect()` and mounts the vertical slider via React `createPortal` to `document.body` at `zIndex: 1000`.
+  - Prevents the volume popover from being clipped by bottom bar parent containers with `overflow: hidden` or full-screen now playing pane transitions.
+
 ---
 
 ## 10. Share UI & Card Rendering Engine (`plugin-share-ui-desktop`)
@@ -434,5 +450,13 @@ Share dialogs (`ShareTrackModal`, `SharePlaylistModal`, `ShareAlbumModal`, `Shar
 - `DisabledReasonToast`: Informative amber toast (`data-testid="copy-disabled-reason-toast"`) explaining why a disabled action cannot proceed when clicked.
 - `ShareActionButtons`: Encapsulates "复制" (Base64) and "保存图片" (PNG with LSB steganography), handling copying states, generation spinners, and disabled states.
 - `useShareModalState`: Unified hook encapsulating theme color extraction (`useImageColor`), artwork resolution (`useResolvedArtwork`), local source checks (`isLocalSource`), clipboard copy fallbacks, and toast timers.
+
+### 10.4 Lyrics Share Card Dimensions (Full Poster vs Inner Card Only)
+- **Scope Toggle**:
+  - `ShareLyricsModal` provides a segmented scope selector: **整张海报 (大图)** (`full`) vs **仅内部卡片 (小图)** (`card`).
+  - Controlled by `RenderLyricsCardOptions.cardOnly`.
+  - **Full Poster (`cardOnly = false`)**: 540x960 outer poster layout, embedding the themed floating card with background patterns, subtle paper noise, and drop shadows. Export filename suffix: `(歌词分享).png`.
+  - **Card Only (`cardOnly = true`)**: Directly dimensions the canvas to the inner card's natural dimensions (`440 x naturalCardH`) with border radius 20px, rendering cleanly without surrounding poster borders or shadows. Export filename suffix: `(歌词卡片).png`.
+
 
 

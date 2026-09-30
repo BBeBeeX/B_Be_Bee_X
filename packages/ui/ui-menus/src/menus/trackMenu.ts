@@ -53,6 +53,10 @@ export interface TrackMenuOptions {
    * The model never fetches lyrics itself.
    */
   lyrics?: { lines: readonly string[] }
+  /**
+   * Called to display technical playback metadata & file/source details.
+   */
+  onShowTrackInfo?: (track: Track) => void
 }
 
 /**
@@ -191,6 +195,15 @@ export function trackMenuItems(
       label: '转至专辑',
       icon: 'disc',
       onSelect: () => ui.navigate(ALBUM_VIEWS.album, { urn: albumUrn }),
+    })
+  }
+
+  if (opts.onShowTrackInfo) {
+    items.push({
+      id: 'track-info',
+      label: '查看播放内容',
+      icon: 'info-circle',
+      onSelect: () => opts.onShowTrackInfo!(track),
     })
   }
 

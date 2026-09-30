@@ -51,7 +51,7 @@ export function ClassicLayout(props: NowPlayingLayoutProps): ReactElement {
       },
       h(Text, {
         variant: 'xl',
-        numberOfLines: 1,
+        numberOfLines: 2,
         children: state.nowPlaying?.title ?? (state.trackUrn ? 'Loading…' : 'Nothing playing'),
       }),
       state.nowPlaying?.artist

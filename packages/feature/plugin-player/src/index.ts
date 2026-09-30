@@ -150,6 +150,7 @@ export class Player extends Service implements PlayerService {
   }
 
   private source?: AudioSourceHandle
+  private currentHandle?: StreamHandle
   private sourceEnded?: Disposable
   private sourceStalled?: Disposable
   /** Runs while `status === 'stalled'`; firing turns the stall into an error. */
@@ -438,6 +439,10 @@ export class Player extends Service implements PlayerService {
 
   get state(): Readonly<TransportState> {
     return this.transport
+  }
+
+  get currentStream(): Readonly<StreamHandle> | undefined {
+    return this.currentHandle
   }
 
   get queue(): readonly QueueItem[] {
@@ -994,7 +999,7 @@ export class Player extends Service implements PlayerService {
       // catalogue duration (when it has one at all) is not a position the
       // scrubber could ever reach, and offering one would be a lie.
       this.fallbackDurationMs = handle.seekable ? known : 0
-      this.attach(source, entry, opts)
+      this.attach(source, entry, opts, handle)
     } catch (error) {
       if (this.disposed || this.startToken !== token) return
       await this.handleError(error, entry, token)
@@ -1005,10 +1010,12 @@ export class Player extends Service implements PlayerService {
     source: AudioSourceHandle,
     entry: QueueEntry,
     opts: { positionMs?: number; autoplay: boolean },
+    handle?: StreamHandle,
   ): void {
     if (this.source && this.source !== source) {
       this.detachSource()
     }
+    this.currentHandle = handle
     this.ownCtx.logger.info(
       'player: attached source for %s (durationMs: %d, willPlay: %s)',
       entry.item.trackUrn,
@@ -1663,6 +1670,7 @@ export class Player extends Service implements PlayerService {
     this.sourceStalled = undefined
     this.source?.dispose()
     this.source = undefined
+    this.currentHandle = undefined
     this.fallbackDurationMs = 0
   }
 }

@@ -320,6 +320,25 @@ describe('trackMenuItems', () => {
     await press(items, 'share-lyrics')
     expect(h.share.calls).toContain(`shareLyrics:${URN}:2`)
   })
+
+  it('offers track-info when onShowTrackInfo is provided and triggers callback on press', async () => {
+    const h = await harness()
+    let shownTrack: any = null
+    const items = trackMenuItems(
+      h.ctx,
+      { track },
+      {
+        onShowTrackInfo: (t) => {
+          shownTrack = t
+        },
+      },
+    )
+    const infoItem = items.find((i) => i.id === 'track-info')
+    expect(infoItem).toBeTruthy()
+    expect(infoItem?.label).toBe('查看播放内容')
+    await press(items, 'track-info')
+    expect(shownTrack).toBe(track)
+  })
 })
 
 describe('useSaveToPlaylistMenu', () => {

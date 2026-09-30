@@ -718,7 +718,7 @@ export function Shell({ ctx }: { ctx: Context }) {
                 left: 0,
                 right: 0,
                 zIndex: 200,
-                overflow: 'hidden',
+                overflow: isBottomBarHovered ? 'visible' : 'hidden',
               },
               onMouseEnter: () => setIsBottomBarHovered(true),
               onMouseLeave: () => setIsBottomBarHovered(false),

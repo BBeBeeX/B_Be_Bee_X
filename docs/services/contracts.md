@@ -526,6 +526,7 @@ export interface AudioMetadata {
   isrc?: string; musicbrainzTrackId?: string
   lyrics?: string
   hasArtwork: boolean
+  tagTypes?: string[]
 }
 
 export interface CodecService {

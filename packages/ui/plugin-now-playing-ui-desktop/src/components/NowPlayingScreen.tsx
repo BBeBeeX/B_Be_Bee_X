@@ -24,11 +24,12 @@ import { ContextMenu } from '@BBeBee/ui-kit-desktop'
 import { useServiceState, serviceOf, shallowArrayEqual } from '@BBeBee/ui-core'
 import { useTrackMenu } from '@BBeBee/ui-menus'
 import { palettes, tokens } from '@BBeBee/ui-tokens'
-import type { LyricsService, LyricsState, NowPlayingService, UiService } from '@BBeBee/protocol'
+import type { LyricsService, LyricsState, NowPlayingService, Track, UiService } from '@BBeBee/protocol'
 import { NOW_PLAYING_STYLES } from '@BBeBee/protocol'
 import { useNowPlayingStyle } from '@BBeBee/plugin-now-playing/hooks'
 import { useCurrentTrack } from '../hooks.js'
 import { NOW_PLAYING_LAYOUT_MAP, SandboxedLayout } from '../styles/index.js'
+import { TrackInfoModal } from './TrackInfoModal.js'
 
 const p = () => palettes.dark
 
@@ -46,6 +47,7 @@ export function NowPlayingScreen({
 }: NowPlayingScreenProps): ReactElement {
   const [seekingPosition, setSeekingPosition] = useState<number | undefined>(undefined)
   const [isTopHovered, setIsTopHovered] = useState(false)
+  const [infoTrack, setInfoTrack] = useState<Track | null>(null)
   const state = useTransport(ctx)
   const position = usePosition(ctx)
   const duration = useDuration(ctx)
@@ -79,7 +81,10 @@ export function NowPlayingScreen({
     return lines.length > 0 ? { lines } : undefined
   }, [lyricsState?.lyrics?.content, lyricsState?.trackUrn, lyricsState?.offsetMs, state.trackUrn])
 
-  const menu = useTrackMenu(ctx, { lyrics: shareableLyrics })
+  const menu = useTrackMenu(ctx, {
+    lyrics: shareableLyrics,
+    onShowTrackInfo: (t: Track) => setInfoTrack(t),
+  })
 
   const handleContextMenu = currentTrack
     ? (e: React.MouseEvent) => {
@@ -223,5 +228,11 @@ export function NowPlayingScreen({
           VisualizerComponent,
         }),
     h(ContextMenu, menu.menuProps),
+    h(TrackInfoModal, {
+      ctx,
+      track: infoTrack,
+      open: infoTrack !== null,
+      onClose: () => setInfoTrack(null),
+    }),
   )
 }

@@ -699,4 +699,25 @@ describe('NowPlayingScreen', () => {
     fireEvent.click(getByText('分享歌词'))
     expect(share.calls).toContain('shareLyrics:BBeBee:local:track:1:第一句歌词|第二句歌词')
   })
+
+  it('opens track info modal when clicking 查看播放内容 from context menu', async () => {
+    const { ctx } = await harness({
+      status: 'playing',
+      trackUrn: 'BBeBee:local:track:1',
+      nowPlaying: { title: 'Hotel California', artist: 'Eagles', album: 'Hotel California' },
+    })
+
+    const { container, findByText, getByText, findByRole } = render(h(NowPlayingScreen, { ctx }))
+    fireEvent.contextMenu(container.querySelector('[aria-label="Now playing"]') as HTMLElement)
+
+    expect(await findByText('查看播放内容')).toBeTruthy()
+    fireEvent.click(getByText('查看播放内容'))
+
+    const dialog = await findByRole('dialog')
+    expect(dialog).toBeTruthy()
+    expect(dialog.textContent).toContain('播放内容详情')
+    expect(dialog.textContent).toContain('Hotel California')
+    expect(dialog.textContent).toContain('Eagles')
+  })
 })
+
