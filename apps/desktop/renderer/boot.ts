@@ -189,7 +189,6 @@ export interface DesktopAudioConfig {
     opts: { headers?: Record<string, string>; signal?: AbortSignal },
   ) => Promise<ArrayBuffer>
   bridgeCall?: (service: string, method: string, args: unknown[]) => Promise<unknown>
-  enableExclusive?: boolean
 }
 
 export class DesktopAudioService extends Service implements AudioService {
@@ -360,7 +359,6 @@ export class DesktopAudioService extends Service implements AudioService {
         const wasapiConfig: AudioWasapiConfig = {
           fetchBytes: this.config.fetchBytes,
           bridgeCall: this.config.bridgeCall,
-          enableExclusive: this.config.enableExclusive,
         }
         fiber = await scoped.plugin(AudioWasapi, wasapiConfig)
       } else {
@@ -592,15 +590,14 @@ export async function boot(): Promise<App> {
       }],
       /*
        * `ctx.audio`. Desktop switchable audio service:
-       * Supports hot-switching between WASAPI Exclusive (bit-perfect Hi-Res)
-       * and WebAudio (system shared mixer) driven by settings.
+       * Supports hot-switching between the two Web Audio engines driven by
+       * settings. Output is shared mode; the engines differ in decoding.
        */
       [
         DesktopAudioService,
         {
           initialEngine,
           bridgeCall: window.BBeBeeBridge?.call,
-          enableExclusive: hostPlatform() === 'windows',
           fetchBytes: createAudioFetchBytes(transport),
         },
       ],

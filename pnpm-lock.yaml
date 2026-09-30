@@ -42,9 +42,6 @@ importers:
       '@BBeBee/core-audio-wasapi':
         specifier: workspace:*
         version: link:../../packages/core/core-audio-wasapi
-      '@BBeBee/core-audio-wasapi-native':
-        specifier: workspace:*
-        version: link:../../packages/core/core-audio-wasapi-native
       '@BBeBee/core-audio-webaudio':
         specifier: workspace:*
         version: link:../../packages/core/core-audio-webaudio
@@ -467,16 +464,6 @@ importers:
       cordis:
         specifier: 4.0.0-rc.9
         version: 4.0.0-rc.9
-
-  packages/core/core-audio-wasapi-native:
-    dependencies:
-      '@BBeBee/protocol':
-        specifier: workspace:*
-        version: link:../../protocol
-    devDependencies:
-      '@BBeBee/kernel':
-        specifier: workspace:*
-        version: link:../../kernel
 
   packages/core/core-audio-webaudio:
     dependencies:

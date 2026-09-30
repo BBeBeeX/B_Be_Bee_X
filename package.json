@@ -25,7 +25,6 @@
     "dev:android": "pnpm --filter @BBeBee/mobile android",
     "dev:android:debug": "EXPO_PUBLIC_DEBUG=1 pnpm --filter @BBeBee/mobile android",
     "build:desktop": "pnpm --filter @BBeBee/desktop build",
-    "build:native": "pnpm --filter @BBeBee/core-audio-wasapi-native build:native",
     "gen:plugins": "node --experimental-strip-types packages/tooling/tooling-gen-plugins/src/cli.ts",
     "build:sources": "node --experimental-strip-types scripts/sources/cli.ts",
     "watch:sources": "node --experimental-strip-types scripts/sources/cli.ts --watch",

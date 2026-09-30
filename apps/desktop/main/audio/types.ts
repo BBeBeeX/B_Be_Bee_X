@@ -21,18 +21,3 @@ export interface AudioDecodedPcm {
   /** Deinterleaved channel PCM data */
   pcm: Float32Array[]
 }
-
-export interface WasapiInitConfig {
-  sampleRate: number
-  channels: number
-  bitDepth?: number
-  bufferMs?: number
-}
-
-export interface WasapiInitResult {
-  ok: boolean
-  bufferSizeFrames?: number
-  actualSampleRate?: number
-  actualBitDepth?: number
-  error?: string
-}

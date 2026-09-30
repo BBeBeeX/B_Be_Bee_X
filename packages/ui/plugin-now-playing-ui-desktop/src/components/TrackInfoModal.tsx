@@ -321,11 +321,11 @@ export function TrackInfoModal({
           }
         }
         if (!outputDevice) {
-          outputDevice = isWasapi ? '默认音频输出终端 (WASAPI Exclusive)' : '默认系统音频输出终端'
+          outputDevice = isWasapi ? '默认音频输出终端 (WASAPI)' : '默认系统音频输出终端'
         }
 
         const outputEngine = isWasapi
-          ? 'WASAPI Exclusive (硬件独占模式)'
+          ? 'WASAPI (系统共享混音)'
           : 'Web Audio (系统共享混音)'
 
         const parsedSourceRate = sampleRate ? parseInt(sampleRate.replace(/[^0-9]/g, ''), 10) : 44100
@@ -341,9 +341,7 @@ export function TrackInfoModal({
               : `${hwChannelsNum} 声道`
 
         const hwBitDepthNum = audio?.hardwareBitDepth ?? (isWasapi ? 24 : 16)
-        const outputBitDepth = isWasapi
-          ? `${hwBitDepthNum}-bit PCM (点对点硬件直推)`
-          : `${hwBitDepthNum}-bit Float`
+        const outputBitDepth = `${hwBitDepthNum}-bit Float`
 
         const pcmBandwidth = Math.round((hwSampleRateNum * hwChannelsNum * hwBitDepthNum) / 1000)
         const outputBandwidth = `${pcmBandwidth.toLocaleString()} kbps (未压缩 PCM 带宽)`
@@ -633,7 +631,7 @@ export function TrackInfoModal({
                       marginBottom: 6,
                     },
                   },
-                  details.isWasapi ? '音频输出终端 (WASAPI 独占模式)' : '音频输出终端 (Audio Output)',
+                  '音频输出终端 (Audio Output)',
                 ),
                 renderRow('输出音频设备', details.outputDevice),
                 renderRow('输出驱动引擎', details.outputEngine),

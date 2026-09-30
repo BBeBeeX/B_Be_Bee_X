@@ -3,8 +3,7 @@ import { Context } from 'cordis'
 import { audioConformance } from '@BBeBee/protocol/conformance'
 import type { MediaElementLike } from '@BBeBee/core-audio-webaudio'
 import plugin, { AudioWasapi, type AudioWasapiConfig } from './index.js'
-import { type FakeAudioContext, createFakeAudioContext, type FakeNode } from './fake-context.js'
-import { WASAPI_SINK_WORKLET_CODE } from './worklets/wasapi-sink-processor.js'
+import { type FakeAudioContext, createFakeAudioContext } from './fake-context.js'
 
 async function harness(
   bridgeCallMock?: (s: string, m: string, a: unknown[]) => Promise<unknown>,
@@ -20,7 +19,6 @@ async function harness(
     createContext: () => engine as unknown as BaseAudioContext,
     fetchBytes: async () => new ArrayBuffer(8),
     bridgeCall: bridgeCallMock,
-    enableExclusive: false,
     ...extraConfig,
   })
   return { ctx, audio: ctx.audio as AudioWasapi, engine }
@@ -78,8 +76,6 @@ describe('core-audio-wasapi', () => {
   it('decodes ALAC audio via FFmpeg bridge and plays', async () => {
     const fakePcmLeft = new Float32Array([0, 0.1, 0.2, 0.3, 0.4])
     const fakePcmRight = new Float32Array([0, 0.1, 0.2, 0.3, 0.4])
-
-    let initWasapiCalled = false
     const bridgeCall = async (service: string, method: string, _args: unknown[]) => {
       if (service === 'audio' && method === 'decodePcm') {
         return {
@@ -90,10 +86,6 @@ describe('core-audio-wasapi', () => {
           pcm: [fakePcmLeft, fakePcmRight],
         }
       }
-      if (service === 'audio' && method === 'initWasapi') {
-        initWasapiCalled = true
-        return { ok: true }
-      }
       return undefined
     }
 
@@ -101,7 +93,6 @@ describe('core-audio-wasapi', () => {
     const handle = await audio.load('file:///music/song.m4a', { strategy: 'buffer' })
 
     expect(handle).toBeDefined()
-    expect(initWasapiCalled).toBe(true)
     expect(handle.durationMs).toBeGreaterThan(0)
 
     handle.node.connect(audio.chainInput)
@@ -253,24 +244,6 @@ describe('core-audio-wasapi', () => {
     }
   })
 
-  it('falls back to shared destination when initWasapi returns ok: false in buffered mode', async () => {
-    const bridgeCall = async (service: string, method: string) => {
-      if (service === 'audio' && method === 'initWasapi') {
-        return { ok: false, error: 'DEVICE_IN_USE' }
-      }
-      return undefined
-    }
-
-    const { audio, engine } = await harness(bridgeCall, { enableExclusive: true })
-    // With enableExclusive: true initially, master is NOT connected to destination
-    expect((audio.destination as unknown as FakeNode).outputs.has(engine.destination as FakeNode)).toBe(false)
-
-    await audio.load('file:///music/song.flac', { strategy: 'buffer' })
-
-    // After initWasapi returns ok: false, master must be connected to destination (fallbackToShared)
-    expect((audio.destination as unknown as FakeNode).outputs.has(engine.destination as FakeNode)).toBe(true)
-  })
-
   it('emits audio/context-rebuilt and retires the old context when the track rate differs', async () => {
     // A 96 kHz track against a 48 kHz boot context must rebuild the context:
     // `plugin-dsp` and `plugin-visualizer` resplice on the event, so it must
@@ -295,7 +268,6 @@ describe('core-audio-wasapi', () => {
               pcm: [new Float32Array(480), new Float32Array(480)],
             }
           : undefined,
-      enableExclusive: true,
     })
     const audio = ctx.audio as AudioWasapi
     ctx.on('audio/context-rebuilt', () => {
@@ -311,21 +283,5 @@ describe('core-audio-wasapi', () => {
     expect(contexts[0]!.closed).toBe(true)
     expect(handle.durationMs).toBe(2500)
     handle.dispose()
-  })
-
-  it('evaluates sink worklet processor code and verifies batching', () => {
-    const evalScope = {
-      AudioWorkletProcessor: class {
-        port = {
-          postMessage: (_msg: unknown, _transfer?: unknown[]) => {},
-          onmessage: null as ((e: { data: unknown }) => void) | null,
-        }
-      },
-      registerProcessor: (_name: string, _ctor: unknown) => {},
-      Atomics,
-    }
-
-    const fn = new Function('AudioWorkletProcessor', 'registerProcessor', 'Atomics', WASAPI_SINK_WORKLET_CODE)
-    expect(() => fn(evalScope.AudioWorkletProcessor, evalScope.registerProcessor, evalScope.Atomics)).not.toThrow()
   })
 })

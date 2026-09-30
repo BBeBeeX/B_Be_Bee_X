@@ -240,14 +240,14 @@ export function PlaybackSection({
       SettingsSection,
       {
         title: '音频输出引擎与设备',
-        description: '选择音频驱动与输出方式：操作系统共享混音或硬件独占直出',
+        description: '选择音频输出驱动与物理输出设备',
       },
       h(SettingsRow, {
         title: '音频输出驱动 (Audio Backend)',
         description:
           currentEngine === 'wasapi'
-            ? '当前：WASAPI 硬件独占 Hi-Res（点对点无损输出，绕过系统混音器，保留 Web Audio DSP）'
-            : '当前：WebAudio（通过操作系统共享混音器输出，多软件混音兼容）',
+            ? '当前：WASAPI（高保真解码与原生采样率自适应，操作系统共享混音）'
+            : '当前：WebAudio（标准 Web Audio 共享混音）',
         action: h(
           'div',
           { style: { display: 'flex', gap: 6 } },
@@ -258,7 +258,7 @@ export function PlaybackSection({
               void update({ audioOutputEngine: 'wasapi' })
               void fetchDevices('engine-switch')
             },
-            children: 'WASAPI 独占 Hi-Res',
+            children: 'WASAPI Hi-Fi',
           }),
           h(Button, {
             variant: currentEngine === 'webaudio' ? 'primary' : 'secondary',

@@ -315,9 +315,9 @@ describe('TrackInfoModal', () => {
 
     expect(await findByText('320 kbps')).toBeTruthy()
     expect(getByText('USB DAC Hi-Res Audio')).toBeTruthy()
-    expect(getByText('WASAPI Exclusive (硬件独占模式)')).toBeTruthy()
+    expect(getByText('WASAPI (系统共享混音)')).toBeTruthy()
     expect(getByText('96,000 Hz')).toBeTruthy()
-    expect(getByText('24-bit PCM (点对点硬件直推)')).toBeTruthy()
+    expect(getByText('24-bit Float')).toBeTruthy()
     expect(getByText('4,608 kbps (未压缩 PCM 带宽)')).toBeTruthy()
   })
 

@@ -115,7 +115,7 @@ export interface HostOptions {
    * In Electron, this uses `dialog.showOpenDialog`.
    */
   pickDirectory?: (sender?: unknown) => Promise<string | undefined>
-  /** Native audio decoding (e.g. FFmpeg) and hardware output (e.g. WASAPI exclusive). */
+  /** Native audio decoding (e.g. FFmpeg) and system device enumeration. */
   audio?: AudioHost
   /** Optional logger for host operations */
   logger?: BridgeLogger
@@ -134,12 +134,10 @@ export interface AudioRequestOptions {
   headers?: Record<string, string>
 }
 
+/** Native decoding (e.g. FFmpeg) and system device enumeration. */
 export interface AudioHost {
   probe?(uri: string, options?: AudioRequestOptions): Promise<unknown>
   decodePcm?(uri: string, options?: AudioRequestOptions): Promise<unknown>
-  initWasapi?(config: unknown): Promise<unknown>
-  writeWasapi?(pcmData: unknown): Promise<unknown>
-  stopWasapi?(): Promise<unknown>
   getOutputDevices?(): Promise<unknown>
   setOutputDevice?(id: string): Promise<unknown>
 }
@@ -224,9 +222,7 @@ const ALLOWED: Record<BridgedService, ReadonlySet<string>> = {
     'watchMediaKeys', 'registerHotkey', 'unregisterHotkey',
     'publishNowPlaying', 'publishPlaybackState', 'setSupportedCommands', 'clearNowPlaying',
   ]),
-  audio: new Set([
-    'probe', 'decodePcm', 'initWasapi', 'writeWasapi', 'stopWasapi', 'getOutputDevices', 'setOutputDevice',
-  ]),
+  audio: new Set(['probe', 'decodePcm', 'getOutputDevices', 'setOutputDevice']),
 }
 
 /** fs methods whose leading arguments are Uris that must stay inside the app. */
@@ -307,9 +303,6 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
   const audio: Required<AudioHost> = {
     probe: options.audio?.probe ?? (async () => ({})),
     decodePcm: options.audio?.decodePcm ?? (async () => ({ sampleRate: 44100, channels: 2, bitDepth: 16, durationMs: 0, pcm: [] })),
-    initWasapi: options.audio?.initWasapi ?? (async () => ({ ok: false })),
-    writeWasapi: options.audio?.writeWasapi ?? (async () => 0),
-    stopWasapi: options.audio?.stopWasapi ?? (async () => {}),
     getOutputDevices: options.audio?.getOutputDevices ?? (async () => []),
     setOutputDevice: options.audio?.setOutputDevice ?? (async () => {}),
   }

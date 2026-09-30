@@ -108,9 +108,6 @@ export class FakeAudioContext {
   }
 
   private readonly scheduled: Scheduled[] = []
-  readonly audioWorklet = {
-    addModule: async (_url: string) => {},
-  }
 
   createGain(): FakeGain {
     return new FakeGain()

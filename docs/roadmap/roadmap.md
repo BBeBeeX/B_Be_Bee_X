@@ -223,13 +223,16 @@ rule language is too weak, because every document written after M2 is one someon
 
 ### M4.1 — Bit-Perfect Desktop Audio (WASAPI Exclusive)
 
-`@BBeBee/core-audio-wasapi` and `@BBeBee/core-audio-wasapi-native`: native Windows Core Audio engine delivering bit-perfect Hi-Res playback.
-
-> **In progress / Active.**
-> - **Renderer pipeline repair**: `WasapiSinkProcessor` batches Float32 PCM (~10-20ms) and transfers via MessagePort directly to the host, fixing the dead-write bottleneck.
-> - **Native exclusive output**: `@BBeBee/core-audio-wasapi-native` provides Rust (`napi-rs`) bindings to Windows Core Audio (`AUDCLNT_SHAREMODE_EXCLUSIVE`, `AUDCLNT_STREAMFLAGS_EVENTCALLBACK`) with a real-time lock-free SPSC ring buffer (`rtrb`).
-> - **Dynamic sample rate reconstruction**: Automatically recreates `AudioContext({ sampleRate })` when tracks change sample rate (44.1k/96k/192k) to bypass Chromium's internal resampling.
-> - **Resilient fallback & native device enumeration**: Gracefully falls back to shared `context.destination` upon `DEVICE_IN_USE` or unsupported formats; enumerates physical endpoints via `IMMDeviceEnumerator`.
+> **Descoped (removed before first working build).**
+> Exclusive-mode output (`core-audio-wasapi-native`, the sink worklet, the
+> `initWasapi`/`writeWasapi` bridge methods) was prototyped end to end and then
+> removed: shared output through `context.destination` covers current needs,
+> and the native pipeline carried a Rust toolchain plus a per-platform
+> verification burden for one OS. What survived from the work: the
+> bridge-first FFmpeg decode path, true streaming via the shared
+> `StreamedHandle`, source-header forwarding, and native-rate
+> `AudioContext` reconstruction (`audio/context-rebuilt`). Revisit if
+> bit-perfect output becomes a product requirement again.
 
 ---
 

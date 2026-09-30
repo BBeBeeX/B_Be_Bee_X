@@ -1,8 +1,8 @@
 {
   "id": "@BBeBee/core-audio-wasapi",
   "version": "0.0.0",
-  "displayName": "Audio (WASAPI Exclusive)",
-  "description": "ctx.audio \u2014 Web Audio DSP with WASAPI exclusive output and FFmpeg decoding.",
+  "displayName": "Audio (Desktop WASAPI)",
+  "description": "ctx.audio — Web Audio DSP with FFmpeg decoding and sample rate matching.",
   "platforms": [
     "desktop"
   ],

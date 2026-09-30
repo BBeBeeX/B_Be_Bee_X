@@ -1,12 +1,19 @@
 /**
- * `ctx.audio` — WASAPI Exclusive output engine with Web Audio DSP chain.
+ * `ctx.audio` — the desktop Web Audio engine with FFmpeg-bridged decoding.
  *
- * Implements Paradigm 1:
- * - FFmpeg decodes ALAC, 24-bit/32-bit Hi-Res audio into Float32 PCM.
- * - Web Audio acts as the pure memory DSP processing engine (EQ, preamp, compressor, AnalyserNode).
- * - An AudioWorklet intercepts the processed Float32 PCM directly from `master` and passes
- *   it to the native WASAPI Exclusive output thread, bypassing Chromium's default
- *   `context.destination` and avoiding Windows OS Shared Mode resampling.
+ * One of two interchangeable desktop engines (settings-switchable with
+ * `core-audio-webaudio`). Its distinguishing features:
+ * - FFmpeg decodes ALAC, 24-bit/32-bit Hi-Res audio into Float32 PCM ahead of
+ *   Chromium's own decoder (bridge-first; the WebAudio engine only falls back
+ *   to the bridge after `decodeAudioData` fails).
+ * - True streaming (`strategy: 'stream'`) through an HTMLMediaElement wrapped
+ *   by `createMediaElementSource`, sharing `StreamedHandle` with the other
+ *   engine.
+ * - The AudioContext is recreated at the track's native sample rate, so the
+ *   graph never resamples Hi-Res material internally.
+ *
+ * Output is shared mode: the graph's master gain feeds `context.destination`
+ * and the OS mixer owns the endpoint format.
  */
 
 import { Service } from 'cordis'
@@ -29,7 +36,6 @@ import type {
   Uri,
 } from '@BBeBee/protocol'
 import { WasapiAudioHandle, type AudioLogger } from './wasapi-audio-handle.js'
-import { WASAPI_SINK_WORKLET_CODE, WASAPI_SINK_WORKLET_NAME } from './worklets/wasapi-sink-processor.js'
 
 export interface AudioWasapiConfig {
   createContext?: (options?: AudioContextOptions) => BaseAudioContext
@@ -44,7 +50,6 @@ export interface AudioWasapiConfig {
    * buffered decode.
    */
   createMediaElement?: () => MediaElementLike
-  enableExclusive?: boolean
 }
 
 type DecodeFn = (data: ArrayBuffer) => Promise<AudioBuffer>
@@ -78,18 +83,14 @@ export class AudioWasapi extends Service implements AudioService {
   chainOutput: GainNode
   private master: GainNode
   private targetVolume = 0.8
-  private sinkNode?: AudioNode
   private mutedAt?: number
   private readonly interruptionListeners = new Set<(e: InterruptionEvent) => void>()
   private readonly routeListeners = new Set<(e: RouteChangeEvent) => void>()
-  private workletInitialized = false
   private readonly config: AudioWasapiConfig
   private activeHardwareSampleRate?: number
   private activeHardwareBitDepth?: number
   private activeHardwareChannels?: number
   private activeDeviceLabel?: string
-
-  private isSharedFallback = false
 
   constructor(
     ctx: Context,
@@ -107,28 +108,13 @@ export class AudioWasapi extends Service implements AudioService {
     this.chainOutput = this.master
     this.chainInput.connect(this.master)
 
-    // Initial setup: do NOT connect to this.context.destination if exclusive is enabled.
-    // In environments where WASAPI is not active or during unit test, fallback to destination.
-    if (config.enableExclusive === false) {
-      this.master.connect(this.context.destination)
-      this.isSharedFallback = true
-    }
+    // Shared output: the OS mixer owns the endpoint format, so the graph's
+    // master gain feeds Chromium's own destination and nothing else.
+    this.master.connect(this.context.destination)
     this.ctx.logger?.info(
-      'core-audio-wasapi: initialized (sampleRate: %d, exclusive: %s)',
+      'core-audio-wasapi: initialized (sampleRate: %d)',
       this.sampleRate,
-      config.enableExclusive !== false,
     )
-  }
-
-  private fallbackToShared(reason: string): void {
-    if (this.isSharedFallback) return
-    this.isSharedFallback = true
-    this.ctx.logger?.warn('wasapi: %s, falling back to shared output (context.destination)', reason)
-    try {
-      this.master.connect(this.context.destination)
-    } catch {
-      // ignore if already connected
-    }
   }
 
   private async ensureContextSampleRate(targetRate?: number): Promise<void> {
@@ -137,7 +123,7 @@ export class AudioWasapi extends Service implements AudioService {
     }
 
     this.ctx.logger?.info(
-      'wasapi: track sample rate (%dHz) differs from context (%dHz) — recreating AudioContext for bit-perfect output',
+      'wasapi: track sample rate (%dHz) differs from context (%dHz) — recreating AudioContext to keep the graph at the native rate',
       targetRate,
       this.context.sampleRate,
     )
@@ -157,13 +143,7 @@ export class AudioWasapi extends Service implements AudioService {
       this.chainOutput = newMaster
 
       newChainInput.connect(newMaster)
-
-      this.workletInitialized = false
-      if (this.isSharedFallback || this.config.enableExclusive === false) {
-        newMaster.connect(this.context.destination)
-      } else {
-        await this.ensureSinkWorklet()
-      }
+      newMaster.connect(this.context.destination)
 
       // Notify DSP, visualizer, and other graph consumers to resplice nodes to new context
       this.ctx.emit('audio/context-rebuilt')
@@ -190,7 +170,9 @@ export class AudioWasapi extends Service implements AudioService {
   }
 
   get hardwareBitDepth(): number {
-    return this.activeHardwareBitDepth ?? (this.config.enableExclusive !== false ? 24 : 16)
+    // Shared output: the OS mixer owns the endpoint format, so this reports
+    // the bit depth of the source currently decoded, not the endpoint's.
+    return this.activeHardwareBitDepth ?? 16
   }
 
   get hardwareChannels(): number {
@@ -202,7 +184,10 @@ export class AudioWasapi extends Service implements AudioService {
   }
 
   get outputLatencyMs(): number {
-    return 15 // WASAPI Exclusive mode achieves 10-20ms low latency
+    const ctx = this.context as AudioContext
+    return typeof ctx.outputLatency === 'number' && ctx.outputLatency > 0
+      ? ctx.outputLatency * 1000
+      : 20
   }
 
   async dipVolume(durationMs = 20): Promise<Disposable> {
@@ -235,7 +220,6 @@ export class AudioWasapi extends Service implements AudioService {
   async load(src: string | Uri, opts: LoadOptions): Promise<AudioSourceHandle> {
     this.gate()
     this.ctx.logger?.info('wasapi: loading %s (strategy: %s)', String(src), opts.strategy ?? 'stream')
-    await this.ensureSinkWorklet()
 
     /*
      * The streaming strategy goes straight to the element. The FFmpeg bridge
@@ -286,29 +270,10 @@ export class AudioWasapi extends Service implements AudioService {
             decoded.bitDepth || 24,
           )
           await this.ensureContextSampleRate(decoded.sampleRate)
-          // Initialize WASAPI exclusive stream on main process
-          this.ctx.logger?.info('wasapi: initializing WASAPI exclusive output (%dHz, %dch)', this.context.sampleRate, decoded.channels)
-          const initRes = (await bridgeCall('audio', 'initWasapi', [
-            {
-              sampleRate: this.context.sampleRate,
-              channels: decoded.channels,
-              bitDepth: decoded.bitDepth || 24,
-            },
-          ]).catch((err) => {
-            this.ctx.logger?.warn('wasapi: initWasapi error: %s', String(err))
-            return undefined
-          })) as { actualSampleRate?: number; actualBitDepth?: number; ok?: boolean; error?: string } | undefined
-
-          if (!initRes || initRes.ok === false) {
-            const reason = initRes?.error
-              ? `exclusive init refused decoded format: ${initRes.error}`
-              : 'bridge initWasapi errored'
-            this.fallbackToShared(reason)
-          } else {
-            this.activeHardwareSampleRate = initRes.actualSampleRate ?? this.context.sampleRate
-            this.activeHardwareBitDepth = initRes.actualBitDepth ?? decoded.bitDepth ?? 24
-            this.activeHardwareChannels = decoded.channels ?? 2
-          }
+          this.ctx.logger?.info('wasapi: decoded output (%dHz, %dch)', this.context.sampleRate, decoded.channels)
+          this.activeHardwareSampleRate = this.context.sampleRate
+          this.activeHardwareBitDepth = decoded.bitDepth ?? 24
+          this.activeHardwareChannels = decoded.channels ?? 2
 
           // Create an AudioBuffer matching the decoded sample rate
           const length = decoded.pcm[0]!.length
@@ -342,8 +307,8 @@ export class AudioWasapi extends Service implements AudioService {
 
   /**
    * The streaming path: an `HTMLMediaElement` wrapped by
-   * `createMediaElementSource`, feeding `chainInput` so the DSP chain and the
-   * sink worklet see the stream exactly like a decoded buffer. Nothing decodes
+   * `createMediaElementSource`, feeding `chainInput` so the DSP chain sees the
+   * stream exactly like a decoded buffer. Nothing decodes
    * the track into resident PCM, so memory stays flat for a multi-hour track.
    *
    * A media element cannot set request headers itself; remote sources rely on
@@ -368,11 +333,10 @@ export class AudioWasapi extends Service implements AudioService {
           ? src.replace(/^file:\/\//, 'bbebee-file://')
           : src
 
-      // Exclusive output must be configured before PCM reaches the sink
-      // worklet, or the master output lands in an uninitialized native
-      // stream. The graph resamples an element to the context's own rate, so
-      // that — not the file's rate — is what the endpoint has to accept.
-      await this.initExclusiveForStream(src, opts.headers)
+      // The graph resamples an element to the context's own rate, so probe
+      // the track's rate and put the context there — the element then plays
+      // at its native rate with no in-graph resampling.
+      await this.ensureStreamSampleRate(src, opts.headers)
 
       const context = this.context as BaseAudioContext & {
         createMediaElementSource?: (el: unknown) => AudioNode
@@ -404,15 +368,11 @@ export class AudioWasapi extends Service implements AudioService {
   }
 
   /**
-   * Exclusive mode only: the sink worklet forwards to a native stream that
-   * main must have opened. Element output is float at the context's rate; the
-   * channel layout is probed so a mono or multichannel file inits the endpoint
-   * honestly. A refusal is degraded, not fatal: exclusive stays off and the
-   * master output falls back to `context.destination` (shared mode) rather
-   * than feeding a stream that will never be read.
+   * Probe the stream's sample rate so the context can be rebuilt at the
+   * track's native rate. A failure is non-fatal: the element plays at the
+   * context's current rate either way.
    */
-  private async initExclusiveForStream(src: string, headers?: Record<string, string>): Promise<void> {
-    if (this.config.enableExclusive === false || !this.sinkNode) return
+  private async ensureStreamSampleRate(src: string, headers?: Record<string, string>): Promise<void> {
     const bridgeCall =
       this.config.bridgeCall ??
       (typeof window !== 'undefined'
@@ -421,35 +381,16 @@ export class AudioWasapi extends Service implements AudioService {
         : undefined)
     if (!bridgeCall) return
 
-    let probed: { sampleRate?: number; channels?: number; bitDepth?: number } = {}
     try {
-      probed = (await bridgeCall('audio', 'probe', [src, { headers }])) as typeof probed
+      const probed = (await bridgeCall('audio', 'probe', [src, { headers }])) as {
+        sampleRate?: number
+      }
+      if (probed?.sampleRate) {
+        await this.ensureContextSampleRate(probed.sampleRate)
+      }
     } catch (err) {
-      this.ctx.logger?.warn('wasapi: probe for streamed exclusive init failed: %s', String(err))
+      this.ctx.logger?.debug?.('wasapi: probe for streamed sample rate failed: %s', String(err))
     }
-
-    if (probed.sampleRate) {
-      await this.ensureContextSampleRate(probed.sampleRate)
-    }
-
-    const exclusiveConfig = {
-      sampleRate: this.context.sampleRate,
-      channels: probed.channels || 2,
-      bitDepth: probed.bitDepth || 16,
-    }
-    const initRes = (await bridgeCall('audio', 'initWasapi', [exclusiveConfig]).catch((err) => {
-      this.ctx.logger?.warn('wasapi: initWasapi for streamed output error: %s', String(err))
-      return undefined
-    })) as { actualSampleRate?: number; actualBitDepth?: number; ok?: boolean } | undefined
-
-    if (!initRes || initRes.ok === false) {
-      this.fallbackToShared('exclusive init refused the streamed format')
-      return
-    }
-
-    this.activeHardwareSampleRate = initRes.actualSampleRate ?? exclusiveConfig.sampleRate
-    this.activeHardwareBitDepth = initRes.actualBitDepth ?? exclusiveConfig.bitDepth
-    this.activeHardwareChannels = exclusiveConfig.channels
   }
 
   /**
@@ -500,52 +441,6 @@ export class AudioWasapi extends Service implements AudioService {
       this.activeHardwareSampleRate = this.context.sampleRate
       this.activeHardwareChannels = buffer.numberOfChannels
       this.activeHardwareBitDepth = 16
-
-      const bridgeCall =
-        this.config.bridgeCall ??
-        (typeof window !== 'undefined'
-          ? (window as unknown as { BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> } })
-              .BBeBeeBridge?.call
-          : undefined)
-      if (bridgeCall) {
-        // decodeAudioData yields float data, so the endpoint's accepted bit
-        // depth is what matters: s16le is the cheap first ask, and endpoints
-        // whose share mode runs 24-bit commonly refuse it — retry at 24
-        // before degrading the whole session to shared output.
-        const initAt = async (bitDepth: number) =>
-          (await bridgeCall('audio', 'initWasapi', [
-            {
-              sampleRate: this.context.sampleRate,
-              channels: buffer.numberOfChannels,
-              bitDepth,
-            },
-          ]).catch(() => undefined)) as {
-            actualSampleRate?: number
-            actualBitDepth?: number
-            ok?: boolean
-            error?: string
-          } | undefined
-
-        let initRes = await initAt(16)
-        if (!initRes || initRes.ok === false) {
-          initRes = await initAt(24)
-        }
-        if (!initRes || initRes.ok === false) {
-          const reason = initRes?.error
-            ? `exclusive init refused buffered format: ${initRes.error}`
-            : 'bridge initWasapi errored'
-          this.fallbackToShared(reason)
-        } else {
-          if (initRes?.actualSampleRate) {
-            this.activeHardwareSampleRate = initRes.actualSampleRate
-          }
-          if (initRes?.actualBitDepth) {
-            this.activeHardwareBitDepth = initRes.actualBitDepth
-          }
-        }
-      } else {
-        this.fallbackToShared('no bridge available for exclusive output')
-      }
     } catch (decodeErr) {
       this.ctx.logger?.error('wasapi: decodeAudioData failed for %s: %s', src, String(decodeErr))
       throw decodeErr
@@ -554,58 +449,6 @@ export class AudioWasapi extends Service implements AudioService {
 
     opts.onBuffered?.(buffer.duration)
     return new WasapiAudioHandle(this.context, buffer, undefined, this.ctx.logger)
-  }
-
-  private async ensureSinkWorklet(): Promise<void> {
-    if (this.workletInitialized) return
-    this.workletInitialized = true
-
-    const ctx = this.context as BaseAudioContext & {
-      audioWorklet?: { addModule(url: string): Promise<void> }
-    }
-
-    if (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined') {
-      this.ctx.logger?.warn('wasapi: audioWorklet not available in this environment, falling back to destination')
-      this.fallbackToShared('audioWorklet not available')
-      return
-    }
-
-    try {
-      const blob = new Blob([WASAPI_SINK_WORKLET_CODE], { type: 'application/javascript' })
-      const workletUrl = URL.createObjectURL(blob)
-      await ctx.audioWorklet.addModule(workletUrl)
-      URL.revokeObjectURL(workletUrl)
-
-      // In Electron's multi-process security model, SharedArrayBuffer cannot be transferred
-      // across process boundaries to the main process. WasapiSinkProcessor batches PCM
-      // samples (~10-20ms) and posts them via message port with transferable ArrayBuffers.
-      const sinkNode = new AudioWorkletNode(this.context as AudioContext, WASAPI_SINK_WORKLET_NAME)
-
-      sinkNode.port.onmessage = (event) => {
-        if (event.data?.type === 'pcm-chunk' && event.data?.data) {
-          const bridgeCall =
-            this.config.bridgeCall ??
-            (typeof window !== 'undefined'
-              ? (window as unknown as { BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> } })
-                  .BBeBeeBridge?.call
-              : undefined)
-          if (bridgeCall && !this.isSharedFallback) {
-            const chunk =
-              event.data.data instanceof Float32Array
-                ? event.data.data
-                : new Float32Array(event.data.data)
-            void bridgeCall('audio', 'writeWasapi', [chunk])
-          }
-        }
-      }
-
-      this.master.connect(sinkNode)
-      this.sinkNode = sinkNode
-      this.ctx.logger?.info('wasapi: sink worklet initialized and connected')
-    } catch (err) {
-      this.ctx.logger?.error('wasapi: failed to initialize sink worklet, falling back to destination: %s', String(err))
-      this.fallbackToShared('sink worklet registration failed')
-    }
   }
 
   private gate(): void {
@@ -911,10 +754,6 @@ export class AudioWasapi extends Service implements AudioService {
       this.master.disconnect()
       this.interruptionListeners.clear()
       this.routeListeners.clear()
-      if (this.sinkNode) {
-        this.sinkNode.disconnect()
-        this.sinkNode = undefined
-      }
       const closable = this.context as BaseAudioContext & { close?: () => Promise<void> }
       if (closable.close) await closable.close().catch(() => undefined)
     }

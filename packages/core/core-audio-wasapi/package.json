@@ -1,7 +1,7 @@
 {
   "name": "@BBeBee/core-audio-wasapi",
   "version": "0.0.0",
-  "description": "ctx.audio — Web Audio DSP with WASAPI exclusive output and FFmpeg decoding.",
+  "description": "ctx.audio — Web Audio DSP with FFmpeg decoding and sample rate matching.",
   "type": "module",
   "license": "MIT",
   "exports": {

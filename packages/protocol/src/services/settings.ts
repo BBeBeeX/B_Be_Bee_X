@@ -109,7 +109,7 @@ export interface AppSettings {
   downloadDir?: string
   /** Custom media cache directory path. */
   cacheDir?: string
-  /** Audio output engine: 'wasapi' (WASAPI exclusive Hi-Res) or 'webaudio' (WebAudio). */
+  /** Audio output engine: 'wasapi' (WASAPI desktop audio with FFmpeg decoding) or 'webaudio' (WebAudio). */
   audioOutputEngine?: AudioOutputEngine
   /** Selected audio output device ID. Defaults to 'default'. */
   audioOutputDeviceId?: string

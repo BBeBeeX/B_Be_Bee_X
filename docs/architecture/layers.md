@@ -335,15 +335,13 @@ wraps them per plugin ([03 §7](../plugins/capabilities.md#7-capability-model)).
 for the app origin — there is no scheme for loading foreign code, because nothing loads foreign
 code.
 
-Two tokens sit beyond that floor, both in `script-src`. `'wasm-unsafe-eval'` is there for `ctx.js`.
-Chromium gates `WebAssembly.instantiate` on `script-src`, so QuickJS cannot compile without it and the
+The one token beyond that floor is `'wasm-unsafe-eval'`, and it is there for `ctx.js`. Chromium
+gates `WebAssembly.instantiate` on `script-src`, so QuickJS cannot compile without it and the
 renderer aborts on the core service list. It grants WebAssembly compilation and **nothing else**:
 `eval` and `new Function` stay refused, which is exactly why the narrow token is used and
 `'unsafe-eval'` — which would also have made the WASM work — is not. The trade is a compiler for a
 realm with no host object graph in it ([04 §19](../services/contracts.md)), and it is the direction
-the whole source model depends on. `blob:` is there for the audio services' sink worklet, which is
-registered from an in-memory module built from bundled code — the same trust level as the app
-itself, and still no foreign script source.
+the whole source model depends on.
 
 ---
 

@@ -93,16 +93,18 @@ flowchart LR
 - **`strategy: 'buffer'`**：拉取二进制流到 `ArrayBuffer` 并解码为 `AudioBuffer`，挂载至 `chainInput`。为本地音频与 Gapless 无缝换曲提供样本级精确调度。
 - **`strategy: 'stream'`**：通过 `context.createMediaElementSource()` 挂载至媒体元素，保持内存占用恒定。
 - **高位深与 ALAC 解码回退 (FFmpeg Bridge)**：Chromium 原生 `decodeAudioData()` 无法解码 Apple Lossless (ALAC) 格式或某些 24-bit/32-bit Hi-Res 音频。桌面端 `core-audio-webaudio` 与 `core-audio-wasapi` 自动调用主进程的 FFmpeg 解码器 (`audio.decodePcm`)，将音频精确解算为 Float32 PCM 声道并直接灌入 `AudioBuffer`，实现无损兼容。
-- **WASAPI 硬件独占输出与 Web Audio DSP (`@BBeBee/core-audio-wasapi`)**：
-  实现了**范式一（Web Audio 作为纯 DSP 处理核心，旁路导出至 WASAPI 独占输出）**：
-  Web Audio 负责执行完整的 `ctx.dsp` 效果器链（10 段 EQ、前级放大、动态压缩）与频谱可视化 (`AnalyserNode`)。通过 `WasapiSinkProcessor` (AudioWorklet) 拦截最终的 Float32 PCM，借由无锁环形队列 (`SharedRingBuffer`) 回传主进程，绕过 Chromium 默认的系统共享混音器（规避 Windows Shared Mode 的强制重采样与精度损耗），通过 WASAPI Exclusive 模式直接以硬件原生采样率与位深直推声卡 DAC。
+- **桌面端高保真引擎 (`@BBeBee/core-audio-wasapi`)**：
+  - **桥接优先解码 (`strategy: 'buffer'`)**：不同于 Chromium 原生 `decodeAudioData`（其无法解码某些缺少授权的格式如 ALAC，或对部分高位深音频强制降采样），`core-audio-wasapi` 优先调用主进程的 FFmpeg 解码管道。主进程直接将音频解算为 32-bit Float PCM 数组，渲染进程以曲目原生采样率载入 `AudioBuffer`。
+  - **原生采样率自适应重建**：录制于 96 kHz 或 192 kHz 的高解析度音频若直接推入 44.1 kHz 的 `AudioContext` 将发生有损重采样。当 `AudioWasapi` 检测到曲目采样率与当前上下文不同时，会动态新建 `AudioContext({ sampleRate })`，重新连接完整 DSP 链路，并派发 `audio/context-rebuilt` 事件，令下游插件（`plugin-dsp`、`plugin-visualizer`）在平滑销毁旧上下文前重新绑定新节点。
+  - **媒体流播放 (`strategy: 'stream'`)**：WASAPI 引擎通过 `createMediaElementSource` 包装 `HTMLMediaElement` 并连接至 `chainInput`，使长音频流与解码缓冲区享受完全一致的 DSP 处理链路，内存占用保持平稳。
+  - **引擎差异（Windows 默认 WASAPI，其余平台 WebAudio）**：两种引擎均通过操作系统共享混音器输出——其核心差异在于解码策略（桥接优先 vs 失败回退）与采样率自适应匹配，而非独占端点。
 - **设置中的音频输出引擎与设备选择 (`audioOutputEngine`, `audioOutputDeviceId`)**：
   用户可在桌面端设置界面的「音频输出引擎与设备」中自由配置驱动与物理设备：
-  - **WASAPI 独占 Hi-Res（默认）**：硬件独占锁定声卡，绕过系统混音，点对点输出至硬件 DAC。
-  - **WebAudio**：通过操作系统共享混音器输出，多软件混音兼容（与浏览器、游戏、系统提示音共存）。
+  - **WASAPI Hi-Fi（Windows 默认）**：FFmpeg 桥接优先解码与曲目原生采样率自适应。
+  - **WebAudio**：标准 Web Audio 共享混音图。
   - **可选择的音频输出设备**：
     - **系统硬件设备全量探测**：Electron 主进程通过授予 `'speaker-selection'` 与 `'media'` 权限解除 Chromium 设备标签屏蔽，并配合底层 OS 查询通道（Windows 注册表与 CIM MMDevices、macOS System Profiler、Linux pactl/aplay），精准获取当前系统中所有物理扬声器、耳机和外接 USB DAC 的真实友好名称（Friendly Name）。
-    - **驱动目的地实时锁定**：用户下拉选中目标设备后，系统将设备 ID 持久化至 `settings.audioOutputDeviceId`，并在应用启动及切换时驱动底层 Web Audio 引擎（通过 `AudioContext.setSinkId`）与 WASAPI 独占引擎（`wasapi.setOutputDevice`）无缝将音频流重新路由至该硬件终端作为输出目的地。
+    - **驱动目的地实时锁定**：用户下拉选中目标设备后，系统将设备 ID 持久化至 `settings.audioOutputDeviceId`，并在应用启动及切换时驱动底层 Web Audio 引擎（通过 `AudioContext.setSinkId`）无缝将音频流重新路由至该硬件终端作为输出目的地。
 - **发烧级无损音频格式与本地扫描器支持**：
   桌面端集成 FFmpeg 旁路解码器，打通了全链路无损音频体系：
   - **ALAC 与 `.m4a`**：此前扫描器在遇到包含 ALAC 编码的 `.m4a` 文件时，因 Chromium 原生不支持而判定为非法编码并报错丢弃（`unsupported codec: ALAC is not supported on this platform`）。现已通过在 `supportedFormats()` 注册 ALAC 并配合 FFmpeg 解码，实现完整解析与导入。
