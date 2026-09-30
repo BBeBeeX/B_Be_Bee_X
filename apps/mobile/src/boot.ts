@@ -227,9 +227,12 @@ export async function boot(): Promise<App> {
    * The configured `User-Agent`, applied once settings exist and kept in step
    * from then on. Same contract as desktop: the header goes out on the next
    * request, an empty value restores the built-in default, and a source
-   * document's own `header` rule still wins.
+   * document's own `header` rule still wins. ⚠️ `http` must be in the inject
+   * list — the scoped proxy refuses anything not listed, and a throw in a
+   * `settings/changed` listener aborts the synchronous emit for everyone after
+   * it.
    */
-  app.ctx.inject(['settings'], (scoped) => {
+  app.ctx.inject(['settings', 'http'], (scoped) => {
     const syncUserAgent = (s: AppSettings | undefined) => {
       if (s?.userAgent !== undefined) scoped.http?.setUserAgent?.(s.userAgent)
     }

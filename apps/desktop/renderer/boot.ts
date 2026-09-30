@@ -644,8 +644,12 @@ export async function boot(): Promise<App> {
    */
   await app.ready([...BOOTSTRAP_SERVICES], { timeoutMs: 15_000 })
 
-  // Sync closeToTray, proxy, audio engine, and audio output device preference
-  app.ctx.inject(['settings', 'audio'], (scoped) => {
+  // Sync closeToTray, proxy, audio engine, audio output device, and User-Agent
+  // preference. ⚠️ Every service touched below must be in the inject list: the
+  // scoped proxy refuses anything else, and a throw here aborts the synchronous
+  // emit — every later `settings/changed` listener would silently stop hearing
+  // updates (this is how the settings page stopped re-rendering once).
+  app.ctx.inject(['settings', 'audio', 'http'], (scoped) => {
     const syncSettings = (s: AppSettings | undefined) => {
       if (!s) return
       if (s.closeToTray !== undefined) {
