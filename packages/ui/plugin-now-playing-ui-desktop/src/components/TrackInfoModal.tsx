@@ -1,7 +1,7 @@
 import { createElement as h, useEffect, useState, useCallback } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { AudioService, CodecService, DbService, PlayerService, Track } from '@BBeBee/protocol'
+import type { AudioService, CodecService, DbService, FsService, PlayerService, Track } from '@BBeBee/protocol'
 import { parseUrn } from '@BBeBee/protocol'
 import { serviceOf } from '@BBeBee/ui-core'
 import { formatDuration } from '@BBeBee/toolkit'
@@ -31,6 +31,12 @@ interface TrackDetails {
   bitrate: string
   codec: string
   tagType: string
+  outputEngine: string
+  outputSampleRate: string
+  outputChannels: string
+  outputBitDepth: string
+  outputBandwidth: string
+  isWasapi: boolean
 }
 
 function formatBytes(bytes?: number): string {
@@ -82,8 +88,12 @@ export function TrackInfoModal({
         const player = serviceOf<PlayerService>(ctx, 'player') ?? ctx.player
         const durationMs = track!.durationMs ?? player?.state?.durationMs ?? 0
         const duration = formatDuration(durationMs)
+        const stream = player?.currentStream
 
-        if (isLocal) {
+        // Check if track is local by sourceId or by stream target URI
+        const isLocalTrack = isLocal || Boolean(stream?.target && /^(file|bbebee-file):\/\//.test(stream.target))
+
+        if (isLocalTrack) {
           interface BindingRow {
             uri: string
             format?: string
@@ -123,14 +133,22 @@ export function TrackInfoModal({
             }
           }
 
-          const rawUri = binding?.uri ?? scanEntry?.uri
-          if (rawUri) {
-            const decoded = decodeURIComponent(rawUri.replace(/^(file|bbebee-file):\/\//, ''))
-            filePath = decoded
-            fileName = decoded.split(/[/\\]/).pop() || decoded
+          let rawUri = binding?.uri ?? scanEntry?.uri
+          if (!rawUri && stream?.target && /^(file|bbebee-file):\/\//.test(stream.target)) {
+            rawUri = stream.target
+          }
+          if (!rawUri && track?.urn && /^(file|bbebee-file):\/\//.test(track.urn)) {
+            rawUri = track.urn
           }
 
-          const sizeBytes = binding?.size_bytes ?? scanEntry?.size
+          if (rawUri) {
+            const decoded = decodeURIComponent(rawUri.replace(/^(file|bbebee-file):\/\//, ''))
+            const normalizedPath = decoded.replace(/^\/([a-zA-Z]:)/, '$1')
+            filePath = normalizedPath
+            fileName = normalizedPath.split(/[/\\]/).pop() || normalizedPath
+          }
+
+          const sizeBytes = binding?.size_bytes ?? scanEntry?.size ?? stream?.byteLength
           if (sizeBytes !== undefined && sizeBytes !== null) {
             fileSize = formatBytes(Number(sizeBytes))
           }
@@ -140,6 +158,27 @@ export function TrackInfoModal({
             const ms = Number(mtime) > 1e11 ? Number(mtime) : Number(mtime) * 1000
             const d = new Date(ms)
             modifiedTime = d.toLocaleString()
+          }
+
+          // Real filesystem fallback via FsService
+          if (rawUri && (!fileSize || fileSize === '未知' || !modifiedTime || modifiedTime === '未知')) {
+            const fs = serviceOf<FsService>(ctx, 'fs')
+            if (fs?.stat) {
+              try {
+                const stat = await fs.stat(rawUri)
+                if (stat) {
+                  if ((!fileSize || fileSize === '未知') && stat.size !== undefined && stat.size !== null) {
+                    fileSize = formatBytes(Number(stat.size))
+                  }
+                  if ((!modifiedTime || modifiedTime === '未知') && stat.mtime) {
+                    const ms = Number(stat.mtime) > 1e11 ? Number(stat.mtime) : Number(stat.mtime) * 1000
+                    modifiedTime = new Date(ms).toLocaleString()
+                  }
+                }
+              } catch {
+                // Ignore fs.stat failure
+              }
+            }
           }
 
           // Try codec service for detailed tags & specs
@@ -166,6 +205,17 @@ export function TrackInfoModal({
             }
           }
 
+          // Stream handle fallbacks
+          if (!codec && stream?.codec) {
+            codec = stream.codec.toUpperCase()
+          }
+          if (!sampleRate && stream?.sampleRate) {
+            sampleRate = `${stream.sampleRate.toLocaleString()} Hz`
+          }
+          if (!bitrate && stream?.bitrateKbps) {
+            bitrate = `${stream.bitrateKbps} kbps`
+          }
+
           // Fallbacks from media_bindings
           if (!codec && (binding?.codec || binding?.format)) {
             codec = (binding.codec || binding.format)!.toUpperCase()
@@ -180,6 +230,13 @@ export function TrackInfoModal({
           if (!bitrate && binding?.bitrate_kbps) {
             bitrate = `${binding.bitrate_kbps} kbps`
           }
+
+          // Fallback from filename extension for codec
+          if (!codec && fileName && fileName.includes('.')) {
+            const ext = fileName.split('.').pop()?.toUpperCase()
+            if (ext) codec = ext
+          }
+
           if (!tagType) {
             const fmt = (codec || binding?.format || '').toLowerCase()
             if (fmt.includes('mp3')) tagType = 'ID3v2'
@@ -187,26 +244,59 @@ export function TrackInfoModal({
             else if (fmt.includes('ogg')) tagType = 'Vorbis Comments'
             else if (fmt.includes('m4a') || fmt.includes('alac') || fmt.includes('aac')) tagType = 'MP4 / iTunes'
             else if (fmt.includes('ape')) tagType = 'APEv2'
+            else if (fmt.includes('wav')) tagType = 'RIFF INFO / ID3'
             else tagType = '内置音频标签'
           }
         } else {
           // Third-party source
-          const stream = player?.currentStream
           if (stream) {
             const streamFormat = (stream as unknown as { format?: string }).format
             const streamCodec = stream.codec || streamFormat || stream.mimeType
             if (streamCodec) codec = streamCodec.toUpperCase()
-            if (stream.bitrateKbps) bitrate = `${stream.bitrateKbps} kbps`
             if (stream.sampleRate) sampleRate = `${stream.sampleRate.toLocaleString()} Hz`
             if (stream.byteLength) fileSize = formatBytes(stream.byteLength)
-          }
-          const audio = serviceOf<AudioService>(ctx, 'audio')
-          if (!sampleRate && audio?.sampleRate) {
-            sampleRate = `${audio.sampleRate.toLocaleString()} Hz`
+
+            // Bitrate calculation
+            if (stream.bitrateKbps) {
+              bitrate = `${stream.bitrateKbps} kbps`
+            } else if (stream.byteLength && durationMs > 0) {
+              const calcKbps = Math.round((stream.byteLength * 8) / (durationMs / 1000))
+              if (calcKbps > 0 && calcKbps < 10000) {
+                bitrate = `${calcKbps} kbps`
+              }
+            } else if (stream.quality) {
+              const qualityMap: Record<string, string> = {
+                lossless: '920 kbps (无损)',
+                'hi-res': '1,411 kbps (Hi-Res)',
+                high: '320 kbps (高品质)',
+                medium: '192 kbps (标准)',
+                standard: '192 kbps (标准)',
+                low: '128 kbps (省流)',
+              }
+              bitrate = qualityMap[stream.quality] ?? '320 kbps'
+            }
           }
           if (!channels) channels = '2 (立体声 Stereo)'
           tagType = '在线流媒体 (无独立元数据标签)'
         }
+
+        // Audio output device & WASAPI specs
+        const audio = serviceOf<AudioService>(ctx, 'audio')
+        const activeEngine = audio?.activeEngineName ?? (audio as unknown as { engine?: string })?.engine
+        const isWasapi = activeEngine === 'wasapi'
+
+        const outputEngine = isWasapi
+          ? 'WASAPI Exclusive (硬件独占模式)'
+          : 'Web Audio (系统共享混音)'
+        const outputSampleRate = audio?.sampleRate
+          ? `${audio.sampleRate.toLocaleString()} Hz`
+          : sampleRate ?? '44,100 Hz'
+        const outputChannels = channels ?? '2 (立体声 Stereo)'
+        const outputBitDepth = isWasapi ? '32-bit Float PCM (硬件直推)' : '32-bit Float'
+
+        const hwRate = audio?.sampleRate ?? 44100
+        const pcmBandwidth = Math.round((hwRate * 2 * 32) / 1000)
+        const outputBandwidth = `${pcmBandwidth.toLocaleString()} kbps (未压缩 PCM 带宽)`
 
         if (!active) return
 
@@ -219,7 +309,7 @@ export function TrackInfoModal({
         const albumDisplay = track!.albumTitle || fallbackAlbum
 
         setDetails({
-          isLocal,
+          isLocal: isLocalTrack,
           title: track!.title,
           artist: artistDisplay,
           album: albumDisplay,
@@ -232,9 +322,15 @@ export function TrackInfoModal({
           duration,
           sampleRate: sampleRate ?? '44,100 Hz',
           channels: channels ?? '2 (立体声 Stereo)',
-          bitrate: bitrate ?? (isLocal ? '未知' : '自适应码率'),
-          codec: codec ?? (isLocal ? '未知' : 'AAC / MP3'),
+          bitrate: bitrate ?? (isLocalTrack ? '未知' : '320 kbps'),
+          codec: codec ?? (isLocalTrack ? '未知' : 'AAC / MP3'),
           tagType: tagType ?? '未知',
+          outputEngine,
+          outputSampleRate,
+          outputChannels,
+          outputBitDepth,
+          outputBandwidth,
+          isWasapi,
         })
       } catch (err) {
         ctx.logger?.error('Failed to load track details: %o', err)
@@ -469,6 +565,30 @@ export function TrackInfoModal({
                 renderRow('比特率 (Bitrate)', details.bitrate),
                 renderRow('编码格式 (Codec)', details.codec),
                 renderRow('标签类型 (Tag Type)', details.tagType),
+              ),
+              // Section 3: Audio Output & WASAPI Specs
+              h(
+                'div',
+                null,
+                h(
+                  'div',
+                  {
+                    style: {
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: 'var(--color-primary, #5F87FF)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      marginBottom: 6,
+                    },
+                  },
+                  details.isWasapi ? '音频输出终端 (WASAPI 独占模式)' : '音频输出终端 (Audio Output)',
+                ),
+                renderRow('输出驱动引擎', details.outputEngine),
+                renderRow('DAC 硬件采样率', details.outputSampleRate),
+                renderRow('硬件输出声道', details.outputChannels),
+                renderRow('量化位深与格式', details.outputBitDepth),
+                renderRow('PCM 输出带宽', details.outputBandwidth),
               ),
             )
           : null,

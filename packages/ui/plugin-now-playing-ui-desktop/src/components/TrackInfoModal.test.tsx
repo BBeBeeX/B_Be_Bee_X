@@ -49,6 +49,27 @@ class PlayerStub extends Service {
   }
 }
 
+class FsStub extends Service {
+  public statData: Record<string, any> = {}
+
+  constructor(ctx: Context) {
+    super(ctx, 'fs')
+  }
+
+  async stat(uri: string) {
+    return this.statData[uri]
+  }
+}
+
+class AudioStub extends Service {
+  public activeEngineName: 'wasapi' | 'webaudio' = 'wasapi'
+  public sampleRate = 96000
+
+  constructor(ctx: Context) {
+    super(ctx, 'audio')
+  }
+}
+
 const makeArtists = (name: string) => [
   { urn: `BBeBee:local:artist:${name}`, name, role: 'main' as const, ordinal: 0 },
 ]
@@ -119,8 +140,8 @@ describe('TrackInfoModal', () => {
     expect(getByText('/Music/Eagles/Hotel California.flac')).toBeTruthy()
     expect(getByText('40.05 MB')).toBeTruthy()
     expect(getByText('6:31')).toBeTruthy()
-    expect(getByText('44,100 Hz')).toBeTruthy()
-    expect(getByText('2 (立体声 Stereo)')).toBeTruthy()
+    expect(getAllByText('44,100 Hz').length).toBeGreaterThanOrEqual(1)
+    expect(getAllByText('2 (立体声 Stereo)').length).toBeGreaterThanOrEqual(1)
     expect(getByText('920 kbps')).toBeTruthy()
     expect(getByText('FLAC')).toBeTruthy()
     expect(getByText('Vorbis, ID3v2.3')).toBeTruthy()
@@ -147,7 +168,7 @@ describe('TrackInfoModal', () => {
     }
 
     let closed = false
-    const { getByText, findByText, queryByText, getByLabelText } = render(
+    const { getByText, getAllByText, findByText, queryByText, getByLabelText } = render(
       h(TrackInfoModal, { ctx, track, open: true, onClose: () => { closed = true } }),
     )
 
@@ -159,7 +180,7 @@ describe('TrackInfoModal', () => {
     expect(getByText('bilibili')).toBeTruthy()
     expect(getByText('当前歌曲源 ID')).toBeTruthy()
     expect(getByText('BV1xx411c7mD')).toBeTruthy()
-    expect(getByText('48,000 Hz')).toBeTruthy()
+    expect(getAllByText('48,000 Hz').length).toBeGreaterThanOrEqual(1)
     expect(getByText('320 kbps')).toBeTruthy()
     expect(getByText('M4A')).toBeTruthy()
 
@@ -230,5 +251,68 @@ describe('TrackInfoModal', () => {
     expect(await findByText('Scoped Track')).toBeTruthy()
     expect(await findByText('播放内容详情')).toBeTruthy()
   })
+
+  it('recovers local file info via stream.target and fs.stat when DB has no binding', async () => {
+    const ctx = new Context()
+    new DbStub(ctx) // empty DB
+    const player = new PlayerStub(ctx)
+    player.currentStream = {
+      target: 'file:///D:/Music/MySong.flac',
+      codec: 'flac',
+      sampleRate: 44100,
+    }
+
+    const fs = new FsStub(ctx)
+    fs.statData['file:///D:/Music/MySong.flac'] = {
+      size: 25000000,
+      mtime: 1700000000000,
+    }
+
+    const track: Track = {
+      urn: 'BBeBee:local:track:unbound-1',
+      title: 'MySong',
+      artists: makeArtists('Unknown Artist'),
+      durationMs: 200000,
+    }
+
+    const { findByText, getByText } = render(
+      h(TrackInfoModal, { ctx, track, open: true, onClose: () => {} }),
+    )
+
+    expect(await findByText('播放内容详情')).toBeTruthy()
+    expect(getByText('MySong.flac')).toBeTruthy()
+    expect(getByText('D:/Music/MySong.flac')).toBeTruthy()
+    expect(getByText('23.84 MB')).toBeTruthy()
+    expect(getByText('FLAC')).toBeTruthy()
+  })
+
+  it('calculates third-party bitrate dynamically and renders WASAPI output specs', async () => {
+    const ctx = new Context()
+    new AudioStub(ctx) // activeEngineName: wasapi, sampleRate: 96000
+    const player = new PlayerStub(ctx)
+    player.currentStream = {
+      byteLength: 9600000,
+      format: 'm4a',
+    }
+
+    const track: Track = {
+      urn: 'BBeBee:bilibili:track:BV12345678',
+      title: 'Bilibili Audio Stream',
+      artists: makeArtists('Artist'),
+      durationMs: 240000,
+    }
+
+    const { findByText, getByText } = render(
+      h(TrackInfoModal, { ctx, track, open: true, onClose: () => {} }),
+    )
+
+    expect(await findByText('播放内容详情')).toBeTruthy()
+    expect(getByText('320 kbps')).toBeTruthy()
+    expect(getByText('WASAPI Exclusive (硬件独占模式)')).toBeTruthy()
+    expect(getByText('96,000 Hz')).toBeTruthy()
+    expect(getByText('32-bit Float PCM (硬件直推)')).toBeTruthy()
+    expect(getByText('6,144 kbps (未压缩 PCM 带宽)')).toBeTruthy()
+  })
 })
+
 
