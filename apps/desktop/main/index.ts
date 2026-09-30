@@ -39,6 +39,7 @@ import { existsSync, mkdirSync, statSync, createReadStream } from 'node:fs'
 import { Readable } from 'node:stream'
 import { MiniPlayerWindowManager } from './mini-player-manager.js'
 import { createAudioHost } from './audio/index.js'
+import { toNativePath } from './fs-path.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -1131,17 +1132,8 @@ protocol.registerSchemesAsPrivileged([
   },
 ])
 
-function toNativePath(uriOrUrl: string): string {
-  const fileUrl = uriOrUrl.replace(/^bbebee-file:\/*/, 'file:///')
-  if (fileUrl.startsWith('file://')) {
-    const p = fileURLToPath(fileUrl)
-    if (/^\/[a-zA-Z]:[\\/]/.test(p)) {
-      return decodeURIComponent(p.slice(1))
-    }
-    return p
-  }
-  return uriOrUrl
-}
+// `toNativePath` lives in ./fs-path.js (shared with the ffmpeg decoder, which
+// must decode exactly the same way the protocol handler does).
 
 function getFileMimeType(filePath: string): string {
   const ext = extname(filePath).toLowerCase()

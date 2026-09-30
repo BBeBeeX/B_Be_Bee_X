@@ -1,17 +1,19 @@
 import { spawn } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
+import { toNativePath } from '../fs-path.js'
 import type { AudioDecodedPcm, AudioProbeResult, AudioRequestOptions } from './types.js'
 
-function toFsPath(uriOrPath: string): string {
-  if (uriOrPath.startsWith('file://')) {
+/** Exported for tests: the URI→path decoding ffmpeg must agree on. */
+export function toFsPath(uriOrPath: string): string {
+  if (uriOrPath.startsWith('file://') || uriOrPath.startsWith('bbebee-file://')) {
+    // `toNativePath` percent-decodes what the URI encoded — the on-disk name
+    // of `9.%20One%C2%A0Last%C2%A0Kiss…` has real spaces and NBSPs, and a
+    // header-less, un-decoded path makes ffmpeg answer "No such file or
+    // directory" for a track the protocol handler serves without complaint.
     try {
-      return fileURLToPath(uriOrPath)
+      return toNativePath(uriOrPath)
     } catch {
-      return uriOrPath.replace(/^file:\/\//, '')
+      return uriOrPath.replace(/^[a-z-]+:\/\//, '')
     }
-  }
-  if (uriOrPath.startsWith('bbebee-file://')) {
-    return uriOrPath.replace(/^bbebee-file:\/*/, process.platform === 'win32' ? '' : '/')
   }
   return uriOrPath
 }

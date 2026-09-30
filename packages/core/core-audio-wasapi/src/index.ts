@@ -297,10 +297,13 @@ export class AudioWasapi extends Service implements AudioService {
           ]).catch((err) => {
             this.ctx.logger?.warn('wasapi: initWasapi error: %s', String(err))
             return undefined
-          })) as { actualSampleRate?: number; actualBitDepth?: number; ok?: boolean } | undefined
+          })) as { actualSampleRate?: number; actualBitDepth?: number; ok?: boolean; error?: string } | undefined
 
           if (!initRes || initRes.ok === false) {
-            this.fallbackToShared('exclusive init refused decoded format or bridge unavailable')
+            const reason = initRes?.error
+              ? `exclusive init refused decoded format: ${initRes.error}`
+              : 'bridge initWasapi errored'
+            this.fallbackToShared(reason)
           } else {
             this.activeHardwareSampleRate = initRes.actualSampleRate ?? this.context.sampleRate
             this.activeHardwareBitDepth = initRes.actualBitDepth ?? decoded.bitDepth ?? 24
@@ -505,15 +508,33 @@ export class AudioWasapi extends Service implements AudioService {
               .BBeBeeBridge?.call
           : undefined)
       if (bridgeCall) {
-        const initRes = (await bridgeCall('audio', 'initWasapi', [
-          {
-            sampleRate: this.context.sampleRate,
-            channels: buffer.numberOfChannels,
-            bitDepth: 16,
-          },
-        ]).catch(() => undefined)) as { actualSampleRate?: number; actualBitDepth?: number; ok?: boolean } | undefined
+        // decodeAudioData yields float data, so the endpoint's accepted bit
+        // depth is what matters: s16le is the cheap first ask, and endpoints
+        // whose share mode runs 24-bit commonly refuse it — retry at 24
+        // before degrading the whole session to shared output.
+        const initAt = async (bitDepth: number) =>
+          (await bridgeCall('audio', 'initWasapi', [
+            {
+              sampleRate: this.context.sampleRate,
+              channels: buffer.numberOfChannels,
+              bitDepth,
+            },
+          ]).catch(() => undefined)) as {
+            actualSampleRate?: number
+            actualBitDepth?: number
+            ok?: boolean
+            error?: string
+          } | undefined
+
+        let initRes = await initAt(16)
         if (!initRes || initRes.ok === false) {
-          this.fallbackToShared('exclusive init refused buffered format or bridge unavailable')
+          initRes = await initAt(24)
+        }
+        if (!initRes || initRes.ok === false) {
+          const reason = initRes?.error
+            ? `exclusive init refused buffered format: ${initRes.error}`
+            : 'bridge initWasapi errored'
+          this.fallbackToShared(reason)
         } else {
           if (initRes?.actualSampleRate) {
             this.activeHardwareSampleRate = initRes.actualSampleRate
