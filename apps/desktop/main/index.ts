@@ -128,12 +128,15 @@ function getTaskbarIcons() {
   return taskbarIcons
 }
 
+let taskbarRetryTimer: NodeJS.Timeout | undefined
+
 function updateTaskbar(state: TaskbarState): void {
   currentTaskbarState = state
   const icons = getTaskbarIcons()
 
   // 1. Windows thumbnail toolbar (setThumbarButtons)
-  if (mainWindow && !mainWindow.isDestroyed() && process.platform === 'win32') {
+  // Windows ITaskbarList3 requires the window to be visible and mapped on the taskbar.
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && process.platform === 'win32') {
     try {
       const prevFlags: Array<'disabled' | 'dismissonclick' | 'nobackground' | 'hidden' | 'noninteractive'> = []
       if (!state.canPrevious) prevFlags.push('disabled')
@@ -144,7 +147,7 @@ function updateTaskbar(state: TaskbarState): void {
       const nextFlags: Array<'disabled' | 'dismissonclick' | 'nobackground' | 'hidden' | 'noninteractive'> = []
       if (!state.canNext) nextFlags.push('disabled')
 
-      mainWindow.setThumbarButtons([
+      const success = mainWindow.setThumbarButtons([
         {
           tooltip: '上一曲',
           icon: icons.prev,
@@ -176,8 +179,31 @@ function updateTaskbar(state: TaskbarState): void {
           },
         },
       ])
-    } catch {
-      // Ignored if window not ready or platform does not support
+
+      if (success) {
+        if (taskbarRetryTimer) {
+          clearTimeout(taskbarRetryTimer)
+          taskbarRetryTimer = undefined
+        }
+      } else {
+        if (isDebug()) {
+          process.stdout.write(
+            '[desktop:taskbar] mainWindow.setThumbarButtons returned false; scheduling retry\n',
+          )
+        }
+        if (!taskbarRetryTimer) {
+          taskbarRetryTimer = setTimeout(() => {
+            taskbarRetryTimer = undefined
+            if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+              updateTaskbar(currentTaskbarState)
+            }
+          }, 150)
+        }
+      }
+    } catch (err: unknown) {
+      if (isDebug()) {
+        process.stdout.write(`[desktop:taskbar] error setting thumbar buttons: ${String(err)}\n`)
+      }
     }
   }
 
@@ -333,16 +359,20 @@ function createWindow(): BrowserWindow {
     }
   })
 
-  window.once('ready-to-show', () => {
-    updateTaskbar(currentTaskbarState)
-  })
-
   window.on('show', () => {
-    updateTaskbar(currentTaskbarState)
+    setImmediate(() => {
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+        updateTaskbar(currentTaskbarState)
+      }
+    })
   })
 
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = undefined
+    if (taskbarRetryTimer) {
+      clearTimeout(taskbarRetryTimer)
+      taskbarRetryTimer = undefined
+    }
   })
 
   return window
@@ -1270,6 +1300,8 @@ void app.whenReady().then(async () => {
 
   tray = createTray()
   mainWindow = createWindow()
+  // Synchronizes tray state immediately; Windows thumbnail toolbar will attach
+  // automatically once the window becomes visible ('show' event) to ensure HWND mapping.
   updateTaskbar(currentTaskbarState)
 
   // A holder rather than a bare binding: `systemHost` needs to reach the host
