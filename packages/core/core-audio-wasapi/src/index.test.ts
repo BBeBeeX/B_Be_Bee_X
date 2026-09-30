@@ -271,6 +271,48 @@ describe('core-audio-wasapi', () => {
     expect((audio.destination as unknown as FakeNode).outputs.has(engine.destination as FakeNode)).toBe(true)
   })
 
+  it('emits audio/context-rebuilt and retires the old context when the track rate differs', async () => {
+    // A 96 kHz track against a 48 kHz boot context must rebuild the context:
+    // `plugin-dsp` and `plugin-visualizer` resplice on the event, so it must
+    // fire with the NEW context live and the old one must close afterwards.
+    const rebuiltRates: number[] = []
+    const contexts: FakeAudioContext[] = []
+    const ctx = new Context()
+    await ctx.plugin(plugin, {
+      createContext: (options) => {
+        const next = createFakeAudioContext(options?.sampleRate)
+        contexts.push(next)
+        return next as unknown as BaseAudioContext
+      },
+      fetchBytes: async () => new ArrayBuffer(8),
+      bridgeCall: async (_service, method) =>
+        method === 'decodePcm'
+          ? {
+              sampleRate: 96000,
+              channels: 2,
+              bitDepth: 24,
+              durationMs: 2500,
+              pcm: [new Float32Array(480), new Float32Array(480)],
+            }
+          : undefined,
+      enableExclusive: true,
+    })
+    const audio = ctx.audio as AudioWasapi
+    ctx.on('audio/context-rebuilt', () => {
+      rebuiltRates.push((ctx.audio as AudioWasapi).context.sampleRate)
+    })
+
+    const handle = await audio.load('file:///music/hires.flac', { strategy: 'buffer' })
+
+    expect(rebuiltRates).toEqual([96000])
+    expect(contexts).toHaveLength(2)
+    expect((audio.context as unknown as FakeAudioContext).sampleRate).toBe(96000)
+    // The 48 kHz boot context is closed only after the new graph is attached.
+    expect(contexts[0]!.closed).toBe(true)
+    expect(handle.durationMs).toBe(2500)
+    handle.dispose()
+  })
+
   it('evaluates sink worklet processor code and verifies batching', () => {
     const evalScope = {
       AudioWorkletProcessor: class {

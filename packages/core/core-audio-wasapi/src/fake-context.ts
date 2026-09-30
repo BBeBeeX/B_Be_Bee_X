@@ -95,12 +95,17 @@ interface Scheduled {
 }
 
 export class FakeAudioContext {
-  readonly sampleRate = 48_000
+  readonly sampleRate: number
   readonly baseLatency = 0.01
   readonly destination = new FakeNode()
   currentTime = 0
   closed = false
   decodedDuration = 2
+
+  /** `sampleRate` is configurable so tests can exercise context reconstruction. */
+  constructor(sampleRate = 48_000) {
+    this.sampleRate = sampleRate
+  }
 
   private readonly scheduled: Scheduled[] = []
   readonly audioWorklet = {
@@ -157,6 +162,6 @@ export class FakeAudioContext {
   }
 }
 
-export function createFakeAudioContext(): FakeAudioContext {
-  return new FakeAudioContext()
+export function createFakeAudioContext(sampleRate?: number): FakeAudioContext {
+  return new FakeAudioContext(sampleRate)
 }
