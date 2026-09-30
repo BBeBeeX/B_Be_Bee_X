@@ -1,8 +1,9 @@
 import { createElement as h, useEffect, useState, useCallback } from 'react'
 import type { ReactElement } from 'react'
 import type { Context } from 'cordis'
-import type { Track } from '@BBeBee/protocol'
+import type { AudioService, CodecService, DbService, PlayerService, Track } from '@BBeBee/protocol'
 import { parseUrn } from '@BBeBee/protocol'
+import { serviceOf } from '@BBeBee/ui-core'
 import { formatDuration } from '@BBeBee/toolkit'
 import { Sheet, tablerIcon } from '@BBeBee/ui-kit-desktop'
 
@@ -78,7 +79,8 @@ export function TrackInfoModal({
         let channels: string | undefined
         let tagType: string | undefined
 
-        const durationMs = track!.durationMs ?? ctx.player?.state?.durationMs ?? 0
+        const player = serviceOf<PlayerService>(ctx, 'player') ?? ctx.player
+        const durationMs = track!.durationMs ?? player?.state?.durationMs ?? 0
         const duration = formatDuration(durationMs)
 
         if (isLocal) {
@@ -101,9 +103,10 @@ export function TrackInfoModal({
           let binding: BindingRow | undefined
           let scanEntry: ScanRow | undefined
 
-          if (ctx.db) {
+          const db = serviceOf<DbService>(ctx, 'db')
+          if (db) {
             try {
-              binding = (await ctx.db.get(
+              binding = (await db.get(
                 'SELECT * FROM media_bindings WHERE track_urn = ? LIMIT 1',
                 [track!.urn],
               )) as BindingRow | undefined
@@ -111,7 +114,7 @@ export function TrackInfoModal({
               // Ignore db read error
             }
             try {
-              scanEntry = (await ctx.db.get(
+              scanEntry = (await db.get(
                 'SELECT * FROM scan_entries WHERE track_urn = ? OR uri = ? LIMIT 1',
                 [track!.urn, binding?.uri ?? ''],
               )) as ScanRow | undefined
@@ -140,9 +143,10 @@ export function TrackInfoModal({
           }
 
           // Try codec service for detailed tags & specs
-          if (rawUri && ctx.codec?.readMetadata) {
+          const codecService = serviceOf<CodecService>(ctx, 'codec')
+          if (rawUri && codecService?.readMetadata) {
             try {
-              const meta = await ctx.codec.readMetadata(rawUri)
+              const meta = await codecService.readMetadata(rawUri)
               if (meta) {
                 if (meta.codec) codec = meta.codec.toUpperCase()
                 if (meta.sampleRate) sampleRate = `${meta.sampleRate.toLocaleString()} Hz`
@@ -187,7 +191,7 @@ export function TrackInfoModal({
           }
         } else {
           // Third-party source
-          const stream = ctx.player?.currentStream
+          const stream = player?.currentStream
           if (stream) {
             const streamFormat = (stream as unknown as { format?: string }).format
             const streamCodec = stream.codec || streamFormat || stream.mimeType
@@ -196,8 +200,9 @@ export function TrackInfoModal({
             if (stream.sampleRate) sampleRate = `${stream.sampleRate.toLocaleString()} Hz`
             if (stream.byteLength) fileSize = formatBytes(stream.byteLength)
           }
-          if (!sampleRate && ctx.audio?.sampleRate) {
-            sampleRate = `${ctx.audio.sampleRate.toLocaleString()} Hz`
+          const audio = serviceOf<AudioService>(ctx, 'audio')
+          if (!sampleRate && audio?.sampleRate) {
+            sampleRate = `${audio.sampleRate.toLocaleString()} Hz`
           }
           if (!channels) channels = '2 (立体声 Stereo)'
           tagType = '在线流媒体 (无独立元数据标签)'

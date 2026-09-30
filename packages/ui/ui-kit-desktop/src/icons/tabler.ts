@@ -564,4 +564,18 @@ export const TABLER_DEFINITIONS: Record<string, IconSvgDefinition> = {
       },
     ],
   },
+  'info-circle': {
+    elements: [
+      { tag: 'path', attrs: { d: 'M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0' } },
+      { tag: 'path', attrs: { d: 'M12 9h.01' } },
+      { tag: 'path', attrs: { d: 'M11 12h1v4h1' } },
+    ],
+  },
+  info: {
+    elements: [
+      { tag: 'path', attrs: { d: 'M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0' } },
+      { tag: 'path', attrs: { d: 'M12 9h.01' } },
+      { tag: 'path', attrs: { d: 'M11 12h1v4h1' } },
+    ],
+  },
 }

@@ -201,4 +201,34 @@ describe('TrackInfoModal', () => {
     fireEvent.click(copyBtn)
     expect(writeTextMock).toHaveBeenCalledWith('/Music/test.mp3')
   })
+
+  it('functions correctly without throwing under a scoped context where db/codec are not injected', async () => {
+    const root = new Context()
+    new PlayerStub(root)
+    let scopedCtx!: Context
+    await root.plugin({
+      name: 'test-scoped-plugin',
+      inject: ['player'],
+      apply(c) {
+        scopedCtx = c
+      },
+    })
+
+    // Confirm that accessing un-injected property directly throws
+    expect(() => (scopedCtx as any).db).toThrow(/cannot get property "db" without inject/)
+
+    const track: Track = {
+      urn: 'BBeBee:local:track:scoped-1',
+      title: 'Scoped Track',
+      artists: makeArtists('Scoped Artist'),
+    }
+
+    const { findByText } = render(
+      h(TrackInfoModal, { ctx: scopedCtx, track, open: true, onClose: () => {} }),
+    )
+
+    expect(await findByText('Scoped Track')).toBeTruthy()
+    expect(await findByText('播放内容详情')).toBeTruthy()
+  })
 })
+
