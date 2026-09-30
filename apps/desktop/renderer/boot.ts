@@ -355,15 +355,21 @@ export class DesktopAudioService extends Service implements AudioService {
 
     let fiber: Fiber
     try {
+      // `emitContextInterruptions`: desktop opts in — it has no other
+      // interruption surface, and Chromium reports device loss and post-sleep
+      // recovery through the context's own `state` (mobile wires
+      // `AudioManager` instead and keeps this off).
       if (engineKey === 'wasapi') {
         const wasapiConfig: AudioWasapiConfig = {
-          fetchBytes: this.config.fetchBytes,
           bridgeCall: this.config.bridgeCall,
+          emitContextInterruptions: true,
         }
         fiber = await scoped.plugin(AudioWasapi, wasapiConfig)
       } else {
         const webAudioConfig: AudioWebAudioConfig = {
           fetchBytes: this.config.fetchBytes,
+          bridgeCall: this.config.bridgeCall,
+          emitContextInterruptions: true,
         }
         fiber = await scoped.plugin(AudioWebAudio, webAudioConfig)
       }

@@ -82,10 +82,26 @@ class FakeAudioBuffer {
   constructor(
     readonly duration: number,
     readonly sampleRate: number,
+    readonly numberOfChannels = 2,
   ) {}
-  readonly numberOfChannels = 2
   get length(): number {
     return Math.round(this.duration * this.sampleRate)
+  }
+
+  /** Per-channel storage, allocated on first touch so `.set()` can fill it. */
+  private readonly channels = new Map<number, Float32Array>()
+
+  getChannelData(channel: number): Float32Array {
+    let data = this.channels.get(channel)
+    if (!data) {
+      data = new Float32Array(this.length)
+      this.channels.set(channel, data)
+    }
+    return data
+  }
+
+  copyToChannel(source: Float32Array, channelNumber: number, startInChannel = 0): void {
+    this.getChannelData(channelNumber).set(source, startInChannel)
   }
 }
 
@@ -101,7 +117,7 @@ interface Scheduled {
  * position assertions deterministic rather than flaky.
  */
 export class FakeAudioContext {
-  readonly sampleRate = 48_000
+  readonly sampleRate: number
   readonly baseLatency = 0.01
   readonly destination = new FakeNode()
   currentTime = 0
@@ -110,6 +126,11 @@ export class FakeAudioContext {
 
   /** Duration `decodeAudioData` reports, in seconds. */
   decodedDuration = 2
+
+  /** `sampleRate` is configurable so tests can exercise context reconstruction. */
+  constructor(sampleRate = 48_000) {
+    this.sampleRate = sampleRate
+  }
 
   private readonly scheduled: Scheduled[] = []
   private readonly stateListeners = new Set<() => void>()
@@ -123,6 +144,10 @@ export class FakeAudioContext {
 
   createBufferSource(): FakeBufferSource {
     return new FakeBufferSource(this)
+  }
+
+  createBuffer(channels: number, length: number, sampleRate: number): FakeAudioBuffer {
+    return new FakeAudioBuffer(length / sampleRate, sampleRate, channels)
   }
 
   addEventListener(type: 'statechange', listener: () => void): void {
@@ -196,6 +221,6 @@ export class FakeAudioContext {
   }
 }
 
-export function createFakeAudioContext(): FakeAudioContext {
-  return new FakeAudioContext()
+export function createFakeAudioContext(sampleRate?: number): FakeAudioContext {
+  return new FakeAudioContext(sampleRate)
 }

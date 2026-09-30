@@ -298,10 +298,12 @@ Where the events come from is the shell's job — `ctx.audio` only publishes wha
   they are the informed source, and the `AudioContext`'s own state transitions stay untranslated
   (`emitContextInterruptions` off) rather than publishing every interruption twice.
 - **Desktop** — there is no other interruption surface, so the desktop shell opts into
-  `emitContextInterruptions`: `core-audio-webaudio` translates the `AudioContext`'s state
-  transitions (`running → suspended/interrupted → running`) into `began`/`ended` events, and logs
-  every transition. A context *born* suspended (autoplay policy) is not an interruption. The
-  events carry `shouldResume: false` — waking the machine does not mean the user wants sound —
+  `emitContextInterruptions` on both engines (`core-audio-webaudio` and `core-audio-wasapi`;
+  the shared observer lives in the former and the WASAPI engine follows its context across a
+  rate rebuild): the `AudioContext`'s state transitions
+  (`running → suspended/interrupted → running`) are translated into `began`/`ended` events, and
+  every transition is logged. A context *born* suspended (autoplay policy) is not an interruption.
+  The events carry `shouldResume: false` — waking the machine does not mean the user wants sound —
   but `play()` itself resumes a suspended context on the way in, since the press of the button is
   the user gesture.
 

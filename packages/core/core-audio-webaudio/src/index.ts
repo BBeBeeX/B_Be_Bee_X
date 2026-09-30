@@ -8,11 +8,17 @@
  * context their platform provides.
  *
  * Everything platform-shaped is a config seam rather than an import:
- * `createContext`, `createMediaElement` and `fetchBytes`. That keeps the
- * package inside the invariant of docs/02 §1 — no platform SDK outside
- * `core-*` — and, just as usefully, makes the graph testable without a sound
- * card. The seams are also where `core-audio-rntp` would slot in if the Stage 0
- * spike goes the other way (docs/05 §1, docs/11 §3.1).
+ * `createContext`, `createMediaElement`, `fetchBytes` and `bridgeCall`. That
+ * keeps the package inside the invariant of docs/02 §1 — no platform SDK
+ * outside `core-*` — and, just as usefully, makes the graph testable without a
+ * sound card.
+ *
+ * Where the desktop bridge is available the engine matches the context to the
+ * track's native sample rate — probed ahead of a streamed load, taken from the
+ * bridge's PCM when it decodes a buffer — so the graph never resamples Hi-Res
+ * material internally (`plugin-dsp` and `plugin-visualizer` resplice on the
+ * `audio/context-rebuilt` event that follows). Realms without a bridge simply
+ * never rebuild.
  *
  * See docs/05-audio-playback.md §1.
  */
@@ -31,6 +37,40 @@ import type {
   RouteChangeEvent,
   Uri,
 } from '@BBeBee/protocol'
+import {
+  closeContextQuietly,
+  ensureAudioContextRunning,
+  enumerateOutputDevices,
+  probeViaBridge,
+  rebuildGraphAtRate,
+  resolveBridgeCall,
+  resolveNativeOutputDevice,
+  sanitizeSinkId,
+  ContextInterruptionObserver,
+  type AudioLogger,
+  type BridgeCall,
+} from './shared.js'
+
+/**
+ * Shared engine machinery, public so `core-audio-wasapi` — which is built on
+ * this package — can reuse it instead of forking it.
+ */
+export {
+  closeContextQuietly,
+  ensureAudioContextRunning,
+  enumerateOutputDevices,
+  probeViaBridge,
+  rebuildGraphAtRate,
+  resolveBridgeCall,
+  resolveNativeOutputDevice,
+  sanitizeSinkId,
+  ContextInterruptionObserver,
+} from './shared.js'
+export type {
+  AudioLogger,
+  AudioProbeInfo,
+  BridgeCall,
+} from './shared.js'
 
 /* ── The platform seams ─────────────────────────────────────────────────── */
 
@@ -63,8 +103,11 @@ export interface MediaElementLike {
 }
 
 export interface AudioWebAudioConfig {
-  /** Defaults to `globalThis.AudioContext`. */
-  createContext?: () => BaseAudioContext
+  /**
+   * Defaults to `globalThis.AudioContext`. Takes the standard options object,
+   * `sampleRate` among them — the seam a sample-rate rebuild goes through.
+   */
+  createContext?: (options?: AudioContextOptions) => BaseAudioContext
   /** Defaults to `new Audio()`. Streaming is refused where there is none. */
   createMediaElement?: () => MediaElementLike
   /** Bytes for buffered loads. Defaults to `fetch`. */
@@ -74,33 +117,13 @@ export interface AudioWebAudioConfig {
   ) => Promise<ArrayBuffer>
   /** Reported as `outputLatencyMs` where the platform does not know. */
   fallbackLatencyMs?: number
+  /** The desktop main-process bridge: probe, decodePcm, output devices. */
+  bridgeCall?: BridgeCall
   /**
    * Translate the `AudioContext`'s own state transitions into interruption
-   * events.
-   *
-   * Desktop opts in: it has no other interruption surface, and Chromium
-   * reports device loss and post-sleep recovery through `state` — without
-   * this, a context left `suspended` is playback that silently stops while
-   * the transport still says *playing*. Mobile keeps it off: the shell wires
-   * `AudioManager`'s events, which carry the OS's `shouldResume`; the raw
-   * state transitions would fire a second, less informed copy of every
-   * interruption.
+   * events. See `ContextInterruptionObserver` for when to opt in.
    */
   emitContextInterruptions?: boolean
-}
-
-/**
- * The slice of the context that carries its lifecycle.
- *
- * Declared structurally because not every realm provides it — the fake engine
- * in tests has none of these members, and the service must treat a context
- * without them as one that simply cannot be interrupted or stuck.
- */
-interface ContextLifecycle {
-  readonly state?: string
-  resume?: () => Promise<void>
-  addEventListener?: (type: 'statechange', listener: () => void) => void
-  removeEventListener?: (type: 'statechange', listener: () => void) => void
 }
 
 /* ── Source handles ─────────────────────────────────────────────────────── */
@@ -114,14 +137,7 @@ interface ContextLifecycle {
  * makes gapless possible: the next buffer is queued behind the same output
  * node while the current one is still sounding.
  */
-export interface AudioLogger {
-  debug?(message: string, ...args: unknown[]): void
-  info?(message: string, ...args: unknown[]): void
-  warn?(message: string, ...args: unknown[]): void
-  error?(message: string, ...args: unknown[]): void
-}
-
-class BufferedHandle implements AudioSourceHandle {
+export class BufferedHandle implements AudioSourceHandle {
   readonly node: GainNode
   readonly durationMs: number
 
@@ -135,13 +151,26 @@ class BufferedHandle implements AudioSourceHandle {
   constructor(
     private readonly context: BaseAudioContext,
     private readonly buffer: AudioBuffer,
-    private readonly logger?: AudioLogger,
-    private readonly ensureRunning?: () => void,
+    opts: {
+      logger?: AudioLogger
+      ensureRunning?: () => void
+      /**
+       * Overrides `buffer.duration` — the bridge reports the track's real
+       * length, which a truncated decode would otherwise mask.
+       */
+      durationMs?: number
+    } = {},
   ) {
+    const { logger, ensureRunning, durationMs } = opts
+    this.logger = logger
+    this.ensureRunning = ensureRunning
     this.node = context.createGain()
-    this.durationMs = Math.round(buffer.duration * 1000)
+    this.durationMs = durationMs ?? Math.round(buffer.duration * 1000)
     this.logger?.debug?.('webaudio: [buffered] handle created (duration: %dms)', this.durationMs)
   }
+
+  private readonly logger?: AudioLogger
+  private readonly ensureRunning?: () => void
 
   get positionMs(): number {
     if (!this.playing) return Math.round(this.offsetSeconds * 1000)
@@ -441,44 +470,20 @@ export class StreamedHandle implements AudioSourceHandle {
 export class AudioWebAudio extends Service implements AudioService {
   static inject = []
 
-  readonly context: BaseAudioContext
-  readonly chainInput: GainNode
-  private readonly master: GainNode
+  context: BaseAudioContext
+  chainInput: GainNode
+  private master: GainNode
   private targetVolume = 0.8
   private mutedAt?: number
   private selectedDeviceId = 'default'
   private readonly interruptionListeners = new Set<(e: InterruptionEvent) => void>()
   private readonly routeListeners = new Set<(e: RouteChangeEvent) => void>()
   private readonly activeMediaElements = new Set<MediaElementLike>()
-  /**
-   * Whether the context was ever seen `running`.
-   *
-   * A context *born* suspended — Chromium's autoplay policy creating it
-   * before a gesture — was never playing anything, so its suspension is not
-   * an interruption and must not pause a player that is about to start.
-   */
-  private sawRunning = false
-  /** An interruption published from context state and not yet recovered. */
-  private contextInterrupted = false
-  /** Kept so the disposer unbinds exactly what it bound. */
-  private stateChangeListener?: () => void
-
-  /**
-   * Kick a suspended or interrupted context before a source starts on it.
-   *
-   * The user pressing play *is* the user gesture every policy needs, so the
-   * resume is safe to attempt here; a refusal is logged, never thrown — a
-   * host that won't resume is not a reason to fail the call.
-   */
-  private readonly ensureContextRunning = (): void => {
-    const lifecycle = this.context as BaseAudioContext & ContextLifecycle
-    if ((lifecycle.state === 'suspended' || lifecycle.state === 'interrupted') && lifecycle.resume) {
-      this.ctx.logger?.warn('webaudio: play() on a %s context — resuming', lifecycle.state)
-      void lifecycle.resume().catch((err: unknown) => {
-        this.ctx.logger?.warn('webaudio: context.resume() failed: %s', String(err))
-      })
-    }
-  }
+  private activeHardwareBitDepth?: number
+  private activeHardwareChannels?: number
+  private activeDeviceLabel?: string
+  /** Watches the context's own state; follows it across a rate rebuild. */
+  private readonly interruptions: ContextInterruptionObserver
 
   constructor(
     ctx: Context,
@@ -488,6 +493,12 @@ export class AudioWebAudio extends Service implements AudioService {
 
     const create = config.createContext ?? defaultContextFactory()
     this.context = create()
+
+    this.interruptions = new ContextInterruptionObserver({
+      logger: ctx.logger,
+      emitInterruptions: config.emitContextInterruptions === true,
+      onInterruption: (e) => this.emitInterruption(e),
+    })
 
     // chainInput → [effects, spliced in at M4] → master → destination.
     //
@@ -553,6 +564,80 @@ export class AudioWebAudio extends Service implements AudioService {
     return this.config.fallbackLatencyMs ?? 0
   }
 
+  /** The source's bit depth, not the endpoint's — the OS mixer owns that. */
+  get hardwareBitDepth(): number {
+    return this.activeHardwareBitDepth ?? 16
+  }
+
+  get hardwareChannels(): number {
+    return this.activeHardwareChannels ?? 2
+  }
+
+  get currentDeviceLabel(): string | undefined {
+    return this.activeDeviceLabel
+  }
+
+  /**
+   * Put the graph at the track's native rate: build a fresh context there,
+   * swap the fields, tell graph consumers, retire the old context. A no-op
+   * when the context already runs at the rate; a kept graph with a warning
+   * when the realm refused to.
+   */
+  private async ensureContextSampleRate(targetRate?: number): Promise<void> {
+    if (!targetRate || targetRate === this.context.sampleRate) {
+      return
+    }
+
+    this.ctx.logger?.info(
+      'webaudio: track sample rate (%dHz) differs from context (%dHz) — recreating AudioContext to keep the graph at the native rate',
+      targetRate,
+      this.context.sampleRate,
+    )
+
+    const rebuilt = rebuildGraphAtRate({
+      create: this.config.createContext ?? defaultContextFactory(),
+      targetRate,
+      mutedAt: this.mutedAt,
+      targetVolume: this.targetVolume,
+    })
+    if (!rebuilt) {
+      this.ctx.logger?.warn(
+        'webaudio: failed to rebuild AudioContext with sampleRate %d — keeping the current graph',
+        targetRate,
+      )
+      return
+    }
+
+    const oldCtx = this.context
+    this.context = rebuilt.context
+    this.chainInput = rebuilt.chainInput
+    this.master = rebuilt.master
+
+    // Elements are bound to the old context through createMediaElementSource;
+    // on the new graph they are silent, so stop tracking them for sink
+    // switches. Live handles are the player's to dispose on the track change
+    // that precedes any load.
+    this.activeMediaElements.clear()
+
+    // The state observer watches a context, not the service — follow it.
+    this.interruptions.attach(this.context)
+
+    // A fresh context knows nothing of the endpoint the user picked — put the
+    // selection back, best effort.
+    const sink = (this.context as BaseAudioContext & { setSinkId?: (id: string) => Promise<void> })
+      .setSinkId
+    if (typeof sink === 'function' && this.selectedDeviceId !== 'default') {
+      void sink.call(this.context, sanitizeSinkId(this.selectedDeviceId)).catch(() => {})
+    }
+
+    // Notify DSP, visualizer, and other graph consumers to resplice nodes to
+    // the new context.
+    this.ctx.emit('audio/context-rebuilt')
+
+    // Safely close previous context after new graph is attached
+    closeContextQuietly(oldCtx)
+  }
+
   async load(src: string | Uri, opts: LoadOptions): Promise<AudioSourceHandle> {
     // `audio` is a flag capability: holding it means "may contribute nodes to
     // the audio graph" (docs/03 §7). Gated here rather than on `chainInput`
@@ -603,39 +688,51 @@ export class AudioWebAudio extends Service implements AudioService {
         buffer.numberOfChannels,
         buffer.sampleRate,
       )
+
+      // Chromium resamples a decoded buffer to the context's own rate, so the
+      // rates agree there; realms that do not resample get the context moved
+      // to the buffer's rate instead of in-graph resampling on playback.
+      if (buffer.sampleRate !== this.context.sampleRate) {
+        await this.ensureContextSampleRate(buffer.sampleRate)
+      }
+      this.activeHardwareChannels = buffer.numberOfChannels
+      this.activeHardwareBitDepth = 16
     } catch (decodeErr) {
       this.ctx.logger?.warn('webaudio: decodeAudioData failed for %s, trying bridge decode: %s', src, String(decodeErr))
-      if (typeof window !== 'undefined') {
-        const bridge = (
-          window as unknown as {
-            BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> }
+      const bridge = resolveBridgeCall(this.config.bridgeCall)
+      if (bridge) {
+        try {
+          const res = (await bridge('audio', 'decodePcm', [
+            src,
+            { headers: opts.headers },
+          ])) as {
+            sampleRate: number
+            channels: number
+            bitDepth?: number
+            durationMs: number
+            pcm: Float32Array[]
           }
-        ).BBeBeeBridge
-        if (bridge?.call) {
-          try {
-            const res = (await bridge.call('audio', 'decodePcm', [
-              src,
-              { headers: opts.headers },
-            ])) as {
-              sampleRate: number
-              channels: number
-              durationMs: number
-              pcm: Float32Array[]
+          if (res && res.pcm && res.pcm.length > 0 && res.pcm[0]?.length) {
+            // The bridge returns native-rate PCM; put the context there before
+            // allocating the buffer so playback needs no resampling.
+            await this.ensureContextSampleRate(res.sampleRate)
+            const ctx = this.context as AudioContext
+            const buf = ctx.createBuffer(res.channels, res.pcm[0].length, res.sampleRate)
+            for (let c = 0; c < res.channels; c++) {
+              buf.getChannelData(c).set(res.pcm[c]!)
             }
-            if (res && res.pcm && res.pcm.length > 0 && res.pcm[0]?.length) {
-              const ctx = this.context as AudioContext
-              const buf = ctx.createBuffer(res.channels, res.pcm[0].length, res.sampleRate)
-              for (let c = 0; c < res.channels; c++) {
-                buf.getChannelData(c).set(res.pcm[c]!)
-              }
-              opts.signal?.throwIfAborted()
-              opts.onBuffered?.(buf.duration)
-              this.ctx.logger?.info('webaudio: bridge decodePcm succeeded (%dms, %d channels, %dHz)', res.durationMs, res.channels, res.sampleRate)
-              return new BufferedHandle(this.context, buf, this.ctx.logger, this.ensureContextRunning)
-            }
-          } catch (bridgeErr) {
-            this.ctx.logger?.error('webaudio: bridge decodePcm failed for %s: %s', src, String(bridgeErr))
+            this.activeHardwareChannels = res.channels
+            this.activeHardwareBitDepth = res.bitDepth ?? 16
+            opts.signal?.throwIfAborted()
+            opts.onBuffered?.(buf.duration)
+            this.ctx.logger?.info('webaudio: bridge decodePcm succeeded (%dms, %d channels, %dHz)', res.durationMs, res.channels, res.sampleRate)
+            return new BufferedHandle(this.context, buf, {
+              logger: this.ctx.logger,
+              ensureRunning: this.ensureContextRunning,
+            })
           }
+        } catch (bridgeErr) {
+          this.ctx.logger?.error('webaudio: bridge decodePcm failed for %s: %s', src, String(bridgeErr))
         }
       }
       throw decodeErr
@@ -644,7 +741,10 @@ export class AudioWebAudio extends Service implements AudioService {
 
     // A decoded buffer is fully available, so the whole track is buffered.
     opts.onBuffered?.(buffer.duration)
-    return new BufferedHandle(this.context, buffer, this.ctx.logger, this.ensureContextRunning)
+    return new BufferedHandle(this.context, buffer, {
+      logger: this.ctx.logger,
+      ensureRunning: this.ensureContextRunning,
+    })
   }
 
   private async loadStreamed(src: string, opts: LoadOptions): Promise<AudioSourceHandle> {
@@ -656,16 +756,28 @@ export class AudioWebAudio extends Service implements AudioService {
       )
     }
 
+    // Probe the stream's rate so the context can be rebuilt at the track's
+    // native rate — the element is wrapped on the *new* context and then plays
+    // without in-graph resampling. A failure is non-fatal: the element plays
+    // at the context's current rate either way.
+    const bridge = resolveBridgeCall(this.config.bridgeCall)
+    if (bridge) {
+      try {
+        const probed = await probeViaBridge(bridge, src, opts.headers)
+        if (probed.sampleRate) await this.ensureContextSampleRate(probed.sampleRate)
+        if (probed.channels) this.activeHardwareChannels = probed.channels
+        if (probed.bitDepth) this.activeHardwareBitDepth = probed.bitDepth
+      } catch (err) {
+        this.ctx.logger?.debug?.('webaudio: probe for streamed sample rate failed: %s', String(err))
+      }
+    }
+
     const element = createElement()
     element.crossOrigin = 'anonymous'
 
     const elWithSink = element as unknown as { setSinkId?: (id: string) => Promise<void> }
     if (this.selectedDeviceId && typeof elWithSink.setSinkId === 'function') {
-      let targetId = this.selectedDeviceId === 'default' ? '' : this.selectedDeviceId
-      if (targetId && (targetId.includes('\\') || targetId.includes('{') || targetId.startsWith('hw:'))) {
-        targetId = ''
-      }
-      void elWithSink.setSinkId(targetId).catch(() => {})
+      void elWithSink.setSinkId(sanitizeSinkId(this.selectedDeviceId)).catch(() => {})
     }
     const targetSrc =
       typeof src === 'string' && src.startsWith('file://') && typeof window !== 'undefined'
@@ -697,6 +809,15 @@ export class AudioWebAudio extends Service implements AudioService {
     }
 
     return handle
+  }
+
+  /**
+   * Kick a suspended or interrupted context before a source starts on it.
+   * The shared implementation; bound late so it reads the context a rate
+   * rebuild may have replaced.
+   */
+  private readonly ensureContextRunning = (): void => {
+    ensureAudioContextRunning(this.context, this.ctx.logger)
   }
 
   setVolume(v: number): void {
@@ -752,164 +873,38 @@ export class AudioWebAudio extends Service implements AudioService {
    */
   async listOutputDevices(): Promise<OutputDevice[]> {
     this.ctx.logger?.info('webaudio: listOutputDevices() started')
-    await unlockMediaDeviceLabels(this.ctx.logger)
-
-    const devices: OutputDevice[] = []
-    const media = (globalThis as { navigator?: { mediaDevices?: MediaDevicesLike } }).navigator
-      ?.mediaDevices
-
-    let rawOutputs: Array<{ deviceId: string; kind: string; label: string }> = []
-    if (media?.enumerateDevices) {
-      try {
-        this.ctx.logger?.debug?.('webaudio: calling navigator.mediaDevices.enumerateDevices()...')
-        const raw = await media.enumerateDevices()
-        rawOutputs = raw.filter((d) => d.kind === 'audiooutput')
-        this.ctx.logger?.info(
-          'webaudio: enumerateDevices() returned %d total devices (%d audiooutput): %s',
-          raw.length,
-          rawOutputs.length,
-          JSON.stringify(rawOutputs.map((d) => ({ deviceId: d.deviceId, label: d.label }))),
-        )
-      } catch (err) {
-        this.ctx.logger?.warn('webaudio: navigator.mediaDevices.enumerateDevices() failed: %s', String(err))
-      }
-    } else {
-      this.ctx.logger?.debug?.('webaudio: navigator.mediaDevices.enumerateDevices is not available')
+    const devices = await enumerateOutputDevices({
+      logger: this.ctx.logger,
+      bridgeCall: resolveBridgeCall(this.config.bridgeCall),
+    })
+    if (!this.activeDeviceLabel) {
+      const def = devices.find((d) => d.isDefault) ?? devices[0]
+      if (def) this.activeDeviceLabel = def.label
     }
-
-    let mainDevices: OutputDevice[] = []
-    if (typeof window !== 'undefined') {
-      const bridge = (
-        window as unknown as {
-          BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> }
-        }
-      ).BBeBeeBridge
-      if (bridge?.call) {
-        try {
-          this.ctx.logger?.debug?.('webaudio: calling bridge.call("audio", "getOutputDevices")...')
-          const fetched = (await bridge.call('audio', 'getOutputDevices', [])) as OutputDevice[]
-          if (Array.isArray(fetched) && fetched.length > 0) {
-            mainDevices = fetched
-            this.ctx.logger?.info(
-              'webaudio: bridge getOutputDevices returned %d devices: %s',
-              fetched.length,
-              JSON.stringify(fetched.map((d) => ({ id: d.id, label: d.label, isDefault: d.isDefault, isVirtual: d.isVirtual }))),
-            )
-          } else {
-            this.ctx.logger?.debug?.('webaudio: bridge getOutputDevices returned empty or non-array')
-          }
-        } catch (err) {
-          this.ctx.logger?.warn('webaudio: bridge getOutputDevices call failed: %s', String(err))
-        }
-      }
-    }
-
-    if (rawOutputs.length > 0) {
-      for (let i = 0; i < rawOutputs.length; i++) {
-        const d = rawOutputs[i]!
-        let label = d.label
-        let matchReason = 'none'
-
-        // Match with mainDevices solely for metadata (label & virtual card detection)
-        let matchedMain: OutputDevice | undefined
-        if (mainDevices.length > 0) {
-          if (!isGenericPlaceholder(label)) {
-            const cleanL = normalizeBaseLabel(label)
-            matchedMain = mainDevices.find((m) => {
-              const cleanM = normalizeBaseLabel(m.label)
-              return cleanM === cleanL || cleanM.includes(cleanL) || cleanL.includes(cleanM)
-            })
-            if (matchedMain) matchReason = `label match ("${cleanL}" ~ "${matchedMain.label}")`
-          }
-          if (!matchedMain) {
-            if (d.deviceId === 'default') {
-              matchedMain = mainDevices.find((m) => m.isDefault) ?? mainDevices[0]
-              matchReason = 'default device fallback'
-            } else if (i < mainDevices.length) {
-              matchedMain = mainDevices[i]
-              matchReason = `index match [${i}]`
-            }
-          }
-        }
-
-        if (isGenericPlaceholder(label) && matchedMain?.label && !isGenericPlaceholder(matchedMain.label)) {
-          this.ctx.logger?.debug?.(
-            'webaudio: replacing generic label "%s" (deviceId=%s) with native label "%s" via %s',
-            label,
-            d.deviceId,
-            matchedMain.label,
-            matchReason,
-          )
-          label = matchedMain.label
-        }
-
-        const { label: cleanLabel, isVirtual } = cleanAndTagDeviceLabel(
-          label,
-          d.deviceId,
-          matchedMain?.isVirtual,
-        )
-
-        const finalLabel = !isGenericPlaceholder(cleanLabel)
-          ? cleanLabel
-          : (matchedMain?.label && !isGenericPlaceholder(matchedMain.label) ? matchedMain.label : '音频输出设备')
-
-        this.ctx.logger?.debug?.(
-          'webaudio: processed device[%d]: id="%s", raw="%s", final="%s", isVirtual=%s',
-          i,
-          d.deviceId,
-          d.label,
-          finalLabel,
-          isVirtual,
-        )
-
-        // CRITICAL: WebAudio devices MUST use Chromium's deviceId, never native OS IDs!
-        devices.push({
-          id: d.deviceId,
-          label: finalLabel,
-          isDefault: d.deviceId === 'default',
-          isVirtual,
-        })
-      }
-    }
-
-    if (devices.length > 0) {
-      this.ctx.logger?.info(
-        'webaudio: listOutputDevices returning %d processed devices: %s',
-        devices.length,
-        JSON.stringify(devices.map((d) => ({ id: d.id, label: d.label, isDefault: d.isDefault, isVirtual: d.isVirtual }))),
-      )
-      return devices
-    }
-
-    // Fallback only if enumerateDevices returned nothing (e.g. headless unit tests)
-    if (mainDevices.length > 0) {
-      const fallbackLabel = cleanAndTagDeviceLabel(mainDevices[0]!.label).label || '音频输出设备'
-      this.ctx.logger?.warn('webaudio: listOutputDevices fallback to main process devices (1 device): %s', fallbackLabel)
-      return [
-        {
-          id: 'default',
-          label: fallbackLabel,
-          isDefault: true,
-          isVirtual: Boolean(mainDevices[0]!.isVirtual),
-        },
-      ]
-    }
-
-    this.ctx.logger?.warn('webaudio: listOutputDevices default fallback (no devices discovered anywhere)')
-    return [{ id: 'default', label: '音频输出设备', isDefault: true, isVirtual: false }]
+    return devices
   }
 
   async setOutputDevice(id: string): Promise<void> {
     this.gate()
     this.selectedDeviceId = id
     this.ctx.logger?.info('webaudio: setOutputDevice("%s")', id)
-    let targetId = id === 'default' ? '' : id
+
+    // The native side learns the OS device the Chromium id stands for — the
+    // id Chromium understands and the id the OS understands are different.
+    const bridge = resolveBridgeCall(this.config.bridgeCall)
+    if (bridge) {
+      const { nativeId, label } = await resolveNativeOutputDevice({ id, bridge, logger: this.ctx.logger })
+      if (label) this.activeDeviceLabel = label
+      try {
+        await bridge('audio', 'setOutputDevice', [nativeId])
+        this.ctx.logger?.info('webaudio: bridge audio.setOutputDevice("%s") succeeded', nativeId)
+      } catch (err) {
+        this.ctx.logger?.warn('webaudio: bridge audio.setOutputDevice("%s") failed: %s', nativeId, String(err))
+      }
+    }
 
     // Safety guard: never pass OS IDs (PnP InstanceId, MMDevice ID, ALSA hw) to Chromium setSinkId
-    if (targetId && (targetId.includes('\\') || targetId.includes('{') || targetId.startsWith('hw:'))) {
-      this.ctx.logger?.warn('webaudio: setOutputDevice received raw OS ID "%s", sanitized to "" for Chromium setSinkId', targetId)
-      targetId = ''
-    }
+    const targetId = sanitizeSinkId(id)
 
     const sink = (this.context as BaseAudioContext & { setSinkId?: (id: string) => Promise<void> })
       .setSinkId
@@ -932,22 +927,6 @@ export class AudioWebAudio extends Service implements AudioService {
           this.ctx.logger?.debug?.('webaudio: MediaElement.setSinkId("%s") succeeded', targetId)
         } catch (err) {
           this.ctx.logger?.warn('webaudio: MediaElement.setSinkId("%s") failed: %s', targetId, String(err))
-        }
-      }
-    }
-
-    if (typeof window !== 'undefined') {
-      const bridge = (
-        window as unknown as {
-          BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> }
-        }
-      ).BBeBeeBridge
-      if (bridge?.call) {
-        try {
-          await bridge.call('audio', 'setOutputDevice', [id])
-          this.ctx.logger?.info('webaudio: bridge.call("audio", "setOutputDevice", ["%s"]) succeeded', id)
-        } catch (err) {
-          this.ctx.logger?.warn('webaudio: bridge.call("audio", "setOutputDevice") failed: %s', String(err))
         }
       }
     }
@@ -982,198 +961,38 @@ export class AudioWebAudio extends Service implements AudioService {
     for (const listener of this.routeListeners) listener(event)
   }
 
-  /**
-   * Context state transitions, translated into log lines and — where the
-   * shell opted in (`emitContextInterruptions`) — interruption events.
-   *
-   * This is the observability the silent pauses lacked: a context the OS
-   * left `suspended` used to stop playback with no line anywhere, because no
-   * player code ran. Now the transition itself is the record.
-   */
-  private onContextStateChange(): void {
-    const lifecycle = this.context as BaseAudioContext & ContextLifecycle
-    const state = lifecycle.state
-    switch (state) {
-      case 'running':
-        this.ctx.logger?.info('webaudio: context state -> running')
-        this.sawRunning = true
-        if (this.config.emitContextInterruptions && this.contextInterrupted) {
-          this.contextInterrupted = false
-          // `shouldResume: false`: the shell cannot know whether the OS
-          // considers the disruption over, so the user decides. Pressing
-          // play resumes the context on the way (`ensureContextRunning`).
-          this.emitInterruption({ type: 'ended', shouldResume: false })
-        }
-        break
-      case 'interrupted':
-      case 'suspended':
-        this.ctx.logger?.warn('webaudio: context state -> %s', state)
-        if (this.config.emitContextInterruptions && !this.contextInterrupted && this.sawRunning) {
-          this.contextInterrupted = true
-          this.emitInterruption({ type: 'began', shouldResume: false })
-        }
-        break
-      case 'closed':
-        this.ctx.logger?.warn('webaudio: context state -> closed')
-        break
-      default:
-        // A realm with no `state` at all — nothing to observe.
-        break
-    }
-  }
-
   async [Service.init]() {
-    const lifecycle = this.context as BaseAudioContext & ContextLifecycle
-    // A context created already running never transitions *to* running, so
-    // the initial state is read once here — otherwise the first suspension
-    // would not qualify as an interruption.
-    if (lifecycle.state === 'running') this.sawRunning = true
-    if (typeof lifecycle.addEventListener === 'function') {
-      const listener = () => this.onContextStateChange()
-      this.stateChangeListener = listener
-      lifecycle.addEventListener('statechange', listener)
-    }
+    this.interruptions.attach(this.context)
     return async () => {
       this.ctx.logger?.info('webaudio: disposing audio service')
       // Before `close()`: closing fires a final statechange, and a listener
       // outliving its service logs through an inactive context.
-      if (this.stateChangeListener && typeof lifecycle.removeEventListener === 'function') {
-        lifecycle.removeEventListener('statechange', this.stateChangeListener)
-      }
-      this.stateChangeListener = undefined
+      this.interruptions.detach()
       this.chainInput.disconnect()
       this.master.disconnect()
       this.interruptionListeners.clear()
       this.routeListeners.clear()
       this.activeMediaElements.clear()
-      const closable = this.context as BaseAudioContext & { close?: () => Promise<void> }
-      if (closable.close) await closable.close().catch(() => undefined)
+      closeContextQuietly(this.context)
     }
-  }
-}
-
-let mediaDeviceLabelsUnlocked = false
-
-function isGenericPlaceholder(label: string): boolean {
-  if (!label) return true
-  const trimmed = label.trim()
-  return (
-    trimmed === '' ||
-    trimmed === '音频输出设备' ||
-    trimmed.startsWith('音频输出设备 (') ||
-    trimmed === '系统默认音频设备 (System Default)' ||
-    trimmed === '系统默认音频设备' ||
-    trimmed === '系统默认音频终端 (WASAPI Exclusive)' ||
-    trimmed === '默认音频终端 (WASAPI Exclusive)' ||
-    trimmed === '系统默认音频输出 (System Default)' ||
-    trimmed === '默认音频设备' ||
-    trimmed === 'Default Audio Device' ||
-    trimmed === 'Audio Output Device'
-  )
-}
-
-function normalizeBaseLabel(l: string): string {
-  return (l || '')
-    .toLowerCase()
-    .replace(/\s*(\(虚拟\)|\[虚拟\])\s*$/g, '')
-    .replace(/^(默认\s*[-–:：]\s*|default\s*[-–:：]\s*|系统默认\s*[-–:：]\s*)/i, '')
-    .replace(/\s*\((system default|默认)\)$/i, '')
-    .trim()
-}
-
-function cleanAndTagDeviceLabel(
-  rawLabel: string,
-  id?: string,
-  isVirtualHint?: boolean,
-): { label: string; isVirtual: boolean } {
-  let label = (rawLabel || '')
-    .replace(/^(默认\s*[-–:：]\s*|Default\s*[-–:：]\s*|系统默认\s*[-–:：]\s*)/i, '')
-    .replace(/\s*\((System Default|默认)\)$/i, '')
-    .trim()
-
-  if (isGenericPlaceholder(label)) {
-    label = ''
-  }
-
-  const isVirtual = Boolean(
-    isVirtualHint ||
-      /voicemeeter|vb-audio|vbaudio|virtual|虚拟|todesk|steam streaming|sonar|null sink|null-sink|null_sink|loopback|blackhole|soundflower|obs|easyeffects|pulseeffects|scream|discord/i.test(
-        `${label} ${id || ''}`,
-      ),
-  )
-
-  label = label.replace(/\s*(\(虚拟\)|\[虚拟\])\s*$/g, '').trim()
-  if (isVirtual && label && !label.endsWith('(虚拟)')) {
-    label = `${label} (虚拟)`
-  }
-
-  return { label, isVirtual }
-}
-
-async function unlockMediaDeviceLabels(logger?: AudioLogger): Promise<void> {
-  if (mediaDeviceLabelsUnlocked) {
-    logger?.debug?.('webaudio: unlockMediaDeviceLabels skipped, already unlocked')
-    return
-  }
-  const nav = (globalThis as unknown as {
-    navigator?: {
-      permissions?: { query?: (q: { name: string }) => Promise<{ state: string }> }
-      mediaDevices?: {
-        getUserMedia?: (c: { audio: boolean }) => Promise<{ getTracks: () => Array<{ stop: () => void }> }>
-      }
-    }
-  }).navigator
-  if (!nav?.mediaDevices) {
-    logger?.debug?.('webaudio: navigator.mediaDevices not available to unlock labels')
-    return
-  }
-
-  try {
-    if (typeof nav.permissions?.query === 'function') {
-      logger?.debug?.('webaudio: querying speaker-selection permission...')
-      const status = await nav.permissions.query({ name: 'speaker-selection' }).catch(() => null)
-      logger?.debug?.('webaudio: speaker-selection status: %s', status?.state)
-      if (status?.state === 'granted') {
-        mediaDeviceLabelsUnlocked = true
-        logger?.info?.('webaudio: speaker-selection permission is granted, device labels unlocked')
-        return
-      }
-    }
-
-    if (typeof nav.mediaDevices.getUserMedia === 'function') {
-      logger?.debug?.('webaudio: requesting getUserMedia({ audio: true }) to unlock device labels...')
-      const stream = await nav.mediaDevices.getUserMedia({ audio: true })
-      const tracks = stream.getTracks()
-      for (const track of tracks) {
-        try {
-          track.stop()
-        } catch {
-          // ignore
-        }
-      }
-      mediaDeviceLabelsUnlocked = true
-      logger?.info?.('webaudio: getUserMedia succeeded (%d tracks stopped), device labels unlocked', tracks.length)
-    }
-  } catch (err) {
-    logger?.warn?.('webaudio: unlockMediaDeviceLabels failed: %s', String(err))
   }
 }
 
 type DecodeFn = (data: ArrayBuffer) => Promise<AudioBuffer>
 
-interface MediaDevicesLike {
-  enumerateDevices?: () => Promise<{ kind: string; deviceId: string; label: string }[]>
-}
-
-function defaultContextFactory(): () => BaseAudioContext {
-  const Ctor = (globalThis as { AudioContext?: new () => BaseAudioContext }).AudioContext
-  if (!Ctor) {
-    throw new Error(
-      'audio: no AudioContext in this runtime. The shell must pass `createContext` — ' +
-        'react-native-audio-api on mobile, the renderer’s own on desktop.',
-    )
+function defaultContextFactory(): (options?: AudioContextOptions) => BaseAudioContext {
+  return (options?: AudioContextOptions) => {
+    const Ctor =
+      (globalThis as unknown as { AudioContext?: typeof AudioContext }).AudioContext ||
+      (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctor) {
+      throw new Error(
+        'audio: no AudioContext in this runtime. The shell must pass `createContext` — ' +
+          'react-native-audio-api on mobile, the renderer’s own on desktop.',
+      )
+    }
+    return new Ctor(options)
   }
-  return () => new Ctor()
 }
 
 export function defaultMediaElementFactory(): (() => MediaElementLike) | undefined {
