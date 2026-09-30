@@ -18,7 +18,10 @@ class WasapiSinkProcessor extends AudioWorkletProcessor {
     this.indices = null
     this.storage = null
     this.capacity = 0
-    this.temp = new Float32Array(256)
+    this.directPort = null
+    this.batchFrames = 512
+    this.accumulatedFrames = 0
+    this.batchBuffer = new Float32Array(this.batchFrames * 2)
 
     if (options && options.processorOptions && options.processorOptions.sharedBuffer) {
       this.initSharedBuffer(options.processorOptions.sharedBuffer)
@@ -27,6 +30,8 @@ class WasapiSinkProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (event) => {
       if (event.data && event.data.type === 'init-buffer') {
         this.initSharedBuffer(event.data.sharedBuffer)
+      } else if (event.data && event.data.type === 'init-port' && event.data.port) {
+        this.directPort = event.data.port
       }
     }
   }
@@ -45,9 +50,9 @@ class WasapiSinkProcessor extends AudioWorkletProcessor {
     const left = input[0]
     const right = input[1] || input[0]
     const frameCount = left.length
-    const needed = frameCount * 2
 
     if (this.storage && this.indices) {
+      const needed = frameCount * 2
       const writeIdx = Atomics.load(this.indices, 0)
       const readIdx = Atomics.load(this.indices, 1)
       const available = (readIdx - writeIdx - 1 + this.capacity) % this.capacity
@@ -60,17 +65,23 @@ class WasapiSinkProcessor extends AudioWorkletProcessor {
         Atomics.store(this.indices, 0, (writeIdx + needed) % this.capacity)
       }
     } else {
-      if (this.temp.length < needed) {
-        this.temp = new Float32Array(needed)
-      }
       for (let i = 0; i < frameCount; i++) {
-        this.temp[i * 2] = left[i]
-        this.temp[i * 2 + 1] = right[i]
+        const offset = this.accumulatedFrames * 2
+        this.batchBuffer[offset] = left[i]
+        this.batchBuffer[offset + 1] = right[i]
+        this.accumulatedFrames++
+
+        if (this.accumulatedFrames >= this.batchFrames) {
+          const out = this.batchBuffer
+          this.batchBuffer = new Float32Array(this.batchFrames * 2)
+          this.accumulatedFrames = 0
+          const targetPort = this.directPort || this.port
+          targetPort.postMessage({ type: 'pcm-chunk', data: out }, [out.buffer])
+        }
       }
-      this.port.postMessage({ type: 'pcm-chunk', data: this.temp.slice(0, needed) })
     }
 
-    // Do NOT write to outputs[0], keep destination silent
+    // Do NOT write to outputs[0], keep destination silent when worklet handles output
     return true
   }
 }

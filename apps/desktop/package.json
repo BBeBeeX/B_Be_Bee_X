@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@BBeBee/core-audio-wasapi": "workspace:*",
+    "@BBeBee/core-audio-wasapi-native": "workspace:*",
     "@BBeBee/core-audio-webaudio": "workspace:*",
     "@BBeBee/core-background-electron": "workspace:*",
     "@BBeBee/core-codec-node": "workspace:*",

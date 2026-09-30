@@ -3,7 +3,8 @@ import { Context } from 'cordis'
 import { audioConformance } from '@BBeBee/protocol/conformance'
 import type { MediaElementLike } from '@BBeBee/core-audio-webaudio'
 import plugin, { AudioWasapi, type AudioWasapiConfig } from './index.js'
-import { type FakeAudioContext, createFakeAudioContext } from './fake-context.js'
+import { type FakeAudioContext, createFakeAudioContext, type FakeNode } from './fake-context.js'
+import { WASAPI_SINK_WORKLET_CODE } from './worklets/wasapi-sink-processor.js'
 
 async function harness(
   bridgeCallMock?: (s: string, m: string, a: unknown[]) => Promise<unknown>,
@@ -250,5 +251,39 @@ describe('core-audio-wasapi', () => {
         delete (globalThis as Record<string, unknown>)['navigator']
       }
     }
+  })
+
+  it('falls back to shared destination when initWasapi returns ok: false in buffered mode', async () => {
+    const bridgeCall = async (service: string, method: string) => {
+      if (service === 'audio' && method === 'initWasapi') {
+        return { ok: false, error: 'DEVICE_IN_USE' }
+      }
+      return undefined
+    }
+
+    const { audio, engine } = await harness(bridgeCall, { enableExclusive: true })
+    // With enableExclusive: true initially, master is NOT connected to destination
+    expect((audio.destination as unknown as FakeNode).outputs.has(engine.destination as FakeNode)).toBe(false)
+
+    await audio.load('file:///music/song.flac', { strategy: 'buffer' })
+
+    // After initWasapi returns ok: false, master must be connected to destination (fallbackToShared)
+    expect((audio.destination as unknown as FakeNode).outputs.has(engine.destination as FakeNode)).toBe(true)
+  })
+
+  it('evaluates sink worklet processor code and verifies batching', () => {
+    const evalScope = {
+      AudioWorkletProcessor: class {
+        port = {
+          postMessage: (_msg: unknown, _transfer?: unknown[]) => {},
+          onmessage: null as ((e: { data: unknown }) => void) | null,
+        }
+      },
+      registerProcessor: (_name: string, _ctor: unknown) => {},
+      Atomics,
+    }
+
+    const fn = new Function('AudioWorkletProcessor', 'registerProcessor', 'Atomics', WASAPI_SINK_WORKLET_CODE)
+    expect(() => fn(evalScope.AudioWorkletProcessor, evalScope.registerProcessor, evalScope.Atomics)).not.toThrow()
   })
 })

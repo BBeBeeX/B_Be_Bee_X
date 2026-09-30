@@ -1,6 +1,7 @@
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { existsSync, readFileSync } from 'node:fs'
+import { wasapiNative } from '@BBeBee/core-audio-wasapi-native'
 import type { WasapiInitConfig, WasapiInitResult } from './types.js'
 
 const execAsync = promisify(exec)
@@ -58,6 +59,8 @@ export class WasapiEngine {
   private activeConfig?: WasapiInitConfig
   private isRunning = false
   private totalFramesWritten = 0
+  private lastThroughputLogAt = 0
+  private framesSinceLastLog = 0
   private selectedDeviceId = 'default'
 
   constructor(private logger?: AudioMainLogger) {}
@@ -93,7 +96,7 @@ export class WasapiEngine {
   }
 
   async isSupported(): Promise<boolean> {
-    return process.platform === 'win32'
+    return process.platform === 'win32' && wasapiNative.isSupported()
   }
 
   async init(config: WasapiInitConfig): Promise<WasapiInitResult> {
@@ -101,15 +104,41 @@ export class WasapiEngine {
     this.activeConfig = config
     this.isRunning = true
     this.totalFramesWritten = 0
+    this.lastThroughputLogAt = Date.now()
+    this.framesSinceLastLog = 0
 
-    const bufferMs = config.bufferMs || 50
-    const bufferSizeFrames = Math.round((config.sampleRate * bufferMs) / 1000)
+    if (wasapiNative.isSupported()) {
+      const targetDevId = this.selectedDeviceId === 'default' ? undefined : this.selectedDeviceId
+      const nativeRes = wasapiNative.init({
+        deviceId: targetDevId,
+        sampleRate: config.sampleRate,
+        channels: config.channels,
+        bitDepth: config.bitDepth || 24,
+        bufferMs: config.bufferMs || 50,
+      })
 
+      if (!nativeRes.ok) {
+        this.logWarn('wasapiNative.init failed: %s', nativeRes.error)
+        this.isRunning = false
+        return {
+          ok: false,
+          error: nativeRes.error,
+        }
+      }
+
+      return {
+        ok: true,
+        bufferSizeFrames: nativeRes.bufferSizeFrames,
+        actualSampleRate: nativeRes.actualSampleRate ?? config.sampleRate,
+        actualBitDepth: nativeRes.actualBitDepth ?? (config.bitDepth || 24),
+      }
+    }
+
+    this.logWarn('init() called but WASAPI native driver is not available on this platform/build')
+    this.isRunning = false
     return {
-      ok: true,
-      bufferSizeFrames,
-      actualSampleRate: config.sampleRate,
-      actualBitDepth: config.bitDepth || 24,
+      ok: false,
+      error: 'WASAPI native driver unavailable',
     }
   }
 
@@ -119,6 +148,23 @@ export class WasapiEngine {
     const channels = this.activeConfig.channels || 2
     const frames = Math.floor(pcmChunk.length / channels)
     this.totalFramesWritten += frames
+    this.framesSinceLastLog += frames
+
+    if (wasapiNative.isSupported()) {
+      wasapiNative.write(pcmChunk)
+    }
+
+    const now = Date.now()
+    const elapsed = now - this.lastThroughputLogAt
+    if (elapsed >= 2000) {
+      const fps = Math.round((this.framesSinceLastLog * 1000) / elapsed)
+      const kbps = ((fps * channels * 4) / 1024).toFixed(1)
+      this.logInfo(
+        `writeWasapi throughput: ${fps} frames/sec (~${kbps} KB/s, chunk=${pcmChunk.length} samples, totalFrames=${this.totalFramesWritten})`,
+      )
+      this.lastThroughputLogAt = now
+      this.framesSinceLastLog = 0
+    }
 
     return frames
   }
@@ -127,13 +173,25 @@ export class WasapiEngine {
     this.logInfo('stop() called in WasapiEngine')
     this.isRunning = false
     this.activeConfig = undefined
+    if (wasapiNative.isSupported()) {
+      wasapiNative.stop()
+    }
   }
 
   async getOutputDevices(): Promise<SystemAudioDevice[]> {
     this.logInfo(`getOutputDevices() query started for platform="${process.platform}"`)
     let systemDevices: SystemAudioDevice[] = []
     if (process.platform === 'win32') {
-      systemDevices = await this.queryWindowsDevices()
+      if (wasapiNative.isSupported()) {
+        const nativeDevs = wasapiNative.getDevices()
+        if (nativeDevs.length > 0) {
+          this.logInfo(`getOutputDevices: IMMDeviceEnumerator returned ${nativeDevs.length} devices`)
+          systemDevices = nativeDevs
+        }
+      }
+      if (systemDevices.length === 0) {
+        systemDevices = await this.queryWindowsDevices()
+      }
     } else if (process.platform === 'darwin') {
       systemDevices = await this.queryDarwinDevices()
     } else if (process.platform === 'linux') {
