@@ -250,6 +250,18 @@ export class DesktopAudioService extends Service implements AudioService {
     return this.activeEngine.sampleRate
   }
 
+  get hardwareBitDepth(): number | undefined {
+    return (this.activeEngine as unknown as { hardwareBitDepth?: number }).hardwareBitDepth
+  }
+
+  get hardwareChannels(): number | undefined {
+    return (this.activeEngine as unknown as { hardwareChannels?: number }).hardwareChannels
+  }
+
+  get currentDeviceLabel(): string | undefined {
+    return (this.activeEngine as unknown as { currentDeviceLabel?: string }).currentDeviceLabel
+  }
+
   get outputLatencyMs(): number {
     return this.activeEngine.outputLatencyMs
   }

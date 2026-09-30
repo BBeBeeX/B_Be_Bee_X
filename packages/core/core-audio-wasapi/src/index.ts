@@ -75,6 +75,10 @@ export class AudioWasapi extends Service implements AudioService {
   private readonly routeListeners = new Set<(e: RouteChangeEvent) => void>()
   private workletInitialized = false
   private readonly config: AudioWasapiConfig
+  private activeHardwareSampleRate?: number
+  private activeHardwareBitDepth?: number
+  private activeHardwareChannels?: number
+  private activeDeviceLabel?: string
 
   constructor(
     ctx: Context,
@@ -109,7 +113,19 @@ export class AudioWasapi extends Service implements AudioService {
   }
 
   get sampleRate(): number {
-    return this.context.sampleRate
+    return this.activeHardwareSampleRate ?? this.context.sampleRate
+  }
+
+  get hardwareBitDepth(): number {
+    return this.activeHardwareBitDepth ?? (this.config.enableExclusive !== false ? 24 : 16)
+  }
+
+  get hardwareChannels(): number {
+    return this.activeHardwareChannels ?? 2
+  }
+
+  get currentDeviceLabel(): string | undefined {
+    return this.activeDeviceLabel
   }
 
   get outputLatencyMs(): number {
@@ -177,7 +193,7 @@ export class AudioWasapi extends Service implements AudioService {
           )
           // Initialize WASAPI exclusive stream on main process
           this.ctx.logger?.info('wasapi: initializing WASAPI exclusive output (%dHz, %dch)', decoded.sampleRate, decoded.channels)
-          await bridgeCall('audio', 'initWasapi', [
+          const initRes = (await bridgeCall('audio', 'initWasapi', [
             {
               sampleRate: decoded.sampleRate,
               channels: decoded.channels,
@@ -185,7 +201,11 @@ export class AudioWasapi extends Service implements AudioService {
             },
           ]).catch((err) => {
             this.ctx.logger?.warn('wasapi: initWasapi error: %s', String(err))
-          })
+          })) as { actualSampleRate?: number; actualBitDepth?: number; ok?: boolean } | undefined
+
+          this.activeHardwareSampleRate = initRes?.actualSampleRate ?? decoded.sampleRate
+          this.activeHardwareBitDepth = initRes?.actualBitDepth ?? decoded.bitDepth ?? 24
+          this.activeHardwareChannels = decoded.channels ?? 2
 
           // Create an AudioBuffer matching the decoded sample rate
           const length = decoded.pcm[0]!.length
@@ -238,6 +258,32 @@ export class AudioWasapi extends Service implements AudioService {
         buffer.numberOfChannels,
         buffer.sampleRate,
       )
+
+      this.activeHardwareSampleRate = buffer.sampleRate
+      this.activeHardwareChannels = buffer.numberOfChannels
+      this.activeHardwareBitDepth = 16
+
+      const bridgeCall =
+        this.config.bridgeCall ??
+        (typeof window !== 'undefined'
+          ? (window as unknown as { BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> } })
+              .BBeBeeBridge?.call
+          : undefined)
+      if (bridgeCall) {
+        const initRes = (await bridgeCall('audio', 'initWasapi', [
+          {
+            sampleRate: buffer.sampleRate,
+            channels: buffer.numberOfChannels,
+            bitDepth: 16,
+          },
+        ]).catch(() => undefined)) as { actualSampleRate?: number; actualBitDepth?: number } | undefined
+        if (initRes?.actualSampleRate) {
+          this.activeHardwareSampleRate = initRes.actualSampleRate
+        }
+        if (initRes?.actualBitDepth) {
+          this.activeHardwareBitDepth = initRes.actualBitDepth
+        }
+      }
     } catch (decodeErr) {
       this.ctx.logger?.error('wasapi: decodeAudioData failed for %s: %s', src, String(decodeErr))
       throw decodeErr
@@ -478,6 +524,10 @@ export class AudioWasapi extends Service implements AudioService {
     }
 
     if (devices.length > 0) {
+      if (!this.activeDeviceLabel) {
+        const def = devices.find((d) => d.isDefault) ?? devices[0]
+        if (def) this.activeDeviceLabel = def.label
+      }
       this.ctx.logger?.info(
         'wasapi: listOutputDevices returning %d processed devices: %s',
         devices.length,
@@ -488,6 +538,7 @@ export class AudioWasapi extends Service implements AudioService {
 
     if (bridgeDevices.length > 0) {
       const fallbackLabel = cleanAndTagDeviceLabel(bridgeDevices[0]!.label).label || '音频输出设备'
+      if (!this.activeDeviceLabel) this.activeDeviceLabel = fallbackLabel
       this.ctx.logger?.warn('wasapi: listOutputDevices fallback to bridge devices (1 device): %s', fallbackLabel)
       return [
         {
@@ -519,7 +570,9 @@ export class AudioWasapi extends Service implements AudioService {
         const fetched = (await bridgeCall('audio', 'getOutputDevices', [])) as OutputDevice[]
         if (Array.isArray(fetched) && fetched.length > 0) {
           if (id === 'default') {
-            nativeId = fetched.find((f) => f.isDefault)?.id || 'default'
+            const defDev = fetched.find((f) => f.isDefault)
+            nativeId = defDev?.id || 'default'
+            this.activeDeviceLabel = defDev?.label || fetched[0]?.label
           } else {
             const media = (globalThis as {
               navigator?: { mediaDevices?: { enumerateDevices: () => Promise<Array<{ deviceId: string; kind: string; label: string }>> } }
@@ -535,6 +588,7 @@ export class AudioWasapi extends Service implements AudioService {
                 })
                 if (foundNative?.id) {
                   nativeId = foundNative.id
+                  this.activeDeviceLabel = foundNative.label
                 }
               }
             }

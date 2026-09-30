@@ -118,6 +118,11 @@ export interface AudioService {
   /** Desktop-only: dynamic audio engine hot-switching. */
   switchEngine?(engine: 'wasapi' | 'webaudio'): Promise<void>
   readonly activeEngineName?: 'wasapi' | 'webaudio'
+
+  /** Active hardware output specifications negotiated with physical audio DAC. */
+  readonly hardwareBitDepth?: number
+  readonly hardwareChannels?: number
+  readonly currentDeviceLabel?: string
 }
 
 /* ── ctx.player ─────────────────────────────────────────────────────────── */

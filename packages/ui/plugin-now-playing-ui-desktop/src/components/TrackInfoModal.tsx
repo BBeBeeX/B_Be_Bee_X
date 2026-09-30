@@ -31,6 +31,7 @@ interface TrackDetails {
   bitrate: string
   codec: string
   tagType: string
+  outputDevice: string
   outputEngine: string
   outputSampleRate: string
   outputChannels: string
@@ -285,17 +286,42 @@ export function TrackInfoModal({
         const activeEngine = audio?.activeEngineName ?? (audio as unknown as { engine?: string })?.engine
         const isWasapi = activeEngine === 'wasapi'
 
+        let outputDevice = audio?.currentDeviceLabel
+        if (!outputDevice && audio?.listOutputDevices) {
+          try {
+            const devs = await audio.listOutputDevices()
+            const activeDev = devs.find((d) => d.isDefault) ?? devs[0]
+            if (activeDev) outputDevice = activeDev.label
+          } catch {
+            // ignore
+          }
+        }
+        if (!outputDevice) {
+          outputDevice = isWasapi ? '默认音频输出终端 (WASAPI Exclusive)' : '默认系统音频输出终端'
+        }
+
         const outputEngine = isWasapi
           ? 'WASAPI Exclusive (硬件独占模式)'
           : 'Web Audio (系统共享混音)'
-        const outputSampleRate = audio?.sampleRate
-          ? `${audio.sampleRate.toLocaleString()} Hz`
-          : sampleRate ?? '44,100 Hz'
-        const outputChannels = channels ?? '2 (立体声 Stereo)'
-        const outputBitDepth = isWasapi ? '32-bit Float PCM (硬件直推)' : '32-bit Float'
 
-        const hwRate = audio?.sampleRate ?? 44100
-        const pcmBandwidth = Math.round((hwRate * 2 * 32) / 1000)
+        const parsedSourceRate = sampleRate ? parseInt(sampleRate.replace(/[^0-9]/g, ''), 10) : 44100
+        const hwSampleRateNum = audio?.sampleRate && audio.sampleRate > 0 ? audio.sampleRate : parsedSourceRate
+        const outputSampleRate = `${hwSampleRateNum.toLocaleString()} Hz`
+
+        const hwChannelsNum = audio?.hardwareChannels ?? (channels?.startsWith('1') ? 1 : 2)
+        const outputChannels =
+          hwChannelsNum === 1
+            ? '1 (单声道 Mono)'
+            : hwChannelsNum === 2
+              ? '2 (立体声 Stereo)'
+              : `${hwChannelsNum} 声道`
+
+        const hwBitDepthNum = audio?.hardwareBitDepth ?? (isWasapi ? 24 : 16)
+        const outputBitDepth = isWasapi
+          ? `${hwBitDepthNum}-bit PCM (点对点硬件直推)`
+          : `${hwBitDepthNum}-bit Float`
+
+        const pcmBandwidth = Math.round((hwSampleRateNum * hwChannelsNum * hwBitDepthNum) / 1000)
         const outputBandwidth = `${pcmBandwidth.toLocaleString()} kbps (未压缩 PCM 带宽)`
 
         if (!active) return
@@ -325,6 +351,7 @@ export function TrackInfoModal({
           bitrate: bitrate ?? (isLocalTrack ? '未知' : '320 kbps'),
           codec: codec ?? (isLocalTrack ? '未知' : 'AAC / MP3'),
           tagType: tagType ?? '未知',
+          outputDevice,
           outputEngine,
           outputSampleRate,
           outputChannels,
@@ -584,6 +611,7 @@ export function TrackInfoModal({
                   },
                   details.isWasapi ? '音频输出终端 (WASAPI 独占模式)' : '音频输出终端 (Audio Output)',
                 ),
+                renderRow('输出音频设备', details.outputDevice),
                 renderRow('输出驱动引擎', details.outputEngine),
                 renderRow('DAC 硬件采样率', details.outputSampleRate),
                 renderRow('硬件输出声道', details.outputChannels),

@@ -64,9 +64,16 @@ class FsStub extends Service {
 class AudioStub extends Service {
   public activeEngineName: 'wasapi' | 'webaudio' = 'wasapi'
   public sampleRate = 96000
+  public hardwareBitDepth = 24
+  public hardwareChannels = 2
+  public currentDeviceLabel = 'USB DAC Hi-Res Audio'
 
   constructor(ctx: Context) {
     super(ctx, 'audio')
+  }
+
+  async listOutputDevices() {
+    return [{ id: 'default', label: this.currentDeviceLabel, isDefault: true }]
   }
 }
 
@@ -279,8 +286,7 @@ describe('TrackInfoModal', () => {
       h(TrackInfoModal, { ctx, track, open: true, onClose: () => {} }),
     )
 
-    expect(await findByText('播放内容详情')).toBeTruthy()
-    expect(getByText('MySong.flac')).toBeTruthy()
+    expect(await findByText('MySong.flac')).toBeTruthy()
     expect(getByText('D:/Music/MySong.flac')).toBeTruthy()
     expect(getByText('23.84 MB')).toBeTruthy()
     expect(getByText('FLAC')).toBeTruthy()
@@ -306,12 +312,12 @@ describe('TrackInfoModal', () => {
       h(TrackInfoModal, { ctx, track, open: true, onClose: () => {} }),
     )
 
-    expect(await findByText('播放内容详情')).toBeTruthy()
-    expect(getByText('320 kbps')).toBeTruthy()
+    expect(await findByText('320 kbps')).toBeTruthy()
+    expect(getByText('USB DAC Hi-Res Audio')).toBeTruthy()
     expect(getByText('WASAPI Exclusive (硬件独占模式)')).toBeTruthy()
     expect(getByText('96,000 Hz')).toBeTruthy()
-    expect(getByText('32-bit Float PCM (硬件直推)')).toBeTruthy()
-    expect(getByText('6,144 kbps (未压缩 PCM 带宽)')).toBeTruthy()
+    expect(getByText('24-bit PCM (点对点硬件直推)')).toBeTruthy()
+    expect(getByText('4,608 kbps (未压缩 PCM 带宽)')).toBeTruthy()
   })
 })
 
