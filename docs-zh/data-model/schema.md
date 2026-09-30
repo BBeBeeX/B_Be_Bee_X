@@ -351,9 +351,16 @@ CREATE TABLE scan_entries (
   scanned_at       INTEGER NOT NULL
 );
 CREATE INDEX idx_scan_entries_specified_dir ON scan_entries(specified_dir_id, status);
+
+CREATE TABLE scan_dropped_files (
+  uri      TEXT PRIMARY KEY,
+  added_at INTEGER NOT NULL
+);
 ```
 
 `(size, mtime)` 这一对就是增量扫描的判据：文件没变就只花一次 `stat`，再无其他开销（[06 §12](../sources/authoring.md#本地扫描器)）。
+
+`scan_dropped_files` 是"本地曲目都来自指定目录"这条规则的例外：用户拖拽到桌面窗口里的文件是逐个导入的，如果把它们的文件夹设为扫描目录，导入的就会远多于用户拖进来的内容。因此拖放文件**不写** `scan_entries` 行 —— 曲目保留导入器写入的 `available = 1`，任何扫描的核对逻辑都不会碰它 —— 它的 uri 记在这里，桌面桥正是依据这张表（启动时读取、写入时即时生效）把这些文件加进可读白名单。
 
 ### 4.6 播放列表与曲库
 

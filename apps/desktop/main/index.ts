@@ -333,6 +333,18 @@ function createWindow(): BrowserWindow {
   })
 
   /*
+   * The app is a SPA and never navigates. Chromium's default for a file
+   * dragged onto the window is to navigate to it — which would replace the
+   * whole app with that raw file — so every page-initiated navigation is
+   * refused here. (`loadURL`/`loadFile` above are not page-initiated and do
+   * not come through this event; the drop gesture itself is owned by the
+   * shell's importer.)
+   */
+  window.webContents.on('will-navigate', (event) => {
+    event.preventDefault()
+  })
+
+  /*
    * Close-to-tray (MD-6).
    *
    * `preventDefault` keeps the renderer — and with it the kernel, the queue
@@ -677,6 +689,19 @@ function registerHandlers(): void {
       ? await dialog.showOpenDialog(window, { properties: ['openDirectory'] })
       : await dialog.showOpenDialog({ properties: ['openDirectory'] })
     return result.canceled ? undefined : result.filePaths[0]
+  })
+
+  /*
+   * DevTools on demand, from the debug page.
+   *
+   * There is no application menu (`Menu.setApplicationMenu(null)`), so
+   * without this the only way in was a packaged build's absence of one.
+   * Detached, because the renderer is a fixed grid and a docked inspector
+   * would reflow it for as long as it is open.
+   */
+  ipcMain.handle('devtools:open', (event) => {
+    const target = BrowserWindow.fromWebContents(event.sender)
+    target?.webContents.openDevTools({ mode: 'detach' })
   })
 
   ipcMain.handle('window:minimize', (event) => {

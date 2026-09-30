@@ -14,6 +14,15 @@ export interface NetworkSectionProps {
   proxyTestResult: { ok: boolean; latencyMs?: number; error?: string } | null
   onUpdateProxy: (proxy: ProxySettings) => void
   onTestProxy: () => void
+  /** The `User-Agent` sent with every request that does not set its own. */
+  userAgent: string
+  /** Master switch over every imported third-party music source. */
+  thirdPartySourcesEnabled: boolean
+  /** Master switch over third-party lyric sources. */
+  thirdPartyLyricSourcesEnabled: boolean
+  onUpdateUserAgent: (userAgent: string) => void
+  onToggleThirdPartySources: (enabled: boolean) => void
+  onToggleThirdPartyLyricSources: (enabled: boolean) => void
 }
 
 export function NetworkSection({
@@ -23,10 +32,64 @@ export function NetworkSection({
   proxyTestResult,
   onUpdateProxy,
   onTestProxy,
+  userAgent,
+  thirdPartySourcesEnabled,
+  thirdPartyLyricSourcesEnabled,
+  onUpdateUserAgent,
+  onToggleThirdPartySources,
+  onToggleThirdPartyLyricSources,
 }: NetworkSectionProps): ReactElement {
   return h(
     'div',
     { id: 'section-network' },
+    h(
+      SettingsSection,
+      {
+        title: '第三方服务设置',
+        description: '控制第三方音源与歌词源的启停，以及对外请求所使用的 User-Agent',
+      },
+      h(SettingsRow, {
+        title: '启用第三方音乐源',
+        description: '关闭后暂停所有已导入第三方音源的搜索与播放解析，本地文件不受影响',
+        action: h(Switch, {
+          checked: thirdPartySourcesEnabled,
+          accessibilityLabel: '启用第三方音乐源',
+          onChange: onToggleThirdPartySources,
+        }),
+      }),
+      h(SettingsRow, {
+        title: '启用第三方歌词源',
+        description: '关闭后播放时不再通过歌词源检索歌词；下方歌词源列表中的单独开关会保留',
+        action: h(Switch, {
+          checked: thirdPartyLyricSourcesEnabled,
+          accessibilityLabel: '启用第三方歌词源',
+          onChange: onToggleThirdPartyLyricSources,
+        }),
+      }),
+      h(SettingsRow, {
+        title: 'User-Agent',
+        description:
+          '作为 HTTP User-Agent 请求头随所有网络请求发送；留空使用内置默认值。音源自带的 header 规则优先生效',
+        action: h('input', {
+          type: 'text',
+          value: userAgent,
+          placeholder: 'BBeBee/0.1',
+          'aria-label': 'User-Agent',
+          onChange: (e: { target: { value: string } }) => onUpdateUserAgent(e.target.value),
+          style: {
+            width: 280,
+            height: 32,
+            borderRadius: 6,
+            background: 'rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            color: '#FFFFFF',
+            fontSize: 13,
+            padding: '0 10px',
+            outline: 'none',
+          },
+        }),
+      }),
+    ),
     h(
       SettingsSection,
       {

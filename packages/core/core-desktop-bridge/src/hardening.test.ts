@@ -105,6 +105,24 @@ describe('containment', () => {
       /outside every/,
     )
   })
+
+  it('logs audio call header names but never their values', async () => {
+    // Source headers can carry credentials (a Subsonic `Cookie`, an
+    // `Authorization`) and the audio log line embeds its args.
+    const lines: string[] = []
+    const { call } = await harness({
+      logger: { info: (message: string) => void lines.push(message) },
+    })
+    await call('decodePcm', [
+      'https://cdn.example.com/song.m4s',
+      { headers: { Cookie: 'sid=super-secret', Referer: 'https://www.example.com' } },
+    ], 'audio')
+    const logged = lines.join('\n')
+    expect(logged).toContain('decodePcm')
+    expect(logged).toContain('Cookie')
+    expect(logged).toContain('Referer')
+    expect(logged).not.toContain('super-secret')
+  })
 })
 
 describe('method allowlist', () => {

@@ -166,6 +166,13 @@ export interface HttpService {
   ): Promise<T>
   /** Download to a Uri with resume support. Used by `plugin-download`. */
   download(req: DownloadRequest): Promise<{ bytes: number; etag?: string }>
+  /**
+   * Replace the default `User-Agent` sent with every request that does not
+   * set its own. Live: the next request picks it up, no restart. An empty
+   * string restores the implementation's built-in default. Optional — a
+   * transport that cannot change it after construction may omit it.
+   */
+  setUserAgent?(userAgent: string): void
   readonly cookies: CookieJarService
   /**
    * The request journal, when this build keeps one. Optional because a

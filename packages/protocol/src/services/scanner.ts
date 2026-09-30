@@ -78,6 +78,19 @@ export interface ScannerService {
    */
   scan(opts?: { specifiedDirId?: string; full?: boolean; signal?: AbortSignal }): Promise<ScanSummary>
 
+  /**
+   * Import individual audio files directly, without adding their folders to
+   * the scan set — the entry point behind dragging files onto the desktop
+   * window.
+   *
+   * Unlike `scan`, nothing here is watched or reconciled: a dropped file is
+   * imported once and stays in the catalogue until its rows are removed
+   * elsewhere. Re-importing the same uri updates in place. Uris that are
+   * directories or carry a non-audio extension are reported as errors rather
+   * than thrown, so one bad drop does not sink the batch.
+   */
+  importFiles(uris: Uri[], opts?: { signal?: AbortSignal }): Promise<ScanSummary>
+
   /** Cancel the walk in flight. It checkpoints per batch, so this costs one batch. */
   cancel(): void
 

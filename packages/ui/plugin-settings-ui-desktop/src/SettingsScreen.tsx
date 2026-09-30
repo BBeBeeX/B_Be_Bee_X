@@ -557,6 +557,13 @@ export function SettingsScreen({ ctx }: { ctx: Context }): ReactElement {
           void bridge?.proxy?.set?.(p)
         },
         onTestProxy: handleTestProxy,
+        userAgent: settings.userAgent,
+        thirdPartySourcesEnabled: settings.thirdPartySourcesEnabled,
+        thirdPartyLyricSourcesEnabled: settings.thirdPartyLyricSourcesEnabled,
+        onUpdateUserAgent: (ua) => void update({ userAgent: ua }),
+        onToggleThirdPartySources: (enabled) => void update({ thirdPartySourcesEnabled: enabled }),
+        onToggleThirdPartyLyricSources: (enabled) =>
+          void update({ thirdPartyLyricSourcesEnabled: enabled }),
       }),
 
       // 6. Sources & Music Folders

@@ -26,6 +26,7 @@ import type {
   JsService,
   MediaProvider,
   SecretsService,
+  SettingsService,
   SourceRecord,
   StreamPrefs,
 } from '@BBeBee/protocol'
@@ -80,6 +81,11 @@ export class SourceRuntime {
   private js: JsService | undefined
   /** Set by `useSecrets`. Holds the cookie jar's key, so sign-out must reach it. */
   private secrets: SecretsService | undefined
+  /**
+   * Set by `useSettings`. Holds the third-party master switch, so a toggle in
+   * settings is total: no live fiber, no provider, no cookie use.
+   */
+  private settings: SettingsService | undefined
 
   constructor(
     private readonly ctx: Context,
@@ -146,6 +152,19 @@ export class SourceRuntime {
     this.safely('adopting the js service', () => this.sync())
   }
 
+  /**
+   * Adopt (or drop) the settings service.
+   *
+   * No realm is rebuilt: the switch only moves sources between "wanted" and
+   * not, which `sync` applies by stopping or starting fibers. An imported
+   * source stopped this way keeps its rows, so flipping the switch back on
+   * restores it warm rather than re-importing anything.
+   */
+  useSettings(settings: SettingsService | undefined): void {
+    this.settings = settings
+    this.safely('applying the third-party sources switch', () => this.sync())
+  }
+
   /** Start what should be running, stop what should not. */
   private async sync(): Promise<void> {
     /*
@@ -155,10 +174,16 @@ export class SourceRuntime {
      * one per source id, so the scanner writes a rules-free row for `local`.
      * Starting a fiber for it registered a second provider on `local` and
      * collided with `plugin-source-local`'s real one — see `isInterpretable`.
+     *
+     * The master switch sits beside `enabled` rather than inside it: `enabled`
+     * is one source's row, this is the user's word that third-party documents
+     * run at all, and keeping them apart means disabling the switch backfills
+     * nothing and re-enabling restores everything as it was.
      */
+    const thirdPartyEnabled = this.settings?.getSync().thirdPartySourcesEnabled ?? true
     const wanted = new Map(
       this.ctx.sources.sources
-        .filter((r) => r.enabled && isInterpretable(r.doc))
+        .filter((r) => r.enabled && thirdPartyEnabled && isInterpretable(r.doc))
         .map((r) => [r.id, r] as const),
     )
 
@@ -609,6 +634,18 @@ export async function apply(ctx: Context, config: SourceRuntimeConfig = {}) {
     return () => runtime.useSecrets(undefined)
   })
 
+  // The settings service carries the third-party master switch. Optional like
+  // the rest: a build with no settings service runs every imported source,
+  // which is the switch's own default.
+  const withSettings = ctx.inject(['settings'], (scoped) => {
+    const offSettings = scoped.on('settings/changed', () => runtime.useSettings(scoped.settings))
+    runtime.useSettings(scoped.settings)
+    return () => {
+      offSettings()
+      runtime.useSettings(undefined)
+    }
+  })
+
   /*
    * ⚠️ Started *after* both injections, not before.
    *
@@ -621,6 +658,7 @@ export async function apply(ctx: Context, config: SourceRuntimeConfig = {}) {
   const stop = await runtime.start()
 
   return () => {
+    withSettings.dispose()
     withSecrets.dispose()
     withJs.dispose()
     stop()

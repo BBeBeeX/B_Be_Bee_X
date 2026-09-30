@@ -738,4 +738,18 @@ export const CORE_MIGRATIONS: Migration[] = [
     // name is what created playlists show as their creator.
     up: [`CREATE TABLE library_profile (id TEXT PRIMARY KEY, name TEXT NOT NULL)`],
   },
+  {
+    version: 7,
+    // Files imported individually — dragged onto the desktop window — rather
+    // than through a specified dir. Their uris are what the desktop bridge
+    // whitelists for reading (see core-desktop-bridge): without this table a
+    // dropped track would play until the next restart and then fail
+    // containment, because nothing about its folder is in the scan set.
+    up: [
+      `CREATE TABLE scan_dropped_files (
+        uri      TEXT PRIMARY KEY,
+        added_at INTEGER NOT NULL
+      )`,
+    ],
+  },
 ]

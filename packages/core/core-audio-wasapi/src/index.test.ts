@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from 'cordis'
 import { audioConformance } from '@BBeBee/protocol/conformance'
-import plugin, { AudioWasapi } from './index.js'
+import type { MediaElementLike } from '@BBeBee/core-audio-webaudio'
+import plugin, { AudioWasapi, type AudioWasapiConfig } from './index.js'
 import { type FakeAudioContext, createFakeAudioContext } from './fake-context.js'
 
-async function harness(bridgeCallMock?: (s: string, m: string, a: unknown[]) => Promise<unknown>): Promise<{
+async function harness(
+  bridgeCallMock?: (s: string, m: string, a: unknown[]) => Promise<unknown>,
+  extraConfig: Partial<AudioWasapiConfig> = {},
+): Promise<{
   ctx: Context
   audio: AudioWasapi
   engine: FakeAudioContext
@@ -16,8 +20,41 @@ async function harness(bridgeCallMock?: (s: string, m: string, a: unknown[]) => 
     fetchBytes: async () => new ArrayBuffer(8),
     bridgeCall: bridgeCallMock,
     enableExclusive: false,
+    ...extraConfig,
   })
   return { ctx, audio: ctx.audio as AudioWasapi, engine }
+}
+
+/** Structural `MediaElementLike` for the streaming-path tests. */
+class FakeMediaElement implements MediaElementLike {
+  src = ''
+  crossOrigin: string | null = null
+  currentTime = 0
+  duration = 120
+  paused = true
+  seeking = false
+  error: { code?: number; message?: string } | null = null
+
+  private readonly listeners = new Map<string, Set<() => void>>()
+
+  play(): Promise<void> {
+    this.paused = false
+    return Promise.resolve()
+  }
+
+  pause(): void {
+    this.paused = true
+  }
+
+  addEventListener(type: string, listener: () => void): void {
+    const set = this.listeners.get(type) ?? new Set()
+    set.add(listener)
+    this.listeners.set(type, set)
+  }
+
+  removeEventListener(type: string, listener: () => void): void {
+    this.listeners.get(type)?.delete(listener)
+  }
 }
 
 describe('core-audio-wasapi', () => {
@@ -69,6 +106,70 @@ describe('core-audio-wasapi', () => {
     handle.node.connect(audio.chainInput)
     handle.play()
     expect(handle.positionMs).toBe(0)
+    handle.dispose()
+  })
+
+  it('forwards source headers to the bridge decodePcm call', async () => {
+    const fakePcm = new Float32Array([0, 0.1, 0.2])
+    let seenArgs: unknown[] | undefined
+    const bridgeCall = async (_service: string, method: string, args: unknown[]) => {
+      if (method === 'decodePcm') {
+        seenArgs = args
+        return {
+          sampleRate: 48000,
+          channels: 1,
+          bitDepth: 16,
+          durationMs: 100,
+          pcm: [fakePcm],
+        }
+      }
+      return undefined
+    }
+
+    const { audio } = await harness(bridgeCall)
+    const headers = { Referer: 'https://www.bilibili.com', 'User-Agent': 'BBeBee/1.0' }
+    await audio.load('https://cdn.example.com/song.m4s', { strategy: 'buffer', headers })
+
+    // The remote URL rides with the source's headers: a CDN that checks
+    // `Referer` answers a header-less ffmpeg request with 403.
+    expect(seenArgs?.[0]).toBe('https://cdn.example.com/song.m4s')
+    expect(seenArgs?.[1]).toEqual({ headers })
+  })
+
+  it('streams with strategy stream through a media element, skipping the FFmpeg bridge', async () => {
+    const element = new FakeMediaElement()
+    const bridgeMethods: string[] = []
+    const bridgeCall = async (_service: string, method: string) => {
+      bridgeMethods.push(method)
+      return undefined
+    }
+
+    const { audio } = await harness(bridgeCall, { createMediaElement: () => element })
+    const handle = await audio.load('https://cdn.example.com/song.m4s', { strategy: 'stream' })
+
+    // The element path, not a whole-track decode: the bridge decodes into
+    // resident PCM, which is what this strategy exists to avoid.
+    expect(bridgeMethods).not.toContain('decodePcm')
+    expect(element.src).toBe('https://cdn.example.com/song.m4s')
+    expect(element.crossOrigin).toBe('anonymous')
+    expect(element.paused).toBe(true)
+    expect(handle.durationMs).toBe(120_000)
+
+    handle.play()
+    expect(element.paused).toBe(false)
+    handle.dispose()
+    expect(element.paused).toBe(true)
+    expect(element.src).toBe('')
+  })
+
+  it('falls back to buffered decode when streaming is unavailable', async () => {
+    // Node test env: no `globalThis.Audio`, so the element path is refused and
+    // the load must degrade to fetch + decodeAudioData instead of throwing.
+    const { audio } = await harness()
+    const handle = await audio.load('file:///music/song.flac', { strategy: 'stream' })
+
+    expect(handle).toBeDefined()
+    expect(handle.durationMs).toBeGreaterThan(0)
     handle.dispose()
   })
 

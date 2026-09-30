@@ -128,9 +128,15 @@ export interface BridgeLogger {
   debug?(message: string, ...args: unknown[]): void
 }
 
+/** Request options for a remote decode input, forwarded to ffmpeg verbatim. */
+export interface AudioRequestOptions {
+  /** Headers to send with the request — a source's `Referer`, `User-Agent`, etc. */
+  headers?: Record<string, string>
+}
+
 export interface AudioHost {
-  probe?(uri: string): Promise<unknown>
-  decodePcm?(uri: string): Promise<unknown>
+  probe?(uri: string, options?: AudioRequestOptions): Promise<unknown>
+  decodePcm?(uri: string, options?: AudioRequestOptions): Promise<unknown>
   initWasapi?(config: unknown): Promise<unknown>
   writeWasapi?(pcmData: unknown): Promise<unknown>
   stopWasapi?(): Promise<unknown>
@@ -242,6 +248,25 @@ const URI_ARGS: Record<string, number[]> = {
  * lists drift; one does not.
  */
 
+/**
+ * Args for the audio log line, with header *values* removed.
+ *
+ * Decode calls now carry the source's request headers, and this line used to
+ * embed whole args: a `Cookie` or `Authorization` in there would land in the
+ * log file. Names stay (they say what the source sends), values go.
+ */
+function describeAudioArgs(args: unknown[]): string {
+  return JSON.stringify(
+    args.map((arg) => {
+      const headers = (arg as { headers?: unknown } | null | undefined)?.headers
+      if (headers && typeof headers === 'object') {
+        return { ...(arg as object), headers: Object.keys(headers as object) }
+      }
+      return arg
+    }),
+  )
+}
+
 export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promise<Host> {
   let markReady!: () => void
   const isReady = new Promise<void>((resolve) => {
@@ -327,6 +352,22 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
     /* Table may not exist yet in test harnesses without migrations */
   }
 
+  /*
+   * Files imported individually — dragged onto the window — are whitelisted by
+   * their own uri, and only that: their folders are deliberately *not* scan
+   * dirs, so the table above does not cover them and the row the importer
+   * wrote is the only record. Without it a dropped track would play until the
+   * next restart and then fail containment below.
+   */
+  try {
+    const dropped = await ctx.db.query<{ uri: string }>('SELECT uri FROM scan_dropped_files')
+    for (const row of dropped) {
+      if (row.uri) extraRoots.add(toFileUri(row.uri))
+    }
+  } catch {
+    /* Same: a database without the migration has no rows to add */
+  }
+
   /**
    * Every location the app is allowed to touch.
    *
@@ -370,7 +411,9 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
       ]
       if (service === 'audio') {
         options.logger?.info?.(
-          `bridge: audio.${method}(${args && (args as unknown[]).length > 0 ? JSON.stringify(args) : ''}) called`,
+          `bridge: audio.${method}(${
+            Array.isArray(args) && args.length > 0 ? describeAudioArgs(args) : ''
+          }) called`,
         )
       }
       const target = services[service]?.()
@@ -395,7 +438,14 @@ export async function createHost(ipc: IpcHost, options: HostOptions = {}): Promi
       }
       if (service === 'db' && typeof callArgs[0] === 'string') {
         assertSqlAllowed(callArgs[0], 'the bridge')
-        if (/scan_specified_dir/i.test(callArgs[0]) && Array.isArray(callArgs[1])) {
+        /*
+         * Writing a file location through the scanner's tables is what puts it
+         * inside the whitelist — the same flow a picked directory follows. It
+         * is not a loophole so much as the design: only the scanner's importer
+         * and the dialog branch write here, and both record what they let the
+         * renderer see.
+         */
+        if (/scan_(?:specified_dir|dropped_file)/i.test(callArgs[0]) && Array.isArray(callArgs[1])) {
           for (const arg of callArgs[1]) {
             if (
               typeof arg === 'string' &&

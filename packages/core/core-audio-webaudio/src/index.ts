@@ -259,7 +259,14 @@ class BufferedHandle implements AudioSourceHandle {
 const STALL_EVENTS = ['waiting', 'stalled'] as const
 const RECOVER_EVENTS = ['playing', 'canplaythrough'] as const
 
-class StreamedHandle implements AudioSourceHandle {
+/**
+ * The streaming handle, shared with `core-audio-wasapi`: the WASAPI service
+ * reaches the element path through the exact same class rather than a fork,
+ * so stall/seek semantics cannot drift between the two `ctx.audio`
+ * implementations (the same sharing pattern as `core-http-rn` ←
+ * `core-http-node`).
+ */
+export class StreamedHandle implements AudioSourceHandle {
   readonly node: AudioNode
 
   private readonly endedListeners = new Set<() => void>()
@@ -606,7 +613,10 @@ export class AudioWebAudio extends Service implements AudioService {
         ).BBeBeeBridge
         if (bridge?.call) {
           try {
-            const res = (await bridge.call('audio', 'decodePcm', [src])) as {
+            const res = (await bridge.call('audio', 'decodePcm', [
+              src,
+              { headers: opts.headers },
+            ])) as {
               sampleRate: number
               channels: number
               durationMs: number
@@ -1166,7 +1176,7 @@ function defaultContextFactory(): () => BaseAudioContext {
   return () => new Ctor()
 }
 
-function defaultMediaElementFactory(): (() => MediaElementLike) | undefined {
+export function defaultMediaElementFactory(): (() => MediaElementLike) | undefined {
   const Ctor = (globalThis as { Audio?: new () => MediaElementLike }).Audio
   return Ctor ? () => new Ctor() : undefined
 }

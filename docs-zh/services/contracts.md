@@ -36,6 +36,12 @@ export interface HttpService {
   post<T>(url: string, body: unknown, init?: Omit<HttpRequest, 'url' | 'method' | 'body'>): Promise<T>
   /** Download to a Uri with resume support. Used by plugin-download. */
   download(req: HttpRequest & { to: Uri; resumeFrom?: number }): Promise<{ bytes: number; etag?: string }>
+  /**
+   * 替换默认 `User-Agent`，下一个请求即生效，无需重启。
+   * 空字符串恢复内置默认值；可选 —— 无法在构造后重配置的传输可以不实现。
+   * 源文档自带 `header` 规则时仍以文档为准。
+   */
+  setUserAgent?(userAgent: string): void
   /** Persistent per-instance cookie jars. See §2.1. */
   readonly cookies: CookieJarService
   /** 内存中的请求日志（本构建有记录时才存在）。见 §2.2。 */

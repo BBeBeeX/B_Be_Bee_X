@@ -113,6 +113,27 @@ export interface AppSettings {
   audioOutputEngine?: AudioOutputEngine
   /** Selected audio output device ID. Defaults to 'default'. */
   audioOutputDeviceId?: string
+  /**
+   * Sent as the HTTP `User-Agent` header on every request that goes through
+   * `ctx.http` without setting its own — music sources, lyric sources, and
+   * artwork fetches. Empty string restores the built-in default; a source
+   * document that declares its own `header` rule still wins over this.
+   */
+  userAgent: string
+  /**
+   * Master switch for third-party music sources. When false, the source
+   * runtime stops every imported document's fiber (search and playback
+   * resolve to "no provider") while the imported rows stay in place, so
+   * re-enabling restores everything without a re-import. Local files and
+   * downloads are unaffected.
+   */
+  thirdPartySourcesEnabled: boolean
+  /**
+   * Master switch for third-party lyric sources. When false, lyric lookup
+   * through `ctx.lyricSources` returns nothing; per-source toggles keep
+   * their state for when it is turned back on.
+   */
+  thirdPartyLyricSourcesEnabled: boolean
   /** Desktop floating lyrics display settings. */
   desktopLyrics: DesktopLyricsSettings
   /** Global desktop keyboard shortcuts configuration. */
@@ -184,6 +205,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   cacheDir: '',
   audioOutputEngine: 'wasapi',
   audioOutputDeviceId: 'default',
+  userAgent: '',
+  thirdPartySourcesEnabled: true,
+  thirdPartyLyricSourcesEnabled: true,
   desktopLyrics: { ...DEFAULT_DESKTOP_LYRICS_SETTINGS },
   shortcuts: {
     enabled: DEFAULT_SHORTCUTS_SETTINGS.enabled,

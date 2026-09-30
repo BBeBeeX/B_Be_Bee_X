@@ -214,9 +214,14 @@ class HttpJournal {
 export class HttpNode extends Service {
   static inject = ['fs']
 
+  /** The UA a request carries when neither the config nor the caller sets one. */
+  static readonly DEFAULT_USER_AGENT = 'BBeBee/0.1'
+
   private readonly config: Required<Omit<HttpNodeConfig, 'fetch' | 'jars'>> & {
     fetch: typeof fetch
   }
+  /** What `setUserAgent('')` restores — the UA this platform was built with. */
+  private readonly fallbackUserAgent: string
   readonly cookies: CookieJarService
   private readonly jars: MemoryJars
   private readonly journal = new HttpJournal()
@@ -229,14 +234,30 @@ export class HttpNode extends Service {
 
   constructor(ctx: Context, config: HttpNodeConfig = {}) {
     super(ctx, 'http')
+    this.fallbackUserAgent = config.userAgent ?? HttpNode.DEFAULT_USER_AGENT
     this.config = {
       fetch: config.fetch ?? globalThis.fetch.bind(globalThis),
       defaultTimeoutMs: config.defaultTimeoutMs ?? 30_000,
       stallTimeoutMs: config.stallTimeoutMs ?? 60_000,
-      userAgent: config.userAgent ?? 'BBeBee/0.1',
+      userAgent: config.userAgent ?? HttpNode.DEFAULT_USER_AGENT,
     }
     this.jars = new MemoryJars(config.jars)
     this.cookies = this.jars
+  }
+
+  /**
+   * Replace the default `User-Agent` mid-flight.
+   *
+   * The setting lives in `ctx.settings` — a layer above this package — so it
+   * arrives here pushed by the composition root rather than polled, and it is
+   * read per request in `followRedirects`, which is what makes the change
+   * land on the next request rather than the next restart. An empty string
+   * restores the built-in default; a document that declares its own
+   * `header` rule still wins, because caller headers are merged in last.
+   */
+  setUserAgent(userAgent: string): void {
+    const trimmed = typeof userAgent === 'string' ? userAgent.trim() : ''
+    this.config.userAgent = trimmed.length > 0 ? trimmed : this.fallbackUserAgent
   }
 
   async [Service.init]() {

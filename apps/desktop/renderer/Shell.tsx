@@ -22,6 +22,7 @@ import type { Context } from 'cordis'
 import type { RouteContribution, SettingsContribution } from '@BBeBee/protocol'
 import { tablerIcon } from '@BBeBee/ui-kit-desktop'
 import { SleepTimerIndicator, TopBar, WindowControls, type ElectronCSSProperties, type TopBarProps } from './TopBar.js'
+import { importDroppedFiles } from './drop-import.js'
 
 /** What the sidebar can navigate to: a route, or a settings page. */
 interface Entry {
@@ -29,6 +30,10 @@ interface Entry {
   title: string
   group: 'main' | 'settings'
 }
+
+/** Whether a drag carries OS files (as opposed to an in-page element drag). */
+const hasDroppedFiles = (e: React.DragEvent): boolean =>
+  Array.from(e.dataTransfer?.types ?? []).includes('Files')
 
 /**
  * Re-read the registry whenever a plugin contributes or unloads.
@@ -433,6 +438,78 @@ export function Shell({ ctx }: { ctx: Context }) {
     return () => void off()
   }, [ctx, navigateTo])
 
+  /* ── Drop-to-import ──────────────────────────────────────────────────
+   *
+   * Owned at the shell root, not in any view: a drop has to land over every
+   * screen, and `will-navigate` (main) refuses the Chromium default of
+   * navigating to the dropped file. The overlay is purely feedback —
+   * `pointerEvents: 'none'` keeps the drag itself flowing to the root, which
+   * is the actual drop target.
+   */
+  const [dropActive, setDropActive] = useState(false)
+  const [dropMessage, setDropMessage] = useState<string | null>(null)
+  const dragDepth = useRef(0)
+
+  useEffect(() => {
+    // Window-level backstop: without a `dragover` preventDefault Chromium
+    // never offers a drop at all, and one outside the root div would still
+    // be refused rather than navigated to.
+    const prevent = (e: DragEvent) => e.preventDefault()
+    window.addEventListener('dragover', prevent)
+    window.addEventListener('drop', prevent)
+    return () => {
+      window.removeEventListener('dragover', prevent)
+      window.removeEventListener('drop', prevent)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!dropMessage) return
+    const timer = setTimeout(() => setDropMessage(null), 5000)
+    return () => clearTimeout(timer)
+  }, [dropMessage])
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!hasDroppedFiles(e)) return
+    e.preventDefault()
+    dragDepth.current += 1
+    setDropActive(true)
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!hasDroppedFiles(e)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!hasDroppedFiles(e)) return
+    // Enter/leave fire per element crossed; the depth counts them back out,
+    // so brushing a child does not flicker the overlay off.
+    dragDepth.current = Math.max(0, dragDepth.current - 1)
+    if (dragDepth.current === 0) setDropActive(false)
+  }, [])
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      dragDepth.current = 0
+      setDropActive(false)
+      const files = e.dataTransfer?.files
+      if (!files || files.length === 0) return
+      void importDroppedFiles(ctx, files)
+        .then(({ imported, folders, failed }) => {
+          const parts: string[] = []
+          if (folders > 0) parts.push(`已添加 ${folders} 个文件夹，正在扫描`)
+          if (imported > 0) parts.push(`已导入 ${imported} 首曲目`)
+          if (failed > 0) parts.push(`${failed} 项无法导入`)
+          setDropMessage(parts.length > 0 ? parts.join('，') : '未发现可导入的内容')
+        })
+        .catch(() => setDropMessage('导入失败，请重试'))
+    },
+    [ctx],
+  )
+
   const currentItem: HistoryItem | undefined =
     navState.history[navState.index] ?? (defaultEntry ? { id: defaultEntry.id } : undefined)
   const currentId = currentItem?.id
@@ -802,6 +879,10 @@ export function Shell({ ctx }: { ctx: Context }) {
   return h(
     'div',
     {
+      onDragEnter: handleDragEnter,
+      onDragOver: handleDragOver,
+      onDragLeave: handleDragLeave,
+      onDrop: handleDrop,
       style: {
         display: 'flex',
         flexDirection: 'column',
@@ -1182,6 +1263,46 @@ export function Shell({ ctx }: { ctx: Context }) {
           'div',
           { style: { position: 'relative', zIndex: 130 } },
           h(ShareHost, { ctx }),
+        )
+      : null,
+    // Drop-to-import overlay: full-window while a file drag is over the app,
+    // then the result toast. Both are inert (`pointerEvents: 'none'`) — the
+    // root div underneath is the real drop target.
+    dropActive || dropMessage
+      ? h(
+          'div',
+          {
+            style: {
+              position: 'fixed',
+              inset: 0,
+              zIndex: 12000,
+              pointerEvents: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: dropActive ? 'rgba(5, 6, 11, 0.72)' : 'transparent',
+              backdropFilter: dropActive ? 'blur(2px)' : undefined,
+            },
+          },
+          h(
+            'div',
+            {
+              style: {
+                padding: '24px 44px',
+                borderRadius: 16,
+                border: dropActive
+                  ? '2px dashed var(--accent-primary, #5F87FF)'
+                  : '1px solid var(--border-subtle, rgba(148,163,184,0.2))',
+                background: 'rgba(13, 14, 21, 0.94)',
+                color: 'var(--text-primary, #F2F5FF)',
+                fontSize: dropActive ? 18 : 14,
+                fontWeight: dropActive ? 600 : 500,
+                letterSpacing: '0.02em',
+                boxShadow: '0 12px 48px rgba(0, 0, 0, 0.5)',
+              },
+            },
+            dropMessage ?? '松开鼠标，导入音乐文件或文件夹',
+          ),
         )
       : null,
   )

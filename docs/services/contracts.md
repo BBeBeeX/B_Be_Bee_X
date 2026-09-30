@@ -36,6 +36,13 @@ export interface HttpService {
   post<T>(url: string, body: unknown, init?: Omit<HttpRequest, 'url' | 'method' | 'body'>): Promise<T>
   /** Download to a Uri with resume support. Used by plugin-download. */
   download(req: DownloadRequest): Promise<{ bytes: number; etag?: string }>
+  /**
+   * Replace the default `User-Agent` on the next request, no restart.
+   * Empty string restores the built-in default; optional — a transport that
+   * cannot reconfigure itself may omit it. A source document that declares
+   * its own `header` rule still wins.
+   */
+  setUserAgent?(userAgent: string): void
   /** Persistent per-instance cookie jars. See §2.1. */
   readonly cookies: CookieJarService
   /** In-memory request journal, when this build keeps one. See §2.2. */
@@ -540,7 +547,7 @@ export interface CodecService {
 }
 ```
 
-Electron: `music-metadata` in `main` for tags; Web Audio `decodeAudioData` for PCM, with an FFmpeg decode bridge (`audio.decodePcm`) for ALAC, 24/32-bit Hi-Res, and audiophile formats (APE, WavPack, DSF, DFF).
+Electron: `music-metadata` in `main` for tags; Web Audio `decodeAudioData` for PCM, with an FFmpeg decode bridge (`audio.decodePcm`) for ALAC, 24/32-bit Hi-Res, and audiophile formats (APE, WavPack, DSF, DFF). Remote `http(s)` inputs carry the source's request headers (e.g. `Referer`) through `probe`/`decodePcm`; ffmpeg receives them as `-user_agent`/`-headers`.
 Expo: `react-native-audio-api`'s `AudioDecoder` for PCM plus a native tag reader.
 
 > ⚠️ `supportedFormats()` differs by platform and OS version. On desktop, FFmpeg integration covers ALAC, APE, WavPack, DSF, DFF, WMA alongside standard formats. The scanner records what it could not decode instead of silently skipping, so the user can see why a file did not import.

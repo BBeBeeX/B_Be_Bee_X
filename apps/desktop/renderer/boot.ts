@@ -70,6 +70,8 @@ declare global {
       paths: { get(kind: string): Promise<string | undefined> }
       shell: { openExternal(url: string): Promise<void> }
       dialog: { pickDirectory(): Promise<string | undefined> }
+      files?: { getPath(file: File): string }
+      devtools?: { open(): Promise<void> }
       platform: string
       versions: { electron: string; node: string }
       isDebug?: boolean
@@ -518,16 +520,20 @@ export async function boot(): Promise<App> {
 
   // Determine initial audio engine: check persisted settings in store.json
   let initialEngine: 'wasapi' | 'webaudio' = hostPlatform() === 'windows' ? 'wasapi' : 'webaudio'
+  let preloadedUserAgent: string | undefined
   let preloadedStoreData: Record<string, unknown> | undefined
   try {
     const storeUri = `${pathSnapshot.appData}/store.json`
     const raw = await window.BBeBeeBridge?.call('fs', 'readFile', [storeUri])
     if (raw && typeof raw === 'string') {
       preloadedStoreData = JSON.parse(raw) as Record<string, unknown>
-      const prefs = preloadedStoreData['preferences'] as { audioOutputEngine?: 'wasapi' | 'webaudio' } | undefined
+      const prefs = preloadedStoreData['preferences'] as
+        | { audioOutputEngine?: 'wasapi' | 'webaudio'; userAgent?: string }
+        | undefined
       if (prefs?.audioOutputEngine === 'wasapi' || prefs?.audioOutputEngine === 'webaudio') {
         initialEngine = prefs.audioOutputEngine
       }
+      if (typeof prefs?.userAgent === 'string') preloadedUserAgent = prefs.userAgent
     }
   } catch {
     // fallback to platform default
@@ -575,7 +581,15 @@ export async function boot(): Promise<App> {
        * PENDING with no obvious cause.
        */
       [CodecNode, { supportedFormats: decodableFormats() }],
-      [HttpNode, transport ? { fetch: transport } : {}],
+      /*
+       * The UA arrives preloaded because the first source request can happen
+       * before the settings service finishes loading; `setUserAgent` below
+       * keeps it in step from then on. Empty string = the built-in default.
+       */
+      [HttpNode, {
+        ...(transport ? { fetch: transport } : {}),
+        ...(preloadedUserAgent ? { userAgent: preloadedUserAgent } : {}),
+      }],
       /*
        * `ctx.audio`. Desktop switchable audio service:
        * Supports hot-switching between WASAPI Exclusive (bit-perfect Hi-Res)
@@ -654,6 +668,9 @@ export async function boot(): Promise<App> {
       }
       if (s.audioOutputDeviceId) {
         void scoped.audio?.setOutputDevice?.(s.audioOutputDeviceId).catch(() => {})
+      }
+      if (s.userAgent !== undefined) {
+        scoped.http?.setUserAgent?.(s.userAgent)
       }
     }
 

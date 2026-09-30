@@ -15,6 +15,7 @@ interface WindowWithBBeBee {
     platform?: string
     versions?: { electron?: string; node?: string }
     isDebug?: boolean
+    devtools?: { open(): Promise<void> }
   }
 }
 
@@ -338,6 +339,29 @@ export function DebugScreen({ ctx }: { ctx: Context }): ReactElement {
             variant: 'primary',
             children: '打开架构拓扑 (Inspector) →',
             onPress: () => ui?.navigate?.('inspector.panel'),
+          }),
+        ),
+        // DevTools Card
+        h(
+          'div',
+          {
+            style: actionCardStyle,
+          },
+          h(
+            'div',
+            null,
+            h('div', { style: { fontSize: 16, fontWeight: 600, color: '#F8FAFC', marginBottom: 4 } }, '开发者工具 (DevTools)'),
+            h(
+              'div',
+              { style: { fontSize: 13, color: '#94A3B8', lineHeight: 1.5, marginBottom: 16 } },
+              '在独立窗口中打开当前窗口的 Chromium DevTools，检查渲染进程 DOM、网络与控制台输出。',
+            ),
+          ),
+          h(Button, {
+            variant: 'primary',
+            children: '打开开发者工具 →',
+            disabled: !bbebee?.devtools,
+            onPress: () => void bbebee?.devtools?.open(),
           }),
         ),
       ),

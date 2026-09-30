@@ -29,6 +29,7 @@ import {
 import { FlashList } from '@shopify/flash-list'
 import { AudioContext, AudioManager } from 'react-native-audio-api'
 import { createApp, type App } from '@BBeBee/kernel'
+import type { AppSettings } from '@BBeBee/protocol'
 import { PathsExpo } from '@BBeBee/core-paths-expo'
 import { File, FsExpo } from '@BBeBee/core-fs-expo'
 import { StoreFs } from '@BBeBee/core-store-fs'
@@ -221,6 +222,20 @@ export async function boot(): Promise<App> {
    * only place to catch it is here, where what was registered is known.
    */
   await app.ready([...BOOTSTRAP_SERVICES], { timeoutMs: 15_000 })
+
+  /*
+   * The configured `User-Agent`, applied once settings exist and kept in step
+   * from then on. Same contract as desktop: the header goes out on the next
+   * request, an empty value restores the built-in default, and a source
+   * document's own `header` rule still wins.
+   */
+  app.ctx.inject(['settings'], (scoped) => {
+    const syncUserAgent = (s: AppSettings | undefined) => {
+      if (s?.userAgent !== undefined) scoped.http?.setUserAgent?.(s.userAgent)
+    }
+    void scoped.settings.get().then(syncUserAgent)
+    scoped.on('settings/changed', syncUserAgent)
+  })
 
   /*
    * The OS's own audio events, published into `ctx.audio`.

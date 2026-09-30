@@ -39,6 +39,10 @@ describe('the renderer CSP', () => {
     expect(policy.get('script-src')).toContain("'wasm-unsafe-eval'")
   })
 
+  it("allows blob: scripts for AudioWorklet modules built in memory", () => {
+    expect(policy.get('script-src')).toContain('blob:')
+  })
+
   it('still refuses eval, which is the whole point of the narrower token', () => {
     const scripts = policy.get('script-src') ?? []
     expect(scripts).not.toContain("'unsafe-eval'")
@@ -62,6 +66,8 @@ describe('the renderer CSP', () => {
     expect(img).toContain('blob:')
     expect(img).toContain('bbebee-file:')
     expect(img).toContain('https:')
+    // Mirrors media-src: some sources serve covers from plain-http hosts.
+    expect(img).toContain('http:')
   })
 })
 

@@ -9,6 +9,7 @@ import type {
   LyricSourceDefinition,
   LyricSourcesService,
   LyricSourceTestResult,
+  SettingsService,
   StoreService,
 } from '@BBeBee/protocol'
 import { executeLyricSource } from './sandbox.js'
@@ -46,6 +47,7 @@ export class LyricSourcesPlugin extends Service implements LyricSourcesService {
   private storeService?: StoreService
   private jsService?: JsService
   private httpService?: HttpService
+  private settingsService?: SettingsService
   private loaded = false
 
   constructor(ctx: Context) {
@@ -85,6 +87,16 @@ export class LyricSourcesPlugin extends Service implements LyricSourcesService {
         : undefined
       return () => {
         this.httpService = undefined
+      }
+    })
+
+    // Optional injection of settings — carries the third-party master switch.
+    // Read at lookup time rather than mirrored, so a toggle takes effect on
+    // the next track without this plugin keeping a copy in step.
+    this.ownCtx.inject(['settings'], (scoped: Context) => {
+      this.settingsService = scoped.settings
+      return () => {
+        this.settingsService = undefined
       }
     })
   }
@@ -210,6 +222,17 @@ export class LyricSourcesPlugin extends Service implements LyricSourcesService {
   }
 
   async searchLyrics(query: LyricSearchQuery): Promise<Lyrics | undefined> {
+    /*
+     * The master switch gates only *lookup*, not `testSource`: a user turning
+     * lyric sources off wants the player to stop reaching out on its own, but
+     * the settings page's test button must keep working so the sources can be
+     * verified before (or after) re-enabling them.
+     */
+    if (this.settingsService?.getSync().thirdPartyLyricSourcesEnabled === false) {
+      this.ownCtx.logger.debug('lyricSources: lookup skipped — third-party lyric sources are disabled')
+      return undefined
+    }
+
     const enabledSources = this.sources
       .filter((s) => s.enabled)
       .sort((a, b) => a.sortOrder - b.sortOrder)

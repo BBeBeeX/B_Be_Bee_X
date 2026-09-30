@@ -123,6 +123,9 @@ const MAX_SCAN_DEPTH = 24
  */
 const MAX_SCAN_DIRS = 20_000
 
+/** The summary of an import that did nothing. */
+const EMPTY_SUMMARY: ScanSummary = { added: 0, updated: 0, removed: 0, errors: 0 }
+
 export class Scanner extends Service implements ScannerService {
   static inject = ['fs', 'db', 'codec', 'paths']
 
@@ -137,6 +140,8 @@ export class Scanner extends Service implements ScannerService {
   private pollTimer?: ReturnType<typeof setTimeout>
   /** Resolves the in-flight scan, so concurrent callers queue rather than race. */
   private inFlight?: Promise<ScanSummary>
+  /** Serialises dropped-file imports; they share no state with `scan`'s walk. */
+  private importChain: Promise<ScanSummary> = Promise.resolve(EMPTY_SUMMARY)
   private disposed = false
 
   constructor(ctx: Context, config: ScannerConfig = {}) {
@@ -382,6 +387,130 @@ export class Scanner extends Service implements ScannerService {
       summary.removed,
       summary.errors,
       !!summary.cancelled,
+    )
+    return summary
+  }
+
+  /**
+   * Import files dropped onto the window, ahead of — and without touching —
+   * the walk.
+   *
+   * Serialised on its own chain rather than `scan`'s `inFlight`: a drop that
+   * arrives during a scan must still run (the two share no state), while a
+   * double-drop of the same files must not race itself into counting one file
+   * twice. The walk's incremental key does not apply either: a re-dropped
+   * file is re-read and its rows updated in place, which is the honest
+   * answer for "the user asked for this file again".
+   */
+  async importFiles(uris: Uri[], opts: { signal?: AbortSignal } = {}): Promise<ScanSummary> {
+    const run = this.importChain.then(() => this.runImportFiles(uris, opts))
+    this.importChain = run.then(() => EMPTY_SUMMARY, () => EMPTY_SUMMARY)
+    return run
+  }
+
+  private async runImportFiles(uris: Uri[], opts: { signal?: AbortSignal }): Promise<ScanSummary> {
+    const summary: ScanSummary = { added: 0, updated: 0, removed: 0, errors: 0 }
+    const candidates = [...new Set(uris)]
+    // A non-audio uri is an error like any other — reported, never silent —
+    // but the drop surface filters before calling, so this is defence.
+    summary.errors += candidates.filter((uri) => !this.isAudio(uri)).length
+    const files = candidates.filter((uri) => this.isAudio(uri))
+    if (files.length === 0) return summary
+
+    this.ownCtx.logger.info('scanner: importing %d dropped file(s)', files.length)
+
+    /*
+     * Persist *before* reading anything. On the desktop the rows are what put
+     * the uris inside the bridge's read whitelist — main watches this table
+     * the way it watches `scan_specified_dirs` — and the `stat` below is the
+     * first read. Importing first and recording after would refuse the very
+     * first file on a fresh install. Everywhere else the insert is simply
+     * bookkeeping.
+     */
+    const now = Date.now()
+    for (const uri of files) {
+      await this.ownCtx.db.exec('INSERT OR IGNORE INTO scan_dropped_files (uri, added_at) VALUES (?, ?)', [
+        uri,
+        now,
+      ])
+    }
+
+    // Reading tags is I/O and must not hold the write lock — the batch shape
+    // from `importBatch`, minus folder covers: a drop carries no directory to
+    // look in.
+    const prepared: PreparedFile[] = []
+    for (const uri of files) {
+      if (opts.signal?.aborted) break
+      try {
+        const file = await this.ownCtx.fs.stat(uri)
+        if (file.isDirectory) throw new Error('is a directory, not a file')
+        const metadata = await this.ownCtx.codec.readMetadata(uri)
+        const supported = new Set(this.ownCtx.codec.supportedFormats().map((f) => f.toLowerCase()))
+        const codec = metadata.codec?.toLowerCase()
+        if (codec === 'alac' && !supported.has('alac')) {
+          throw new Error('unsupported codec: ALAC is not supported on this platform')
+        }
+        if (codec === 'wma' && !supported.has('wma')) {
+          throw new Error('unsupported codec: WMA is not supported on this platform')
+        }
+        const artwork = metadata.hasArtwork
+          ? await this.ownCtx.codec.readArtwork(uri).catch(() => undefined)
+          : undefined
+        let artworkUri: Uri | undefined
+        if (artwork && artwork.length > 0) {
+          artworkUri = await this.saveArtwork(artwork)
+        }
+        prepared.push({
+          file,
+          metadata,
+          ...(artwork ? { artwork } : {}),
+          ...(artworkUri ? { artworkUri } : {}),
+        })
+      } catch (error) {
+        this.ownCtx.logger.warn('scanner: could not import dropped file %s: %s', uri, String(error))
+        summary.errors++
+      }
+    }
+
+    /*
+     * Deliberately no `scan_entries` row: entries belong to a specified dir
+     * (the column is a foreign key), and a drop must not turn its folder into
+     * one. A track with no entry keeps the `available = 1` that `importTrack`
+     * wrote, and — crucially — the walk's reconciliation never sees it, so a
+     * later scan of an unrelated folder cannot decide it "went missing".
+     */
+    const changed: string[] = []
+    await this.ownCtx.db.transaction(async (tx) => {
+      for (const item of prepared) {
+        if (item.error || !item.metadata) continue
+        const prior = await tx.get<{ track_urn: string }>(
+          'SELECT track_urn FROM media_bindings WHERE uri = ?',
+          [item.file.uri],
+        )
+        const { trackUrn } = await importTrack(
+          { tx, sourceId: this.config.sourceId, now },
+          {
+            uri: item.file.uri,
+            size: item.file.size,
+            mtime: item.file.mtime,
+            metadata: item.metadata,
+            ...(item.artwork ? { artwork: item.artwork } : {}),
+            ...(item.artworkUri ? { artworkUri: item.artworkUri } : {}),
+            format: extensionOf(item.file.uri),
+          },
+        )
+        if (prior) summary.updated++
+        else summary.added++
+        changed.push(trackUrn)
+      }
+    })
+
+    if (changed.length > 0) this.ownCtx.emit('library/changed', 'track', changed)
+    this.ownCtx.logger.info(
+      'scanner: dropped-file import finished (added=%d, updated=%d, errors=%d)',
+      summary.added,
+      summary.updated,
+      summary.errors,
     )
     return summary
   }

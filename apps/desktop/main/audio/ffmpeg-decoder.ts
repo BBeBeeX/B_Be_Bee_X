@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import type { AudioDecodedPcm, AudioProbeResult } from './types.js'
+import type { AudioDecodedPcm, AudioProbeResult, AudioRequestOptions } from './types.js'
 
 function toFsPath(uriOrPath: string): string {
   if (uriOrPath.startsWith('file://')) {
@@ -16,6 +16,29 @@ function toFsPath(uriOrPath: string): string {
   return uriOrPath
 }
 
+/**
+ * Input options for a remote URL, from the source's own headers.
+ *
+ * Streaming CDNs (bilibili's among them) answer a header-less request with
+ * `403 Forbidden`, so a decode that works for `file://` inputs dies for remote
+ * ones unless the source's `Referer`/`User-Agent` ride along. User-Agent goes
+ * through ffmpeg's own flag; the rest ride in `-headers`, which requires each
+ * line to be CRLF-terminated.
+ */
+function remoteInputArgs(uri: string, options?: AudioRequestOptions): string[] {
+  if (!options?.headers || !/^https?:\/\//i.test(uri)) return []
+  let userAgent: string | undefined
+  const lines: string[] = []
+  for (const [name, value] of Object.entries(options.headers)) {
+    if (/^user-agent$/i.test(name)) userAgent = value
+    else lines.push(`${name}: ${value}`)
+  }
+  return [
+    ...(userAgent ? ['-user_agent', userAgent] : []),
+    ...(lines.length > 0 ? ['-headers', `${lines.join('\r\n')}\r\n`] : []),
+  ]
+}
+
 export class FfmpegDecoder {
   private readonly ffmpegPath: string
 
@@ -26,12 +49,14 @@ export class FfmpegDecoder {
       (process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
   }
 
-  async probe(uri: string): Promise<AudioProbeResult> {
+  async probe(uri: string, options?: AudioRequestOptions): Promise<AudioProbeResult> {
     const filePath = toFsPath(uri)
     return new Promise<AudioProbeResult>((resolve, reject) => {
-      const proc = spawn(this.ffmpegPath, ['-hide_banner', '-i', filePath], {
-        windowsHide: true,
-      })
+      const proc = spawn(
+        this.ffmpegPath,
+        [...remoteInputArgs(uri, options), '-hide_banner', '-i', filePath],
+        { windowsHide: true },
+      )
 
       let stderr = ''
       proc.stderr.on('data', (chunk) => {
@@ -53,9 +78,9 @@ export class FfmpegDecoder {
     })
   }
 
-  async decodePcm(uri: string): Promise<AudioDecodedPcm> {
+  async decodePcm(uri: string, options?: AudioRequestOptions): Promise<AudioDecodedPcm> {
     const filePath = toFsPath(uri)
-    const probeInfo = await this.probe(uri).catch(() => ({
+    const probeInfo = await this.probe(uri, options).catch(() => ({
       sampleRate: 44100,
       channels: 2,
       bitDepth: 24,
@@ -70,6 +95,7 @@ export class FfmpegDecoder {
       const proc = spawn(
         this.ffmpegPath,
         [
+          ...remoteInputArgs(uri, options),
           '-hide_banner',
           '-loglevel',
           'error',

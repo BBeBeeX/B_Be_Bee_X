@@ -123,6 +123,10 @@ export class FakeAudioContext {
     return new FakeNode()
   }
 
+  createMediaElementSource(_element: unknown): FakeNode {
+    return new FakeNode()
+  }
+
   async decodeAudioData(_data: ArrayBuffer): Promise<FakeAudioBuffer> {
     return new FakeAudioBuffer(this.decodedDuration, this.sampleRate)
   }

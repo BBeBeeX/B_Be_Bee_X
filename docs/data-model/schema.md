@@ -399,10 +399,22 @@ CREATE TABLE scan_entries (
 );
 CREATE INDEX idx_scan_entries_specified_dir ON scan_entries(specified_dir_id, status);
 CREATE INDEX idx_scan_entries_track ON scan_entries(track_urn);
+
+CREATE TABLE scan_dropped_files (
+  uri      TEXT PRIMARY KEY,
+  added_at INTEGER NOT NULL
+);
 ```
 
 `(size, mtime)` is the incremental-scan key: unchanged files cost one `stat` and nothing more
 ([06 §12](../sources/authoring.md#the-local-scanner)).
+
+`scan_dropped_files` is the exception to "a local track comes from a specified dir": files the
+user dragged onto the desktop window are imported individually, and making their folders scan
+dirs would import far more than the user dropped. A dropped file therefore gets no `scan_entries`
+row — its track keeps the `available = 1` the importer wrote, and no walk ever reconciles it —
+and its uri lives here, which is what the desktop bridge whitelists for reading, at boot and as
+the rows are written.
 
 ### 4.6 Playlists and library
 

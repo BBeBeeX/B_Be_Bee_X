@@ -6,10 +6,16 @@
     <!-- Strict CSP. `BBeBee-plugin:` is listed ahead of M5's dynamic loader
          (docs/03 §6.2) so the policy does not have to change to enable it.
          `'wasm-unsafe-eval'` is what lets QuickJS compile, and is not
-         `'unsafe-eval'`: no foreign JavaScript loads (docs/02 §2). -->
+         `'unsafe-eval'`: no foreign JavaScript loads (docs/02 §2).
+         `blob:` in script-src is for AudioWorklet modules the audio services
+         build in memory from bundled code — same trust level as the app
+         itself, still no foreign script source. `http:` in img-src mirrors
+         media-src/connect-src: some sources serve artwork from plain-http
+         hosts, and a blocked cover is a worse outcome than the (passive,
+         non-script) load it enables. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' BBeBee-plugin:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: bbebee-file: https:; media-src 'self' blob: data: http: https: bbebee-file:; connect-src 'self' ws: wss: http: https:"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob: BBeBee-plugin:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: bbebee-file: http: https:; media-src 'self' blob: data: http: https: bbebee-file:; connect-src 'self' ws: wss: http: https:"
     />
     <script type="module" src="./window-init.ts"></script>
     <title>BBeBee</title>

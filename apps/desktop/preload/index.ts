@@ -6,7 +6,7 @@
  * concepts cross this boundary (docs/02 §2).
  */
 
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 // The channel names only — the package root pulls in cordis, and a sandboxed
 // preload has no `require` for anything but Electron's own modules.
 import { CH, unwrapBridgeResult } from '@BBeBee/core-desktop-bridge/protocol'
@@ -33,6 +33,29 @@ const api = {
   },
   dialog: {
     pickDirectory: (): Promise<string | undefined> => ipcRenderer.invoke('dialog:pickDirectory'),
+  },
+  /**
+   * Dropped files, by path.
+   *
+   * A `File` from a drag onto the window carries no path the renderer can
+   * read — `File.path` is gone and the sandbox hides the filesystem — so
+   * `webUtils` is the only reader left, and it must be called with the *same*
+   * `File` object the drop produced. This shim forwards it untouched; the
+   * path that comes back is what the importer turns into a `file://` uri.
+   */
+  files: {
+    getPath: (file: File): string => {
+      try {
+        return webUtils.getPathForFile(file)
+      } catch {
+        // Not backed by a path (e.g. a drag from inside the page): the
+        // importer treats '' the same as absent.
+        return ''
+      }
+    },
+  },
+  devtools: {
+    open: (): Promise<void> => ipcRenderer.invoke('devtools:open'),
   },
   window: {
     minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),

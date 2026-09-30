@@ -13,6 +13,11 @@ import { Service } from 'cordis'
 import type { Context } from 'cordis'
 import type {} from '@BBeBee/protocol'
 import { assertGranted } from '@BBeBee/kernel'
+import {
+  StreamedHandle,
+  defaultMediaElementFactory,
+  type MediaElementLike,
+} from '@BBeBee/core-audio-webaudio'
 import type {
   AudioService,
   AudioSourceHandle,
@@ -34,6 +39,12 @@ export interface AudioWasapiConfig {
     opts: { headers?: Record<string, string>; signal?: AbortSignal },
   ) => Promise<ArrayBuffer>
   bridgeCall?: (service: string, method: string, args: unknown[]) => Promise<unknown>
+  /**
+   * The element behind `strategy: 'stream'`. Defaults to `new Audio()`;
+   * streaming is refused where there is none and the load falls back to
+   * buffered decode.
+   */
+  createMediaElement?: () => MediaElementLike
   enableExclusive?: boolean
 }
 
@@ -164,6 +175,24 @@ export class AudioWasapi extends Service implements AudioService {
     this.ctx.logger?.info('wasapi: loading %s (strategy: %s)', String(src), opts.strategy ?? 'stream')
     await this.ensureSinkWorklet()
 
+    /*
+     * The streaming strategy goes straight to the element. The FFmpeg bridge
+     * below decodes the whole track into resident PCM — exactly what this
+     * strategy exists to avoid — so it is skipped here, and a failed element
+     * path degrades to the buffered path rather than to the bridge.
+     */
+    if (opts.strategy === 'stream') {
+      try {
+        return await this.loadStreamed(String(src), opts)
+      } catch (streamErr) {
+        this.ctx.logger?.warn(
+          'wasapi: streamed load failed for %s, falling back to buffered decode: %s',
+          String(src),
+          String(streamErr),
+        )
+      }
+    }
+
     const bridgeCall =
       this.config.bridgeCall ??
       (typeof window !== 'undefined'
@@ -175,7 +204,10 @@ export class AudioWasapi extends Service implements AudioService {
     if (bridgeCall) {
       try {
         this.ctx.logger?.debug?.('wasapi: attempting bridge decodePcm for %s', String(src))
-        const decoded = (await bridgeCall('audio', 'decodePcm', [src])) as {
+        const decoded = (await bridgeCall('audio', 'decodePcm', [
+          src,
+          { headers: opts.headers },
+        ])) as {
           sampleRate: number
           channels: number
           bitDepth?: number
@@ -235,6 +267,141 @@ export class AudioWasapi extends Service implements AudioService {
 
     // Standard fallback: fetch raw bytes and decodeAudioData
     return this.loadBuffered(src, opts)
+  }
+
+  /**
+   * The streaming path: an `HTMLMediaElement` wrapped by
+   * `createMediaElementSource`, feeding `chainInput` so the DSP chain and the
+   * sink worklet see the stream exactly like a decoded buffer. Nothing decodes
+   * the track into resident PCM, so memory stays flat for a multi-hour track.
+   *
+   * A media element cannot set request headers itself; remote sources rely on
+   * the per-host registration `plugin-player` performs through
+   * `stream.setHeaders` before the load, which main injects into the element's
+   * requests via `onBeforeSendHeaders`.
+   */
+  private async loadStreamed(src: string, opts: LoadOptions): Promise<AudioSourceHandle> {
+    const createElement = this.config.createMediaElement ?? defaultMediaElementFactory()
+    if (!createElement) {
+      throw new Error(
+        "audio: streaming needs a media element, which this platform did not provide. " +
+          "Pass `createMediaElement`, or load with strategy 'buffer'.",
+      )
+    }
+
+    const element = createElement()
+    try {
+      element.crossOrigin = 'anonymous'
+      element.src =
+        src.startsWith('file://') && typeof window !== 'undefined'
+          ? src.replace(/^file:\/\//, 'bbebee-file://')
+          : src
+
+      // Exclusive output must be configured before PCM reaches the sink
+      // worklet, or the master output lands in an uninitialized native
+      // stream. The graph resamples an element to the context's own rate, so
+      // that — not the file's rate — is what the endpoint has to accept.
+      await this.initExclusiveForStream(src, opts.headers)
+
+      const context = this.context as BaseAudioContext & {
+        createMediaElementSource?: (el: unknown) => AudioNode
+      }
+      if (!context.createMediaElementSource) {
+        throw new Error('audio: this AudioContext cannot wrap a media element')
+      }
+      const node = context.createMediaElementSource(element)
+
+      if (opts.onBuffered) {
+        // Reported from the element's own buffered ranges where it has them.
+        const buffered = (element as { buffered?: { length: number; end(i: number): number } }).buffered
+        if (buffered && buffered.length > 0) opts.onBuffered(buffered.end(buffered.length - 1))
+      }
+
+      this.ctx.logger?.info('wasapi: streamed source ready for %s', element.src)
+      return new StreamedHandle(element, node, this.ctx.logger, this.ensureContextRunning)
+    } catch (err) {
+      // Never leak a half-configured element: the caller retries buffered, and
+      // a live element would race that retry for the audio device.
+      try {
+        element.pause()
+        element.src = ''
+      } catch {
+        // ignore
+      }
+      throw err
+    }
+  }
+
+  /**
+   * Exclusive mode only: the sink worklet forwards to a native stream that
+   * main must have opened. Element output is float at the context's rate; the
+   * channel layout is probed so a mono or multichannel file inits the endpoint
+   * honestly. A refusal is degraded, not fatal: exclusive stays off and the
+   * master output falls back to `context.destination` (shared mode) rather
+   * than feeding a stream that will never be read.
+   */
+  private async initExclusiveForStream(src: string, headers?: Record<string, string>): Promise<void> {
+    if (this.config.enableExclusive === false || !this.sinkNode) return
+    const bridgeCall =
+      this.config.bridgeCall ??
+      (typeof window !== 'undefined'
+        ? (window as unknown as { BBeBeeBridge?: { call?: (s: string, m: string, a: unknown[]) => Promise<unknown> } })
+            .BBeBeeBridge?.call
+        : undefined)
+    if (!bridgeCall) return
+
+    let probed: { sampleRate?: number; channels?: number; bitDepth?: number } = {}
+    try {
+      probed = (await bridgeCall('audio', 'probe', [src, { headers }])) as typeof probed
+    } catch (err) {
+      this.ctx.logger?.warn('wasapi: probe for streamed exclusive init failed: %s', String(err))
+    }
+
+    const exclusiveConfig = {
+      sampleRate: this.context.sampleRate,
+      channels: probed.channels || 2,
+      bitDepth: probed.bitDepth || 16,
+    }
+    const initRes = (await bridgeCall('audio', 'initWasapi', [exclusiveConfig]).catch((err) => {
+      this.ctx.logger?.warn('wasapi: initWasapi for streamed output error: %s', String(err))
+      return undefined
+    })) as { actualSampleRate?: number; actualBitDepth?: number; ok?: boolean } | undefined
+
+    if (!initRes || initRes.ok === false) {
+      this.ctx.logger?.warn(
+        'wasapi: exclusive init refused the streamed format (%s), falling back to shared output',
+        JSON.stringify(exclusiveConfig),
+      )
+      try {
+        this.master.connect(this.context.destination)
+      } catch {
+        // ignore
+      }
+      return
+    }
+
+    this.activeHardwareSampleRate = initRes.actualSampleRate ?? exclusiveConfig.sampleRate
+    this.activeHardwareBitDepth = initRes.actualBitDepth ?? exclusiveConfig.bitDepth
+    this.activeHardwareChannels = exclusiveConfig.channels
+  }
+
+  /**
+   * A suspended context wraps the element in silence, and the element's own
+   * `play()` would resolve while producing nothing. The user pressing play is
+   * the gesture every policy needs, so the resume is safe to attempt here; a
+   * refusal is logged, never thrown.
+   */
+  private readonly ensureContextRunning = (): void => {
+    const lifecycle = this.context as BaseAudioContext & {
+      state?: string
+      resume?: () => Promise<void>
+    }
+    if ((lifecycle.state === 'suspended' || lifecycle.state === 'interrupted') && lifecycle.resume) {
+      this.ctx.logger?.warn('wasapi: play() on a %s context — resuming', lifecycle.state)
+      void lifecycle.resume().catch((err: unknown) => {
+        this.ctx.logger?.warn('wasapi: context.resume() failed: %s', String(err))
+      })
+    }
   }
 
   private async loadBuffered(src: string, opts: LoadOptions): Promise<AudioSourceHandle> {

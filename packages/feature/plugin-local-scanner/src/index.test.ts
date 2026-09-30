@@ -791,6 +791,107 @@ describe('identity', () => {
   })
 })
 
+describe('dropped-file imports', () => {
+  it('imports individual files without making their folder a scan dir', async () => {
+    const h = await harness()
+    const a = await h.write('dropped-a.mp3')
+    const b = await h.write('nested/dropped-b.flac')
+    const txt = await h.write('linernotes.txt')
+
+    h.codec.tags.set(a, { title: 'Dropped A', artist: 'X', hasArtwork: false })
+    h.codec.tags.set(b, { title: 'Dropped B', artist: 'X', hasArtwork: false })
+
+    const summary = await h.scanner.importFiles([a, b, txt])
+
+    // The .txt is reported, never silently skipped.
+    expect(summary.added).toBe(2)
+    expect(summary.errors).toBe(1)
+    expect(summary.removed).toBe(0)
+
+    const tracks = await h.db.query<{ title: string; available: number }>(
+      'SELECT title, available FROM tracks ORDER BY title',
+    )
+    expect(tracks.map((t) => t.title).sort()).toEqual(['Dropped A', 'Dropped B'])
+    expect(tracks.every((t) => t.available === 1), 'a drop is available on arrival').toBe(true)
+
+    // No `scan_entries` rows: entries belong to a specified dir, and a drop
+    // must not invent one — which is also what keeps reconciliation's hands
+    // off these tracks.
+    const entries = await h.db.query<{ uri: string }>('SELECT uri FROM scan_entries')
+    expect(entries).toHaveLength(0)
+
+    // The recorded uris are what the desktop bridge whitelists for reading.
+    const recorded = await h.db.query<{ uri: string }>(
+      'SELECT uri FROM scan_dropped_files ORDER BY uri',
+    )
+    expect(recorded.map((r) => r.uri).sort()).toEqual([a, b].sort())
+
+    const bindings = await h.db.query<{ uri: string }>(
+      'SELECT uri FROM media_bindings ORDER BY uri',
+    )
+    expect(bindings.map((r) => r.uri).sort()).toEqual([a, b].sort())
+  })
+
+  it('re-importing the same file updates in place', async () => {
+    const h = await harness()
+    const a = await h.write('twice.mp3')
+
+    const first = await h.scanner.importFiles([a])
+    expect(first.added).toBe(1)
+
+    h.codec.tags.set(a, { title: 'Renamed', artist: 'X', hasArtwork: false })
+    const second = await h.scanner.importFiles([a])
+    expect(second.added).toBe(0)
+    expect(second.updated).toBe(1)
+
+    const tracks = await h.db.query<{ title: string }>('SELECT title FROM tracks')
+    expect(tracks).toHaveLength(1)
+    expect(tracks[0]?.title).toBe('Renamed')
+  })
+
+  it('reports an unreadable file and imports the rest', async () => {
+    const h = await harness()
+    const bad = await h.write('broken.mp3')
+    const good = await h.write('fine.mp3')
+    h.codec.failures.add(bad)
+    h.codec.tags.set(good, { title: 'Fine', artist: 'X', hasArtwork: false })
+
+    const summary = await h.scanner.importFiles([bad, good])
+
+    expect(summary.added).toBe(1)
+    expect(summary.errors).toBe(1)
+
+    const tracks = await h.db.query<{ title: string }>('SELECT title FROM tracks')
+    expect(tracks.map((t) => t.title)).toEqual(['Fine'])
+  })
+
+  it('a later scan of a watched dir never removes a dropped track', async () => {
+    const h = await harness()
+    // The drop lands outside anything the scanner walks — that is the point.
+    const dropped = await h.write('kept.mp3')
+    h.codec.tags.set(dropped, { title: 'Kept', artist: 'X', hasArtwork: false })
+    await h.scanner.importFiles([dropped])
+
+    // A separate, watched folder that the user later empties.
+    await h.write('watched/other.mp3')
+    await h.scanner.addSpecifiedDir(h.ctx.fs.join(h.uri, 'watched'))
+    expect((await h.scanner.scan()).added).toBe(1)
+
+    await rm(join(h.dir, 'watched', 'other.mp3'), { force: true })
+    const second = await h.scanner.scan()
+    expect(second.removed).toBe(1)
+
+    const kept = await h.db.get<{ available: number }>(
+      `SELECT available FROM tracks
+        WHERE urn = (SELECT track_urn FROM media_bindings WHERE uri = ?)`,
+      [dropped],
+    )
+    expect(kept, 'the dropped track survives the unrelated reconciliation').toMatchObject({
+      available: 1,
+    })
+  })
+})
+
 describe('lifecycle', () => {
   it('leaves nothing behind when unloaded', async () => {
     const codec: FakeCodec = {
