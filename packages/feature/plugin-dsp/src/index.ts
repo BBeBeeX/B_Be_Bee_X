@@ -120,14 +120,20 @@ export class DspPlugin extends Service implements DspService {
       }, 'dsp-ui-contributions'),
     )
 
-    // Rebuild effect graph whenever audio backend changes
+    // Rebuild effect graph whenever audio backend changes or AudioContext is dynamically rebuilt
     const offEngine = this.ctx.on('audio/engine-changed', async () => {
       this.ctx.logger.info('plugin-dsp: audio engine changed, rebuilding DSP effect graph')
       await this.rebuildGraph(false)
     })
 
+    const offContextRebuilt = this.ctx.on('audio/context-rebuilt', async () => {
+      this.ctx.logger.info('plugin-dsp: audio context rebuilt, resplicing DSP graph')
+      await this.rebuildGraph(false)
+    })
+
     return () => {
       offEngine()
+      offContextRebuilt()
       for (const seg of this.activeSegments.values()) {
         try {
           seg.dispose()

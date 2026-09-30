@@ -57,6 +57,7 @@ declare module 'cordis' {
     'settings/changed'(settings: AppSettings): void
     /* ── audio ────────────────────────────────────────── emit ── */
     'audio/engine-changed'(payload: { engine: 'wasapi' | 'webaudio' }): void
+    'audio/context-rebuilt'(): void
     /* ── theme ───────────────────────────────────────── emit ── */
     'theme/changed'(theme: ThemeDefinition): void
     'theme/registry-changed'(themes: readonly ThemeDefinition[]): void

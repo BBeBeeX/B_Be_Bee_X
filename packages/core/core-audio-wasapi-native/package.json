@@ -25,6 +25,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "build:native": "cargo build --release",
+    "build:native:debug": "cargo build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

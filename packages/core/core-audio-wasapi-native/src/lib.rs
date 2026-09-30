@@ -177,10 +177,28 @@ mod platform {
         Samples: WAVEFORMATEXTENSIBLE_0 {
           wValidBitsPerSample: target_bit_depth,
         },
-        dwChannelMask: if channels == 2 {
-          SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT
-        } else {
-          SPEAKER_FRONT_CENTER
+        dwChannelMask: match channels {
+          1 => SPEAKER_FRONT_CENTER,
+          2 => SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT,
+          6 => {
+            SPEAKER_FRONT_LEFT
+              | SPEAKER_FRONT_RIGHT
+              | SPEAKER_FRONT_CENTER
+              | SPEAKER_LOW_FREQUENCY
+              | SPEAKER_BACK_LEFT
+              | SPEAKER_BACK_RIGHT
+          }
+          8 => {
+            SPEAKER_FRONT_LEFT
+              | SPEAKER_FRONT_RIGHT
+              | SPEAKER_FRONT_CENTER
+              | SPEAKER_LOW_FREQUENCY
+              | SPEAKER_BACK_LEFT
+              | SPEAKER_BACK_RIGHT
+              | SPEAKER_SIDE_LEFT
+              | SPEAKER_SIDE_RIGHT
+          }
+          _ => 0,
         },
         SubFormat: sub_format,
       };
@@ -202,8 +220,9 @@ mod platform {
         };
       }
 
+      let mut audio_client = audio_client;
       let buffer_duration_hns = (buffer_ms as i64) * 10_000;
-      let init_res = audio_client.Initialize(
+      let mut init_res = audio_client.Initialize(
         AUDCLNT_SHAREMODE_EXCLUSIVE,
         AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
         buffer_duration_hns,
@@ -211,6 +230,31 @@ mod platform {
         p_format,
         None,
       );
+
+      // Alignment dance: Handle AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED (0x88890019)
+      const AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED: windows::core::HRESULT =
+        windows::core::HRESULT(0x88890019_u32 as i32);
+
+      if let Err(ref err) = init_res {
+        if err.code() == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED {
+          if let Ok(aligned_frames) = audio_client.GetBufferSize() {
+            let aligned_duration_hns =
+              ((10_000_000.0 * aligned_frames as f64) / sample_rate as f64 + 0.5) as i64;
+            drop(audio_client);
+            if let Ok(new_client) = device.Activate::<IAudioClient>(CLSCTX_ALL, None) {
+              audio_client = new_client;
+              init_res = audio_client.Initialize(
+                AUDCLNT_SHAREMODE_EXCLUSIVE,
+                AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                aligned_duration_hns,
+                aligned_duration_hns,
+                p_format,
+                None,
+              );
+            }
+          }
+        }
+      }
 
       if let Err(err) = init_res {
         return NativeWasapiInitResult {
@@ -247,7 +291,19 @@ mod platform {
         };
       }
 
-      let buffer_size_frames = audio_client.GetBufferSize().unwrap_or(0);
+      let buffer_size_frames = match audio_client.GetBufferSize() {
+        Ok(f) => f,
+        Err(err) => {
+          let _ = CloseHandle(event_handle);
+          return NativeWasapiInitResult {
+            ok: false,
+            buffer_size_frames: None,
+            actual_sample_rate: None,
+            actual_bit_depth: None,
+            error: Some(format!("Failed to get buffer size: {:?}", err)),
+          };
+        }
+      };
 
       // Create lock-free SPSC ring buffer (e.g. 200ms capacity)
       let ring_capacity = (sample_rate as usize * channels as usize * 200) / 1000;
@@ -267,6 +323,16 @@ mod platform {
         }
       };
 
+      // Pre-fill buffer with silence before starting stream (MSDN requirement for event-driven exclusive mode)
+      if let Ok(dest_buf) = render_client.GetBuffer(buffer_size_frames) {
+        let total_bytes = (buffer_size_frames as usize) * (block_align as usize);
+        std::ptr::write_bytes(dest_buf, 0, total_bytes);
+        let _ = render_client.ReleaseBuffer(
+          buffer_size_frames,
+          AUDCLNT_BUFFERFLAGS_SILENT.0 as u32,
+        );
+      }
+
       let stop_flag = Arc::new(AtomicBool::new(false));
       let stop_thread = Arc::clone(&stop_flag);
       let raw_event = event_handle.0 as usize;
@@ -282,10 +348,11 @@ mod platform {
         };
       }
 
-      let client_clone = audio_client.clone();
       let render_thread = std::thread::spawn(move || {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         let h_event = HANDLE(raw_event as _);
+        let frames_needed = buffer_size_frames;
+        let samples_needed = (frames_needed as usize) * (channels as usize);
 
         while !stop_thread.load(Ordering::Relaxed) {
           let wait_res = WaitForSingleObject(h_event, 1000);
@@ -293,18 +360,12 @@ mod platform {
             break;
           }
 
-          let frames_needed = match client_clone.GetBufferSize() {
-            Ok(f) => f,
-            Err(_) => break,
-          };
-
           let dest_buffer = match render_client.GetBuffer(frames_needed) {
             Ok(p) => p,
             Err(_) => continue,
           };
 
-          let samples_needed = (frames_needed as usize) * (channels as usize);
-
+          let mut underrun_samples = 0;
           if target_bit_depth == 16 {
             let out_slice = std::slice::from_raw_parts_mut(dest_buffer as *mut i16, samples_needed);
             for s in out_slice.iter_mut() {
@@ -312,7 +373,8 @@ mod platform {
                 let clamped = val.clamp(-1.0, 1.0);
                 *s = (clamped * 32767.0) as i16;
               } else {
-                *s = 0; // silence on underrun
+                *s = 0;
+                underrun_samples += 1;
               }
             }
           } else if target_bit_depth == 24 {
@@ -323,6 +385,7 @@ mod platform {
                 *s = ((clamped * 8388607.0) as i32) << 8;
               } else {
                 *s = 0;
+                underrun_samples += 1;
               }
             }
           } else {
@@ -332,11 +395,18 @@ mod platform {
                 *s = val.clamp(-1.0, 1.0);
               } else {
                 *s = 0.0;
+                underrun_samples += 1;
               }
             }
           }
 
-          let _ = render_client.ReleaseBuffer(frames_needed, 0);
+          let release_flags = if underrun_samples == samples_needed {
+            AUDCLNT_BUFFERFLAGS_SILENT.0 as u32
+          } else {
+            0
+          };
+
+          let _ = render_client.ReleaseBuffer(frames_needed, release_flags);
         }
 
         CoUninitialize();
@@ -384,11 +454,11 @@ mod platform {
       state.stop_flag.store(true, Ordering::SeqCst);
       unsafe {
         let h_event = HANDLE(state.event_handle as _);
+        let _ = state.audio_client.Stop();
         let _ = SetEvent(h_event);
         if let Some(handle) = state.render_thread.take() {
           let _ = handle.join();
         }
-        let _ = state.audio_client.Stop();
         let _ = CloseHandle(h_event);
       }
     }

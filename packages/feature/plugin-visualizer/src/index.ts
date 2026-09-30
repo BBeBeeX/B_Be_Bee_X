@@ -77,9 +77,15 @@ export class VisualizerPlugin extends Service implements VisualizerService {
     // 2. Attach Web Audio analyser node
     this.attachAnalyser()
 
-    // Re-attach analyser when audio engine changes
+    // Re-attach analyser when audio engine changes or AudioContext is dynamically rebuilt
     const offEngine = this.ownCtx.on('audio/engine-changed', () => {
       this.ownCtx.logger.info('plugin-visualizer: audio engine changed, re-attaching analyser')
+      this.detachAnalyser()
+      this.attachAnalyser()
+    })
+
+    const offContextRebuilt = this.ownCtx.on('audio/context-rebuilt', () => {
+      this.ownCtx.logger.info('plugin-visualizer: audio context rebuilt, re-attaching analyser')
       this.detachAnalyser()
       this.attachAnalyser()
     })
@@ -88,6 +94,7 @@ export class VisualizerPlugin extends Service implements VisualizerService {
     return () => {
       this.ownCtx.logger.info('plugin-visualizer: disposing')
       offEngine()
+      offContextRebuilt()
       this.detachAnalyser()
     }
   }

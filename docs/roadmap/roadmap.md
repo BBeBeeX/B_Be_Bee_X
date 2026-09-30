@@ -225,7 +225,7 @@ rule language is too weak, because every document written after M2 is one someon
 
 `@BBeBee/core-audio-wasapi` and `@BBeBee/core-audio-wasapi-native`: native Windows Core Audio engine delivering bit-perfect Hi-Res playback.
 
-> **Shipped / Active.**
+> **In progress / Active.**
 > - **Renderer pipeline repair**: `WasapiSinkProcessor` batches Float32 PCM (~10-20ms) and transfers via MessagePort directly to the host, fixing the dead-write bottleneck.
 > - **Native exclusive output**: `@BBeBee/core-audio-wasapi-native` provides Rust (`napi-rs`) bindings to Windows Core Audio (`AUDCLNT_SHAREMODE_EXCLUSIVE`, `AUDCLNT_STREAMFLAGS_EVENTCALLBACK`) with a real-time lock-free SPSC ring buffer (`rtrb`).
 > - **Dynamic sample rate reconstruction**: Automatically recreates `AudioContext({ sampleRate })` when tracks change sample rate (44.1k/96k/192k) to bypass Chromium's internal resampling.

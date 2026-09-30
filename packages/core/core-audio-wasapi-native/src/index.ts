@@ -33,11 +33,17 @@ function tryLoadNative(): RawNativeModule | null {
     return null
   }
 
+  const unpackedDir = __dirname.replace('app.asar', 'app.asar.unpacked')
+
   const candidates = [
     join(__dirname, '../core_audio_wasapi_native.win32-x64-msvc.node'),
+    join(unpackedDir, '../core_audio_wasapi_native.win32-x64-msvc.node'),
     join(__dirname, '../core_audio_wasapi_native.node'),
+    join(unpackedDir, '../core_audio_wasapi_native.node'),
     join(__dirname, '../index.node'),
+    join(unpackedDir, '../index.node'),
     join(__dirname, '../../../../target/release/core_audio_wasapi_native.node'),
+    join(unpackedDir, '../../../../target/release/core_audio_wasapi_native.node'),
   ]
 
   for (const candidate of candidates) {

@@ -142,14 +142,7 @@ export class AudioWasapi extends Service implements AudioService {
       this.context.sampleRate,
     )
 
-    try {
-      if (typeof (this.context as AudioContext).close === 'function') {
-        void (this.context as AudioContext).close().catch(() => undefined)
-      }
-    } catch {
-      // ignore
-    }
-
+    const oldCtx = this.context
     const create = this.config.createContext ?? defaultContextFactory()
     try {
       const newCtx = create({ sampleRate: targetRate })
@@ -170,6 +163,18 @@ export class AudioWasapi extends Service implements AudioService {
         newMaster.connect(this.context.destination)
       } else {
         await this.ensureSinkWorklet()
+      }
+
+      // Notify DSP, visualizer, and other graph consumers to resplice nodes to new context
+      this.ctx.emit('audio/context-rebuilt')
+
+      // Safely close previous context after new graph is attached
+      try {
+        if (typeof (oldCtx as AudioContext).close === 'function') {
+          void (oldCtx as AudioContext).close().catch(() => undefined)
+        }
+      } catch {
+        // ignore
       }
     } catch (err) {
       this.ctx.logger?.warn('wasapi: failed to rebuild AudioContext with sampleRate %d: %s', targetRate, String(err))
