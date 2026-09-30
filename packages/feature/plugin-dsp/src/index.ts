@@ -94,8 +94,8 @@ export class DspPlugin extends Service implements DspService {
       void this.setEnabled('tempo-pitch', false)
     }
 
-    // Initial graph wiring
-    await this.rebuildGraph()
+    // Initial graph wiring without dipping volume during startup
+    await this.rebuildGraph(false)
 
     // Contribute UI routes & settings if ctx.ui is available
     this.ctx.inject(['ui'], (scoped) =>
@@ -123,7 +123,7 @@ export class DspPlugin extends Service implements DspService {
     // Rebuild effect graph whenever audio backend changes
     const offEngine = this.ctx.on('audio/engine-changed', async () => {
       this.ctx.logger.info('plugin-dsp: audio engine changed, rebuilding DSP effect graph')
-      await this.rebuildGraph()
+      await this.rebuildGraph(false)
     })
 
     return () => {
@@ -261,14 +261,14 @@ export class DspPlugin extends Service implements DspService {
    * Spliced between chainInput and chainOutput.
    * Master volume dips smoothly to prevent any click during reconnection.
    */
-  private async rebuildGraph(): Promise<void> {
+  private async rebuildGraph(dip = true): Promise<void> {
     if (this.isRebuilding) return
     this.isRebuilding = true
 
     let restoreVolume: Disposable = () => {}
     try {
-      // 20ms master gain dip to eliminate any clicks
-      if (typeof this.ctx.audio.dipVolume === 'function') {
+      // 20ms master gain dip to eliminate any clicks during runtime reconfiguration
+      if (dip && typeof this.ctx.audio.dipVolume === 'function') {
         restoreVolume = await this.ctx.audio.dipVolume(20)
       }
 

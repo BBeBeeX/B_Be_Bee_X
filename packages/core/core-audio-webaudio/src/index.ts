@@ -437,6 +437,7 @@ export class AudioWebAudio extends Service implements AudioService {
   readonly context: BaseAudioContext
   readonly chainInput: GainNode
   private readonly master: GainNode
+  private targetVolume = 0.8
   private mutedAt?: number
   private selectedDeviceId = 'default'
   private readonly interruptionListeners = new Set<(e: InterruptionEvent) => void>()
@@ -490,6 +491,7 @@ export class AudioWebAudio extends Service implements AudioService {
     // have to be un-built.
     this.chainInput = this.context.createGain()
     this.master = this.context.createGain()
+    this.master.gain.value = this.targetVolume
     this.chainInput.connect(this.master)
     this.master.connect(this.context.destination)
     this.ctx.logger?.info('core-audio-webaudio: initialized (sampleRate: %d)', this.sampleRate)
@@ -501,9 +503,11 @@ export class AudioWebAudio extends Service implements AudioService {
 
   async dipVolume(durationMs = 20): Promise<Disposable> {
     this.ctx.logger?.debug?.('webaudio: dipVolume duration %dms', durationMs)
-    const currentGain = this.master.gain.value
     const dipSeconds = Math.max(0.005, durationMs / 1000)
     const now = this.context.currentTime
+    if (typeof this.master.gain.cancelScheduledValues === 'function') {
+      this.master.gain.cancelScheduledValues(now)
+    }
     if (typeof this.master.gain.setTargetAtTime === 'function') {
       this.master.gain.setTargetAtTime(0, now, dipSeconds / 3)
     } else {
@@ -511,11 +515,15 @@ export class AudioWebAudio extends Service implements AudioService {
     }
     await new Promise((resolve) => setTimeout(resolve, durationMs))
     return () => {
+      const target = this.mutedAt !== undefined ? 0 : this.targetVolume
       const resumeNow = this.context.currentTime
+      if (typeof this.master.gain.cancelScheduledValues === 'function') {
+        this.master.gain.cancelScheduledValues(resumeNow)
+      }
       if (typeof this.master.gain.setTargetAtTime === 'function') {
-        this.master.gain.setTargetAtTime(currentGain, resumeNow, dipSeconds / 3)
+        this.master.gain.setTargetAtTime(target, resumeNow, dipSeconds / 3)
       } else {
-        this.master.gain.value = currentGain
+        this.master.gain.value = target
       }
     }
   }
@@ -684,13 +692,21 @@ export class AudioWebAudio extends Service implements AudioService {
   setVolume(v: number): void {
     this.gate()
     const clamped = Math.max(0, Math.min(1, v))
+    this.targetVolume = clamped
     this.ctx.logger?.debug?.('webaudio: setVolume %d', clamped)
     if (this.mutedAt !== undefined) {
       // Remember the level so unmuting restores it rather than jumping to 1.
       this.mutedAt = clamped
       return
     }
-    this.master.gain.value = clamped
+    if (typeof this.master.gain.cancelScheduledValues === 'function') {
+      this.master.gain.cancelScheduledValues(this.context.currentTime)
+    }
+    if (typeof this.master.gain.setValueAtTime === 'function') {
+      this.master.gain.setValueAtTime(clamped, this.context.currentTime)
+    } else {
+      this.master.gain.value = clamped
+    }
   }
 
   setMuted(m: boolean): void {
@@ -698,13 +714,25 @@ export class AudioWebAudio extends Service implements AudioService {
     this.ctx.logger?.debug?.('webaudio: setMuted %s', m)
     if (m) {
       if (this.mutedAt !== undefined) return
-      this.mutedAt = this.master.gain.value
+      this.mutedAt = this.targetVolume
+      if (typeof this.master.gain.cancelScheduledValues === 'function') {
+        this.master.gain.cancelScheduledValues(this.context.currentTime)
+      }
       this.master.gain.value = 0
       return
     }
     if (this.mutedAt === undefined) return
-    this.master.gain.value = this.mutedAt
+    const restore = this.mutedAt
     this.mutedAt = undefined
+    this.targetVolume = restore
+    if (typeof this.master.gain.cancelScheduledValues === 'function') {
+      this.master.gain.cancelScheduledValues(this.context.currentTime)
+    }
+    if (typeof this.master.gain.setValueAtTime === 'function') {
+      this.master.gain.setValueAtTime(restore, this.context.currentTime)
+    } else {
+      this.master.gain.value = restore
+    }
   }
 
   /**

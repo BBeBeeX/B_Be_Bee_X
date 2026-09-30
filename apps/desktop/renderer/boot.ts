@@ -196,7 +196,7 @@ export class DesktopAudioService extends Service implements AudioService {
   private activeEngineKey: 'wasapi' | 'webaudio' = 'webaudio'
   private activeEngine!: AudioService
   private activeFiber?: Fiber
-  private currentVolume = 1
+  private currentVolume = 0.8
   private currentMuted = false
   private currentDeviceId = 'default'
 

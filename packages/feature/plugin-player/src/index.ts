@@ -142,7 +142,7 @@ export class Player extends Service implements PlayerService {
     positionMs: 0,
     durationMs: 0,
     bufferedMs: 0,
-    volume: 1,
+    volume: 0.8,
     muted: false,
     repeat: 'off',
     shuffle: false,
@@ -521,6 +521,8 @@ export class Player extends Service implements PlayerService {
     if (!current) return
 
     if (this.source && this.transport.currentItemId === current.item.id) {
+      this.ownCtx.audio.setVolume(this.transport.volume)
+      this.ownCtx.audio.setMuted(this.transport.muted)
       this.source.play()
       this.set({ status: 'playing' })
       this.publishNowPlaying()
@@ -1027,6 +1029,8 @@ export class Player extends Service implements PlayerService {
     // and a zero duration is a progress bar that cannot move.
     const durationMs = source.durationMs || this.fallbackDurationMs
     if (opts.autoplay && this.playIntent) {
+      this.ownCtx.audio.setVolume(this.transport.volume)
+      this.ownCtx.audio.setMuted(this.transport.muted)
       source.play(positionMs)
       this.set({ status: 'playing', durationMs, positionMs })
       this.beginPlay(entry, positionMs)
@@ -1622,9 +1626,11 @@ export class Player extends Service implements PlayerService {
         volume: state.volume,
         muted: state.muted,
       }
-      this.ownCtx.audio.setVolume(state.volume)
-      this.ownCtx.audio.setMuted(state.muted)
     }
+
+    // Always synchronize the audio engine volume and mute with transport state upon restore
+    this.ownCtx.audio.setVolume(this.transport.volume)
+    this.ownCtx.audio.setMuted(this.transport.muted)
 
     const current = state?.currentItemId ? this.model.entry(state.currentItemId) : undefined
     if (current) {
@@ -1637,11 +1643,13 @@ export class Player extends Service implements PlayerService {
       }
     }
     if (entries.length > 0) this.emitQueueChanged()
+    this.ownCtx.emit('player/state-changed', this.transport)
     this.ownCtx.logger.info(
-      'player: restored state (entries: %d, currentItem: %s, positionMs: %d)',
+      'player: restored state (entries: %d, currentItem: %s, positionMs: %d, volume: %d)',
       entries.length,
       current?.item.trackUrn ?? 'none',
       state?.positionMs ?? 0,
+      this.transport.volume,
     )
   }
 

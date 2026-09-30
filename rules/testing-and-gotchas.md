@@ -57,6 +57,7 @@ Test conventions, common gotchas, and milestone status for BBeBee.
 | CSP `script-src 'self'` blocks inline scripts in index.html | Inline `<script>` tags violate strict CSP unless hashed or allowlisted. Window initialization code (theme/transparency) is extracted to external `<script type="module" src="./window-init.ts">`. |
 | Cold boot disk I/O contention during plugin initialization | Running unthrottled cache sweeps during plugin `init()` blocks startup I/O. `plugin-cache` defers its initial sweep to a 5-second background timer. Similarly, `StoreConfig.initialData` seeds pre-read configuration to eliminate duplicate disk reads. |
 | Layer 5 UI view imports `App` type from `@BBeBee/kernel` triggering `KERNEL_GUARD` | Only composition root files (`apps/*/src/{boot,plugins}.ts` and `apps/desktop/renderer/main.tsx`) may touch kernel application primitives. Deferred plugin loading via `app.loadPlugin()` belongs in `apps/desktop/renderer/main.tsx` (`requestIdleCallback`) rather than inside Layer 5 UI views. |
+| Audio plays at 100% volume on launch despite bottom bar showing lower level | When `plugin-dsp` rebuilds effect graph at boot, `dipVolume(20)` must not capture a stale gain (1.0) and restore over volume set by `plugin-player`. Core audio services maintain `targetVolume`, cancel scheduled automations on `setVolume`, and `plugin-player` re-synchronizes audio volume both in `restore()` and before `source.play()` in `attach()`. |
 
 ---
 

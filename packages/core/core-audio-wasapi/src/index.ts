@@ -67,6 +67,7 @@ export class AudioWasapi extends Service implements AudioService {
   readonly chainInput: GainNode
   readonly chainOutput: GainNode
   private readonly master: GainNode
+  private targetVolume = 0.8
   private sinkNode?: AudioNode
   private sharedRing?: SharedRingBuffer
   private mutedAt?: number
@@ -87,6 +88,7 @@ export class AudioWasapi extends Service implements AudioService {
 
     this.chainInput = this.context.createGain()
     this.master = this.context.createGain()
+    this.master.gain.value = this.targetVolume
     this.chainOutput = this.master
     this.chainInput.connect(this.master)
 
@@ -116,9 +118,11 @@ export class AudioWasapi extends Service implements AudioService {
 
   async dipVolume(durationMs = 20): Promise<Disposable> {
     this.ctx.logger?.debug?.('wasapi: dipVolume duration %dms', durationMs)
-    const currentGain = this.master.gain.value
     const dipSeconds = Math.max(0.005, durationMs / 1000)
     const now = this.context.currentTime
+    if (typeof this.master.gain.cancelScheduledValues === 'function') {
+      this.master.gain.cancelScheduledValues(now)
+    }
     if (typeof this.master.gain.setTargetAtTime === 'function') {
       this.master.gain.setTargetAtTime(0, now, dipSeconds / 3)
     } else {
@@ -126,11 +130,15 @@ export class AudioWasapi extends Service implements AudioService {
     }
     await new Promise((resolve) => setTimeout(resolve, durationMs))
     return () => {
+      const target = this.mutedAt !== undefined ? 0 : this.targetVolume
       const resumeNow = this.context.currentTime
+      if (typeof this.master.gain.cancelScheduledValues === 'function') {
+        this.master.gain.cancelScheduledValues(resumeNow)
+      }
       if (typeof this.master.gain.setTargetAtTime === 'function') {
-        this.master.gain.setTargetAtTime(currentGain, resumeNow, dipSeconds / 3)
+        this.master.gain.setTargetAtTime(target, resumeNow, dipSeconds / 3)
       } else {
-        this.master.gain.value = currentGain
+        this.master.gain.value = target
       }
     }
   }
@@ -306,20 +314,43 @@ export class AudioWasapi extends Service implements AudioService {
 
   setVolume(v: number): void {
     const clamped = Math.max(0, Math.min(1, v))
+    this.targetVolume = clamped
     this.ctx.logger?.debug?.('wasapi: setVolume %d', clamped)
-    this.mutedAt = undefined
-    this.master.gain.value = clamped
+    if (this.mutedAt !== undefined) {
+      this.mutedAt = clamped
+      return
+    }
+    if (typeof this.master.gain.cancelScheduledValues === 'function') {
+      this.master.gain.cancelScheduledValues(this.context.currentTime)
+    }
+    if (typeof this.master.gain.setValueAtTime === 'function') {
+      this.master.gain.setValueAtTime(clamped, this.context.currentTime)
+    } else {
+      this.master.gain.value = clamped
+    }
   }
 
   setMuted(m: boolean): void {
     this.ctx.logger?.debug?.('wasapi: setMuted %s', m)
     if (m) {
-      if (this.mutedAt === undefined) this.mutedAt = this.master.gain.value
+      if (this.mutedAt !== undefined) return
+      this.mutedAt = this.targetVolume
+      if (typeof this.master.gain.cancelScheduledValues === 'function') {
+        this.master.gain.cancelScheduledValues(this.context.currentTime)
+      }
       this.master.gain.value = 0
     } else {
-      const restore = this.mutedAt ?? 1
+      const restore = this.mutedAt ?? this.targetVolume
       this.mutedAt = undefined
-      this.master.gain.value = restore
+      this.targetVolume = restore
+      if (typeof this.master.gain.cancelScheduledValues === 'function') {
+        this.master.gain.cancelScheduledValues(this.context.currentTime)
+      }
+      if (typeof this.master.gain.setValueAtTime === 'function') {
+        this.master.gain.setValueAtTime(restore, this.context.currentTime)
+      } else {
+        this.master.gain.value = restore
+      }
     }
   }
 
