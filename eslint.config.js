@@ -169,7 +169,7 @@ export default tseslint.config(
         // Config files — and the test stubs the vitest config aliases to —
         // belong to no package tsconfig program.
         projectService: {
-          allowDefaultProject: ['*.ts', '*.js', 'apps/*/*.config.ts', 'test/stubs/*.ts'],
+          allowDefaultProject: ['*.ts', '*.js', 'apps/*/*.config.ts', 'test/stubs/*.ts', 'apps/*/scripts/*.js'],
         },
         tsconfigRootDir: import.meta.dirname,
       },

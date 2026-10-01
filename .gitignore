@@ -19,3 +19,6 @@ apps/mobile/.expo/devices.json
 # Rust build artifacts
 target/
 *.node
+
+# Native binary executables
+apps/desktop/bin/

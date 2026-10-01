@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "electron-vite dev",
     "dev:debug": "DEBUG=1 electron-vite dev",
-    "build": "electron-vite build",
+    "build:audio-engine": "node scripts/build-audio-engine.js",
+    "build": "node scripts/build-audio-engine.js && electron-vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "electron-vite preview"
   },

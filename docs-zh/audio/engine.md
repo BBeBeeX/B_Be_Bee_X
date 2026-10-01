@@ -94,7 +94,7 @@ flowchart LR
 - **`strategy: 'stream'`**：通过 `context.createMediaElementSource()` 挂载至媒体元素，保持内存占用恒定。
 - **高位深与 ALAC 解码回退 (FFmpeg Bridge)**：Chromium 原生 `decodeAudioData()` 无法解码 Apple Lossless (ALAC) 格式或某些 24-bit/32-bit Hi-Res 音频。桌面端 `core-audio-webaudio` 与 `core-audio-mpv` 自动调用主进程的解码器，将音频精确解算为 Float32 PCM 声道并直接灌入，实现无损兼容。
 - **桌面端原生高保真引擎 (`@BBeBee/core-audio-mpv`)**：
-  - **崩溃隔离原生进程 (Crash Isolation)**：基于官方 libmpv 与独立 native `audio-engine` 子进程架构。任何底层驱动崩溃、音频设备热插拔异常或 native 信号错误均由独立子进程隔离，保证主进程与渲染界面丝滑稳定。
+  - **崩溃隔离原生独立可执行文件 (Crash Isolation & Standalone Executable)**：基于官方 libmpv 与编译生成的独立 native `audio-engine` 二进制可执行文件（`apps/desktop/bin/audio-engine` 或 `.exe`），采用标准 stdio JSON-IPC 与 Electron 主进程通信。任何底层驱动崩溃、音频设备热插拔异常或 native 信号错误均由独立进程隔离，由 `AudioEngineSupervisor` 自动监控并执行优雅自愈重连，保证主进程与渲染界面丝滑稳定。
   - **PCM 不走 IPC 与 WASAPI 直通 (Zero-IPC for PCM)**：音频解码后的高采样率 PCM 流在原生子进程内直接送入 WASAPI 输出端点（`ao=wasapi`），严禁跨进程高带宽低效传输 PCM 原始数据。
   - **原生 DSP/EQ 链**：原生引擎内部直接实现 10 段均衡器（10-band EQ）、前级增益（Preamp）与压限器，监听 `dsp/chain-changed` 动态热更新音频滤镜管线。
   - **统一 AudioAnalyser 与 WebGL 频谱画布**：`audio-engine` 内部就地计算 FFT 频谱，经由极轻量 IPC 将频域帧推送到渲染进程，通过统一的 `AudioAnalyser`（`NativeMpvImpl` / `WebAudioImpl`）抽象供给渲染层，在 WebGL Canvas 上利用 GPU 着色器实现高性能流畅渲染。

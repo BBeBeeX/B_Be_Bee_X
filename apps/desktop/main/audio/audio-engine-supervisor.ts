@@ -2,12 +2,13 @@
  * Audio Engine Supervisor.
  *
  * Runs in Electron Main process. Spawns, monitors, and isolates the native
- * audio-engine child process. If the child process crashes, the supervisor
+ * audio-engine standalone binary process. If the child process crashes, the supervisor
  * isolates the failure from the Main and Renderer processes, notifies listeners,
  * and recovers gracefully.
  */
 
-import { fork, type ChildProcess } from 'node:child_process'
+import { fork, spawn, type ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import type { AudioMainLogger } from './audio-devices.js'
@@ -33,6 +34,7 @@ export interface CrashEvent {
 export class AudioEngineSupervisor {
   private child: ChildProcess | null = null
   private readonly logger?: AudioMainLogger
+  private readonly customExecutablePath?: string
   private isShuttingDown = false
   private restartCount = 0
   private lastRestartTime = 0
@@ -51,8 +53,9 @@ export class AudioEngineSupervisor {
   private visualizerEnabled = true
   private currentFftSize = 128
 
-  constructor(logger?: AudioMainLogger) {
+  constructor(logger?: AudioMainLogger, customExecutablePath?: string) {
     this.logger = logger
+    this.customExecutablePath = customExecutablePath
   }
 
   start(): void {
@@ -60,21 +63,96 @@ export class AudioEngineSupervisor {
     this.spawnWorker()
   }
 
-  private spawnWorker(): void {
+  resolveExecutablePath(): string | null {
+    if (this.customExecutablePath && existsSync(this.customExecutablePath)) {
+      return this.customExecutablePath
+    }
+    const envPath = process.env['AUDIO_ENGINE_PATH']
+    if (envPath && existsSync(envPath)) {
+      return envPath
+    }
+
+    const isWin = process.platform === 'win32'
+    const exeName = isWin ? 'audio-engine.exe' : 'audio-engine'
+
+    // Packaged application resources path
+    const resourcesPath = (process as unknown as { resourcesPath?: string }).resourcesPath
+    if (resourcesPath) {
+      const packagedExe = join(resourcesPath, 'bin', exeName)
+      if (existsSync(packagedExe)) return packagedExe
+    }
+
+    // Development paths
     try {
       const currentDir = dirname(fileURLToPath(import.meta.url))
-      const workerScript = join(currentDir, 'audio-engine-worker.js')
+      const candidatePaths = [
+        join(currentDir, '..', '..', 'bin', exeName),
+        join(currentDir, '..', '..', '..', 'bin', exeName),
+        join(process.cwd(), 'apps', 'desktop', 'bin', exeName),
+        join(process.cwd(), 'bin', exeName),
+      ]
 
-      this.logger?.info?.('audio-engine-supervisor: spawning native audio-engine worker process...')
+      for (const p of candidatePaths) {
+        if (existsSync(p)) return p
+      }
+    } catch {
+      // In bundled environments without fileURLToPath resolution
+    }
 
-      this.child = fork(workerScript, [], {
-        stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-        env: { ...process.env, NODE_ENV: process.env.NODE_ENV ?? 'production' },
-      })
+    return null
+  }
 
-      this.child.on('message', (msg: unknown) => {
-        this.handleWorkerMessage(msg)
-      })
+  private spawnWorker(): void {
+    try {
+      const exePath = this.resolveExecutablePath()
+
+      if (exePath) {
+        this.logger?.info?.('audio-engine-supervisor: spawning standalone native audio-engine executable at: %s', exePath)
+
+        this.child = spawn(exePath, [], {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true,
+          env: { ...process.env, NODE_ENV: process.env.NODE_ENV ?? 'production' },
+        })
+
+        let stdoutBuffer = ''
+        this.child.stdout?.on('data', (chunk: Buffer | string) => {
+          stdoutBuffer += chunk.toString()
+          const lines = stdoutBuffer.split('\n')
+          stdoutBuffer = lines.pop() ?? ''
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (trimmed) {
+              try {
+                const msg = JSON.parse(trimmed)
+                this.handleWorkerMessage(msg)
+              } catch {
+                this.logger?.debug?.('audio-engine-supervisor: unparseable stdout line: %s', trimmed)
+              }
+            }
+          }
+        })
+
+        this.child.stderr?.on('data', (chunk: Buffer | string) => {
+          const text = chunk.toString().trim()
+          if (text) {
+            this.logger?.debug?.('audio-engine [stderr]: %s', text)
+          }
+        })
+      } else {
+        const currentDir = dirname(fileURLToPath(import.meta.url))
+        const workerScript = join(currentDir, 'audio-engine-worker.js')
+        this.logger?.warn?.('audio-engine-supervisor: native executable not found, falling back to worker script: %s', workerScript)
+
+        this.child = fork(workerScript, [], {
+          stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+          env: { ...process.env, NODE_ENV: process.env.NODE_ENV ?? 'production' },
+        })
+
+        this.child.on('message', (msg: unknown) => {
+          this.handleWorkerMessage(msg)
+        })
+      }
 
       this.child.on('error', (err) => {
         this.logger?.error?.('audio-engine-supervisor: worker process error: %s', String(err))
@@ -85,7 +163,7 @@ export class AudioEngineSupervisor {
       })
 
       // Send initial configuration to worker
-      this.child.send({
+      this.sendCommand({
         action: 'init',
         config: {
           deviceId: this.currentDeviceId,
@@ -112,6 +190,7 @@ export class AudioEngineSupervisor {
         for (const cb of this.readyListeners) cb()
         break
       case 'state':
+      case 'playback-state':
         for (const cb of this.stateListeners) {
           cb({
             status: payload['status'] as PlaybackStateEvent['status'],
@@ -124,6 +203,7 @@ export class AudioEngineSupervisor {
         for (const cb of this.endedListeners) cb()
         break
       case 'fftFrame':
+      case 'fft-frame':
         for (const cb of this.fftListeners) {
           cb({
             frequencyData: (payload['frequencyData'] as number[]) ?? [],
@@ -221,7 +301,11 @@ export class AudioEngineSupervisor {
   }
 
   private sendCommand(cmd: Record<string, unknown>): void {
-    if (this.child && this.child.connected) {
+    if (!this.child || this.child.killed) return
+
+    if (this.child.stdin?.writable) {
+      this.child.stdin.write(JSON.stringify(cmd) + '\n')
+    } else if (this.child.connected) {
       this.child.send(cmd)
     }
   }
@@ -255,10 +339,11 @@ export class AudioEngineSupervisor {
     this.isShuttingDown = true
     if (this.child) {
       this.sendCommand({ action: 'dispose' })
+      const proc = this.child
+      this.child = null
       setTimeout(() => {
-        if (this.child) {
-          this.child.kill('SIGKILL')
-          this.child = null
+        if (!proc.killed) {
+          proc.kill('SIGKILL')
         }
       }, 500)
     }
