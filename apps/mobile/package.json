@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@BBeBee/core-audio-mpv": "workspace:*",
     "@BBeBee/core-audio-webaudio": "workspace:*",
     "@BBeBee/core-background-expo": "workspace:*",
     "@BBeBee/core-codec-rn": "workspace:*",

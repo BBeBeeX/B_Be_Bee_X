@@ -29,7 +29,6 @@ import {
 import { FlashList } from '@shopify/flash-list'
 import { AudioContext, AudioManager } from 'react-native-audio-api'
 import { createApp, type App } from '@BBeBee/kernel'
-import type { AppSettings } from '@BBeBee/protocol'
 import { PathsExpo } from '@BBeBee/core-paths-expo'
 import { File, FsExpo } from '@BBeBee/core-fs-expo'
 import { StoreFs } from '@BBeBee/core-store-fs'
@@ -40,9 +39,17 @@ import { BackgroundExpo } from '@BBeBee/core-background-expo'
 import { MediaSessionRn } from '@BBeBee/core-media-session-rn'
 import { CodecRn } from '@BBeBee/core-codec-rn'
 import { HttpRn } from '@BBeBee/core-http-rn'
+import { AudioMpv } from '@BBeBee/core-audio-mpv'
 import { AudioWebAudio } from '@BBeBee/core-audio-webaudio'
+import {
+  MobileAudioService,
+  createMobileMpvBridge,
+  type MobileAudioConfig,
+} from './mobile-audio.js'
 import { fetch as expoFetch } from 'expo/fetch'
 import { configureNative } from '@BBeBee/ui-kit-mobile'
+
+export { MobileAudioService, createMobileMpvBridge, type MobileAudioConfig }
 
 import { bundled } from '../generated/plugins'
 /*
@@ -152,24 +159,17 @@ export async function boot(): Promise<App> {
       CodecRn,
       HttpRn,
       /*
-       * `ctx.audio`. The same package desktop loads — ADR-4's contract *is*
-       * the Web Audio API, and `react-native-audio-api` satisfies it — with
-       * this platform's context factory passed in (docs/05 §1).
+       * `ctx.audio` — dual mobile audio engines:
+       * Route A (@BBeBee/core-audio-webaudio via react-native-audio-api)
+       * Route B (@BBeBee/core-audio-mpv via in-process libmpv JNI/JSI bridge)
        */
       [
-        AudioWebAudio,
+        MobileAudioService,
         {
+          initialEngine: 'webaudio',
+          mpvPlugin: AudioMpv,
+          webAudioPlugin: AudioWebAudio,
           createContext: () => new AudioContext(),
-          /*
-           * ⚠️ No `createMediaElement`.
-           *
-           * React Native has no `HTMLMediaElement`, so `load({ strategy:
-           * 'stream' })` has nothing to stream through and the engine refuses
-           * it rather than pretending. Buffered playback — every local file,
-           * and short remote ones — is unaffected; a long remote track is the
-           * gap, and it is the device work docs/11 §3.1 puts on
-           * `StreamerNode` (docs/05 §1).
-           */
           fallbackLatencyMs: 100,
           fetchBytes: async (
             src: string,

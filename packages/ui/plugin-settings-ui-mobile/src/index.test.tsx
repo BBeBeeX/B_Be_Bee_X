@@ -180,4 +180,13 @@ describe('plugin-settings-ui-mobile', () => {
     // 5. Advanced panel link
     expect(container.textContent).toContain('高级效果器调音与编排')
   })
+
+  it('renders audio output engine options and allows switching between WebAudio and MPV Hi-Fi', async () => {
+    const { ctx } = await createHarness()
+    const { container } = render(h(SettingsScreen, { ctx }))
+
+    expect(container.textContent).toContain('音频输出引擎')
+    expect(container.textContent).toContain('WebAudio')
+    expect(container.textContent).toContain('MPV Hi-Fi')
+  })
 })
